@@ -614,20 +614,16 @@ def run_sweep(start_year: int, trade_amount: float, stop_loss_pct: float) -> Non
 MONTE_CARLO_OUT = r'C:\Users\alxnt\kalshi-bot\monte_carlo_results.json'
 
 PARAM_SPACE = {
-    "min_ev":              [0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25],
-    "stop_loss_pct":       [20.0, 25.0, 30.0, 35.0, 40.0, 50.0],
-    "entry_window":        [(360, 540), (420, 600), (480, 660), (360, 660), (300, 780)],
-    "min_confidence":      [50, 55, 60, 65, 70],
-    "ob_imbalance_thresh": [0.05, 0.10, 0.15, 0.20],
+    "min_ev":              [0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30],
+    "stop_loss_pct":       [15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 50.0],
+    "min_confidence":      [50, 55, 60, 65, 70, 75, 80],
 }
 
-# Pre-computed pool of all unique combinations (2,520 total)
+# Pre-computed pool of all unique combinations (392 total)
 _ALL_COMBOS = list(itertools.product(
     PARAM_SPACE["min_ev"],
     PARAM_SPACE["stop_loss_pct"],
-    PARAM_SPACE["entry_window"],
     PARAM_SPACE["min_confidence"],
-    PARAM_SPACE["ob_imbalance_thresh"],
 ))
 
 
@@ -664,32 +660,24 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
     combos_to_run = combo_pool[:effective_n]
 
     t0 = time.time()
-    for i, (min_ev, stop_loss_pct, entry_window, min_confidence,
-            ob_thresh) in enumerate(combos_to_run, 1):
+    for i, (min_ev, stop_loss_pct, min_confidence) in enumerate(combos_to_run, 1):
 
-        # run_backtest uses seconds_elapsed implicitly via minute_in.
-        # We pass extra kwargs as a filter wrapper.
         r = run_backtest(
-            start_year    = start_year,
-            min_ev        = min_ev,
-            trade_amount  = trade_amount,
-            stop_loss_pct = stop_loss_pct,
-            entry_lo_sec  = entry_window[0],
-            entry_hi_sec  = entry_window[1],
+            start_year     = start_year,
+            min_ev         = min_ev,
+            trade_amount   = trade_amount,
+            stop_loss_pct  = stop_loss_pct,
             min_confidence = min_confidence,
-            ob_imbalance_thresh = ob_thresh,
-            verbose       = False,
+            verbose        = False,
         )
 
         if not r:
             continue
 
         r["params"] = {
-            "min_ev":              min_ev,
-            "stop_loss_pct":       stop_loss_pct,
-            "entry_window":        list(entry_window),
-            "min_confidence":      min_confidence,
-            "ob_imbalance_thresh": ob_thresh,
+            "min_ev":         min_ev,
+            "stop_loss_pct":  stop_loss_pct,
+            "min_confidence": min_confidence,
         }
         all_results.append(r)
 
@@ -758,8 +746,7 @@ def _print_mc_summary(top20: list) -> None:
     for rank, r in enumerate(top20, 1):
         p = r["params"]
         param_str = (f"ev={p['min_ev']:.0%} sl={p['stop_loss_pct']:.0f}% "
-                     f"win={p['entry_window'][0]}-{p['entry_window'][1]}s "
-                     f"conf={p['min_confidence']} ob={p['ob_imbalance_thresh']:.2f}")
+                     f"conf={p['min_confidence']}")
         print(f"  {rank:>4}  {r['sharpe_ratio']:>7.3f}  "
               f"{r['win_rate']*100:>7.1f}%  "
               f"${r['total_pnl_dollars']:>7.2f}  "
@@ -768,11 +755,9 @@ def _print_mc_summary(top20: list) -> None:
     print("=" * W)
     print(f"\n  BEST PARAMS:")
     bp = best["params"]
-    print(f"    min_ev              = {bp['min_ev']:.0%}")
-    print(f"    stop_loss_pct       = {bp['stop_loss_pct']:.0f}%")
-    print(f"    entry_window        = {bp['entry_window'][0]}–{bp['entry_window'][1]} s into window")
-    print(f"    min_confidence      = {bp['min_confidence']}")
-    print(f"    ob_imbalance_thresh = {bp['ob_imbalance_thresh']:.2f}")
+    print(f"    min_ev          = {bp['min_ev']:.0%}")
+    print(f"    stop_loss_pct   = {bp['stop_loss_pct']:.0f}%")
+    print(f"    min_confidence  = {bp['min_confidence']}")
     print(f"\n  Expected win rate     : {best['win_rate']*100:.1f}%")
     ann_return = (best["total_pnl_dollars"] / (best["total_trades"] * 5.0) *
                   35_040 * 5.0) if best["total_trades"] else 0
