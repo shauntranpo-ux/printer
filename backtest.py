@@ -616,7 +616,7 @@ MONTE_CARLO_OUT = r'C:\Users\alxnt\kalshi-bot\monte_carlo_results.json'
 PARAM_SPACE = {
     "min_ev":              [0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25],
     "stop_loss_pct":       [20.0, 25.0, 30.0, 35.0, 40.0, 50.0],
-    "entry_window":        [(30, 90), (60, 120), (90, 180)],
+    "entry_window":        [(360, 540), (420, 600), (480, 660), (360, 660), (300, 780)],
     "min_confidence":      [50, 55, 60, 65, 70],
     "ob_imbalance_thresh": [0.05, 0.10, 0.15, 0.20],
 }
