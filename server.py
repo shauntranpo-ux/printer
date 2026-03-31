@@ -45,7 +45,7 @@ def read_config() -> dict:
         with open("config.json", "r") as fh:
             return json.load(fh)
     except Exception:
-        return {}
+        return {"mode": "paper", "trade_amount_dollars": 20, "stop_loss_percent": 35}
 
 
 def write_config(data: dict) -> None:
@@ -60,7 +60,8 @@ def read_state() -> dict:
         with open("bot_state.json", "r") as fh:
             return json.load(fh)
     except Exception:
-        return {}
+        return {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
+                "phase": "waiting", "mode": "paper"}
 
 
 def _load_strategies() -> list[dict]:
@@ -740,9 +741,12 @@ if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
     # Auto-start stress test if it was active when last stopped
-    cfg = read_config()
-    if cfg.get("stress_test_active"):
-        _start_stress_test(cfg)
+    try:
+        cfg = read_config()
+        if cfg.get("stress_test_active"):
+            _start_stress_test(cfg)
+    except Exception as exc:
+        log.warning(f"Could not auto-start stress test on startup: {exc}")
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
