@@ -19,14 +19,30 @@ import threading
 import time
 from datetime import datetime, timezone, timedelta
 
-import requests
-from flask import Flask, jsonify, request
+try:
+    import requests
+    from flask import Flask, jsonify, request
+except Exception as _import_err:
+    import traceback
+    traceback.print_exc()
+    raise
 
-log = logging.getLogger("server")
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
 )
+log = logging.getLogger("server")
+
+# Ensure the data directory exists (Railway volume at /app/data)
+try:
+    _db_path = os.environ.get("BOT_DB_FILE", "")
+    if _db_path:
+        _db_dir = os.path.dirname(_db_path)
+        if _db_dir:
+            os.makedirs(_db_dir, exist_ok=True)
+            log.info(f"Data directory ready: {_db_dir}")
+except Exception as _dir_err:
+    logging.warning(f"Could not create data directory: {_dir_err}")
 
 app = Flask(__name__)
 
