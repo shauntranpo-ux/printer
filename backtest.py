@@ -194,23 +194,8 @@ def compute_momentum(recent_closes: list) -> str:
 # Main backtest
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_backtest(
-    start_year: int   = 2020,
-    min_ev: float     = 0.15,
-    trade_amount: float = 5.0,
-    stop_loss_pct: float = 35.0,
-    watch_minutes: int  = 1,
-    seed: int = 42,
-    verbose: bool = True,
-    # Monte Carlo extra filters (defaults = no filtering)
-    entry_lo_sec: int   = 0,
-    entry_hi_sec: int   = 900,
-    min_confidence: int = 0,
-    ob_imbalance_thresh: float = 0.0,
-) -> dict:
-    rng = random.Random(seed)
-
-    # ── Load data ─────────────────────────────────────────────────────────────
+def load_data(start_year: int = 2020, verbose: bool = True):
+    """Load and preprocess the CSV once. Returns (windows, price_lookup)."""
     if verbose:
         print(f"\nLoading {CSV_PATH}...")
     t0 = time.time()
@@ -226,46 +211,62 @@ def run_backtest(
     if verbose:
         print(f"  Loaded {len(df):,} rows in {time.time()-t0:.1f}s")
 
-    # Filter by year
     df["year"] = pd.to_datetime(df["ts"], unit="s").dt.year
     df = df[df["year"] >= start_year].copy()
     if verbose:
         print(f"  Filtered to {start_year}+: {len(df):,} rows")
 
-    # ── 15-minute window assignment ───────────────────────────────────────────
     df["window_start"]     = (df["ts"] // 900) * 900
     df["minute_in_window"] = (df["ts"] - df["window_start"]) // 60
     df = df.sort_values(["window_start", "ts"])
 
-    # Strike = open of minute 0
     strikes = (
         df[df["minute_in_window"] == 0]
         .groupby("window_start")["Open"]
         .first()
         .rename("strike")
     )
-
-    # Final close = last candle in window
     finals = (
         df.groupby("window_start")
         .apply(lambda g: g.loc[g["minute_in_window"].idxmax(), "Close"],
                include_groups=False)
         .rename("final_close")
     )
-
     windows = strikes.to_frame().join(finals).dropna()
     windows = windows[(windows["strike"] > 0) & (windows["final_close"] > 0)]
 
-    if verbose:
-        print(f"  Windows: {len(windows):,}")
-
-    # Build price lookup: window_start → {minute_in_window → close}
     price_lookup = (
         df.groupby("window_start")
         .apply(lambda g: dict(zip(g["minute_in_window"].tolist(),
                                    g["Close"].tolist())),
                include_groups=False)
     )
+    if verbose:
+        print(f"  Windows: {len(windows):,}")
+    return windows, price_lookup
+
+
+def run_backtest(
+    start_year: int   = 2020,
+    min_ev: float     = 0.15,
+    trade_amount: float = 5.0,
+    stop_loss_pct: float = 35.0,
+    watch_minutes: int  = 1,
+    seed: int = 42,
+    verbose: bool = True,
+    min_confidence: int = 0,
+    # Pre-loaded data (skips CSV load when provided)
+    _windows=None,
+    _price_lookup=None,
+) -> dict:
+    rng = random.Random(seed)
+
+    # ── Load data (or use pre-loaded) ─────────────────────────────────────────
+    if _windows is None or _price_lookup is None:
+        windows, price_lookup = load_data(start_year, verbose=verbose)
+    else:
+        windows      = _windows
+        price_lookup = _price_lookup
 
     # ── Simulation loop ───────────────────────────────────────────────────────
     trades         = []
@@ -654,6 +655,11 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
     print("  Writing progress to:", MONTE_CARLO_OUT)
     print()
 
+    # Load CSV once — reused across all simulations
+    print("  Loading data (once)...")
+    windows, price_lookup = load_data(start_year, verbose=True)
+    print()
+
     # Shuffle once, then iterate — avoids duplicate runs while staying random
     combo_pool = list(_ALL_COMBOS)
     rng_mc.shuffle(combo_pool)
@@ -663,12 +669,13 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
     for i, (min_ev, stop_loss_pct, min_confidence) in enumerate(combos_to_run, 1):
 
         r = run_backtest(
-            start_year     = start_year,
             min_ev         = min_ev,
             trade_amount   = trade_amount,
             stop_loss_pct  = stop_loss_pct,
             min_confidence = min_confidence,
             verbose        = False,
+            _windows       = windows,
+            _price_lookup  = price_lookup,
         )
 
         if not r:
