@@ -383,10 +383,14 @@ def index():
     """Serve the dashboard HTML."""
     try:
         path = os.path.join(_BASE_DIR, "dashboard.html")
+        log.info(f"Serving dashboard from {path}")
         with open(path, "r", encoding="utf-8") as fh:
-            return fh.read()
-    except Exception:
-        return "<h1>dashboard.html not found.</h1>", 500
+            content = fh.read()
+        log.info(f"dashboard.html read OK ({len(content)} bytes)")
+        return content
+    except Exception as exc:
+        log.error(f"index() failed: {exc}", exc_info=True)
+        return f"<h1>Error: {exc}</h1>", 500
 
 
 # ══════════════════════════════════════════════════════════════════════════════
