@@ -382,7 +382,8 @@ def api_export_trades():
 def index():
     """Serve the dashboard HTML."""
     try:
-        with open("dashboard.html", "r", encoding="utf-8") as fh:
+        path = os.path.join(_BASE_DIR, "dashboard.html")
+        with open(path, "r", encoding="utf-8") as fh:
             return fh.read()
     except Exception:
         return "<h1>dashboard.html not found.</h1>", 500
