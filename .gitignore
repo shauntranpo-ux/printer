@@ -1,0 +1,7 @@
+.env  
+*.pem  
+kalshi_bot.db  
+bot_state.json  
+brain.log  
+__pycache__/  
+*.pyc 
