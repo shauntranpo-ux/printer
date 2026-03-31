@@ -719,6 +719,19 @@ def _run_stress_test(config: dict) -> None:
         pass
 
 
+@app.route("/health")
+def health():
+    state = read_state()
+    return jsonify({
+        "status": "ok",
+        "btc_price": state.get("btc_price"),
+        "today_live_pnl": state.get("today_live_pnl", 0.0),
+        "today_paper_pnl": state.get("today_paper_pnl", 0.0),
+        "phase": state.get("phase", "unknown"),
+        "mode": state.get("mode", "unknown"),
+    })
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  Entry point
 # ══════════════════════════════════════════════════════════════════════════════
@@ -731,4 +744,5 @@ if __name__ == "__main__":
     if cfg.get("stress_test_active"):
         _start_stress_test(cfg)
 
-    app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
