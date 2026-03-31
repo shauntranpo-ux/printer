@@ -33,6 +33,11 @@ logging.basicConfig(
 )
 log = logging.getLogger("server")
 
+# Always run from the directory containing this file so relative paths work
+# under gunicorn (which doesn't execute __main__)
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+os.chdir(_BASE_DIR)
+
 # Ensure the data directory exists (Railway volume at /app/data)
 try:
     _db_path = os.environ.get("BOT_DB_FILE", "")
@@ -55,47 +60,48 @@ _stress_stop: threading.Event = threading.Event()
 #  Helpers
 # ══════════════════════════════════════════════════════════════════════════════
 
-def read_config() -> dict:
-    """Read config.json."""
+def _safe_json_read(path: str, default):
+    """Read a JSON file and return default on any error (missing, corrupt, etc)."""
     try:
-        with open("config.json", "r") as fh:
+        with open(path, "r", encoding="utf-8") as fh:
             return json.load(fh)
-    except Exception:
-        return {"mode": "paper", "trade_amount_dollars": 20, "stop_loss_percent": 35}
+    except FileNotFoundError:
+        return default
+    except json.JSONDecodeError as exc:
+        log.warning(f"JSON decode error in {path}: {exc}")
+        return default
+    except Exception as exc:
+        log.warning(f"Could not read {path}: {exc}")
+        return default
+
+
+_CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 20, "stop_loss_percent": 35}
+_STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
+                   "phase": "waiting", "mode": "paper"}
+
+
+def read_config() -> dict:
+    return _safe_json_read("config.json", _CONFIG_DEFAULT.copy())
 
 
 def write_config(data: dict) -> None:
-    """Write config.json."""
-    with open("config.json", "w") as fh:
-        json.dump(data, fh, indent=2)
+    try:
+        with open("config.json", "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+    except Exception as exc:
+        log.error(f"Could not write config.json: {exc}")
 
 
 def read_state() -> dict:
-    """Read bot_state.json (legacy single-strategy path)."""
-    try:
-        with open("bot_state.json", "r") as fh:
-            return json.load(fh)
-    except Exception:
-        return {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
-                "phase": "waiting", "mode": "paper"}
+    return _safe_json_read("bot_state.json", _STATE_DEFAULT.copy())
 
 
 def _load_strategies() -> list[dict]:
-    """Read strategies.json; return empty list if missing."""
-    try:
-        with open("strategies.json") as fh:
-            return json.load(fh)
-    except Exception:
-        return []
+    return _safe_json_read("strategies.json", [])
 
 
 def _read_strategy_state(state_file: str) -> dict | None:
-    """Read a strategy's state file; return None on failure."""
-    try:
-        with open(state_file) as fh:
-            return json.load(fh)
-    except Exception:
-        return None
+    return _safe_json_read(state_file, None)
 
 
 def get_db() -> sqlite3.Connection:
@@ -739,15 +745,7 @@ def _run_stress_test(config: dict) -> None:
 
 @app.route("/health")
 def health():
-    state = read_state()
-    return jsonify({
-        "status": "ok",
-        "btc_price": state.get("btc_price"),
-        "today_live_pnl": state.get("today_live_pnl", 0.0),
-        "today_paper_pnl": state.get("today_paper_pnl", 0.0),
-        "phase": state.get("phase", "unknown"),
-        "mode": state.get("mode", "unknown"),
-    })
+    return jsonify({"status": "ok"})
 
 
 # ══════════════════════════════════════════════════════════════════════════════
