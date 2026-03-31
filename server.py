@@ -84,7 +84,8 @@ def _read_strategy_state(state_file: str) -> dict | None:
 
 def get_db() -> sqlite3.Connection:
     """Open a WAL-mode SQLite connection with Row factory."""
-    conn = sqlite3.connect("kalshi_bot.db")
+    db_path = os.environ.get("BOT_DB_FILE", "kalshi_bot.db")
+    conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     return conn
@@ -678,7 +679,7 @@ def _run_stress_test(config: dict) -> None:
 
     # ── Persist results ───────────────────────────────────────────────────
     try:
-        conn = sqlite3.connect("kalshi_bot.db")
+        conn = sqlite3.connect(os.environ.get("BOT_DB_FILE", "kalshi_bot.db"))
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("""
             INSERT INTO stress_test_results (
