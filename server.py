@@ -745,7 +745,7 @@ def _run_stress_test(config: dict) -> None:
 
 @app.route("/health")
 def health():
-    return jsonify({"status": "ok"})
+    return '{"status":"ok"}', 200, {"Content-Type": "application/json"}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
