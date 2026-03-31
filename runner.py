@@ -1,8 +1,8 @@
 """
-runner.py — Launches server.py plus one bot.py subprocess per enabled strategy.
+runner.py — Launches and monitors bot.py strategy instances.
 
-Each strategy is defined in strategies.json. The runner monitors all processes
-and auto-restarts any that crash, with a 10-second backoff per process.
+Server is handled by Railway (Procfile: web: python server.py).
+This runner only manages bot worker processes.
 
 Usage:
     python runner.py
@@ -24,10 +24,8 @@ RESTART_BACKOFF = 10   # seconds to wait before restarting a crashed process
 POLL_INTERVAL   = 5    # seconds between health-check loops
 
 
-# ── Process registry ────────────────────────────────────────────────────────────
-# Each entry: {"name": str, "proc": Popen, "env": dict, "last_crash": float}
+# Each entry: {"name": str, "strategy": dict, "proc": Popen, "last_crash": float}
 _procs: list[dict] = []
-_server_entry: dict | None = None
 
 
 def _load_strategies(path: str) -> list[dict]:
@@ -36,8 +34,7 @@ def _load_strategies(path: str) -> list[dict]:
         with open(path) as fh:
             strategies = json.load(fh)
     except FileNotFoundError:
-        print(f"[runner] strategies.json not found at {path}. "
-              f"Copy strategies.json.example or create one.")
+        print(f"[runner] strategies.json not found at {path}.")
         sys.exit(1)
     except json.JSONDecodeError as exc:
         print(f"[runner] strategies.json parse error: {exc}")
@@ -58,7 +55,6 @@ def _load_strategies(path: str) -> list[dict]:
 
 
 def _build_env(strategy: dict) -> dict:
-    """Build the subprocess environment for a strategy."""
     env = os.environ.copy()
     env["BOT_CONFIG_FILE"] = strategy["config_file"]
     env["BOT_DB_FILE"]     = strategy["db_file"]
@@ -67,42 +63,27 @@ def _build_env(strategy: dict) -> dict:
 
 
 def _start_bot(strategy: dict) -> subprocess.Popen:
-    name = strategy["name"]
-    env  = _build_env(strategy)
-    print(f"[runner] Starting strategy '{name}' ...")
+    print(f"[runner] Starting strategy '{strategy['name']}' ...")
     return subprocess.Popen(
         [sys.executable, os.path.join(BASE_DIR, "bot.py")],
-        env=env,
-        cwd=BASE_DIR,
-    )
-
-
-def _start_server() -> subprocess.Popen:
-    print("[runner] Starting server.py ...")
-    return subprocess.Popen(
-        [sys.executable, os.path.join(BASE_DIR, "server.py")],
+        env=_build_env(strategy),
         cwd=BASE_DIR,
     )
 
 
 def _shutdown(signum, frame):
-    """Terminate all subprocesses on Ctrl+C / SIGTERM."""
-    print("\n[runner] Shutting down all processes ...")
-    all_entries = _procs + ([_server_entry] if _server_entry else [])
-    for entry in all_entries:
-        proc = entry.get("proc")
-        if proc and proc.poll() is None:
+    print("\n[runner] Shutting down ...")
+    for entry in _procs:
+        proc = entry["proc"]
+        if proc.poll() is None:
             proc.terminate()
             print(f"[runner]   terminated '{entry['name']}'")
     sys.exit(0)
 
 
 def main():
-    global _server_entry
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("--strategies", default=DEFAULT_STRATEGIES_FILE,
-                        help="Path to strategies.json")
+    parser.add_argument("--strategies", default=DEFAULT_STRATEGIES_FILE)
     args = parser.parse_args()
 
     signal.signal(signal.SIGINT,  _shutdown)
@@ -115,76 +96,35 @@ def main():
         print("[runner] No enabled strategies found. Check strategies.json.")
         sys.exit(1)
 
-    # Launch all bot instances
     for s in strategies:
         proc = _start_bot(s)
-        _procs.append({
-            "name":       s["name"],
-            "strategy":   s,
-            "proc":       proc,
-            "last_crash": 0.0,
-        })
-        print(f"[runner]   '{s['name']}' PID={proc.pid}  "
-              f"state={s['state_file']}")
+        _procs.append({"name": s["name"], "strategy": s, "proc": proc, "last_crash": 0.0})
+        print(f"[runner]   '{s['name']}' PID={proc.pid}  state={s['state_file']}")
 
-    # Launch server
-    server_proc = _start_server()
-    _server_entry = {"name": "server.py", "proc": server_proc, "last_crash": 0.0}
-    print(f"[runner] server.py PID={server_proc.pid}")
-    print(f"[runner] Dashboard: http://localhost:5000")
-    print(f"[runner] Running {len(strategies)} strategy instance(s). "
-          f"Ctrl+C to stop.\n")
+    print(f"[runner] {len(strategies)} strategy instance(s) running. Ctrl+C to stop.\n")
 
-    # ── Monitor loop ─────────────────────────────────────────────────────────
     while True:
         time.sleep(POLL_INTERVAL)
-
         now = time.time()
 
-        # Check each strategy bot
         for entry in _procs:
             proc = entry["proc"]
             if proc.poll() is None:
-                continue   # still running
-
-            code = proc.returncode
-            since_crash = now - entry["last_crash"]
-            if since_crash < RESTART_BACKOFF:
-                # Still in backoff — report but don't restart yet
-                remaining = int(RESTART_BACKOFF - since_crash)
-                print(f"[runner] '{entry['name']}' exited ({code}). "
-                      f"Restarting in {remaining}s ...")
                 continue
 
+            code        = proc.returncode
+            since_crash = now - entry["last_crash"]
+
             if entry["last_crash"] == 0.0:
-                # First crash — start the backoff clock
                 print(f"[runner] '{entry['name']}' exited ({code}). "
                       f"Waiting {RESTART_BACKOFF}s before restart ...")
                 entry["last_crash"] = now
-            else:
-                # Backoff elapsed — restart
+            elif since_crash >= RESTART_BACKOFF:
                 new_proc = _start_bot(entry["strategy"])
                 entry["proc"]       = new_proc
                 entry["last_crash"] = 0.0
                 print(f"[runner] '{entry['name']}' restarted (PID={new_proc.pid}).")
 
-        # Check server
-        if _server_entry:
-            sproc = _server_entry["proc"]
-            if sproc.poll() is not None:
-                code  = sproc.returncode
-                since = now - _server_entry["last_crash"]
-                if _server_entry["last_crash"] == 0.0:
-                    print(f"[runner] server.py exited ({code}). "
-                          f"Waiting {RESTART_BACKOFF}s before restart ...")
-                    _server_entry["last_crash"] = now
-                elif since >= RESTART_BACKOFF:
-                    new_sproc = _start_server()
-                    _server_entry["proc"]       = new_sproc
-                    _server_entry["last_crash"] = 0.0
-                    print(f"[runner] server.py restarted (PID={new_sproc.pid}).")
-
-        # Status line
         running = [e["name"] for e in _procs if e["proc"].poll() is None]
         print(f"[runner] OK | bots running: {running}")
 
