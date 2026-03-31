@@ -319,23 +319,9 @@ def run_backtest(
             if brain["action"] != "trade":
                 continue
 
-            # ── Monte Carlo extra filters ──────────────────────────────────────
-            elapsed_sec = minute * 60
-            if not (entry_lo_sec <= elapsed_sec <= entry_hi_sec):
-                continue
+            # ── Confidence filter ─────────────────────────────────────────────
             if brain["confidence"] < min_confidence:
                 continue
-            if ob_imbalance_thresh > 0.0:
-                # Simulate order-book imbalance: momentum direction + distance
-                # + noise. Range [0, 1]; higher = more one-sided book.
-                abs_pct_cur = abs((btc - strike) / strike)
-                base_imbal  = min(0.95, abs_pct_cur * 20.0)   # 0→0, 1%→0.2
-                if mom == "neutral":
-                    base_imbal *= 0.5
-                noise = rng.gauss(0, 0.05)
-                ob_imbalance = max(0.0, min(1.0, base_imbal + abs(noise)))
-                if ob_imbalance < ob_imbalance_thresh:
-                    continue
 
             # ── Entry ─────────────────────────────────────────────────────────
             side       = brain["side"]
