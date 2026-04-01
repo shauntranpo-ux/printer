@@ -46,6 +46,26 @@ try:
 except Exception as _dir_err:
     logging.warning(f"Could not create data directory: {_dir_err}")
 
+# Write default config.json if it doesn't exist (e.g. fresh Railway deploy)
+_FULL_CONFIG_DEFAULT = {
+    "bot_enabled": True,
+    "mode": "paper",
+    "trade_amount_dollars": 10,
+    "confidence_threshold": 80,
+    "stop_loss_percent": 30,
+    "cooldown_markets": 2,
+    "daily_loss_limit_dollars": 50,
+    "daily_profit_target_dollars": 9999999,
+    "claude_enabled": False,
+}
+if not os.path.exists("config.json"):
+    try:
+        with open("config.json", "w", encoding="utf-8") as _f:
+            json.dump(_FULL_CONFIG_DEFAULT, _f, indent=2)
+        log.info("Created default config.json")
+    except Exception as _cfg_err:
+        logging.warning(f"Could not create default config.json: {_cfg_err}")
+
 app = Flask(__name__)
 
 
