@@ -34,24 +34,12 @@
   .header-right { display: flex; align-items: center; gap: 16px; }
   #clock { color: var(--muted); font-size: 11px; white-space: nowrap; }
 
-  .bot-pill {
-    display: flex; align-items: center; gap: 7px;
-    background: var(--bg); border: 1px solid var(--border);
-    border-radius: 20px; padding: 4px 12px 4px 9px;
-    cursor: pointer; transition: border-color .15s; user-select: none;
-  }
-  .bot-pill:hover { border-color: var(--muted); }
-  .bot-pill input { display: none; }
-  .bot-dot { width: 8px; height: 8px; border-radius: 50%; transition: background .2s; flex-shrink: 0; }
-  .bot-dot.on  { background: var(--green); box-shadow: 0 0 6px rgba(57,211,83,.5); }
-  .bot-dot.off { background: var(--red); }
-  .bot-pill-text { font-size: 11px; font-weight: 600; letter-spacing: .06em; }
-  .bot-pill-text.on  { color: var(--green); }
-  .bot-pill-text.off { color: var(--red); }
 
-  .mode-pill { font-size: 10px; font-weight: 600; letter-spacing: .1em; padding: 3px 10px; border-radius: 20px; }
+  .mode-pill { font-size: 10px; font-weight: 600; letter-spacing: .1em; padding: 3px 10px; border-radius: 20px; cursor: pointer; font-family: inherit; transition: .15s; }
   .mode-pill.live  { background: rgba(88,166,255,.12); color: var(--blue); border: 1px solid rgba(88,166,255,.25); }
+  .mode-pill.live:hover  { background: rgba(88,166,255,.22); }
   .mode-pill.paper { background: rgba(139,148,158,.08); color: var(--muted); border: 1px solid var(--border); }
+  .mode-pill.paper:hover { background: rgba(139,148,158,.15); color: var(--text); }
 
   /* ── Layout ── */
   #main { margin-top: 52px; padding: 16px; max-width: 1440px; margin-left: auto; margin-right: auto; }
@@ -235,12 +223,7 @@
   <div class="logo">MONEY PRINTER</div>
   <div id="btc-price">—</div>
   <div class="header-right">
-    <label class="bot-pill" title="Toggle bot on/off">
-      <input type="checkbox" id="s-bot-enabled" onchange="toggleBot(this.checked)">
-      <div class="bot-dot off" id="bot-dot"></div>
-      <span class="bot-pill-text off" id="bot-pill-text">BOT OFF</span>
-    </label>
-    <div class="mode-pill paper" id="mode-pill">PAPER</div>
+    <button class="mode-pill paper" id="mode-pill" onclick="toggleMode()" title="Click to switch between Paper and Live mode">PAPER</button>
     <div id="clock">—</div>
   </div>
 </div>
@@ -292,11 +275,6 @@
         </div>
       </div>
       <div id="confidence-breakdown"></div>
-      <div id="claude-panel">
-        <div class="c-label">Brain Reasoning</div>
-        <div id="claude-reasoning"></div>
-        <div id="claude-signals"></div>
-      </div>
     </div>
 
     <div class="card">
@@ -427,6 +405,15 @@
         </div>
 
         <div class="s-group">
+          <label>Mode</label>
+          <div class="tog-wrap">
+            <span class="tog-lbl">Paper</span>
+            <label class="tog"><input type="checkbox" id="s-mode" onchange="setMode(this.checked ? 'live' : 'paper')"><span class="tog-slider"></span></label>
+            <span class="tog-lbl">Live</span>
+          </div>
+        </div>
+
+        <div class="s-group">
           <label>Confidence Threshold</label>
           <input type="number" id="s-conf" min="50" max="100" step="1">
           <button class="s-save" onclick="saveSetting('confidence_threshold', parseFloat(document.getElementById('s-conf').value))">Save</button>
@@ -519,34 +506,21 @@ function renderCountdown() {
   document.getElementById('countdown').textContent = `${m}:${String(s).padStart(2,'0')}`;
 }
 
-// ── Bot toggle ──
-function updateBotPillVisual(enabled) {
-  const dot  = document.getElementById('bot-dot');
-  const text = document.getElementById('bot-pill-text');
-  if (enabled) {
-    dot.className  = 'bot-dot on';
-    text.className = 'bot-pill-text on';
-    text.textContent = 'BOT ON';
-  } else {
-    dot.className  = 'bot-dot off';
-    text.className = 'bot-pill-text off';
-    text.textContent = 'BOT OFF';
-  }
-  // Sync mode pill — ON = LIVE, OFF = PAPER
+// ── Mode toggle ──
+function updateModePillVisual(mode) {
   const pill = document.getElementById('mode-pill');
-  if (pill) {
-    pill.textContent = enabled ? 'LIVE' : 'PAPER';
-    pill.className = 'mode-pill ' + (enabled ? 'live' : 'paper');
-  }
+  if (pill) { pill.textContent = mode.toUpperCase(); pill.className = 'mode-pill ' + mode; }
+  const tog = document.getElementById('s-mode');
+  if (tog) tog.checked = mode === 'live';
 }
-function toggleBot(enabled) {
-  // Save both bot_enabled and mode together
-  saveSetting('bot_enabled', enabled);
-  saveSetting('mode', enabled ? 'live' : 'paper');
-  updateBotPillVisual(enabled);
-  // Sync checkbox state in case called programmatically
-  const botEl = document.getElementById('s-bot-enabled');
-  if (botEl && botEl.checked !== enabled) botEl.checked = enabled;
+function setMode(mode) {
+  saveSetting('mode', mode);
+  updateModePillVisual(mode);
+}
+function toggleMode() {
+  const pill = document.getElementById('mode-pill');
+  const current = pill && pill.classList.contains('live') ? 'live' : 'paper';
+  setMode(current === 'live' ? 'paper' : 'live');
 }
 
 // ── Settings collapse ──
@@ -670,13 +644,8 @@ function populateSettings(cfg) {
   set('s-loss-limit',   cfg.daily_loss_limit_dollars);
   set('s-profit-target',cfg.daily_profit_target_dollars);
   const claudeEl = document.getElementById('s-claude');
-  const botEl    = document.getElementById('s-bot-enabled');
   if (claudeEl) claudeEl.checked = !!cfg.claude_enabled;
-  if (botEl) {
-    const isOn = cfg.bot_enabled !== false;
-    botEl.checked = isOn;
-    updateBotPillVisual(isOn);  // visual only — no save
-  }
+  updateModePillVisual(cfg.mode || 'paper');  // visual only — no save
 }
 
 async function saveSetting(key, value) {
