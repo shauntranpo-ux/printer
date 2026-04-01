@@ -31,6 +31,81 @@ import pandas as pd
 CSV_PATH = r'C:\Users\alxnt\Downloads\btcusd_1-min_data.csv'
 DB_PATH  = r'C:\Users\alxnt\kalshi-bot\kalshi_bot.db'
 
+_BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
+_SPLIT_CFG_PATH   = os.path.join(_BASE_DIR, "data", "split_config.json")
+_RESULTS_DIR      = os.path.join(_BASE_DIR, "results")
+OOS_REPORT_PATH   = os.path.join(_RESULTS_DIR, "oos_report.json")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Split config helpers (reads data/split_config.json written by data/splitter.py)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_split_cfg() -> dict | None:
+    """Return the train/OOS split config, or None if not yet generated."""
+    if not os.path.exists(_SPLIT_CFG_PATH):
+        return None
+    with open(_SPLIT_CFG_PATH) as fh:
+        return json.load(fh)
+
+
+def _ensure_split(start_year: int) -> dict:
+    """
+    Return the split config, auto-generating it via data/splitter.py if absent.
+    """
+    cfg = _load_split_cfg()
+    if cfg:
+        return cfg
+    print("[OOS] No data/split_config.json found — generating split now ...")
+    import importlib.util
+    _sfile = os.path.join(_BASE_DIR, "data", "splitter.py")
+    if not os.path.exists(_sfile):
+        raise FileNotFoundError(
+            f"data/splitter.py not found at {_sfile}.\n"
+            "Create it or run: python data/splitter.py"
+        )
+    spec = importlib.util.spec_from_file_location("splitter", _sfile)
+    mod  = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.generate_split(start_year=start_year, force=False)
+
+
+def _filter_to(windows, price_lookup, mode: str, cfg: dict):
+    """Filter windows/price_lookup to 'train' or 'oos' slice."""
+    if mode == "train":
+        ts_lo, ts_hi = cfg["train_start_ts"], cfg["train_end_ts"]
+    else:
+        ts_lo, ts_hi = cfg["oos_start_ts"],   cfg["oos_end_ts"]
+    mask   = (windows.index >= ts_lo) & (windows.index <= ts_hi)
+    w_out  = windows[mask]
+    pl_out = price_lookup[price_lookup.index.isin(w_out.index)]
+    return w_out, pl_out
+
+
+def _load_best_params() -> dict:
+    """
+    Return the best params from monte_carlo_results.json (rank-1 by Sharpe).
+    Falls back to config.json values if MC results are not available.
+    """
+    mc_path = os.path.join(_BASE_DIR, "monte_carlo_results.json")
+    if os.path.exists(mc_path):
+        with open(mc_path) as fh:
+            mc = json.load(fh)
+        top = mc.get("top_20", [])
+        if top:
+            return top[0]["params"]
+    # Fallback: read live config
+    cfg_path = os.path.join(_BASE_DIR, "config.json")
+    if os.path.exists(cfg_path):
+        with open(cfg_path) as fh:
+            cfg = json.load(fh)
+        return {
+            "min_ev":         0.30,
+            "stop_loss_pct":  float(cfg.get("stop_loss_percent",   30.0)),
+            "min_confidence": int(cfg.get("confidence_threshold", 80)),
+        }
+    return {"min_ev": 0.30, "stop_loss_pct": 30.0, "min_confidence": 80}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Empirical win-probability table — identical to bot.py _BV3_TABLE
 # Rows = distance bucket, Cols = minutes remaining (1-min to 13-min)
@@ -194,8 +269,18 @@ def compute_momentum(recent_closes: list) -> str:
 # Main backtest
 # ─────────────────────────────────────────────────────────────────────────────
 
-def load_data(start_year: int = 2020, verbose: bool = True):
-    """Load and preprocess the CSV once. Returns (windows, price_lookup)."""
+def load_data(start_year: int = 2020, verbose: bool = True, mode: str = "train"):
+    """
+    Load and preprocess the CSV once.  Returns (windows, price_lookup).
+
+    mode
+    ----
+    'train'  — only the 70% training partition (default).
+               If data/split_config.json does not exist yet, all data is
+               returned with a warning — run  python data/splitter.py  first.
+    'oos'    — only the 30% OOS holdout (use only via --oos-eval).
+    'full'   — all windows, no split applied (internal use).
+    """
     if verbose:
         print(f"\nLoading {CSV_PATH}...")
     t0 = time.time()
@@ -241,6 +326,26 @@ def load_data(start_year: int = 2020, verbose: bool = True):
                                    g["Close"].tolist())),
                include_groups=False)
     )
+
+    # ── Apply train / OOS split ───────────────────────────────────────────────
+    if mode != "full":
+        cfg = _load_split_cfg()
+        if cfg is None:
+            if verbose:
+                print("  [warn] data/split_config.json not found — using all data.")
+                print("         Run  python data/splitter.py  to enforce train/OOS split.")
+        else:
+            ts_lo = cfg["train_start_ts"] if mode == "train" else cfg["oos_start_ts"]
+            ts_hi = cfg["train_end_ts"]   if mode == "train" else cfg["oos_end_ts"]
+            mask         = (windows.index >= ts_lo) & (windows.index <= ts_hi)
+            windows      = windows[mask]
+            price_lookup = price_lookup[price_lookup.index.isin(windows.index)]
+            if verbose:
+                lbl = "TRAIN" if mode == "train" else "OOS HOLDOUT ⚠"
+                d0  = cfg["train_start_date" if mode == "train" else "oos_start_date"]
+                d1  = cfg["train_end_date"   if mode == "train" else "oos_end_date"]
+                print(f"  [{lbl}] {len(windows):,} windows  [{d0} → {d1}]")
+
     if verbose:
         print(f"  Windows: {len(windows):,}")
     return windows, price_lookup
@@ -760,6 +865,178 @@ def _print_mc_summary(top20: list) -> None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# OOS evaluation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0) -> None:
+    """
+    Evaluate the best-known params on the locked OOS holdout set.
+
+    Steps
+    -----
+    1. Load or generate data/split_config.json.
+    2. Read best params from monte_carlo_results.json (rank-1 by Sharpe).
+    3. Load the full CSV once; split into train and OOS slices.
+    4. Run run_backtest() on train slice (in-sample reference).
+    5. Run run_backtest() on OOS slice (true out-of-sample).
+    6. Print side-by-side comparison and generalisation verdict.
+    7. Save full report to results/oos_report.json.
+    """
+    split_cfg = _ensure_split(start_year)
+    params    = _load_best_params()
+
+    print("\n" + "=" * 70)
+    print("  OOS EVALUATION")
+    print("=" * 70)
+    print(f"  Best params  :  ev={params['min_ev']:.0%}  "
+          f"sl={params['stop_loss_pct']:.0f}%  conf={params['min_confidence']}")
+    print(f"  Train period :  {split_cfg['train_start_date']} → "
+          f"{split_cfg['train_end_date']}  ({split_cfg['train_windows']:,} windows)")
+    print(f"  OOS period   :  {split_cfg['oos_start_date']} → "
+          f"{split_cfg['oos_end_date']}  ({split_cfg['oos_windows']:,} windows)")
+
+    # Load full dataset once, then slice — avoids reading CSV twice
+    print("\n  Loading full dataset ...")
+    all_windows, all_pl = load_data(start_year, verbose=True, mode="full")
+
+    train_w, train_pl = _filter_to(all_windows, all_pl, "train", split_cfg)
+    oos_w,   oos_pl   = _filter_to(all_windows, all_pl, "oos",   split_cfg)
+
+    print(f"\n  Running in-sample backtest  ({len(train_w):,} windows) ...")
+    train_r = run_backtest(
+        min_ev         = params["min_ev"],
+        trade_amount   = trade_amount,
+        stop_loss_pct  = params["stop_loss_pct"],
+        min_confidence = params["min_confidence"],
+        verbose        = False,
+        _windows       = train_w,
+        _price_lookup  = train_pl,
+    )
+
+    print(f"  Running OOS backtest        ({len(oos_w):,} windows) ...")
+    oos_r = run_backtest(
+        min_ev         = params["min_ev"],
+        trade_amount   = trade_amount,
+        stop_loss_pct  = params["stop_loss_pct"],
+        min_confidence = params["min_confidence"],
+        verbose        = False,
+        _windows       = oos_w,
+        _price_lookup  = oos_pl,
+    )
+
+    if not train_r or not oos_r:
+        print("\n  [error] One or both backtests returned no trades.")
+        return
+
+    _print_oos_comparison(train_r, oos_r, split_cfg, params)
+    _save_oos_report(train_r, oos_r, split_cfg, params)
+
+
+def _print_oos_comparison(train_r: dict, oos_r: dict,
+                           split_cfg: dict, params: dict) -> None:
+    W = 72
+    print("\n" + "=" * W)
+    print("  IN-SAMPLE vs OOS HOLDOUT — side by side")
+    print("=" * W)
+
+    # Header row
+    th = f"{'IN-SAMPLE':>20}"
+    oh = f"{'OOS HOLDOUT':>16}"
+    print(f"  {'Metric':<28}  {th}  {oh}")
+    print("-" * W)
+
+    def row(label, tv, ov, fmt):
+        print(f"  {label:<28}  {fmt.format(tv):>20}  {fmt.format(ov):>16}")
+
+    print(f"  {'Period':<28}  "
+          f"{split_cfg['train_start_date']+' → '+split_cfg['train_end_date']:>20}  "
+          f"{split_cfg['oos_start_date']+' → '+split_cfg['oos_end_date']:>16}")
+    print(f"  {'Windows':<28}  {split_cfg['train_windows']:>20,}  "
+          f"{split_cfg['oos_windows']:>16,}")
+    row("Total trades",          train_r["total_trades"],       oos_r["total_trades"],       "{:,}")
+    row("Win rate (%)",          train_r["win_rate"]*100,       oos_r["win_rate"]*100,       "{:.1f}%")
+    row("Total P&L ($)",         train_r["total_pnl_dollars"],  oos_r["total_pnl_dollars"],  "${:.2f}")
+    row("Sharpe ratio",          train_r["sharpe_ratio"],       oos_r["sharpe_ratio"],       "{:.3f}")
+    row("Max drawdown (%)",      train_r["max_drawdown_percent"],oos_r["max_drawdown_percent"],"{:.1f}%")
+    row("Avg confidence",        train_r["avg_confidence"],     oos_r["avg_confidence"],     "{:.1f}")
+    row("Max consec losses",     train_r["max_consecutive_losses"],oos_r["max_consecutive_losses"],"{}")
+    print("=" * W)
+
+    # Generalisation efficiency — per-trade P&L basis (removes window-count bias)
+    t_ppt = (train_r["total_pnl_dollars"] / train_r["total_trades"]
+             if train_r["total_trades"] else 0.0)
+    o_ppt = (oos_r["total_pnl_dollars"]   / oos_r["total_trades"]
+             if oos_r["total_trades"]   else 0.0)
+    eff   = round(o_ppt / t_ppt, 4) if t_ppt > 0 else 0.0
+
+    print(f"\n  P&L per trade — in-sample: ${t_ppt:.4f}  |  OOS: ${o_ppt:.4f}")
+    print(f"  Generalisation efficiency (OOS / in-sample P&L per trade): {eff:.2f}")
+    if eff >= 0.70:
+        verdict = "✓ PASS"
+        note    = "Strategy generalises well to unseen data."
+    elif eff >= 0.50:
+        verdict = "~ MARGINAL"
+        note    = "Some degradation on OOS data (50-70%). Monitor closely."
+    else:
+        verdict = "✗ WARN — POSSIBLE OVERFIT"
+        note    = "Significant OOS degradation (<50%). Consider re-tuning on more data."
+    print(f"  Verdict  :  {verdict}")
+    print(f"  Note     :  {note}")
+    print()
+
+
+def _save_oos_report(train_r: dict, oos_r: dict,
+                     split_cfg: dict, params: dict) -> None:
+    os.makedirs(_RESULTS_DIR, exist_ok=True)
+
+    t_ppt = (train_r["total_pnl_dollars"] / train_r["total_trades"]
+             if train_r["total_trades"] else 0.0)
+    o_ppt = (oos_r["total_pnl_dollars"]   / oos_r["total_trades"]
+             if oos_r["total_trades"]   else 0.0)
+    eff   = round(o_ppt / t_ppt, 4) if t_ppt > 0 else 0.0
+
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "params":       params,
+        "split":        split_cfg,
+        "in_sample": {
+            "period":              (f"{split_cfg['train_start_date']} → "
+                                    f"{split_cfg['train_end_date']}"),
+            "total_trades":        train_r.get("total_trades"),
+            "win_rate":            train_r.get("win_rate"),
+            "total_pnl_dollars":   train_r.get("total_pnl_dollars"),
+            "pnl_per_trade":       round(t_ppt, 6),
+            "sharpe_ratio":        train_r.get("sharpe_ratio"),
+            "max_drawdown_pct":    train_r.get("max_drawdown_percent"),
+            "avg_confidence":      train_r.get("avg_confidence"),
+            "max_consec_losses":   train_r.get("max_consecutive_losses"),
+        },
+        "oos": {
+            "period":              (f"{split_cfg['oos_start_date']} → "
+                                    f"{split_cfg['oos_end_date']}"),
+            "total_trades":        oos_r.get("total_trades"),
+            "win_rate":            oos_r.get("win_rate"),
+            "total_pnl_dollars":   oos_r.get("total_pnl_dollars"),
+            "pnl_per_trade":       round(o_ppt, 6),
+            "sharpe_ratio":        oos_r.get("sharpe_ratio"),
+            "max_drawdown_pct":    oos_r.get("max_drawdown_percent"),
+            "avg_confidence":      oos_r.get("avg_confidence"),
+            "max_consec_losses":   oos_r.get("max_consecutive_losses"),
+        },
+        "generalisation_efficiency": eff,
+        "verdict": (
+            "PASS"         if eff >= 0.70 else
+            "MARGINAL"     if eff >= 0.50 else
+            "WARN_OVERFIT"
+        ),
+    }
+
+    with open(OOS_REPORT_PATH, "w") as fh:
+        json.dump(report, fh, indent=2)
+    print(f"  Report saved to: {OOS_REPORT_PATH}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Entry point
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -777,13 +1054,27 @@ if __name__ == "__main__":
                         help="Stop-loss percent (default: 35)")
     parser.add_argument("--sweep",        action="store_true",
                         help="Run multiple EV thresholds and compare results")
-    parser.add_argument("--monte-carlo",  action="store_true",
+    parser.add_argument("--monte-carlo",    action="store_true",
                         help="Run Monte Carlo parameter search (10k simulations)")
-    parser.add_argument("--mc-sims",      type=int,   default=10_000,
+    parser.add_argument("--mc-sims",        type=int,   default=10_000,
                         help="Number of Monte Carlo simulations (default: 10000)")
-    parser.add_argument("--no-db",        action="store_true",
+    parser.add_argument("--no-db",          action="store_true",
                         help="Skip writing to kalshi_bot.db")
+    parser.add_argument("--oos-eval",       action="store_true",
+                        help="Run best params on the locked OOS holdout set and "
+                             "print in-sample vs OOS comparison")
+    parser.add_argument("--generate-split", action="store_true",
+                        help="Generate (or regenerate) the 70/30 train/OOS split "
+                             "config and exit  (saves data/split_config.json)")
     args = parser.parse_args()
+
+    if args.generate_split:
+        _ensure_split(args.start_year)
+        sys.exit(0)
+
+    if args.oos_eval:
+        run_oos_eval(start_year=args.start_year, trade_amount=args.amount)
+        sys.exit(0)
 
     if args.monte_carlo:
         run_monte_carlo(
