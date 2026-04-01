@@ -43,6 +43,12 @@
   #bot-status-dot.alive ~ #bot-status-label { color: var(--green); }
   #bot-status-dot.dead  ~ #bot-status-label { color: #e05252; }
 
+  #bot-toggle { font-size: 10px; font-weight: 600; letter-spacing: .08em; padding: 3px 10px; border-radius: 20px; cursor: pointer; font-family: inherit; transition: .15s; border: 1px solid var(--border); background: transparent; color: var(--muted); }
+  #bot-toggle.on  { border-color: rgba(63,185,80,.4); color: var(--green); background: rgba(63,185,80,.08); }
+  #bot-toggle.on:hover  { background: rgba(63,185,80,.18); }
+  #bot-toggle.off { border-color: rgba(224,82,82,.4); color: #e05252; background: rgba(224,82,82,.08); }
+  #bot-toggle.off:hover { background: rgba(224,82,82,.18); }
+
   .mode-pill { font-size: 10px; font-weight: 600; letter-spacing: .1em; padding: 3px 10px; border-radius: 20px; cursor: pointer; font-family: inherit; transition: .15s; }
   .mode-pill.live  { background: rgba(88,166,255,.12); color: var(--blue); border: 1px solid rgba(88,166,255,.25); }
   .mode-pill.live:hover  { background: rgba(88,166,255,.22); }
@@ -231,10 +237,11 @@
   <div class="logo">MONEY PRINTER</div>
   <div id="btc-price">—</div>
   <div class="header-right">
-    <div id="bot-status" title="Bot heartbeat — updates every 60s">
+    <div id="bot-status" title="Bot heartbeat — updates every 15s">
       <div id="bot-status-dot"></div>
       <span id="bot-status-label">OFFLINE</span>
     </div>
+    <button id="bot-toggle" onclick="toggleBot()" title="Enable or disable bot trading">BOT OFF</button>
     <button class="mode-pill paper" id="mode-pill" onclick="toggleMode()" title="Click to switch between Paper and Live mode">PAPER</button>
     <div id="clock">—</div>
   </div>
@@ -657,6 +664,7 @@ function populateSettings(cfg) {
   set('s-profit-target',cfg.daily_profit_target_dollars);
   const claudeEl = document.getElementById('s-claude');
   if (claudeEl) claudeEl.checked = !!cfg.claude_enabled;
+  updateBotToggleUI(cfg.bot_enabled !== false);
   updateModePillVisual(cfg.mode || 'paper');  // visual only — no save
 }
 
@@ -868,6 +876,26 @@ async function pollTrades() {
 
 // ── Export ──
 function exportCSV() { window.location.href = '/api/export/trades'; }
+
+// ── Bot on/off toggle ──
+let _botEnabled = true;
+function updateBotToggleUI(enabled) {
+  _botEnabled = enabled;
+  const btn = document.getElementById('bot-toggle');
+  if (enabled) { btn.textContent = 'BOT ON'; btn.className = 'on'; }
+  else         { btn.textContent = 'BOT OFF'; btn.className = 'off'; }
+}
+async function toggleBot() {
+  const newState = !_botEnabled;
+  try {
+    const r = await fetch('/api/config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({bot_enabled: newState}),
+    });
+    if (r.ok) updateBotToggleUI(newState);
+  } catch (e) { console.error('toggleBot error:', e); }
+}
 
 // ── Bot alive indicator ──
 async function pollBotStatus() {
