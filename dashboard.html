@@ -763,7 +763,17 @@ async function pollState() {
       const fillEl = document.getElementById('sc-'+k);
       const valEl  = document.getElementById('sv-'+k);
       if (fillEl) fillEl.style.width = pct+'%';
-      if (valEl)  valEl.textContent  = val != null ? val : '—';
+      if (valEl) {
+        if (k === 'time' && val != null) {
+          const secs = s.seconds_remaining;
+          const timeStr = secs != null
+            ? (Math.floor(secs/60) + 'm ' + (secs%60|0) + 's')
+            : '—';
+          valEl.textContent = val + 'pts (' + timeStr + ')';
+        } else {
+          valEl.textContent = val != null ? val : '—';
+        }
+      }
     });
     const totalScore = s.confidence_score;
     const tse = document.getElementById('brain-total-score');

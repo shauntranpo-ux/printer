@@ -13,7 +13,6 @@ import asyncio
 import json
 import sqlite3
 import logging
-import math
 import os
 import re
 import sys
@@ -1404,96 +1403,6 @@ def printer_brain(
             "mins_left": mins_left, "abs_pct": abs_pct}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Confidence score  (opportunity-focused — no hard blocks)
-# ══════════════════════════════════════════════════════════════════════════════
-
-def calculate_confidence(
-    btc_price: float,
-    strike: float,
-    contract_price: float,
-    side: str,
-    elapsed_seconds: float,
-    secs_left: float,
-    ticker: str,
-) -> tuple[int, dict, str]:
-    """
-    Compute a 0–100 opportunity score. No hard blocks — every condition is a
-    scoring signal. The bot stays in READY and keeps re-evaluating every cycle
-    until the score crosses the threshold or the market expires.
-
-    Breakdown components:
-      momentum  — BTC price direction vs trade direction (35 pts)
-      velocity  — contract price moving into favourable zone (25 pts)
-      time      — time remaining weighted by opportunity window (20 pts)
-      distance  — BTC distance from strike (20 pts)
-
-    Adaptive bonuses applied on top based on learned trade history.
-    """
-    breakdown = {"momentum": 0, "velocity": 0, "time": 0, "distance": 0}
-
-    # ── Momentum (35 pts) ─────────────────────────────────────────────────
-    _, mom_label = calculate_momentum()
-    if (side == "yes" and mom_label == "bullish") or \
-       (side == "no"  and mom_label == "bearish"):
-        breakdown["momentum"] = 35
-    elif mom_label == "neutral":
-        breakdown["momentum"] = 15
-    else:
-        breakdown["momentum"] = 0   # opposing momentum — soft drag
-
-    # ── Contract velocity (25 pts) ────────────────────────────────────────
-    vel = contract_velocity(ticker, side)
-    if vel == "favorable":
-        breakdown["velocity"] = 25
-    elif vel == "neutral":
-        breakdown["velocity"] = 12
-    else:
-        breakdown["velocity"] = 0
-
-    # ── Time remaining (20 pts) ───────────────────────────────────────────
-    # More time = more room for thesis to play out
-    mins_left = secs_left / 60
-    if mins_left > 10:
-        breakdown["time"] = 20
-    elif mins_left > 7:
-        breakdown["time"] = 17
-    elif mins_left > 5:
-        breakdown["time"] = 13
-    elif mins_left > 3:
-        breakdown["time"] = 8
-    elif mins_left > 1:
-        breakdown["time"] = 3
-    else:
-        breakdown["time"] = 0
-
-    # ── BTC distance from strike (20 pts) ─────────────────────────────────
-    abs_pct = abs((btc_price - strike) / strike)
-    if abs_pct > 0.015:
-        breakdown["distance"] = 20
-    elif abs_pct > 0.008:
-        breakdown["distance"] = 13
-    elif abs_pct > 0.003:
-        breakdown["distance"] = 6
-    else:
-        breakdown["distance"] = 0
-
-    total = sum(breakdown.values())
-
-    # ── Contract price bonus (not a gate, just a reward) ──────────────────
-    if 60 <= contract_price <= 77:
-        total += 8   # sweet-spot pricing
-    elif 45 <= contract_price <= 90:
-        total += 3   # reasonable pricing
-
-    # ── Adaptive bonuses from learned history ─────────────────────────────
-    if _adaptive["low_price_wins"] and contract_price < 60:
-        total += 10   # learned: cheap contracts win in this regime
-    if _adaptive["near_strike_wins"] and abs_pct < 0.005:
-        total += 8    # learned: near-strike trades work here
-
-    return min(100, total), breakdown, ""   # never a hard skip
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  Position sizing
@@ -1792,6 +1701,7 @@ def write_state_file(
         "reward_tier": _brain_cal["reward_tier"],
         "brain_wr": _brain_cal["overall_wr"],
         "brain_min_edge": _brain_cal["min_edge_override"],
+        "brain_n": _brain_cal["last_count"],
         "last_action": action,
         "last_skip_reason": skip_reason,
         "mode": config.get("mode", "paper"),
