@@ -56,16 +56,9 @@ def _load_strategies(path: str) -> list[dict]:
 
 def _build_env(strategy: dict) -> dict:
     env = os.environ.copy()
-    data_dir = env.get("BOT_DATA_DIR", "")
-
-    def _resolve(path: str) -> str:
-        if data_dir and not os.path.isabs(path):
-            return os.path.join(data_dir, path)
-        return path
-
-    env["BOT_CONFIG_FILE"] = _resolve(strategy["config_file"])
-    env["BOT_DB_FILE"]     = _resolve(strategy["db_file"])
-    env["BOT_STATE_FILE"]  = _resolve(strategy["state_file"])
+    env["BOT_CONFIG_FILE"] = strategy["config_file"]
+    env["BOT_DB_FILE"]     = strategy["db_file"]
+    env["BOT_STATE_FILE"]  = strategy["state_file"]
     return env
 
 
