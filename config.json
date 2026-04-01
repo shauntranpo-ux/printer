@@ -2,13 +2,10 @@
   "bot_enabled": true,
   "trade_amount_dollars": 10,
   "mode": "paper",
-  "daily_loss_limit_dollars": 6777,
-  "daily_profit_target_dollars": 67777777,
+  "daily_loss_limit_dollars": 50,
+  "daily_profit_target_dollars": 9999999,
   "confidence_threshold": 80,
   "stop_loss_percent": 30,
   "cooldown_markets": 2,
-  "claude_enabled": false,
-  "stress_test_active": false,
-  "stress_test_start_date": "2024-10-01",
-  "stress_test_end_date": "2024-12-31"
+  "claude_enabled": false
 }

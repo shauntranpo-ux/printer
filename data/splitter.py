@@ -39,7 +39,7 @@ def generate_split(start_year: int = 2020, force: bool = False) -> dict:
 
     Returns the split config dict.  If the config already exists and
     force=False the existing config is returned without re-reading the CSV
-    (deterministic: same inputs → same split every run).
+    (deterministic: same inputs ->same split every run).
     """
     if os.path.exists(SPLIT_CONFIG_PATH) and not force:
         cfg = _load_json(SPLIT_CONFIG_PATH)
@@ -100,9 +100,9 @@ def generate_split(start_year: int = 2020, force: bool = False) -> dict:
     print(f"[splitter] Split generated in {elapsed:.1f}s")
     print(f"  Total  : {n_total:>8,} windows")
     print(f"  Train  : {n_train:>8,} windows  "
-          f"[{cfg['train_start_date']} → {cfg['train_end_date']}]")
+          f"[{cfg['train_start_date']} ->{cfg['train_end_date']}]")
     print(f"  OOS    : {n_oos:>8,} windows  "
-          f"[{cfg['oos_start_date']} → {cfg['oos_end_date']}]")
+          f"[{cfg['oos_start_date']} ->{cfg['oos_end_date']}]")
     print(f"  Saved  : {SPLIT_CONFIG_PATH}")
     return cfg
 
@@ -154,9 +154,9 @@ def _load_json(path: str) -> dict:
 def _print_existing(cfg: dict) -> None:
     print("[splitter] Loaded existing split config  (pass --force to regenerate)")
     print(f"  Train  : {cfg['train_windows']:>8,} windows  "
-          f"[{cfg['train_start_date']} → {cfg['train_end_date']}]")
+          f"[{cfg['train_start_date']} ->{cfg['train_end_date']}]")
     print(f"  OOS    : {cfg['oos_windows']:>8,} windows  "
-          f"[{cfg['oos_start_date']} → {cfg['oos_end_date']}]")
+          f"[{cfg['oos_start_date']} ->{cfg['oos_end_date']}]")
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────

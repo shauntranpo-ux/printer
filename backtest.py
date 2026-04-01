@@ -16,6 +16,7 @@ import argparse
 import itertools
 import json
 import math
+import os
 import random
 import sqlite3
 import sys
@@ -363,6 +364,8 @@ def run_backtest(
     # Pre-loaded data (skips CSV load when provided)
     _windows=None,
     _price_lookup=None,
+    # If provided, individual trade dicts are appended here (for stress testing)
+    _trades_out: list | None = None,
 ) -> dict:
     rng = random.Random(seed)
 
@@ -492,6 +495,10 @@ def run_backtest(
 
         if not trade_placed:
             skipped += 1
+
+    # ── Expose trades for stress testing ─────────────────────────────────────
+    if _trades_out is not None:
+        _trades_out.extend(trades)
 
     # ── Statistics ────────────────────────────────────────────────────────────
     if not trades:
@@ -1072,6 +1079,14 @@ if __name__ == "__main__":
                         help="Number of WFV rolling windows (default: 8)")
     parser.add_argument("--wf-mc-sims",     type=int, default=50,
                         help="MC simulations per WFV window (default: 50)")
+    parser.add_argument("--stress-test",    action="store_true",
+                        help="Run execution noise stress test (slippage/latency/partial fills)")
+    parser.add_argument("--st-iters",       type=int,   default=500,
+                        help="Noise iterations for stress test (default: 500)")
+    parser.add_argument("--st-max-slippage", type=float, default=20.0,
+                        help="Max slippage in bps for stress test (default: 20)")
+    parser.add_argument("--st-latency-ms",  type=int,   default=0,
+                        help="Latency in ms for miss model (default: 0)")
     args = parser.parse_args()
 
     if args.generate_split:
@@ -1089,6 +1104,21 @@ if __name__ == "__main__":
             n_mc_sims    = args.wf_mc_sims,
             trade_amount = args.amount,
             start_year   = args.start_year,
+        )
+        sys.exit(0)
+
+    if args.stress_test:
+        import importlib.util as _ilu
+        _st = os.path.join(_BASE_DIR, "backtesting", "stress_test.py")
+        _spec = _ilu.spec_from_file_location("stress_test", _st)
+        _mod  = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        _mod.run_stress_test(
+            n_iters          = args.st_iters,
+            max_slippage_bps = args.st_max_slippage,
+            latency_ms       = args.st_latency_ms,
+            trade_amount     = args.amount,
+            start_year       = args.start_year,
         )
         sys.exit(0)
 

@@ -3,7 +3,7 @@
     "name": "btc15m",
     "config_file": "config.json",
     "db_file": "kalshi_bot.db",
-    "state_file": "bot_state_btc15m.json",
+    "state_file": "bot_state.json",
     "enabled": true
   }
 ]

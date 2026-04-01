@@ -1541,11 +1541,20 @@ async def place_order(
     """
     Place a fill-or-kill limit order on Kalshi.
     Retries up to 3 times, bumping price by 1c each attempt to ensure fill.
+    In paper mode, simulates an instant fill without hitting the API.
 
     Returns:
         Dict with keys: fill_confirmed (bool), fill_price_cents (int|None),
         order_id (str|None).
     """
+    if mode == "paper":
+        log.info(f"[PAPER] Simulated BUY {side} {contracts}x @ {entry_price_cents}c on {ticker}")
+        return {
+            "fill_confirmed": True,
+            "fill_price_cents": entry_price_cents,
+            "order_id": f"paper_{int(time.time() * 1000)}",
+        }
+
     path = "/portfolio/orders"
 
     for attempt in range(3):
@@ -1638,10 +1647,15 @@ async def sell_position(
 ) -> int:
     """
     Exit a position via a market IOC sell order. Retries up to 3 times.
+    In paper mode, simulates an instant sell at the current bid.
 
     Returns:
         Exit price in cents.
     """
+    if mode == "paper":
+        log.info(f"[PAPER] Simulated SELL {side} {contracts}x @ {current_bid}c on {ticker}")
+        return current_bid
+
     path = "/portfolio/orders"
 
     for attempt in range(3):
@@ -1909,6 +1923,12 @@ async def handle_ready_phase(
     last_confidence_score = score
     last_confidence_breakdown = breakdown
 
+    # Confidence threshold gate (matches backtest min_confidence param)
+    min_score = config.get("confidence_threshold", 80)
+    if do_trade and score < min_score:
+        skip_reason_ai = f"confidence {score} < threshold {min_score}"
+        do_trade = False
+
     if not do_trade:
         log.info(f"{ticker}: watching — {skip_reason_ai}")
         _log_entry(market, "READY", secs_left, btc_price, strike,
@@ -1959,7 +1979,7 @@ async def handle_ready_phase(
         "ts": trade_ts,
         "market_id": ticker,
         "market_title": market.get("title", ""),
-        "mode": "live",
+        "mode": mode,
         "side": side,
         "contracts": contracts,
         "entry_price_cents": fill_price,
@@ -2299,11 +2319,13 @@ async def main_loop() -> None:
 
 async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
     """Verify Kalshi credentials work by fetching active markets. Exits on auth failure."""
-    path = "/markets?status=open&series_ticker=KXBTC15M&limit=1"
+    path = "/markets"
+    params = {"status": "open", "series_ticker": "KXBTC15M", "limit": 1}
     try:
         async with session.get(
             KALSHI_BASE_URL + path,
             headers=kalshi_headers("GET", path),
+            params=params,
             timeout=aiohttp.ClientTimeout(total=10),
         ) as resp:
             data = await resp.json()
@@ -2315,6 +2337,8 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
                 sys.exit(1)
             markets = data.get("markets", [])
             log.info(f"Kalshi connected. Active KXBTC15M markets visible: {len(markets)}")
+    except SystemExit:
+        raise
     except Exception as exc:
         log.error(f"Kalshi connection check failed: {exc}")
         sys.exit(1)
