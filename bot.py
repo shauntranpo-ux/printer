@@ -2166,6 +2166,11 @@ async def main_loop() -> None:
                     await asyncio.sleep(10)
                     continue
 
+                if not config.get("bot_enabled", True):
+                    log.info("Bot paused (bot_enabled=false). Sleeping 10s...")
+                    await asyncio.sleep(10)
+                    continue
+
                 btc_price = get_btc_price()
                 if btc_price is None:
                     log.warning("Waiting for BTC price...")

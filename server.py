@@ -292,6 +292,7 @@ def api_config():
         "confidence_threshold":      lambda v: isinstance(v, (int, float)) and 50 <= v <= 100,
         "stop_loss_percent":         lambda v: isinstance(v, (int, float)) and 10 <= v <= 50,
         "cooldown_markets":          lambda v: isinstance(v, (int, float)) and 0 <= v <= 10,
+        "bot_enabled":               lambda v: isinstance(v, bool),
         "claude_enabled":            lambda v: isinstance(v, bool),
         "stress_test_active":        lambda v: isinstance(v, bool),
         "stress_test_start_date":    lambda v: isinstance(v, str) and len(v) == 10,
