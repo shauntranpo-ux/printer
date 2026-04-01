@@ -1066,10 +1066,30 @@ if __name__ == "__main__":
     parser.add_argument("--generate-split", action="store_true",
                         help="Generate (or regenerate) the 70/30 train/OOS split "
                              "config and exit  (saves data/split_config.json)")
+    parser.add_argument("--walk-forward",   action="store_true",
+                        help="Run Walk-Forward Validation over the train partition")
+    parser.add_argument("--wf-windows",     type=int, default=8,
+                        help="Number of WFV rolling windows (default: 8)")
+    parser.add_argument("--wf-mc-sims",     type=int, default=50,
+                        help="MC simulations per WFV window (default: 50)")
     args = parser.parse_args()
 
     if args.generate_split:
         _ensure_split(args.start_year)
+        sys.exit(0)
+
+    if args.walk_forward:
+        import importlib.util as _ilu
+        _wf = os.path.join(_BASE_DIR, "backtesting", "walk_forward.py")
+        _spec = _ilu.spec_from_file_location("walk_forward", _wf)
+        _mod  = _ilu.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        _mod.run_walk_forward(
+            n_windows    = args.wf_windows,
+            n_mc_sims    = args.wf_mc_sims,
+            trade_amount = args.amount,
+            start_year   = args.start_year,
+        )
         sys.exit(0)
 
     if args.oos_eval:
