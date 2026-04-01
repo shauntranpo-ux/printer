@@ -292,6 +292,68 @@
 </head>
 <body>
 
+<!-- ═══════════════════ PASSWORD LOCK ══════════════════════════════════════ -->
+<div id="lock-screen" style="
+  display:none;
+  position:fixed;inset:0;z-index:9999;
+  backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  background:rgba(8,10,12,0.75);
+  display:flex;align-items:center;justify-content:center;
+">
+  <div style="
+    background:#0d1117;
+    border:1px solid #1e2a35;
+    border-radius:10px;
+    padding:36px 40px;
+    display:flex;flex-direction:column;align-items:center;gap:16px;
+    min-width:280px;
+  ">
+    <div style="font-size:13px;font-weight:600;color:#f5a623;letter-spacing:.08em;">⬡ KALSHI BOT</div>
+    <div style="font-size:11px;color:#8b949e;margin-bottom:4px;">enter password</div>
+    <input id="lock-input" type="password" autocomplete="off" style="
+      background:#080a0c;
+      border:1px solid #1e2a35;
+      border-radius:5px;
+      color:#c9d1d9;
+      font-family:'IBM Plex Mono',monospace;
+      font-size:14px;
+      padding:10px 14px;
+      width:100%;
+      outline:none;
+      text-align:center;
+      letter-spacing:.15em;
+    " placeholder="••••••••••" />
+    <div id="lock-error" style="color:#f85149;font-size:11px;min-height:16px;"></div>
+  </div>
+</div>
+<script>
+(function(){
+  var KEY = 'printer_auth';
+  var PASS = 'winnerswin';
+  var screen = document.getElementById('lock-screen');
+  var input  = document.getElementById('lock-input');
+  var error  = document.getElementById('lock-error');
+  if (sessionStorage.getItem(KEY) === '1') {
+    screen.style.display = 'none';
+  } else {
+    screen.style.display = 'flex';
+    setTimeout(function(){ input.focus(); }, 50);
+  }
+  input.addEventListener('keydown', function(e){
+    if (e.key !== 'Enter') return;
+    if (input.value === PASS) {
+      sessionStorage.setItem(KEY, '1');
+      screen.style.display = 'none';
+      error.textContent = '';
+    } else {
+      error.textContent = 'incorrect password';
+      input.value = '';
+      input.focus();
+    }
+  });
+})();
+</script>
+
 <!-- ═══════════════════ HEADER ═════════════════════════════════════════════ -->
 <div id="header">
   <div class="bot-name">⬡ Kalshi BTC Bot</div>
