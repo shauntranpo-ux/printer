@@ -37,11 +37,13 @@
 
   #bot-status { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; }
   #bot-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #444; flex-shrink: 0; }
-  #bot-status-dot.alive { background: var(--green); box-shadow: 0 0 6px var(--green); animation: blink 2s ease-in-out infinite; }
-  #bot-status-dot.dead  { background: #555; }
+  #bot-status-dot.alive  { background: var(--green); box-shadow: 0 0 6px var(--green); animation: blink 2s ease-in-out infinite; }
+  #bot-status-dot.paused { background: var(--amber); }
+  #bot-status-dot.dead   { background: #555; }
   #bot-status-label { color: var(--muted); }
-  #bot-status-dot.alive ~ #bot-status-label { color: var(--green); }
-  #bot-status-dot.dead  ~ #bot-status-label { color: var(--muted); }
+  #bot-status-dot.alive  ~ #bot-status-label { color: var(--green); }
+  #bot-status-dot.paused ~ #bot-status-label { color: var(--amber); }
+  #bot-status-dot.dead   ~ #bot-status-label { color: var(--muted); }
 
   #bot-toggle { font-size: 10px; font-weight: 600; letter-spacing: .08em; padding: 3px 10px; border-radius: 20px; cursor: pointer; font-family: inherit; transition: .15s; border: 1px solid var(--border); background: transparent; color: var(--muted); }
   #bot-toggle.on  { border-color: rgba(63,185,80,.4); color: var(--green); background: rgba(63,185,80,.08); }
@@ -940,9 +942,11 @@ async function pollBotStatus() {
     const data = await r.json();
     const dot   = document.getElementById('bot-status-dot');
     const label = document.getElementById('bot-status-label');
-    const alive = data.summary && data.summary.alive > 0;
-    dot.className   = alive ? 'alive' : 'dead';
-    label.textContent = alive ? 'RUNNING' : 'OFFLINE';
+    const alive  = data.summary && data.summary.alive > 0;
+    const paused = alive && data.strategies &&
+                   data.strategies.some(s => s.alive && s.state && s.state.phase === 'PAUSED');
+    dot.className     = alive ? (paused ? 'paused' : 'alive') : 'dead';
+    label.textContent = alive ? (paused ? 'PAUSED'  : 'RUNNING') : 'OFFLINE';
   } catch (e) {
     const dot   = document.getElementById('bot-status-dot');
     const label = document.getElementById('bot-status-label');
