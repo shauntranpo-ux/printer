@@ -35,6 +35,14 @@
   #clock { color: var(--muted); font-size: 11px; white-space: nowrap; }
 
 
+  #bot-status { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .06em; }
+  #bot-status-dot { width: 8px; height: 8px; border-radius: 50%; background: #444; flex-shrink: 0; }
+  #bot-status-dot.alive { background: var(--green); box-shadow: 0 0 6px var(--green); animation: blink 2s ease-in-out infinite; }
+  #bot-status-dot.dead  { background: #e05252; box-shadow: 0 0 6px #e05252; }
+  #bot-status-label { color: var(--muted); }
+  #bot-status-dot.alive ~ #bot-status-label { color: var(--green); }
+  #bot-status-dot.dead  ~ #bot-status-label { color: #e05252; }
+
   .mode-pill { font-size: 10px; font-weight: 600; letter-spacing: .1em; padding: 3px 10px; border-radius: 20px; cursor: pointer; font-family: inherit; transition: .15s; }
   .mode-pill.live  { background: rgba(88,166,255,.12); color: var(--blue); border: 1px solid rgba(88,166,255,.25); }
   .mode-pill.live:hover  { background: rgba(88,166,255,.22); }
@@ -223,6 +231,10 @@
   <div class="logo">MONEY PRINTER</div>
   <div id="btc-price">—</div>
   <div class="header-right">
+    <div id="bot-status" title="Bot heartbeat — updates every 60s">
+      <div id="bot-status-dot"></div>
+      <span id="bot-status-label">OFFLINE</span>
+    </div>
     <button class="mode-pill paper" id="mode-pill" onclick="toggleMode()" title="Click to switch between Paper and Live mode">PAPER</button>
     <div id="clock">—</div>
   </div>
@@ -857,11 +869,32 @@ async function pollTrades() {
 // ── Export ──
 function exportCSV() { window.location.href = '/api/export/trades'; }
 
+// ── Bot alive indicator ──
+async function pollBotStatus() {
+  try {
+    const r = await fetch('/api/status');
+    if (!r.ok) return;
+    const data = await r.json();
+    const dot   = document.getElementById('bot-status-dot');
+    const label = document.getElementById('bot-status-label');
+    const alive = data.summary && data.summary.alive > 0;
+    dot.className   = alive ? 'alive' : 'dead';
+    label.textContent = alive ? 'RUNNING' : 'OFFLINE';
+  } catch (e) {
+    const dot   = document.getElementById('bot-status-dot');
+    const label = document.getElementById('bot-status-label');
+    dot.className   = 'dead';
+    label.textContent = 'OFFLINE';
+  }
+}
+
 // ── Start ──
 pollState();
 pollTrades();
-setInterval(pollState,  5000);
-setInterval(pollTrades, 5000);
+pollBotStatus();
+setInterval(pollState,     5000);
+setInterval(pollTrades,    5000);
+setInterval(pollBotStatus, 15000);
 window.addEventListener('resize', () => {
   drawChart('live-chart',  liveChartCurrent);
   drawChart('paper-chart', paperChartCurrent);
