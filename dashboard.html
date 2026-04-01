@@ -76,6 +76,7 @@
   .phase-READY  { background: #1a2e1a; color: var(--green); }
   .phase-LOCKED { background: #2e1a00; color: var(--amber); }
   .phase-DONE   { background: #1a2030; color: var(--muted); }
+  .phase-PAUSED { background: #1a1a1a; color: #555; }
 
   #confidence-breakdown { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 14px; }
   .cb-item { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 3px 9px; font-size: 11px; display: flex; gap: 5px; align-items: center; }
@@ -532,9 +533,13 @@ function updateModePillVisual(mode) {
   const tog = document.getElementById('s-mode');
   if (tog) tog.checked = mode === 'live';
 }
-function setMode(mode) {
-  saveSetting('mode', mode);
+async function setMode(mode) {
+  const prev = document.getElementById('mode-pill').classList.contains('live') ? 'live' : 'paper';
   updateModePillVisual(mode);
+  try {
+    const r = await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode}) });
+    if (!r.ok) { updateModePillVisual(prev); console.error('Mode save failed'); }
+  } catch (e) { updateModePillVisual(prev); console.error('Mode save error:', e); }
 }
 function toggleMode() {
   const pill = document.getElementById('mode-pill');
@@ -845,13 +850,12 @@ async function pollState() {
 
     const alert = document.getElementById('trade-alert');
     if (s.phase === 'LOCKED') {
-      const pending = [...liveTradesData,...paperTradesData]
-        .filter(t=>t.outcome==='pending').sort((a,b)=>b.ts.localeCompare(a.ts))[0];
+      const pos       = s.open_position || null;
       const mode      = (s.config&&s.config.mode)?s.config.mode.toUpperCase():'';
-      const direction = pending ? (pending.side==='yes'?'⬆ UP':'⬇ DOWN') : '—';
-      const entry     = pending ? `bought @ ${pending.entry_price_cents}¢` : '—';
-      const qty       = pending ? pending.contracts+' contracts' : '—';
-      const sl        = pending ? pending.stop_loss_price_cents+'¢' : '—';
+      const direction = pos ? (pos.side==='yes'?'⬆ UP':'⬇ DOWN') : '—';
+      const entry     = pos ? `bought @ ${pos.entry_price_cents}¢` : '—';
+      const qty       = pos ? pos.contracts+' contracts' : '—';
+      const sl        = pos ? pos.stop_loss_price_cents+'¢' : '—';
       document.getElementById('alert-main').textContent   = `${mode} · ${direction} · ${qty} · ${entry}`;
       document.getElementById('alert-detail').textContent = `Market: ${s.market_ticker||'—'}  |  Confidence: ${s.confidence_score||'—'}`;
       document.getElementById('alert-sl').textContent     = `Stop loss: ${sl}`;
@@ -906,8 +910,21 @@ async function toggleBot() {
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({bot_enabled: newState}),
     });
-    if (r.ok) updateBotToggleUI(newState);
-  } catch (e) { console.error('toggleBot error:', e); }
+    if (r.ok) {
+      updateBotToggleUI(newState);
+    } else {
+      const btn = document.getElementById('bot-toggle');
+      const orig = btn.textContent;
+      btn.textContent = 'SAVE ERR'; btn.style.color = '#f85149';
+      setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 2000);
+    }
+  } catch (e) {
+    console.error('toggleBot error:', e);
+    const btn = document.getElementById('bot-toggle');
+    const orig = btn.textContent;
+    btn.textContent = 'SAVE ERR'; btn.style.color = '#f85149';
+    setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 2000);
+  }
 }
 
 // ── Bot alive indicator ──

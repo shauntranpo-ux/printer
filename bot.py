@@ -1711,6 +1711,7 @@ def write_state_file(
         "cooldown_counter": cooldown_counter,
         "limit_triggered": limit_triggered,
         "limit_reason": limit_reason,
+        "open_position": current_position,
     }
     try:
         with open(_STATE_FILE, "w") as fh:
@@ -2097,7 +2098,9 @@ async def main_loop() -> None:
                     continue
 
                 if not config.get("bot_enabled", True):
-                    log.info("Bot paused (bot_enabled=false). Sleeping 10s...")
+                    write_state_file(config, current_market, "PAUSED", 0,
+                                     get_btc_price(), last_confidence_score,
+                                     last_confidence_breakdown, last_action, last_skip_reason)
                     await asyncio.sleep(10)
                     continue
 

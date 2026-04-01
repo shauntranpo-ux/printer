@@ -77,11 +77,8 @@ def read_config() -> dict:
 
 
 def write_config(data: dict) -> None:
-    try:
-        with open("config.json", "w", encoding="utf-8") as fh:
-            json.dump(data, fh, indent=2)
-    except Exception as exc:
-        log.error(f"Could not write config.json: {exc}")
+    with open("config.json", "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
 
 
 def read_state() -> dict:
@@ -291,7 +288,11 @@ def api_config():
     if errors:
         return jsonify({"error": errors}), 400
 
-    write_config(config)
+    try:
+        write_config(config)
+    except Exception as exc:
+        log.error(f"Config write failed: {exc}")
+        return jsonify({"error": f"Could not save config: {exc}"}), 500
     log.info(f"Config updated: {data}")
     return jsonify(config)
 
