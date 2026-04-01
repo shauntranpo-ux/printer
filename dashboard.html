@@ -848,7 +848,10 @@ async function pollState() {
       alert.classList.add('visible');
     } else { alert.classList.remove('visible'); }
 
-    if (!settingsPopulated && s.config) { populateSettings(s.config); settingsPopulated = true; }
+    if (s.config) {
+      if (!settingsPopulated) { populateSettings(s.config); settingsPopulated = true; }
+      updateBotToggleUI(s.config.bot_enabled !== false);
+    }
   } catch (e) { console.error('State poll error:', e); }
 }
 
@@ -878,7 +881,7 @@ async function pollTrades() {
 function exportCSV() { window.location.href = '/api/export/trades'; }
 
 // ── Bot on/off toggle ──
-let _botEnabled = true;
+let _botEnabled = false;
 function updateBotToggleUI(enabled) {
   _botEnabled = enabled;
   const btn = document.getElementById('bot-toggle');

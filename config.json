@@ -1,5 +1,5 @@
 {
-  "bot_enabled": true,
+  "bot_enabled": false,
   "trade_amount_dollars": 10,
   "mode": "paper",
   "daily_loss_limit_dollars": 50,
