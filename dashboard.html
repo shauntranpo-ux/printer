@@ -770,15 +770,15 @@ async function pollState() {
     if (tse) tse.textContent = totalScore != null ? `(${totalScore}/100)` : '';
 
     // Reward tier / learning
-    const tierMap = {
+    const tierMap2 = {
       3:{label:'🔥 TIER 3 — MAX',   cls:'tier-3'},
       2:{label:'⚡ TIER 2 — SIZING UP', cls:'tier-2'},
       1:{label:'✓ TIER 1 — LIVE',   cls:'tier-1'},
       0:{label:'📊 BUILDING',        cls:'tier-0'},
     };
-    const tier = tierMap[s.reward_tier != null ? s.reward_tier : 0] || tierMap[0];
+    const tier2 = tierMap2[s.reward_tier != null ? s.reward_tier : 0] || tierMap2[0];
     const tierEl = document.getElementById('brain-tier');
-    if (tierEl) tierEl.innerHTML = `<span class="tier-badge ${tier.cls}">${tier.label}</span>`;
+    if (tierEl) tierEl.innerHTML = `<span class="tier-badge ${tier2.cls}">${tier2.label}</span>`;
     const wrEl = document.getElementById('brain-wr-val');
     const edEl = document.getElementById('brain-edge-val');
     const trEl = document.getElementById('brain-trades-val');
