@@ -377,14 +377,23 @@ def index():
     """Serve the dashboard HTML."""
     try:
         path = os.path.join(_BASE_DIR, "dashboard.html")
-        log.info(f"Serving dashboard from {path}")
         with open(path, "r", encoding="utf-8") as fh:
             content = fh.read()
-        log.info(f"dashboard.html read OK ({len(content)} bytes)")
-        return content
+        from flask import Response
+        return Response(content, mimetype="text/html", headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        })
     except Exception as exc:
         log.error(f"index() failed: {exc}", exc_info=True)
         return f"<h1>Error: {exc}</h1>", 500
+
+
+@app.route("/api/config", methods=["GET"])
+def api_config_get():
+    """Return the current config."""
+    return jsonify(read_config())
 
 
 
