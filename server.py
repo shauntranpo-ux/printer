@@ -72,21 +72,29 @@ _CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 20, "stop_loss_perce
 _STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
                    "phase": "waiting", "mode": "paper"}
 
+# If BOT_DATA_DIR is set, all shared files live there (e.g. /app/data on Railway).
+# Falls back to the app directory for local development.
+_DATA_DIR = os.environ.get("BOT_DATA_DIR", "")
+
+
+def _data_path(filename: str) -> str:
+    return os.path.join(_DATA_DIR, filename) if _DATA_DIR else filename
+
 
 def read_config() -> dict:
-    return _safe_json_read("config.json", _CONFIG_DEFAULT.copy())
+    return _safe_json_read(_data_path("config.json"), _CONFIG_DEFAULT.copy())
 
 
 def write_config(data: dict) -> None:
     try:
-        with open("config.json", "w", encoding="utf-8") as fh:
+        with open(_data_path("config.json"), "w", encoding="utf-8") as fh:
             json.dump(data, fh, indent=2)
     except Exception as exc:
         log.error(f"Could not write config.json: {exc}")
 
 
 def read_state() -> dict:
-    return _safe_json_read("bot_state.json", _STATE_DEFAULT.copy())
+    return _safe_json_read(_data_path("bot_state.json"), _STATE_DEFAULT.copy())
 
 
 def _load_strategies() -> list[dict]:
@@ -94,12 +102,12 @@ def _load_strategies() -> list[dict]:
 
 
 def _read_strategy_state(state_file: str) -> dict | None:
-    return _safe_json_read(state_file, None)
+    return _safe_json_read(_data_path(state_file), None)
 
 
 def get_db() -> sqlite3.Connection:
     """Open a WAL-mode SQLite connection with Row factory."""
-    db_path = os.environ.get("BOT_DB_FILE", "kalshi_bot.db")
+    db_path = os.environ.get("BOT_DB_FILE", _data_path("kalshi_bot.db"))
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
