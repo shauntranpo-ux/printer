@@ -107,16 +107,24 @@
   .loss { color: var(--red); }
   .pending { color: var(--muted); }
 
-  /* ── Market log ── */
-  #market-log-wrap { max-height: 220px; overflow-y: auto; }
-  .log-row { padding: 5px 0; border-bottom: 1px solid #0e1620; font-size: 11px; display: flex; gap: 10px; align-items: baseline; }
-  .log-row:last-child { border-bottom: none; }
-  .log-ts    { color: var(--muted); white-space: nowrap; min-width: 75px; }
-  .log-phase { width: 48px; text-align: center; }
-  .log-action-trade { color: var(--green); font-weight: 600; }
-  .log-action-skip  { color: var(--muted); }
-  .log-reason { color: var(--text); flex: 1; }
-  .log-score  { color: var(--amber); white-space: nowrap; }
+  /* ── Brain panel ── */
+  .c-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 6px; }
+  .brain-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .score-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+  .score-label { font-size: 10px; color: var(--muted); width: 64px; text-align: right; white-space: nowrap; }
+  .score-track { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+  .score-fill  { height: 100%; border-radius: 2px; background: var(--amber); transition: width .4s ease; }
+  .score-val   { font-size: 11px; color: var(--amber); width: 28px; text-align: right; font-weight: 600; }
+  .tier-badge  { display: inline-block; padding: 3px 12px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; margin-bottom: 8px; }
+  .tier-0 { background: #1a1f26; color: var(--muted); }
+  .tier-1 { background: #1a2e1a; color: var(--green); }
+  .tier-2 { background: #2e200a; color: var(--amber); }
+  .tier-3 { background: #2e0d0d; color: var(--red);   }
+  .decision-box { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; font-size: 11px; line-height: 1.6; }
+  .decision-action { font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
+  .decision-action.trade { color: var(--green); }
+  .decision-action.skip  { color: var(--muted); }
+  .decision-reason { color: var(--text); margin-top: 2px; }
 
   /* ── Settings ── */
   .card-title.toggle-title { cursor: pointer; user-select: none; }
@@ -189,17 +197,6 @@
   .modal-cancel:hover { background: var(--border); }
   .modal-confirm:hover { filter: brightness(1.15); }
 
-  /* ── Stress test ── */
-  #stress-section { display: none; }
-  #stress-section.visible { display: block; }
-  #stress-controls { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
-  #stress-controls input[type="date"] { background: var(--bg); border: 1px solid var(--border); color: var(--text); font-family: inherit; font-size: 12px; padding: 5px 8px; border-radius: 4px; }
-  #stress-results-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-bottom: 16px; }
-  .stress-metric { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; }
-  .stress-metric .m-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
-  .stress-metric .m-value { font-size: 15px; font-weight: 600; color: var(--amber); }
-  canvas#stress-chart { display: block; width: 100%; height: 110px; background: var(--bg); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 14px; }
-  #stress-trade-wrap { max-height: 260px; overflow-y: auto; }
 
   /* ── Countdown ── */
   #countdown { font-size: 22px; font-weight: 600; color: var(--amber); }
@@ -373,10 +370,46 @@
     </div>
   </div>
 
-  <!-- ══ MARKET LOG ══ -->
+  <!-- ══ BRAIN ══ -->
   <div class="card">
-    <div class="card-title">Market Log</div>
-    <div id="market-log-wrap"><div id="market-log-body"></div></div>
+    <div class="card-title">Brain</div>
+    <div class="brain-grid">
+      <!-- Left: learning + last decision -->
+      <div>
+        <div class="c-label">Learning Status</div>
+        <div id="brain-tier"><span class="tier-badge tier-0">BUILDING</span></div>
+        <div style="display:flex;gap:20px;margin-bottom:14px;">
+          <div class="stat"><div class="s-label">Win Rate</div><div class="s-value" id="brain-wr-val">—</div></div>
+          <div class="stat"><div class="s-label">Min Edge</div><div class="s-value" id="brain-edge-val">—</div></div>
+          <div class="stat"><div class="s-label">Trades Eval</div><div class="s-value" id="brain-trades-val">—</div></div>
+        </div>
+        <div class="c-label">Last Decision</div>
+        <div class="decision-box">
+          <div class="decision-action skip" id="brain-action">WAITING</div>
+          <div class="decision-reason" id="brain-reason">Bot has not evaluated a market yet.</div>
+        </div>
+        <div id="brain-claude" style="display:none;">
+          <div class="c-label">Claude AI Reasoning</div>
+          <div style="font-size:11px;color:var(--text);line-height:1.6;background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:10px 12px;" id="brain-claude-text"></div>
+          <div id="brain-claude-signals" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;"></div>
+        </div>
+      </div>
+      <!-- Right: confidence scores -->
+      <div>
+        <div class="c-label">Confidence Scores <span id="brain-total-score" style="color:var(--amber);font-weight:700;"></span></div>
+        <div id="brain-scores">
+          <div class="score-bar"><span class="score-label">Momentum</span><div class="score-track"><div class="score-fill" id="sc-momentum" style="width:0%"></div></div><span class="score-val" id="sv-momentum">—</span></div>
+          <div class="score-bar"><span class="score-label">Velocity</span><div class="score-track"><div class="score-fill" id="sc-velocity"  style="width:0%"></div></div><span class="score-val" id="sv-velocity">—</span></div>
+          <div class="score-bar"><span class="score-label">Time Left</span><div class="score-track"><div class="score-fill" id="sc-time"      style="width:0%"></div></div><span class="score-val" id="sv-time">—</span></div>
+          <div class="score-bar"><span class="score-label">BTC Dist</span><div class="score-track"><div class="score-fill" id="sc-distance"  style="width:0%"></div></div><span class="score-val" id="sv-distance">—</span></div>
+        </div>
+        <div style="margin-top:12px;font-size:10px;color:var(--muted);line-height:1.6;border-top:1px solid var(--border);padding-top:10px;">
+          The bot self-adjusts trade size based on recent performance.<br>
+          Tier 1 → normal. Tier 2 → 1.5× size. Tier 3 → 2× size.<br>
+          Win rate is tracked over the last 20 settled trades.
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ══ SETTINGS (collapsible) ══ -->
@@ -391,15 +424,6 @@
           <label>Trade Amount ($)</label>
           <input type="number" id="s-trade-amount" min="1" step="1">
           <button class="s-save" onclick="saveSetting('trade_amount_dollars', parseFloat(document.getElementById('s-trade-amount').value))">Save</button>
-        </div>
-
-        <div class="s-group">
-          <label>Mode</label>
-          <div class="tog-wrap">
-            <span class="tog-lbl">Paper</span>
-            <label class="tog"><input type="checkbox" id="s-mode" onchange="saveSetting('mode', this.checked ? 'live' : 'paper')"><span class="tog-slider"></span></label>
-            <span class="tog-lbl">Live</span>
-          </div>
         </div>
 
         <div class="s-group">
@@ -441,15 +465,6 @@
           </div>
         </div>
 
-        <div class="s-group">
-          <label>Stress Test</label>
-          <div class="tog-wrap">
-            <span class="tog-lbl">Off</span>
-            <label class="tog"><input type="checkbox" id="s-stress" onchange="saveSetting('stress_test_active', this.checked)"><span class="tog-slider"></span></label>
-            <span class="tog-lbl">On</span>
-          </div>
-        </div>
-
       </div><!-- /settings-grid -->
     </div><!-- /settings-body -->
   </div>
@@ -458,34 +473,7 @@
   <div class="card">
     <div id="action-row">
       <button class="btn" onclick="exportCSV()">Export CSV</button>
-      <button class="btn" id="stress-toggle-btn" onclick="toggleStressSection()">Stress Test</button>
       <button class="btn danger" onclick="openResetModal('all')">Reset All P&amp;L</button>
-    </div>
-  </div>
-
-  <!-- ══ STRESS TEST ══ -->
-  <div class="card" id="stress-section">
-    <div class="card-title">Stress Test</div>
-    <div id="stress-controls">
-      <div class="s-group">
-        <label>Start Date</label>
-        <input type="date" id="st-start">
-      </div>
-      <div class="s-group">
-        <label>End Date</label>
-        <input type="date" id="st-end">
-      </div>
-      <button class="btn" onclick="runStressTest()">Run</button>
-      <button class="btn danger" onclick="stopStressTest()">Stop</button>
-    </div>
-    <div id="stress-results-grid"></div>
-    <canvas id="stress-chart" style="display:none;"></canvas>
-    <div id="stress-trade-wrap" style="display:none;">
-      <div class="card-title" style="margin-top:10px;">Simulated Trades</div>
-      <table>
-        <thead><tr><th>Date</th><th>Side</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Reason</th><th>Outcome</th><th>P&L</th><th>Conf</th></tr></thead>
-        <tbody id="stress-trades-body"></tbody>
-      </table>
     </div>
   </div>
 
@@ -504,12 +492,11 @@
 </div><!-- /main -->
 
 <script>
-let liveTradesData = [], paperTradesData = [], marketLogData = [];
+let liveTradesData = [], paperTradesData = [];
 let countdownSecs = 0, countdownInterval = null;
 let liveChartTarget = [], paperChartTarget = [], liveChartCurrent = [], paperChartCurrent = [];
 let chartAnimFrame = null;
 let settingsPopulated = false;
-let stressSectionVisible = false;
 let settingsOpen = false;
 let _resetMode = null;
 
@@ -533,8 +520,7 @@ function renderCountdown() {
 }
 
 // ── Bot toggle ──
-function toggleBot(enabled) {
-  saveSetting('bot_enabled', enabled);
+function updateBotPillVisual(enabled) {
   const dot  = document.getElementById('bot-dot');
   const text = document.getElementById('bot-pill-text');
   if (enabled) {
@@ -546,6 +532,21 @@ function toggleBot(enabled) {
     text.className = 'bot-pill-text off';
     text.textContent = 'BOT OFF';
   }
+  // Sync mode pill — ON = LIVE, OFF = PAPER
+  const pill = document.getElementById('mode-pill');
+  if (pill) {
+    pill.textContent = enabled ? 'LIVE' : 'PAPER';
+    pill.className = 'mode-pill ' + (enabled ? 'live' : 'paper');
+  }
+}
+function toggleBot(enabled) {
+  // Save both bot_enabled and mode together
+  saveSetting('bot_enabled', enabled);
+  saveSetting('mode', enabled ? 'live' : 'paper');
+  updateBotPillVisual(enabled);
+  // Sync checkbox state in case called programmatically
+  const botEl = document.getElementById('s-bot-enabled');
+  if (botEl && botEl.checked !== enabled) botEl.checked = enabled;
 }
 
 // ── Settings collapse ──
@@ -658,28 +659,6 @@ function renderTradeTable(tbodyId, trades) {
   }).join('');
 }
 
-// ── Market log ──
-function renderMarketLog(entries) {
-  const body = document.getElementById('market-log-body');
-  if (!body) return;
-  if (!entries || entries.length === 0) {
-    body.innerHTML = '<div style="color:var(--muted);padding:8px;">No log entries yet.</div>';
-    return;
-  }
-  body.innerHTML = entries.map(e => {
-    const actionClass = e.action==='trade'?'log-action-trade':'log-action-skip';
-    const phaseClass  = `phase-badge phase-${e.phase||'DONE'}`;
-    const scoreStr    = e.confidence_score>0?`score=${e.confidence_score}`:'';
-    return `<div class="log-row">
-      <span class="log-ts">${fmtTime(e.ts)}</span>
-      <span class="${phaseClass} log-phase">${e.phase||'—'}</span>
-      <span class="${actionClass}">${(e.action||'—').toUpperCase()}</span>
-      <span class="log-reason">${e.skip_reason||(e.market_title?e.market_title.slice(0,50):'—')}</span>
-      <span class="log-score">${scoreStr}</span>
-    </div>`;
-  }).join('');
-}
-
 // ── Settings populate ──
 function populateSettings(cfg) {
   if (!cfg) return;
@@ -690,26 +669,13 @@ function populateSettings(cfg) {
   set('s-cooldown',     cfg.cooldown_markets);
   set('s-loss-limit',   cfg.daily_loss_limit_dollars);
   set('s-profit-target',cfg.daily_profit_target_dollars);
-  const modeEl   = document.getElementById('s-mode');
-  const stressEl = document.getElementById('s-stress');
   const claudeEl = document.getElementById('s-claude');
   const botEl    = document.getElementById('s-bot-enabled');
-  if (modeEl)   modeEl.checked   = cfg.mode === 'live';
-  if (stressEl) stressEl.checked = !!cfg.stress_test_active;
   if (claudeEl) claudeEl.checked = !!cfg.claude_enabled;
   if (botEl) {
-    botEl.checked = cfg.bot_enabled !== false;
-    toggleBot(botEl.checked);
-  }
-  const startEl = document.getElementById('st-start');
-  const endEl   = document.getElementById('st-end');
-  if (startEl && cfg.stress_test_start_date) startEl.value = cfg.stress_test_start_date;
-  if (endEl   && cfg.stress_test_end_date)   endEl.value   = cfg.stress_test_end_date;
-  // Mode pill
-  const pill = document.getElementById('mode-pill');
-  if (pill) {
-    pill.textContent = (cfg.mode||'paper').toUpperCase();
-    pill.className = `mode-pill ${cfg.mode === 'live' ? 'live' : 'paper'}`;
+    const isOn = cfg.bot_enabled !== false;
+    botEl.checked = isOn;
+    updateBotPillVisual(isOn);  // visual only — no save
   }
 }
 
@@ -798,22 +764,67 @@ async function pollState() {
     document.getElementById('st-reward').innerHTML =
       `<span style="color:${tier.color};font-weight:600;">${tier.label}</span><span style="color:var(--muted);font-size:10px;"> WR ${wr}·${edg}</span>`;
 
+    // ── Brain panel ──
     const bd = s.confidence_breakdown || {};
-    const names = {momentum:'Momentum',velocity:'Velocity',time:'Time Left',distance:'BTC Dist'};
-    document.getElementById('confidence-breakdown').innerHTML =
-      Object.entries(names).map(([k,label]) =>
-        `<div class="cb-item"><span class="cb-name">${label}</span><span class="cb-val">${bd[k]!=null?bd[k]:'—'}</span></div>`
-      ).join('');
+    const scoreMax = {momentum:30, velocity:30, time:20, distance:30};
+    ['momentum','velocity','time','distance'].forEach(k => {
+      const val = bd[k] != null ? bd[k] : null;
+      const max = scoreMax[k];
+      const pct = val != null ? Math.min(100, Math.round(val/max*100)) : 0;
+      const fillEl = document.getElementById('sc-'+k);
+      const valEl  = document.getElementById('sv-'+k);
+      if (fillEl) fillEl.style.width = pct+'%';
+      if (valEl)  valEl.textContent  = val != null ? val : '—';
+    });
+    const totalScore = s.confidence_score;
+    const tse = document.getElementById('brain-total-score');
+    if (tse) tse.textContent = totalScore != null ? `(${totalScore}/100)` : '';
 
-    const claudePanel = document.getElementById('claude-panel');
+    // Reward tier / learning
+    const tierMap = {
+      3:{label:'🔥 TIER 3 — MAX',   cls:'tier-3'},
+      2:{label:'⚡ TIER 2 — SIZING UP', cls:'tier-2'},
+      1:{label:'✓ TIER 1 — LIVE',   cls:'tier-1'},
+      0:{label:'📊 BUILDING',        cls:'tier-0'},
+    };
+    const tier = tierMap[s.reward_tier != null ? s.reward_tier : 0] || tierMap[0];
+    const tierEl = document.getElementById('brain-tier');
+    if (tierEl) tierEl.innerHTML = `<span class="tier-badge ${tier.cls}">${tier.label}</span>`;
+    const wrEl = document.getElementById('brain-wr-val');
+    const edEl = document.getElementById('brain-edge-val');
+    const trEl = document.getElementById('brain-trades-val');
+    if (wrEl) wrEl.textContent = s.brain_wr  != null ? (s.brain_wr*100).toFixed(0)+'%' : '—';
+    if (edEl) edEl.textContent = s.brain_min_edge != null ? (s.brain_min_edge*100).toFixed(0)+'%' : '—';
+    if (trEl) trEl.textContent = s.brain_n   != null ? s.brain_n : '—';
+
+    // Last decision
+    const actionEl  = document.getElementById('brain-action');
+    const reasonEl  = document.getElementById('brain-reason');
+    const lastAct   = s.last_action || '';
+    const lastReason= s.last_skip_reason || '';
+    if (actionEl) {
+      actionEl.textContent = lastAct ? lastAct.toUpperCase() : 'WAITING';
+      actionEl.className   = 'decision-action ' + (lastAct === 'trade' ? 'trade' : 'skip');
+    }
+    if (reasonEl) reasonEl.textContent = lastReason || (lastAct === 'trade' ? 'Position opened.' : 'Waiting for next market window.');
+
+    // Claude AI reasoning
+    const claudeBox = document.getElementById('brain-claude');
     const reasoning = s.claude_reasoning || '';
-    if (reasoning) {
-      claudePanel.style.display = 'block';
-      document.getElementById('claude-reasoning').textContent = reasoning;
-      document.getElementById('claude-signals').innerHTML = (s.claude_key_signals||[])
+    if (reasoning && claudeBox) {
+      claudeBox.style.display = 'block';
+      document.getElementById('brain-claude-text').textContent = reasoning;
+      document.getElementById('brain-claude-signals').innerHTML = (s.claude_key_signals||[])
         .map(sig => `<span style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--blue);">${sig}</span>`)
         .join('');
-    } else { claudePanel.style.display = 'none'; }
+    } else if (claudeBox) { claudeBox.style.display = 'none'; }
+
+    // Confidence breakdown (legacy small chips still in Status card)
+    const names = {momentum:'Momentum',velocity:'Velocity',time:'Time Left',distance:'BTC Dist'};
+    const cbEl = document.getElementById('confidence-breakdown');
+    if (cbEl) cbEl.innerHTML = Object.entries(names).map(([k,label]) =>
+      `<div class="cb-item"><span class="cb-name">${label}</span><span class="cb-val">${bd[k]!=null?bd[k]:'—'}</span></div>`
+    ).join('');
 
     const lpnl = s.today_live_pnl  || 0;
     const ppnl = s.today_paper_pnl || 0;
@@ -854,18 +865,15 @@ async function pollState() {
 
 async function pollTrades() {
   try {
-    const [liveR, paperR, logR] = await Promise.all([
+    const [liveR, paperR] = await Promise.all([
       fetch('/api/trades?mode=live'),
       fetch('/api/trades?mode=paper'),
-      fetch('/api/market_log'),
     ]);
     liveTradesData  = await liveR.json();
     paperTradesData = await paperR.json();
-    marketLogData   = await logR.json();
 
     renderTradeTable('live-trades',  liveTradesData);
     renderTradeTable('paper-trades', paperTradesData);
-    renderMarketLog(marketLogData);
 
     document.getElementById('live-wr').textContent    = todayWinRate(liveTradesData, 'live');
     document.getElementById('paper-wr').textContent   = todayWinRate(paperTradesData, 'paper');
@@ -879,77 +887,6 @@ async function pollTrades() {
 
 // ── Export ──
 function exportCSV() { window.location.href = '/api/export/trades'; }
-
-// ── Stress test ──
-function toggleStressSection() {
-  stressSectionVisible = !stressSectionVisible;
-  document.getElementById('stress-section').classList.toggle('visible', stressSectionVisible);
-  document.getElementById('stress-toggle-btn').classList.toggle('active', stressSectionVisible);
-  if (stressSectionVisible) pollStressResults();
-}
-async function runStressTest() {
-  const start = document.getElementById('st-start').value;
-  const end   = document.getElementById('st-end').value;
-  if (!start || !end) { alert('Please set start and end dates.'); return; }
-  await saveSetting('stress_test_start_date', start);
-  await saveSetting('stress_test_end_date', end);
-  await saveSetting('stress_test_active', true);
-  document.getElementById('s-stress').checked = true;
-  alert('Stress test started. Results will appear here when complete.');
-  setTimeout(pollStressResults, 5000);
-}
-async function stopStressTest() {
-  await saveSetting('stress_test_active', false);
-  document.getElementById('s-stress').checked = false;
-}
-function drawStressChart(equity) {
-  const canvas = document.getElementById('stress-chart');
-  if (!canvas || !equity || equity.length < 2) return;
-  canvas.style.display = 'block';
-  const dpr = window.devicePixelRatio||1, rect = canvas.getBoundingClientRect();
-  canvas.width=rect.width*dpr; canvas.height=rect.height*dpr;
-  const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr);
-  const W=rect.width, H=rect.height, pad={t:8,b:8,l:6,r:6};
-  ctx.clearRect(0,0,W,H);
-  const min=Math.min(...equity), max=Math.max(...equity), range=max-min||1;
-  const xStep=(W-pad.l-pad.r)/(equity.length-1);
-  const zeroY=pad.t+((max-0)/range)*(H-pad.t-pad.b);
-  ctx.strokeStyle='#1e2a35'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
-  ctx.beginPath(); ctx.moveTo(pad.l,zeroY); ctx.lineTo(W-pad.r,zeroY); ctx.stroke(); ctx.setLineDash([]);
-  ctx.beginPath();
-  equity.forEach((v,i)=>{ const x=pad.l+i*xStep, y=pad.t+((max-v)/range)*(H-pad.t-pad.b); i===0?ctx.moveTo(x,y):ctx.lineTo(x,y); });
-  ctx.strokeStyle=equity[equity.length-1]>=0?'#39d353':'#f85149'; ctx.lineWidth=1.5; ctx.stroke();
-}
-async function pollStressResults() {
-  try {
-    const [resultsR, tradesR] = await Promise.all([fetch('/api/stress_test'), fetch('/api/stress_test/trades')]);
-    const results = await resultsR.json();
-    const { trades, equity_curve } = await tradesR.json();
-    const grid = document.getElementById('stress-results-grid');
-    if (results && results.length > 0) {
-      const r = results[0];
-      grid.innerHTML = [
-        ['Markets',r.total_markets],['Trades',r.total_trades],['Win Rate',r.win_rate+'%'],
-        ['Total P&L','$'+(r.total_pnl_dollars||0).toFixed(2)],['Max Drawdown',r.max_drawdown_percent+'%'],
-        ['Avg Confidence',r.avg_confidence],['Avg Win %',r.avg_profit_percent+'%'],
-        ['Sharpe',r.sharpe_ratio],['Max Consec Loss',r.max_consecutive_losses],
-        ['Period',r.start_date+' → '+r.end_date],
-      ].map(([label,val])=>`<div class="stress-metric"><div class="m-label">${label}</div><div class="m-value">${val}</div></div>`).join('');
-    }
-    if (equity_curve && equity_curve.length > 1) drawStressChart(equity_curve);
-    if (trades && trades.length > 0) {
-      document.getElementById('stress-trade-wrap').style.display = 'block';
-      document.getElementById('stress-trades-body').innerHTML = trades.map(t =>
-        `<tr class="${t.outcome==='win'?'win':'loss'}">
-          <td>${t.ts?t.ts.slice(0,10):'—'}</td>
-          <td>${t.side==='yes'?'⬆ UP':t.side==='no'?'⬇ DN':t.side}</td>
-          <td>${t.contracts}</td><td>${t.entry_price}c</td><td>${t.exit_price}c</td>
-          <td>${t.exit_reason}</td><td>${t.outcome}</td><td>${fmtPnl(t.pnl)}</td><td>${t.confidence}</td>
-        </tr>`
-      ).join('');
-    }
-  } catch (e) { console.error('Stress poll error:', e); }
-}
 
 // ── Start ──
 pollState();
