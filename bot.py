@@ -56,6 +56,10 @@ API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
 MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 60  # only 60s noise window — then evaluate immediately
 
+# ── Strategy constants — hardcoded so Railway deploys never revert them ───────
+CONFIDENCE_THRESHOLD = 67   # minimum win probability % to enter a trade
+STOP_LOSS_PERCENT    = 45   # exit if contract bid drops this % from entry price
+
 # ─────────────────────────── file paths (env-overridable for multi-strategy) ──
 _CONFIG_FILE = os.environ.get("BOT_CONFIG_FILE", "config.json")
 _DB_FILE     = os.environ.get("BOT_DB_FILE",     "kalshi_bot.db")
@@ -1847,7 +1851,7 @@ async def handle_ready_phase(
     last_confidence_breakdown = breakdown
 
     # Confidence threshold gate (matches backtest min_confidence param)
-    min_score = config.get("confidence_threshold", 67)
+    min_score = CONFIDENCE_THRESHOLD
     if do_trade and score < min_score:
         skip_reason_ai = f"confidence {score} < threshold {min_score}"
         do_trade = False
@@ -1886,7 +1890,7 @@ async def handle_ready_phase(
     fill_price = result.get("fill_price_cents") or int(entry_price_cents)
     order_id = result.get("order_id")
 
-    stop_pct = config.get("stop_loss_percent", 45)
+    stop_pct = STOP_LOSS_PERCENT
     sl_price = int(fill_price * (1 - stop_pct / 100))
     trade_ts = datetime.now(timezone.utc).isoformat()
 
