@@ -158,9 +158,12 @@ def _init_config() -> None:
     """
     # Build defaults
     defaults = {
-        "bot_enabled": True,
-        "trade_amount_dollars": 10,
-        "mode": "live",
+        "bot_enabled": False,
+        "trade_amount_dollars": 5,
+        "mode": "paper",
+        "confidence_threshold": 67,
+        "stop_loss_percent": 45,
+        "cooldown_markets": 0,
         "daily_loss_limit_dollars": 50,
         "daily_profit_target_dollars": 9999999,
         "claude_enabled": False,
