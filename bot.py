@@ -54,7 +54,7 @@ KALSHI_PATH_PREFIX = "/trade-api/v2"  # included in signature but not in the pat
 COINBASE_WS = "wss://advanced-trade-ws.coinbase.com"
 API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
 MARKET_CACHE_TTL = 30     # seconds to cache the active market
-WATCH_PHASE_SECONDS = 60  # only 60s noise window — then evaluate immediately
+WATCH_PHASE_SECONDS = 0   # evaluate immediately when a session starts
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
 CONFIDENCE_THRESHOLD = 67   # minimum win probability % to enter a trade
