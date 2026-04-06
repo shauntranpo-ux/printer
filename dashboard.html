@@ -210,6 +210,23 @@
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* ── Live confirm modal ── */
+  #live-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 999; align-items: center; justify-content: center; }
+  #live-modal.open { display: flex; }
+  #live-modal-box { background: var(--panel); border: 1px solid var(--amber); border-radius: 8px; padding: 28px 32px; width: 360px; text-align: center; }
+  #live-modal-title { font-size: 15px; font-weight: 600; color: var(--amber); margin-bottom: 8px; }
+  #live-modal-body { font-size: 12px; color: var(--muted); margin-bottom: 22px; line-height: 1.6; }
+  .modal-confirm-live { padding: 7px 22px; border-radius: 4px; border: 1px solid var(--amber); background: rgba(245,166,35,.12); color: var(--amber); cursor: pointer; font-size: 12px; font-weight: 600; font-family: inherit; }
+  .modal-confirm-live:hover { background: rgba(245,166,35,.25); }
+
+  /* ── Toast ── */
+  #toast { position: fixed; bottom: 24px; right: 24px; z-index: 9999; font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 10px 18px; border-radius: 6px; pointer-events: none; transform: translateY(20px); opacity: 0; transition: transform .2s, opacity .2s; background: #0d1f0d; border: 1px solid var(--green); color: var(--green); }
+  #toast.show { transform: translateY(0); opacity: 1; }
+  #toast.error { background: #1f0d0d; border-color: var(--red); color: var(--red); }
+
+  /* ── Mode pill loading ── */
+  .mode-pill.loading { opacity: .45; pointer-events: none; }
 </style>
 </head>
 <body>
@@ -423,7 +440,7 @@
         <div class="s-group">
           <label>Trade Amount ($)</label>
           <input type="number" id="s-trade-amount" min="1" step="1">
-          <button class="s-save" onclick="saveSetting('trade_amount_dollars', parseFloat(document.getElementById('s-trade-amount').value))">Save</button>
+          <button class="s-save" onclick="saveSetting('trade_amount_dollars', parseFloat(document.getElementById('s-trade-amount').value), this)">Save</button>
         </div>
 
         <div class="s-group">
@@ -438,31 +455,31 @@
         <div class="s-group">
           <label>Confidence Threshold</label>
           <input type="number" id="s-conf" min="50" max="100" step="1">
-          <button class="s-save" onclick="saveSetting('confidence_threshold', parseFloat(document.getElementById('s-conf').value))">Save</button>
+          <button class="s-save" onclick="saveSetting('confidence_threshold', parseFloat(document.getElementById('s-conf').value), this)">Save</button>
         </div>
 
         <div class="s-group">
           <label>Stop Loss %</label>
           <input type="number" id="s-sl" min="10" max="50" step="1">
-          <button class="s-save" onclick="saveSetting('stop_loss_percent', parseFloat(document.getElementById('s-sl').value))">Save</button>
+          <button class="s-save" onclick="saveSetting('stop_loss_percent', parseFloat(document.getElementById('s-sl').value), this)">Save</button>
         </div>
 
         <div class="s-group">
           <label>Cooldown Markets</label>
           <input type="number" id="s-cooldown" min="0" max="10" step="1">
-          <button class="s-save" onclick="saveSetting('cooldown_markets', parseInt(document.getElementById('s-cooldown').value))">Save</button>
+          <button class="s-save" onclick="saveSetting('cooldown_markets', parseInt(document.getElementById('s-cooldown').value), this)">Save</button>
         </div>
 
         <div class="s-group">
           <label>Daily Loss Limit ($)</label>
           <input type="number" id="s-loss-limit" min="1" step="1">
-          <button class="s-save" onclick="saveSetting('daily_loss_limit_dollars', parseFloat(document.getElementById('s-loss-limit').value))">Save</button>
+          <button class="s-save" onclick="saveSetting('daily_loss_limit_dollars', parseFloat(document.getElementById('s-loss-limit').value), this)">Save</button>
         </div>
 
         <div class="s-group">
           <label>Daily Profit Target ($)</label>
           <input type="number" id="s-profit-target" min="1" step="1">
-          <button class="s-save" onclick="saveSetting('daily_profit_target_dollars', parseFloat(document.getElementById('s-profit-target').value))">Save</button>
+          <button class="s-save" onclick="saveSetting('daily_profit_target_dollars', parseFloat(document.getElementById('s-profit-target').value), this)">Save</button>
         </div>
 
         <div class="s-group">
@@ -498,7 +515,22 @@
     </div>
   </div>
 
+  <!-- ══ LIVE CONFIRM MODAL ══ -->
+  <div id="live-modal">
+    <div id="live-modal-box">
+      <div id="live-modal-title">Switch to LIVE?</div>
+      <div id="live-modal-body">Real money will be used for trades.<br>Make sure your API keys are configured and your account is funded.</div>
+      <div class="modal-btns">
+        <button class="modal-cancel" onclick="closeLiveModal()">Cancel</button>
+        <button class="modal-confirm-live" onclick="confirmLiveSwitch()">Go Live</button>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /main -->
+
+<!-- ══ TOAST ══ -->
+<div id="toast"></div>
 
 <script>
 let liveTradesData = [], paperTradesData = [];
@@ -535,17 +567,68 @@ function updateModePillVisual(mode) {
   const tog = document.getElementById('s-mode');
   if (tog) tog.checked = mode === 'live';
 }
-async function setMode(mode) {
+
+// ── Toast ──
+let _toastTimer = null;
+function showToast(msg, type) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = type === 'error' ? 'error show' : 'show';
+  if (_toastTimer) clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { el.className = ''; }, 2500);
+}
+
+// ── Live confirm modal ──
+let _pendingModeSwitch = null;
+function openLiveModal() {
+  _pendingModeSwitch = 'live';
+  document.getElementById('live-modal').classList.add('open');
+}
+function closeLiveModal() {
+  _pendingModeSwitch = null;
+  document.getElementById('live-modal').classList.remove('open');
+  const currentMode = document.getElementById('mode-pill').classList.contains('live') ? 'live' : 'paper';
+  const tog = document.getElementById('s-mode');
+  if (tog) tog.checked = currentMode === 'live';
+}
+async function confirmLiveSwitch() {
+  document.getElementById('live-modal').classList.remove('open');
+  await _doModeSwitch('live');
+}
+document.addEventListener('click', function(e){ if(e.target===document.getElementById('live-modal')) closeLiveModal(); });
+
+async function _doModeSwitch(mode) {
   const prev = document.getElementById('mode-pill').classList.contains('live') ? 'live' : 'paper';
+  const pill = document.getElementById('mode-pill');
+  pill.classList.add('loading');
   updateModePillVisual(mode);
   try {
     const r = await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({mode}) });
-    if (!r.ok) { updateModePillVisual(prev); return; }
-    // Verify save stuck
+    if (!r.ok) {
+      updateModePillVisual(prev);
+      showToast('Failed to switch mode', 'error');
+      return;
+    }
     const verify = await fetch('/api/config');
     const cfg = await verify.json();
-    if (cfg.mode !== mode) updateModePillVisual(cfg.mode || prev);
-  } catch (e) { updateModePillVisual(prev); console.error('Mode save error:', e); }
+    if (cfg.mode !== mode) {
+      updateModePillVisual(cfg.mode || prev);
+      showToast('Mode switch failed — try again', 'error');
+    } else {
+      showToast('Switched to ' + mode.toUpperCase() + ' mode');
+    }
+  } catch (e) {
+    updateModePillVisual(prev);
+    showToast('Network error — mode not saved', 'error');
+    console.error('Mode save error:', e);
+  } finally {
+    pill.classList.remove('loading');
+  }
+}
+async function setMode(mode) {
+  if (mode === 'live') { openLiveModal(); return; }
+  await _doModeSwitch(mode);
 }
 function toggleMode() {
   const pill = document.getElementById('mode-pill');
@@ -679,12 +762,23 @@ function populateSettings(cfg) {
   updateModePillVisual(cfg.mode || 'paper');  // visual only — no save
 }
 
-async function saveSetting(key, value) {
+async function saveSetting(key, value, btn) {
   const body = {}; body[key] = value;
+  const origText = btn ? btn.textContent : null;
+  if (btn) { btn.textContent = '...'; btn.disabled = true; }
   try {
     const r = await fetch('/api/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
-    if (!r.ok) { const err = await r.json(); console.error('Config error:', err); }
-  } catch (e) { console.error('Config fetch error:', e); }
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      if (btn) { btn.textContent = 'ERR'; btn.style.color = 'var(--red)'; setTimeout(() => { btn.textContent = origText; btn.style.color = ''; btn.disabled = false; }, 2000); }
+      console.error('Config error:', err);
+      return;
+    }
+    if (btn) { btn.textContent = '✓ Saved'; btn.style.color = 'var(--green)'; setTimeout(() => { btn.textContent = origText; btn.style.color = ''; btn.disabled = false; }, 1500); }
+  } catch (e) {
+    if (btn) { btn.textContent = 'ERR'; btn.style.color = 'var(--red)'; setTimeout(() => { btn.textContent = origText; btn.style.color = ''; btn.disabled = false; }, 2000); }
+    console.error('Config fetch error:', e);
+  }
 }
 
 // ── Helpers ──

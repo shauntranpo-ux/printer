@@ -48,12 +48,12 @@ except Exception as _dir_err:
 
 # Write default config.json if it doesn't exist (e.g. fresh Railway deploy)
 _FULL_CONFIG_DEFAULT = {
-    "bot_enabled": True,
+    "bot_enabled": False,
     "mode": "paper",
-    "trade_amount_dollars": 10,
-    "confidence_threshold": 80,
-    "stop_loss_percent": 30,
-    "cooldown_markets": 2,
+    "trade_amount_dollars": 5,
+    "confidence_threshold": 67,
+    "stop_loss_percent": 45,
+    "cooldown_markets": 0,
     "daily_loss_limit_dollars": 50,
     "daily_profit_target_dollars": 9999999,
     "claude_enabled": False,
@@ -88,7 +88,7 @@ def _safe_json_read(path: str, default):
         return default
 
 
-_CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 20, "stop_loss_percent": 35}
+_CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 5, "stop_loss_percent": 45}
 _STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
                    "phase": "waiting", "mode": "paper"}
 
