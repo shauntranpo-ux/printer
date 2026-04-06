@@ -1865,15 +1865,7 @@ async def handle_ready_phase(
         config = read_config()
         mode = config.get("mode", "paper")
 
-    # Cooldown (only blocks live trading; paper continues)
-    if mode == "live" and cooldown_counter > 0:
-        cooldown_counter -= 1
-        reason = f"cooldown active, {cooldown_counter} markets remaining"
-        log.info(f"{ticker}: {reason}")
-        _log_entry(market, "READY", secs_left, btc_price, strike,
-                   int(entry_price_cents), score, "skip", reason, mode)
-        last_action, last_skip_reason = "skip", reason
-        return
+    # Cooldown disabled — trade every session regardless of prior outcome
 
     # Position sizing
     trade_amount = config.get("trade_amount_dollars", 20)
@@ -1997,9 +1989,7 @@ async def handle_locked_phase(
             "profit_percent": round(profit_pct, 2),
         })
 
-        if outcome == "loss" and pos["mode"] == "live":
-            cooldown_counter = config.get("cooldown_markets", 2)
-            log.info(f"Loss in live mode. Cooldown={cooldown_counter} markets.")
+        # Cooldown disabled — no sit-out after losses
 
         current_position = None
         current_phase = "DONE"
@@ -2059,9 +2049,7 @@ async def handle_locked_phase(
             "profit_percent": round(profit_pct, 2),
         })
 
-        if pos["mode"] == "live":
-            cooldown_counter = config.get("cooldown_markets", 2)
-            log.info(f"{exit_reason} in live mode. Cooldown={cooldown_counter} markets.")
+        # Cooldown disabled — re-enter immediately after stop loss or exit
 
         current_position = None
         current_phase = "DONE"
