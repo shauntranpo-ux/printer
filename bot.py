@@ -1847,7 +1847,7 @@ async def handle_ready_phase(
     last_confidence_breakdown = breakdown
 
     # Confidence threshold gate (matches backtest min_confidence param)
-    min_score = config.get("confidence_threshold", 60)
+    min_score = config.get("confidence_threshold", 67)
     if do_trade and score < min_score:
         skip_reason_ai = f"confidence {score} < threshold {min_score}"
         do_trade = False
@@ -1894,7 +1894,7 @@ async def handle_ready_phase(
     fill_price = result.get("fill_price_cents") or int(entry_price_cents)
     order_id = result.get("order_id")
 
-    stop_pct = config.get("stop_loss_percent", 35)
+    stop_pct = config.get("stop_loss_percent", 45)
     sl_price = int(fill_price * (1 - stop_pct / 100))
     trade_ts = datetime.now(timezone.utc).isoformat()
 
