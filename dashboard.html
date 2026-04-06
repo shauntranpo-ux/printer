@@ -975,8 +975,11 @@ async function pollTrades() {
       fetch('/api/trades?mode=live'),
       fetch('/api/trades?mode=paper'),
     ]);
-    liveTradesData  = await liveR.json();
-    paperTradesData = await paperR.json();
+    if (!liveR.ok || !paperR.ok) return;
+    const liveJson  = await liveR.json();
+    const paperJson = await paperR.json();
+    liveTradesData  = Array.isArray(liveJson)  ? liveJson  : [];
+    paperTradesData = Array.isArray(paperJson) ? paperJson : [];
 
     renderTradeTable('live-trades',  liveTradesData);
     renderTradeTable('paper-trades', paperTradesData);
