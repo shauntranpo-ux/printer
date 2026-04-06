@@ -104,29 +104,32 @@ def main():
     print(f"[runner] {len(strategies)} strategy instance(s) running. Ctrl+C to stop.\n")
 
     while True:
-        time.sleep(POLL_INTERVAL)
-        now = time.time()
+        try:
+            time.sleep(POLL_INTERVAL)
+            now = time.time()
 
-        for entry in _procs:
-            proc = entry["proc"]
-            if proc.poll() is None:
-                continue
+            for entry in _procs:
+                proc = entry["proc"]
+                if proc.poll() is None:
+                    continue
 
-            code        = proc.returncode
-            since_crash = now - entry["last_crash"]
+                code        = proc.returncode
+                since_crash = now - entry["last_crash"]
 
-            if entry["last_crash"] == 0.0:
-                print(f"[runner] '{entry['name']}' exited ({code}). "
-                      f"Waiting {RESTART_BACKOFF}s before restart ...")
-                entry["last_crash"] = now
-            elif since_crash >= RESTART_BACKOFF:
-                new_proc = _start_bot(entry["strategy"])
-                entry["proc"]       = new_proc
-                entry["last_crash"] = 0.0
-                print(f"[runner] '{entry['name']}' restarted (PID={new_proc.pid}).")
+                if entry["last_crash"] == 0.0:
+                    print(f"[runner] '{entry['name']}' exited ({code}). "
+                          f"Waiting {RESTART_BACKOFF}s before restart ...")
+                    entry["last_crash"] = now
+                elif since_crash >= RESTART_BACKOFF:
+                    new_proc = _start_bot(entry["strategy"])
+                    entry["proc"]       = new_proc
+                    entry["last_crash"] = 0.0
+                    print(f"[runner] '{entry['name']}' restarted (PID={new_proc.pid}).")
 
-        running = [e["name"] for e in _procs if e["proc"].poll() is None]
-        print(f"[runner] OK | bots running: {running}")
+            running = [e["name"] for e in _procs if e["proc"].poll() is None]
+            print(f"[runner] OK | bots running: {running}")
+        except Exception as exc:
+            print(f"[runner] Loop error (continuing): {exc}")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,2 @@
 [deploy]
-restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 5
+restartPolicyType = "always"

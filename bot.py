@@ -935,23 +935,24 @@ def calibrate_brain() -> None:
         conn.close()
 
         total = len(rows)
-        if total < 5:
+        if total < 20:
             return
 
         wins = sum(1 for r in rows if r[5] == "win")
         overall_wr = wins / total
 
         # ── 1. Probability scale factor ───────────────────────────────────────
-        # Compare avg model_prob (our estimate) to actual win rate
+        # Compare avg model_prob (our estimate) to actual win rate.
+        # Only update gently — 5-20 trades is far too small a sample to
+        # conclude the table is wrong; 0.05 weight prevents overreaction.
         probs = [r[6] for r in rows if r[6] is not None]
         if probs:
             avg_predicted = sum(probs) / len(probs)
             if avg_predicted > 0:
-                # If we predicted 0.70 but only won 0.45 → scale = 0.45/0.70 = 0.64
                 raw_scale = overall_wr / avg_predicted
-                # Smooth toward 1.0 — don't over-correct
-                _brain_cal["prob_scale"] = 0.7 * _brain_cal["prob_scale"] + 0.3 * raw_scale
-                _brain_cal["prob_scale"] = max(0.5, min(2.0, _brain_cal["prob_scale"]))
+                _brain_cal["prob_scale"] = 0.95 * _brain_cal["prob_scale"] + 0.05 * raw_scale
+                # Floor at 0.85 — the table is built on 7.4M rows; trust it
+                _brain_cal["prob_scale"] = max(0.85, min(1.5, _brain_cal["prob_scale"]))
 
         # ── 2. Win-rate reward tiers (priority = win rate, not profit) ───────────
         #   Tier 3 (≥85%) — MAX reward: lowest edge bar, biggest confidence bonus
@@ -961,12 +962,12 @@ def calibrate_brain() -> None:
         _brain_cal["overall_wr"] = overall_wr
         if overall_wr >= 0.85:
             _brain_cal["reward_tier"]       = 3
-            _brain_cal["min_edge_override"] = 0.08   # proven accurate — accept lower EV
+            _brain_cal["min_edge_override"] = 0.10   # proven accurate — lower bar early
             _brain_cal["confidence_bonus"]  = 25
             tier_label = "TIER 3 MAX REWARD"
         elif overall_wr >= 0.75:
             _brain_cal["reward_tier"]       = 2
-            _brain_cal["min_edge_override"] = 0.10
+            _brain_cal["min_edge_override"] = 0.12
             _brain_cal["confidence_bonus"]  = 15
             tier_label = "TIER 2 HUGE REWARD"
         elif overall_wr >= 0.50:
@@ -976,21 +977,21 @@ def calibrate_brain() -> None:
             tier_label = "TIER 1 REWARD"
         elif overall_wr >= 0.40:
             _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.20   # struggling — be selective
+            _brain_cal["min_edge_override"] = 0.18   # tighten slightly
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "no reward (learning)"
         else:
             _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.25   # losing — high-conviction only
+            _brain_cal["min_edge_override"] = 0.20   # losing — require real edge early
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "no reward (rebuild)"
 
         # ── 3. Directional performance ────────────────────────────────────────
         yes_rows = [r for r in rows if r[0] == "yes"]
         no_rows  = [r for r in rows if r[0] == "no"]
-        if len(yes_rows) >= 3:
+        if len(yes_rows) >= 10:
             _brain_cal["bullish_wr"] = sum(1 for r in yes_rows if r[5] == "win") / len(yes_rows)
-        if len(no_rows) >= 3:
+        if len(no_rows) >= 10:
             _brain_cal["bearish_wr"] = sum(1 for r in no_rows  if r[5] == "win") / len(no_rows)
 
         # ── 5. Learn from Claude's stored decisions ───────────────────────────
@@ -1013,12 +1014,12 @@ def calibrate_brain() -> None:
                 # its probability estimates were directionally correct → trust its scale
                 if avg_c_win > avg_c_loss + 10:
                     claude_implied_scale = (avg_c_win / 100) / max(overall_wr, 0.01)
-                    # Blend toward Claude's implied calibration (30% weight)
+                    # Blend very gently — same conservative rate as the main calibration
                     _brain_cal["prob_scale"] = (
-                        0.70 * _brain_cal["prob_scale"] +
-                        0.30 * claude_implied_scale
+                        0.95 * _brain_cal["prob_scale"] +
+                        0.05 * claude_implied_scale
                     )
-                    _brain_cal["prob_scale"] = max(0.5, min(2.0, _brain_cal["prob_scale"]))
+                    _brain_cal["prob_scale"] = max(0.85, min(1.5, _brain_cal["prob_scale"]))
                     brain_log.info(
                         f"[CLAUDE->BRAIN] Absorbed {len(claude_rows)} Claude decisions. "
                         f"avg_conf wins={avg_c_win:.0f} losses={avg_c_loss:.0f} | "
@@ -1153,7 +1154,7 @@ BTC PRICE MOVEMENT:
 PRINTER BRAIN STATE (your decisions will be stored and feed back into this):
   Overall win rate:     {_brain_cal['overall_wr']:.0%}
   Reward tier:          {_brain_cal['reward_tier']} / 3  (tier 3 = ≥85% WR = max reward)
-  Min EV required:      {(_brain_cal['min_edge_override'] or 0.15):.0%}
+  Min EV required:      {(_brain_cal['min_edge_override'] or 0.15):.0%} early / 8% last 3min
   Prob scale factor:    {_brain_cal['prob_scale']:.2f}  (1.0 = neutral, <1 = overestimating)
   YES win rate:         {_brain_cal['bullish_wr']:.0%}
   NO  win rate:         {_brain_cal['bearish_wr']:.0%}
@@ -1356,10 +1357,18 @@ def printer_brain(
     else:
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
-    # ── 8. EV filter — minimum 15% expected return ───────────────────────────
-    # 5% was too loose: allowed 57% win-rate trades at 13min remaining.
-    # 15% requires e.g. 65% win rate at 50c contract, or 90% win rate at 75c.
-    min_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.15
+    # ── 8. EV filter — dynamic threshold based on time remaining ─────────────
+    # Early/mid session (>3 min left): require 15% EV — only strong edges.
+    # Late session (≤3 min left): accept 8% EV — near expiry, win probability
+    # is near-certain but markets reprice slowly, so edge exists even at lower EV.
+    # This lets the bot find a trade in almost every session's final minutes
+    # while staying selective early when outcomes are still uncertain.
+    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.15
+    if secs_left < 3 * 60:
+        min_ev = min(base_ev, 0.08)   # last 3 min: lower bar, near-certain outcomes
+    else:
+        min_ev = base_ev
+
     skip_reason = ""
     if best_ev < min_ev:
         skip_reason = (
@@ -1835,7 +1844,7 @@ async def handle_ready_phase(
     last_confidence_breakdown = breakdown
 
     # Confidence threshold gate (matches backtest min_confidence param)
-    min_score = config.get("confidence_threshold", 80)
+    min_score = config.get("confidence_threshold", 60)
     if do_trade and score < min_score:
         skip_reason_ai = f"confidence {score} < threshold {min_score}"
         do_trade = False
@@ -1969,7 +1978,7 @@ async def handle_locked_phase(
     if secs_left <= 0:
         outcome = "win" if (
             (pos["side"] == "yes" and btc_price > pos["strike"]) or
-            (pos["side"] == "no"  and btc_price < pos["strike"])
+            (pos["side"] == "no"  and btc_price <= pos["strike"])
         ) else "loss"
         exit_price = 100 if outcome == "win" else 0
         pnl = (exit_price - pos["entry_price_cents"]) * pos["contracts"] / 100
@@ -2270,19 +2279,16 @@ async def main() -> None:
     # Start the BTC WebSocket feed as a background task
     asyncio.create_task(btc_feed_task())
 
-    # Wait up to 30 seconds for the first BTC price
-    log.info("Waiting for BTC price feed (up to 30s)...")
-    for _ in range(30):
+    # Wait for the first BTC price — retry indefinitely so a transient network
+    # hiccup on startup doesn't kill the process and burn a Railway restart credit.
+    log.info("Waiting for BTC price feed...")
+    waited = 0
+    while get_btc_price() is None:
         await asyncio.sleep(1)
-        if get_btc_price() is not None:
-            log.info(f"BTC feed ready. Current price: ${get_btc_price():,.2f}")
-            break
-    else:
-        log.error(
-            "ERROR: BTC price feed did not connect within 30 seconds.\n"
-            "Check your internet connection and that wss://advanced-trade-ws.coinbase.com is reachable."
-        )
-        sys.exit(1)
+        waited += 1
+        if waited % 30 == 0:
+            log.warning(f"Still waiting for BTC price feed ({waited}s elapsed)...")
+    log.info(f"BTC feed ready after {waited}s. Current price: ${get_btc_price():,.2f}")
 
     await main_loop()
 
