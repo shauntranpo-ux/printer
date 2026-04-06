@@ -1351,8 +1351,11 @@ def printer_brain(
     if _brain_cal["bullish_wr"] < 0.35: yes_ev -= 0.04
     if _brain_cal["bearish_wr"] < 0.35: no_ev  -= 0.04
 
-    # ── 7. Pick best side ─────────────────────────────────────────────────────
-    if yes_ev >= no_ev:
+    # ── 7. Pick side — always bet WITH BTC's current position ────────────────
+    # The entire strategy is "BTC stays where it is." Never bet against it
+    # just because the opposite contract happens to be cheap — those are
+    # low-probability lottery tickets that flip the loss rate.
+    if above:
         side, best_ev, entry_c, true_p = "yes", yes_ev, yes_ask, prob_yes
     else:
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
