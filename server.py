@@ -222,6 +222,8 @@ def api_trades():
         conn.close()
         return jsonify([dict(r) for r in rows])
     except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify([])
         return jsonify({"error": str(exc)}), 500
 
 
@@ -236,6 +238,8 @@ def api_market_log():
         conn.close()
         return jsonify([dict(r) for r in rows])
     except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify([])
         return jsonify({"error": str(exc)}), 500
 
 
@@ -250,6 +254,8 @@ def api_daily_summary():
         conn.close()
         return jsonify([dict(r) for r in rows])
     except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify([])
         return jsonify({"error": str(exc)}), 500
 
 
@@ -264,6 +270,8 @@ def api_stress_test():
         conn.close()
         return jsonify([dict(r) for r in rows])
     except Exception as exc:
+        if "no such table" in str(exc).lower():
+            return jsonify([])
         return jsonify({"error": str(exc)}), 500
 
 
