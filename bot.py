@@ -147,6 +147,49 @@ def write_config(data: dict) -> None:
         json.dump(data, fh, indent=2)
 
 
+def _init_config() -> None:
+    """
+    Create config.json on startup if missing, and apply Railway env var overrides.
+
+    Set BOT_MODE=live and BOT_ENABLED=true in Railway environment variables
+    so live mode survives every redeploy without manual editing.
+    Daily loss limits still work — they set limit_triggered in memory which
+    is checked independently of the mode flag.
+    """
+    # Build defaults
+    defaults = {
+        "bot_enabled": True,
+        "trade_amount_dollars": 10,
+        "mode": "live",
+        "daily_loss_limit_dollars": 50,
+        "daily_profit_target_dollars": 9999999,
+        "claude_enabled": False,
+    }
+
+    # Load existing config or start from defaults
+    if os.path.exists(_CONFIG_FILE):
+        try:
+            with open(_CONFIG_FILE) as fh:
+                cfg = json.load(fh)
+        except Exception:
+            cfg = defaults.copy()
+    else:
+        cfg = defaults.copy()
+
+    # Railway env var overrides — set once, persist forever
+    if "BOT_MODE" in os.environ:
+        cfg["mode"] = os.environ["BOT_MODE"].strip().lower()
+    if "BOT_ENABLED" in os.environ:
+        cfg["bot_enabled"] = os.environ["BOT_ENABLED"].strip().lower() in ("1", "true", "yes")
+
+    # Fill in any missing keys with defaults
+    for k, v in defaults.items():
+        cfg.setdefault(k, v)
+
+    write_config(cfg)
+    log.info(f"Config ready: mode={cfg['mode']} enabled={cfg['bot_enabled']}")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  Database
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2263,6 +2306,7 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
 
 async def main() -> None:
     """Bootstrap: load credentials, init DB, start BTC feed, run main loop."""
+    _init_config()
     load_credentials()
     init_db()
     _init_claude()
