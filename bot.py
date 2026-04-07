@@ -60,6 +60,10 @@ WATCH_PHASE_SECONDS = 0   # evaluate immediately when a session starts
 CONFIDENCE_THRESHOLD = 67   # minimum win probability % to enter a trade
 STOP_LOSS_PERCENT    = 45   # exit if contract bid drops this % from entry price
 
+# ── Telegram notifications (optional — set env vars to enable) ────────────────
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID",   "")
+
 # ─────────────────────────── file paths (env-overridable for multi-strategy) ──
 _CONFIG_FILE = os.environ.get("BOT_CONFIG_FILE", "config.json")
 _DB_FILE     = os.environ.get("BOT_DB_FILE",     "kalshi_bot.db")
@@ -403,6 +407,24 @@ def db_get_today_pnl(mode: str) -> float:
 # ══════════════════════════════════════════════════════════════════════════════
 #  Kalshi auth
 # ══════════════════════════════════════════════════════════════════════════════
+
+async def send_telegram(text: str) -> None:
+    """Send a Telegram notification. Silent no-op if env vars are not set."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    try:
+        async with aiohttp.ClientSession() as tg:
+            async with tg.post(
+                url,
+                json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status != 200:
+                    log.warning(f"Telegram notify failed: HTTP {resp.status}")
+    except Exception as exc:
+        log.warning(f"Telegram notify error: {exc}")
+
 
 def load_credentials() -> None:
     """
@@ -2003,6 +2025,15 @@ async def handle_ready_phase(
         current_phase = "LOCKED"
         last_action, last_skip_reason = "trade", ""
         log.info(f"{ticker}: LOCKED. SL={sl_price}c")
+        mode_icon = "📄" if mode == "paper" else "💵"
+        dir_icon  = "⬆" if side == "yes" else "⬇"
+        await send_telegram(
+            f"{mode_icon} <b>TRADE ENTERED</b>\n"
+            f"{dir_icon} <b>{side.upper()}</b>  {contracts}x @ {fill_price}¢\n"
+            f"Market: <code>{ticker}</code>\n"
+            f"Win prob: {int(brain.get('win_prob', 0) * 100)}%  |  SL: {sl_price}¢\n"
+            f"BTC: ${btc_price:,.0f}  |  {int(secs_left // 60)}m {int(secs_left % 60)}s left"
+        )
     else:
         current_phase = "DONE"
         last_action, last_skip_reason = "skip", "order not filled"
@@ -2052,6 +2083,14 @@ async def handle_locked_phase(
             "pnl_dollars": round(pnl, 2),
             "profit_percent": round(profit_pct, 2),
         })
+        result_icon = "✅" if outcome == "win" else "❌"
+        pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+        mode_icon = "📄" if pos["mode"] == "paper" else "💵"
+        await send_telegram(
+            f"{result_icon} <b>{'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}</b>\n"
+            f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']}x  {ticker}\n"
+            f"Entry: {pos['entry_price_cents']}¢  →  Exit: {exit_price}¢  (expiry)"
+        )
 
         # Cooldown disabled — no sit-out after losses
 
@@ -2112,6 +2151,14 @@ async def handle_locked_phase(
             "pnl_dollars": round(pnl, 2),
             "profit_percent": round(profit_pct, 2),
         })
+        exit_label = "🛑 STOP LOSS" if exit_reason == "stop_loss" else "⚠️ LATE BAIL"
+        pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+        mode_icon = "📄" if pos["mode"] == "paper" else "💵"
+        await send_telegram(
+            f"{exit_label}  <b>{pnl_str}</b>\n"
+            f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']}x  {ticker}\n"
+            f"Entry: {pos['entry_price_cents']}¢  →  Exit: {exit_price}¢"
+        )
 
         # Cooldown disabled — re-enter immediately after stop loss or exit
 
