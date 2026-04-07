@@ -453,7 +453,14 @@ def kalshi_headers(method: str, path: str) -> dict:
     full_path = KALSHI_PATH_PREFIX + path
     msg = (ts + method.upper() + full_path).encode()
     sig = b64encode(
-        private_key.sign(msg, padding.PKCS1v15(), hashes.SHA256())
+        private_key.sign(
+            msg,
+            padding.PSS(
+                mgf=padding.MGF1(hashes.SHA256()),
+                salt_length=padding.PSS.DIGEST_LENGTH,
+            ),
+            hashes.SHA256(),
+        )
     ).decode()
     return {
         "KALSHI-ACCESS-KEY": api_key,
