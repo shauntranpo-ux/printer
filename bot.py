@@ -831,11 +831,20 @@ async def fetch_orderbook(
         except (TypeError, ValueError):
             yes_liquidity = 500
 
+    if no_asks:
+        no_liquidity = sum(q for p, q in no_asks if p <= best_no_ask)
+    else:
+        try:
+            no_liquidity = int(float(market.get("no_ask_size_fp", 500))) if market else 500
+        except (TypeError, ValueError):
+            no_liquidity = 500
+
     return {
         "best_yes_ask": best_yes_ask,
         "best_no_ask":  best_no_ask,
         "best_yes_bid": best_yes_bid,  # may be None — only used for SL monitoring
         "yes_liquidity": yes_liquidity,
+        "no_liquidity":  no_liquidity,
     }
 
 
@@ -1594,7 +1603,8 @@ async def place_order(
             log.error(f"Order HTTP {http_status}: {data}")
             # Don't retry on errors that won't be fixed by a higher price
             err_code = (data.get("error") or {}).get("code", "")
-            if err_code in ("insufficient_funds", "authentication_error", "not_found", "forbidden"):
+            if err_code in ("insufficient_funds", "authentication_error", "not_found", "forbidden",
+                           "fill_or_kill_insufficient_resting_volume"):
                 log.error(f"Non-retryable error ({err_code}). Stopping order attempts.")
                 break
             continue
@@ -1955,7 +1965,8 @@ async def handle_ready_phase(
 
     # Position sizing
     trade_amount = config.get("trade_amount_dollars", 20)
-    contracts = calculate_contracts(trade_amount, int(entry_price_cents), ob["yes_liquidity"])
+    avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
+    contracts = calculate_contracts(trade_amount, int(entry_price_cents), avail_liquidity)
     if contracts == 0:
         reason = "trade amount too small for current contract price"
         log.info(f"{ticker}: {reason}")
