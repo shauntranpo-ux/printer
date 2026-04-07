@@ -411,6 +411,7 @@ def db_get_today_pnl(mode: str) -> float:
 async def send_telegram(text: str) -> None:
     """Send a Telegram notification. Silent no-op if env vars are not set."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        log.warning("Telegram skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
@@ -420,8 +421,11 @@ async def send_telegram(text: str) -> None:
                 json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
                 timeout=aiohttp.ClientTimeout(total=5),
             ) as resp:
+                body = await resp.text()
                 if resp.status != 200:
-                    log.warning(f"Telegram notify failed: HTTP {resp.status}")
+                    log.warning(f"Telegram notify failed: HTTP {resp.status} — {body}")
+                else:
+                    log.info(f"Telegram notification sent OK")
     except Exception as exc:
         log.warning(f"Telegram notify error: {exc}")
 
