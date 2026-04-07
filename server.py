@@ -17,7 +17,7 @@ import sqlite3
 import time
 import urllib.request
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 try:
     from flask import Flask, jsonify, request
@@ -52,12 +52,12 @@ except Exception as _dir_err:
 _FULL_CONFIG_DEFAULT = {
     "bot_enabled": False,
     "mode": "paper",
-    "trade_amount_dollars": 5,
+    "trade_amount_dollars": 10,
     "confidence_threshold": 67,
-    "stop_loss_percent": 45,
+    "stop_loss_percent": 50,
     "cooldown_markets": 0,
-    "daily_loss_limit_dollars": 50,
-    "daily_profit_target_dollars": 9999999,
+    "daily_loss_limit_dollars": 5000,
+    "daily_profit_target_dollars": 5000,
     "claude_enabled": False,
 }
 if not os.path.exists("config.json"):
@@ -347,7 +347,7 @@ def api_config():
         return jsonify({"error": f"Could not save config: {exc}"}), 500
     log.info(f"Config updated: {data}")
 
-    now_str = datetime.now(timezone.utc).strftime("%b %d %I:%M %p UTC")
+    now_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
     new_enabled = config.get("bot_enabled", False)
     new_mode    = config.get("mode", "paper")
 

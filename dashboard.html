@@ -560,7 +560,7 @@ let _resetMode = null;
 // ── Clock ──
 function tickClock() {
   document.getElementById('clock').textContent =
-    new Date().toUTCString().replace('GMT','UTC').slice(5,25);
+    new Date().toLocaleString('en-US',{timeZone:'America/Los_Angeles',month:'short',day:'numeric',hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true}) + ' PST';
 }
 setInterval(tickClock, 1000); tickClock();
 

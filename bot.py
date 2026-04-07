@@ -19,7 +19,7 @@ import sys
 import time
 from base64 import b64encode
 from collections import deque
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import aiohttp
 import websockets
@@ -58,7 +58,7 @@ WATCH_PHASE_SECONDS = 0   # evaluate immediately when a session starts
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
 CONFIDENCE_THRESHOLD = 67   # minimum win probability % to enter a trade
-STOP_LOSS_PERCENT    = 45   # exit if contract bid drops this % from entry price
+STOP_LOSS_PERCENT    = 50   # exit if contract bid drops this % from entry price
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -163,13 +163,13 @@ def _init_config() -> None:
     # Build defaults
     defaults = {
         "bot_enabled": False,
-        "trade_amount_dollars": 5,
+        "trade_amount_dollars": 10,
         "mode": "paper",
         "confidence_threshold": 67,
-        "stop_loss_percent": 45,
+        "stop_loss_percent": 50,
         "cooldown_markets": 0,
-        "daily_loss_limit_dollars": 50,
-        "daily_profit_target_dollars": 9999999,
+        "daily_loss_limit_dollars": 5000,
+        "daily_profit_target_dollars": 5000,
         "claude_enabled": False,
     }
 
@@ -2091,7 +2091,7 @@ async def handle_ready_phase(
         _ev_str    = f"+{_ev}%" if _ev >= 0 else f"{_ev}%"
         _payout    = round((100 - fill_price) * contracts / 100, 2)
         _cost      = round(fill_price * contracts / 100, 2)
-        _time_str  = datetime.now(timezone.utc).strftime("%b %d %I:%M %p UTC")
+        _time_str  = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
         await send_telegram(
             f"{mode_icon} <b>TRADE ENTERED</b>  —  {_time_str}\n"
             f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
@@ -2181,7 +2181,7 @@ async def handle_locked_phase(
         pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
         mode_icon = "📄" if pos["mode"] == "paper" else "💵"
-        _time_str = datetime.now(timezone.utc).strftime("%b %d %I:%M %p UTC")
+        _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
         _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
         _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
         await send_telegram(
@@ -2285,7 +2285,7 @@ async def handle_locked_phase(
         pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
         mode_icon = "📄" if pos["mode"] == "paper" else "💵"
-        _time_str = datetime.now(timezone.utc).strftime("%b %d %I:%M %p UTC")
+        _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
         _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
         _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
         await send_telegram(
