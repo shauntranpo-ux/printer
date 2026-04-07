@@ -801,10 +801,10 @@ async def fetch_orderbook(
         return None
 
     # Sanity check — reject prices that are clearly wrong
-    if not (1 <= best_yes_ask <= 99 and 1 <= best_no_ask <= 99):
+    if not (1 <= best_yes_ask <= 99 and 1 <= best_no_ask <= 100):
         log.error(
             f"Orderbook sanity FAIL for {ticker}: "
-            f"yes_ask={best_yes_ask}c no_ask={best_no_ask}c — out of [1,99], skipping"
+            f"yes_ask={best_yes_ask}c no_ask={best_no_ask}c — out of valid range, skipping"
         )
         return None
     if best_yes_ask + best_no_ask < 100:
