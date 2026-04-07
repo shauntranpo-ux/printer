@@ -1518,14 +1518,21 @@ def calculate_contracts(
     liquidity: int,
 ) -> int:
     """
-    Calculate contract count for a trade.
+    Calculate contract count for a trade. Never exceeds the dollar amount.
 
     Returns:
         Number of contracts (0 if trade amount is too small for even one contract).
     """
+    if entry_price_cents <= 0:
+        return 0
     trade_cents = trade_amount_dollars * 100
-    contracts = int(trade_cents / entry_price_cents)  # floor division
+    contracts = int(trade_cents / entry_price_cents)  # floor — never goes over dollar amount
     contracts = min(contracts, liquidity)             # cap at available liquidity
+    contracts = max(contracts, 0)
+    # Safety: verify cost never exceeds trade amount
+    actual_cost = contracts * entry_price_cents / 100
+    if actual_cost > trade_amount_dollars + 0.01:
+        contracts = max(0, contracts - 1)
     return contracts
 
 
@@ -1605,7 +1612,6 @@ async def place_order(
 
         if http_status not in (200, 201):
             log.error(f"Order HTTP {http_status}: {data}")
-            # Don't retry on errors that won't be fixed by a higher price
             err_code = (data.get("error") or {}).get("code", "")
             if err_code in ("insufficient_funds", "authentication_error", "not_found", "forbidden",
                            "fill_or_kill_insufficient_resting_volume"):
@@ -1618,7 +1624,22 @@ async def place_order(
             log.error(f"No order_id in response: {data}")
             continue
 
-        # Confirm fill status
+        # ── Check fill status from the POST response body first (fastest, no extra request)
+        post_order  = data.get("order") or data
+        post_status = post_order.get("status", "")
+        log.info(f"Order {order_id} POST status={post_status!r}")
+
+        if post_status in ("filled", "executed"):
+            fill_price = post_order.get("yes_price", price_this_attempt)
+            log.info(f"Order FILLED (POST response): {order_id} @ {fill_price}c attempt={attempt}")
+            return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id}
+
+        if post_status == "canceled":
+            # FOK didn't fill — safe to retry at a higher price
+            log.info(f"Order {order_id} FOK canceled on attempt {attempt} — retrying")
+            continue
+
+        # Status unclear in POST body — do ONE GET to confirm before deciding
         check_path = f"/portfolio/orders/{order_id}"
         try:
             async with session.get(
@@ -1627,30 +1648,29 @@ async def place_order(
                 timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
             ) as resp:
                 order_data = await resp.json()
-        except Exception as exc:
-            log.error(f"Order status check error: {exc}")
+            get_order  = order_data.get("order", order_data)
+            get_status = get_order.get("status", "")
+            log.info(f"Order {order_id} GET status={get_status!r}")
+
+            if get_status in ("filled", "executed"):
+                fill_price = get_order.get("yes_price", price_this_attempt)
+                log.info(f"Order FILLED (GET confirm): {order_id} @ {fill_price}c attempt={attempt}")
+                return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id}
+
+            if get_status == "canceled":
+                log.info(f"Order {order_id} confirmed canceled — retrying")
+                continue
+
+            # Unknown status after GET — STOP. Do not retry. Treat as possible fill
+            # to prevent placing a second order on a possibly-filled position.
+            log.error(f"Order {order_id} unknown status={get_status!r} after GET — stopping to prevent double-fill")
             return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
 
-        order = order_data.get("order", order_data)
-        status = order.get("status", "")
-
-        if status in ("filled", "executed"):
-            fill_price = order.get("yes_price", price_this_attempt)
-            log.info(f"Order FILLED: {order_id} @ {fill_price}c (attempt {attempt}, status={status!r})")
-            return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id}
-
-        log.warning(f"Order {order_id} status={status!r} — not filled on attempt {attempt}")
-        # Cancel before retry
-        cancel_path = f"/portfolio/orders/{order_id}"
-        try:
-            async with session.delete(
-                KALSHI_BASE_URL + cancel_path,
-                headers=kalshi_headers("DELETE", cancel_path),
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
-            ) as resp:
-                await resp.read()
         except Exception as exc:
-            log.error(f"Order cancel error: {exc}")
+            # GET failed — order was placed (HTTP 200), status unknown.
+            # Stop here; do not retry to avoid double-filling.
+            log.error(f"Order status GET error: {exc} — stopping to prevent double-fill")
+            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
 
     log.error(f"Order not filled after 3 attempts for {ticker} {side}@{entry_price_cents}c")
     return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
@@ -2166,25 +2186,52 @@ async def handle_locked_phase(
         return
 
     # Fetch orderbook for stop-loss price check
+    ob = None
     try:
         ob = await fetch_orderbook(session, ticker, market)
     except Exception as exc:
-        log.error(f"Orderbook error in LOCKED: {exc}")
-        return
+        log.error(f"[SL] Orderbook error in LOCKED: {exc}")
 
     if ob is None:
+        pos["_sl_ob_failures"] = pos.get("_sl_ob_failures", 0) + 1
+        log.error(f"[SL] Orderbook unavailable (failure #{pos['_sl_ob_failures']}) — SL CHECK SKIPPED this cycle")
+        if pos["_sl_ob_failures"] >= 3:
+            log.error(f"[SL] 3 consecutive orderbook failures — forcing exit to protect capital")
+            exit_price = await sell_position(
+                session, ticker, pos["side"], pos["contracts"], pos["mode"],
+                int(pos["entry_price_cents"] * 0.55)  # estimate ~45% down
+            )
+            pnl = (exit_price - pos["entry_price_cents"]) * pos["contracts"] / 100
+            db_update_trade(pos["trade_id"], {
+                "exit_price_cents": exit_price,
+                "exit_reason": "sl_ob_failure",
+                "outcome": "loss",
+                "pnl_dollars": round(pnl, 2),
+                "profit_percent": round((exit_price - pos["entry_price_cents"]) / pos["entry_price_cents"] * 100, 2),
+            })
+            await send_telegram(f"⚠️ <b>FORCED EXIT</b> — 3 orderbook failures\n${pnl:+.2f}  |  <code>{ticker}</code>")
+            current_position = None
+            current_phase = "DONE"
+        return
+    pos["_sl_ob_failures"] = 0  # reset on success
+
+    try:
+        if pos["side"] == "yes":
+            current_bid = ob["best_yes_bid"] if ob.get("best_yes_bid") is not None else (100 - ob["best_no_ask"])
+        else:
+            current_bid = 100 - ob["best_yes_ask"]
+    except Exception as exc:
+        log.error(f"[SL] Bid price calculation error: {exc} — ob={ob}")
         return
 
-    if pos["side"] == "yes":
-        # YES bid: prefer yes_bid directly; fall back to 100 - no_ask
-        current_bid = ob["best_yes_bid"] if ob.get("best_yes_bid") is not None else (100 - ob["best_no_ask"])
-    else:
-        # NO bid: what we'd receive selling NO = 100 - yes_ask
-        current_bid = 100 - ob["best_yes_ask"]
+    if current_bid is None:
+        log.error(f"[SL] current_bid is None — SL CHECK SKIPPED")
+        return
+
     unrealized = (current_bid - pos["entry_price_cents"]) * pos["contracts"] / 100
     log.info(
-        f"[LOCKED] {ticker} | BTC={btc_price:.0f} | bid={current_bid}c | "
-        f"unrealized=${unrealized:.2f} | SL={pos['stop_loss_price_cents']}c"
+        f"[SL CHECK] {ticker} | bid={current_bid}c | SL={pos['stop_loss_price_cents']}c | "
+        f"entry={pos['entry_price_cents']}c | unrealized=${unrealized:+.2f}"
     )
 
     # Determine exit reason — standard SL OR late-stage bail-out
@@ -2192,14 +2239,12 @@ async def handle_locked_phase(
     if current_bid <= pos["stop_loss_price_cents"]:
         exit_reason = "stop_loss"
         log.warning(
-            f"Stop loss triggered for {ticker}: "
-            f"bid={current_bid}c <= SL={pos['stop_loss_price_cents']}c"
+            f"🛑 STOP LOSS TRIGGERED {ticker}: bid={current_bid}c <= SL={pos['stop_loss_price_cents']}c"
         )
     elif secs_left <= 120 and current_bid < pos["entry_price_cents"] * 0.6:
-        # Last 2 minutes and down >40% from entry — get out, don't ride to zero
         exit_reason = "late_bail"
         log.warning(
-            f"Late bail for {ticker}: {secs_left:.0f}s left, "
+            f"⚠️ LATE BAIL {ticker}: {secs_left:.0f}s left, "
             f"bid={current_bid}c < 60% of entry {pos['entry_price_cents']}c"
         )
 
