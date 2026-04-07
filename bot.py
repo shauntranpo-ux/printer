@@ -1570,6 +1570,11 @@ async def place_order(
 
         if http_status not in (200, 201):
             log.error(f"Order HTTP {http_status}: {data}")
+            # Don't retry on errors that won't be fixed by a higher price
+            err_code = (data.get("error") or {}).get("code", "")
+            if err_code in ("insufficient_funds", "authentication_error", "not_found", "forbidden"):
+                log.error(f"Non-retryable error ({err_code}). Stopping order attempts.")
+                break
             continue
 
         order_id = (data.get("order") or {}).get("order_id") or data.get("order_id")
