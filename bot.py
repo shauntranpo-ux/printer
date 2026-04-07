@@ -1647,6 +1647,32 @@ async def place_order(
         log.info(f"Order FILLED: {order_id} @ {fill_price}c x{filled_count} status={post_status!r}")
         return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
 
+    # Both attempts exhausted — check portfolio directly as ground truth.
+    # Handles the case where the request went through but the response timed out.
+    log.warning(f"Order attempts exhausted for {ticker} — checking portfolio for open position")
+    try:
+        pos_path = f"/portfolio/positions?ticker={ticker}"
+        async with session.get(
+            KALSHI_BASE_URL + pos_path,
+            headers=kalshi_headers("GET", pos_path),
+            timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+        ) as resp:
+            pos_data = await resp.json()
+        positions = pos_data.get("market_positions") or pos_data.get("positions") or []
+        for p in positions:
+            if p.get("ticker") == ticker:
+                held = p.get("position", 0)
+                if side == "yes" and held > 0:
+                    log.info(f"Portfolio check: found YES position {held}x on {ticker} — order DID fill")
+                    return {"fill_confirmed": True, "fill_price_cents": entry_price_cents, "order_id": None, "filled_contracts": held}
+                if side == "no" and held < 0:
+                    held_no = abs(held)
+                    log.info(f"Portfolio check: found NO position {held_no}x on {ticker} — order DID fill")
+                    return {"fill_confirmed": True, "fill_price_cents": entry_price_cents, "order_id": None, "filled_contracts": held_no}
+        log.info(f"Portfolio check: no position found for {ticker} — genuinely not filled")
+    except Exception as exc:
+        log.error(f"Portfolio check error: {exc}")
+
     log.error(f"Order not filled after 2 attempts for {ticker} {side}@{entry_price_cents}c")
     await send_telegram(
         f"⚠️ <b>ORDER NOT FILLED</b>  —  no liquidity\n"
