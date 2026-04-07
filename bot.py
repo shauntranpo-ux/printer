@@ -2120,7 +2120,10 @@ async def main_loop() -> None:
 
     prev_ticker: str | None = None
 
-    async with aiohttp.ClientSession() as session:
+    # TCPConnector with keepalive_timeout prevents stale pooled connections
+    # from silently breaking API calls after many hours of uptime.
+    connector = aiohttp.TCPConnector(keepalive_timeout=30, limit=10)
+    async with aiohttp.ClientSession(connector=connector) as session:
         while True:
             try:
                 midnight_reset()
