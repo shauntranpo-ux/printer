@@ -1590,7 +1590,7 @@ async def place_order(
             "yes_price": yes_price,
             "action": "buy",
             "client_order_id": client_order_id,
-            "time_in_force": "fill_or_kill",
+            "time_in_force": "immediate_or_cancel",
         }
 
         if attempt > 0:
@@ -1634,13 +1634,14 @@ async def place_order(
         log.info(f"Order {order_id} POST status={post_status!r}")
 
         if post_status in ("filled", "executed"):
-            fill_price = post_order.get("yes_price", price_this_attempt)
-            log.info(f"Order FILLED (POST response): {order_id} @ {fill_price}c attempt={attempt}")
-            return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id}
+            fill_price     = post_order.get("yes_price", price_this_attempt)
+            filled_count   = post_order.get("contracts_count") or post_order.get("filled_count") or contracts
+            log.info(f"Order FILLED (POST response): {order_id} @ {fill_price}c x{filled_count} attempt={attempt}")
+            return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
 
         if post_status == "canceled":
-            # FOK didn't fill — safe to retry at a higher price
-            log.info(f"Order {order_id} FOK canceled on attempt {attempt} — retrying")
+            # IOC got zero fill — retry at a higher price
+            log.info(f"Order {order_id} IOC zero-fill on attempt {attempt} — retrying")
             continue
 
         # Status unclear in POST body — do ONE GET to confirm before deciding
@@ -1657,9 +1658,10 @@ async def place_order(
             log.info(f"Order {order_id} GET status={get_status!r}")
 
             if get_status in ("filled", "executed"):
-                fill_price = get_order.get("yes_price", price_this_attempt)
-                log.info(f"Order FILLED (GET confirm): {order_id} @ {fill_price}c attempt={attempt}")
-                return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id}
+                fill_price   = get_order.get("yes_price", price_this_attempt)
+                filled_count = get_order.get("contracts_count") or get_order.get("filled_count") or contracts
+                log.info(f"Order FILLED (GET confirm): {order_id} @ {fill_price}c x{filled_count} attempt={attempt}")
+                return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
 
             if get_status == "canceled":
                 log.info(f"Order {order_id} confirmed canceled — retrying")
@@ -2024,6 +2026,8 @@ async def handle_ready_phase(
     fill_confirmed = result["fill_confirmed"]
     fill_price = result.get("fill_price_cents") or int(entry_price_cents)
     order_id = result.get("order_id")
+    # Use actual filled contract count (IOC may fill fewer than requested)
+    contracts = result.get("filled_contracts") or contracts
 
     stop_pct = STOP_LOSS_PERCENT
     sl_price = int(fill_price * (1 - stop_pct / 100))
