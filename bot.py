@@ -2416,6 +2416,8 @@ async def main() -> None:
         if waited % 30 == 0:
             log.warning(f"Still waiting for BTC price feed ({waited}s elapsed)...")
     log.info(f"BTC feed ready after {waited}s. Current price: ${get_btc_price():,.2f}")
+    _startup_cfg = read_config()
+    await send_telegram(f"🤖 <b>Printer bot started</b>\nBTC: ${get_btc_price():,.2f}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
 
     await main_loop()
 
