@@ -1630,9 +1630,9 @@ async def place_order(
         order = order_data.get("order", order_data)
         status = order.get("status", "")
 
-        if status == "filled":
+        if status in ("filled", "executed"):
             fill_price = order.get("yes_price", price_this_attempt)
-            log.info(f"Order FILLED: {order_id} @ {fill_price}c (attempt {attempt})")
+            log.info(f"Order FILLED: {order_id} @ {fill_price}c (attempt {attempt}, status={status!r})")
             return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id}
 
         log.warning(f"Order {order_id} status={status!r} — not filled on attempt {attempt}")
