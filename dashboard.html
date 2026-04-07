@@ -411,14 +411,30 @@
           <div id="brain-claude-signals" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;"></div>
         </div>
       </div>
-      <!-- Right: confidence scores -->
+      <!-- Right: current evaluation -->
       <div>
-        <div class="c-label">Confidence Scores <span id="brain-total-score" style="color:var(--amber);font-weight:700;"></span></div>
+        <div class="c-label">Current Evaluation <span id="brain-total-score" style="color:var(--amber);font-weight:700;"></span></div>
         <div id="brain-scores">
-          <div class="score-bar"><span class="score-label">Momentum</span><div class="score-track"><div class="score-fill" id="sc-momentum" style="width:0%"></div></div><span class="score-val" id="sv-momentum">—</span></div>
-          <div class="score-bar"><span class="score-label">Velocity</span><div class="score-track"><div class="score-fill" id="sc-velocity"  style="width:0%"></div></div><span class="score-val" id="sv-velocity">—</span></div>
-          <div class="score-bar"><span class="score-label">Time Left</span><div class="score-track"><div class="score-fill" id="sc-time"      style="width:0%"></div></div><span class="score-val" id="sv-time">—</span></div>
-          <div class="score-bar"><span class="score-label">BTC Dist</span><div class="score-track"><div class="score-fill" id="sc-distance"  style="width:0%"></div></div><span class="score-val" id="sv-distance">—</span></div>
+          <div style="display:flex;gap:16px;margin-bottom:12px;">
+            <div class="stat">
+              <div class="s-label">Win Prob</div>
+              <div id="brain-win-prob" style="font-size:18px;font-weight:600;color:var(--amber);">—</div>
+            </div>
+            <div class="stat">
+              <div class="s-label">EV</div>
+              <div id="brain-ev" style="font-size:18px;font-weight:600;color:var(--muted);">—</div>
+            </div>
+            <div class="stat">
+              <div class="s-label">Contract</div>
+              <div id="brain-contract" style="font-size:18px;font-weight:600;color:var(--text);">—</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
+            <span id="sv-momentum" style="padding:2px 10px;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.06em;background:var(--bg);border:1px solid var(--border);color:var(--muted);">—</span>
+            <span id="sv-velocity" style="padding:2px 10px;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.06em;background:var(--bg);border:1px solid var(--border);color:var(--muted);">—</span>
+          </div>
+          <div class="score-bar"><span class="score-label">Time Left</span><div class="score-track"><div class="score-fill" id="sc-time" style="width:0%"></div></div><span class="score-val" id="sv-time">—</span></div>
+          <div class="score-bar"><span class="score-label">BTC Dist</span><div class="score-track"><div class="score-fill" id="sc-distance" style="width:0%"></div></div><span class="score-val" id="sv-distance">—</span></div>
         </div>
         <div style="margin-top:12px;font-size:10px;color:var(--muted);line-height:1.6;border-top:1px solid var(--border);padding-top:10px;">
           The bot self-adjusts trade size based on recent performance.<br>
@@ -860,26 +876,56 @@ async function pollState() {
 
     // ── Brain panel ──
     const bd = s.confidence_breakdown || {};
-    const scoreMax = {momentum:30, velocity:30, time:20, distance:30};
-    ['momentum','velocity','time','distance'].forEach(k => {
-      const val = bd[k] != null ? bd[k] : null;
-      const max = scoreMax[k];
-      const pct = val != null ? Math.min(100, Math.round(val/max*100)) : 0;
-      const fillEl = document.getElementById('sc-'+k);
-      const valEl  = document.getElementById('sv-'+k);
-      if (fillEl) fillEl.style.width = pct+'%';
-      if (valEl) {
-        if (k === 'time' && val != null) {
-          const secs = s.seconds_remaining;
-          const timeStr = secs != null
-            ? (Math.floor(secs/60) + 'm ' + (secs%60|0) + 's')
-            : '—';
-          valEl.textContent = val + 'pts (' + timeStr + ')';
-        } else {
-          valEl.textContent = val != null ? val : '—';
-        }
-      }
-    });
+
+    // Win prob
+    const wpEl = document.getElementById('brain-win-prob');
+    if (wpEl) {
+      const wp = bd.win_prob_final;
+      wpEl.textContent = wp != null ? wp.toFixed(1)+'%' : '—';
+      wpEl.style.color = wp >= 70 ? 'var(--green)' : wp >= 60 ? 'var(--amber)' : 'var(--red)';
+    }
+    // EV
+    const evEl = document.getElementById('brain-ev');
+    if (evEl) {
+      const ev = bd.ev;
+      evEl.textContent = ev != null ? (ev >= 0 ? '+' : '') + ev.toFixed(1)+'%' : '—';
+      evEl.style.color = ev >= 10 ? 'var(--green)' : ev >= 0 ? 'var(--amber)' : 'var(--red)';
+    }
+    // Contract price
+    const ctEl = document.getElementById('brain-contract');
+    if (ctEl) ctEl.textContent = bd.contract_c != null ? bd.contract_c + '¢' : '—';
+
+    // Momentum badge
+    const momEl = document.getElementById('sv-momentum');
+    if (momEl) {
+      const lbl = bd.momentum_label || 'neutral';
+      momEl.textContent = lbl.toUpperCase();
+      const active = lbl !== 'neutral';
+      momEl.style.color = active ? 'var(--green)' : 'var(--muted)';
+      momEl.style.borderColor = active ? 'rgba(57,211,83,.35)' : 'var(--border)';
+    }
+    // Velocity badge
+    const velEl = document.getElementById('sv-velocity');
+    if (velEl) {
+      const lbl = bd.velocity_label || 'neutral';
+      velEl.textContent = lbl.toUpperCase();
+      velEl.style.color = lbl === 'favorable' ? 'var(--green)' : lbl === 'unfavorable' ? 'var(--red)' : 'var(--muted)';
+      velEl.style.borderColor = lbl === 'favorable' ? 'rgba(57,211,83,.35)' : lbl === 'unfavorable' ? 'rgba(248,81,73,.35)' : 'var(--border)';
+    }
+    // Time left bar
+    const tFill = document.getElementById('sc-time');
+    const tVal  = document.getElementById('sv-time');
+    if (tFill && bd.time != null) tFill.style.width = Math.min(100, Math.round(bd.time / 20 * 100)) + '%';
+    if (tVal && s.seconds_remaining != null) {
+      const sr = s.seconds_remaining;
+      tVal.textContent = Math.floor(sr/60) + 'm ' + (sr%60|0) + 's';
+    }
+    // BTC distance bar
+    const dFill = document.getElementById('sc-distance');
+    const dVal  = document.getElementById('sv-distance');
+    if (dFill && bd.distance != null) dFill.style.width = Math.min(100, Math.round(bd.distance / 30 * 100)) + '%';
+    if (dVal) dVal.textContent = bd.distance_pct != null ? bd.distance_pct.toFixed(3)+'%' : '—';
+
     const totalScore = s.confidence_score;
     const tse = document.getElementById('brain-total-score');
     if (tse) tse.textContent = totalScore != null ? `(${totalScore}/100)` : '';
@@ -923,12 +969,15 @@ async function pollState() {
         .join('');
     } else if (claudeBox) { claudeBox.style.display = 'none'; }
 
-    // Confidence breakdown (legacy small chips still in Status card)
-    const names = {momentum:'Momentum',velocity:'Velocity',time:'Time Left',distance:'BTC Dist'};
+    // Confidence breakdown chips in Status card
     const cbEl = document.getElementById('confidence-breakdown');
-    if (cbEl) cbEl.innerHTML = Object.entries(names).map(([k,label]) =>
-      `<div class="cb-item"><span class="cb-name">${label}</span><span class="cb-val">${bd[k]!=null?bd[k]:'—'}</span></div>`
-    ).join('');
+    if (cbEl) cbEl.innerHTML = [
+      `<div class="cb-item"><span class="cb-name">Win Prob</span><span class="cb-val">${bd.win_prob_final!=null?bd.win_prob_final.toFixed(1)+'%':'—'}</span></div>`,
+      `<div class="cb-item"><span class="cb-name">EV</span><span class="cb-val">${bd.ev!=null?(bd.ev>=0?'+':'')+bd.ev.toFixed(1)+'%':'—'}</span></div>`,
+      `<div class="cb-item"><span class="cb-name">Momentum</span><span class="cb-val">${bd.momentum_label||'—'}</span></div>`,
+      `<div class="cb-item"><span class="cb-name">Velocity</span><span class="cb-val">${bd.velocity_label||'—'}</span></div>`,
+      `<div class="cb-item"><span class="cb-name">BTC Dist</span><span class="cb-val">${bd.distance_pct!=null?bd.distance_pct.toFixed(3)+'%':'—'}</span></div>`,
+    ].join('');
 
     const lpnl = s.today_live_pnl  || 0;
     const ppnl = s.today_paper_pnl || 0;
