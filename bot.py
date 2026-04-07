@@ -2197,6 +2197,12 @@ async def handle_locked_phase(
         current_phase = "DONE"
         return
 
+    # Skip SL check in the final 60 seconds — market is near expiry and orderbook
+    # prices become unreliable as Kalshi settles. Let the expiry block handle it.
+    if secs_left < 60:
+        log.info(f"[SL] Skipping SL check — {secs_left:.0f}s left, waiting for expiry")
+        return
+
     # Fetch orderbook for stop-loss price check
     ob = None
     try:
