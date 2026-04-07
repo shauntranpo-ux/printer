@@ -2059,7 +2059,7 @@ async def handle_ready_phase(
         _ev_str    = f"+{_ev}%" if _ev >= 0 else f"{_ev}%"
         _payout    = round((100 - fill_price) * contracts / 100, 2)
         _cost      = round(fill_price * contracts / 100, 2)
-        _time_str  = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        _time_str  = datetime.now(timezone.utc).strftime("%b %d %I:%M %p UTC")
         await send_telegram(
             f"{mode_icon} <b>TRADE ENTERED</b>  —  {_time_str}\n"
             f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
@@ -2100,10 +2100,38 @@ async def handle_locked_phase(
 
     # Expiry check
     if secs_left <= 0:
-        outcome = "win" if (
-            (pos["side"] == "yes" and btc_price > pos["strike"]) or
-            (pos["side"] == "no"  and btc_price <= pos["strike"])
-        ) else "loss"
+        # Ask Kalshi for the official settlement result — retry up to 6x (30s)
+        # to give the exchange time to settle the market.
+        market_result = None
+        for _attempt in range(6):
+            try:
+                _path = f"/markets/{ticker}"
+                async with session.get(
+                    KALSHI_BASE_URL + _path,
+                    headers=kalshi_headers("GET", _path),
+                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                ) as _resp:
+                    _mdata = await _resp.json()
+                market_result = (_mdata.get("market") or _mdata).get("result")
+                if market_result in ("yes", "no"):
+                    break
+            except Exception as _exc:
+                log.warning(f"Market result fetch error (attempt {_attempt}): {_exc}")
+            await asyncio.sleep(5)
+
+        if market_result == "yes":
+            outcome = "win" if pos["side"] == "yes" else "loss"
+        elif market_result == "no":
+            outcome = "win" if pos["side"] == "no" else "loss"
+        else:
+            # Kalshi didn't settle in time — fall back to BTC price comparison
+            log.warning(f"{ticker}: settlement result unavailable, falling back to BTC price check")
+            outcome = "win" if (
+                (pos["side"] == "yes" and btc_price > pos["strike"]) or
+                (pos["side"] == "no"  and btc_price <= pos["strike"])
+            ) else "loss"
+
+        log.info(f"{ticker}: result={market_result!r} → {outcome}")
         exit_price = 100 if outcome == "win" else 0
         pnl = (exit_price - pos["entry_price_cents"]) * pos["contracts"] / 100
         profit_pct = (exit_price - pos["entry_price_cents"]) / pos["entry_price_cents"] * 100 \
@@ -2121,7 +2149,7 @@ async def handle_locked_phase(
         pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
         mode_icon = "📄" if pos["mode"] == "paper" else "💵"
-        _time_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        _time_str = datetime.now(timezone.utc).strftime("%b %d %I:%M %p UTC")
         _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
         _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
         await send_telegram(
@@ -2194,7 +2222,7 @@ async def handle_locked_phase(
         pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
         mode_icon = "📄" if pos["mode"] == "paper" else "💵"
-        _time_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        _time_str = datetime.now(timezone.utc).strftime("%b %d %I:%M %p UTC")
         _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
         _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
         await send_telegram(

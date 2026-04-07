@@ -735,7 +735,7 @@ function fmtPnl(v) {
 }
 function pnlClass(v) { return !v ? 'pnl-zero' : v>0 ? 'pnl-positive' : 'pnl-negative'; }
 function outcomeClass(o) { return o==='win'?'win':o==='loss'?'loss':'pending'; }
-function fmtTime(ts) { if(!ts) return '—'; return new Date(ts).toUTCString().slice(17,25); }
+function fmtTime(ts) { if(!ts) return '—'; return new Date(ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}); }
 function shortTicker(t) { if(!t) return '—'; return t.length>16?t.slice(0,16)+'…':t; }
 
 // ── Trade table ──

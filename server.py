@@ -347,7 +347,7 @@ def api_config():
         return jsonify({"error": f"Could not save config: {exc}"}), 500
     log.info(f"Config updated: {data}")
 
-    now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
+    now_str = datetime.now(timezone.utc).strftime("%b %d %I:%M %p UTC")
     new_enabled = config.get("bot_enabled", False)
     new_mode    = config.get("mode", "paper")
 
