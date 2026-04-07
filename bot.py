@@ -1577,7 +1577,7 @@ async def place_order(
 
     path = "/portfolio/orders"
 
-    for attempt in range(3):
+    for attempt in range(2):  # 1 initial + 1 retry only
         price_this_attempt = min(99, entry_price_cents + attempt)
         yes_price = price_this_attempt if side == "yes" else (100 - price_this_attempt)
         client_order_id = f"btcbot_{int(time.time() * 1000)}_{attempt}"
@@ -1594,7 +1594,7 @@ async def place_order(
         }
 
         if attempt > 0:
-            log.info(f"Order retry {attempt}/2 at {price_this_attempt}c...")
+            log.info(f"Order retry 1/1 at {price_this_attempt}c...")
             await asyncio.sleep(0.5)
 
         try:
@@ -1616,6 +1616,10 @@ async def place_order(
             if err_code in ("insufficient_funds", "authentication_error", "not_found", "forbidden",
                            "fill_or_kill_insufficient_resting_volume"):
                 log.error(f"Non-retryable error ({err_code}). Stopping order attempts.")
+                await send_telegram(
+                    f"🚫 <b>ORDER FAILED</b>  —  {err_code}\n"
+                    f"{side.upper()}  {contracts}x @ {price_this_attempt}¢  |  <code>{ticker}</code>"
+                )
                 break
             continue
 
@@ -1672,7 +1676,11 @@ async def place_order(
             log.error(f"Order status GET error: {exc} — stopping to prevent double-fill")
             return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
 
-    log.error(f"Order not filled after 3 attempts for {ticker} {side}@{entry_price_cents}c")
+    log.error(f"Order not filled after 2 attempts for {ticker} {side}@{entry_price_cents}c")
+    await send_telegram(
+        f"⚠️ <b>ORDER NOT FILLED</b>  —  no liquidity\n"
+        f"{side.upper()}  {contracts}x @ {entry_price_cents}¢  |  <code>{ticker}</code>"
+    )
     return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
 
 
