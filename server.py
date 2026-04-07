@@ -15,6 +15,8 @@ import logging
 import os
 import sqlite3
 import time
+import urllib.request
+import urllib.parse
 from datetime import datetime, timezone
 
 try:
@@ -86,6 +88,26 @@ def _safe_json_read(path: str, default):
     except Exception as exc:
         log.warning(f"Could not read {path}: {exc}")
         return default
+
+
+def _telegram_notify(text: str) -> None:
+    """Fire-and-forget Telegram notification from the Flask process."""
+    token   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID",   "")
+    if not token or not chat_id:
+        return
+    try:
+        payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+    except Exception as exc:
+        log.warning(f"Telegram notify error (server): {exc}")
 
 
 _CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 5, "stop_loss_percent": 45}
@@ -287,6 +309,8 @@ def api_config():
         return jsonify({"error": "No JSON body provided"}), 400
 
     config = read_config()
+    prev_enabled = config.get("bot_enabled", False)
+    prev_mode    = config.get("mode", "paper")
     errors = []
 
     def is_positive_number(v):
@@ -322,6 +346,19 @@ def api_config():
         log.error(f"Config write failed: {exc}")
         return jsonify({"error": f"Could not save config: {exc}"}), 500
     log.info(f"Config updated: {data}")
+
+    now_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
+    new_enabled = config.get("bot_enabled", False)
+    new_mode    = config.get("mode", "paper")
+
+    if "bot_enabled" in data and new_enabled != prev_enabled:
+        icon = "▶️" if new_enabled else "⏹"
+        _telegram_notify(f"{icon} <b>Bot {'ENABLED' if new_enabled else 'DISABLED'}</b>  —  {now_str}\nMode: {new_mode.upper()}")
+
+    if "mode" in data and new_mode != prev_mode:
+        icon = "💵" if new_mode == "live" else "📄"
+        _telegram_notify(f"{icon} <b>Mode switched to {new_mode.upper()}</b>  —  {now_str}")
+
     return jsonify(config)
 
 

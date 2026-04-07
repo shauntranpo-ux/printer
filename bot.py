@@ -2037,6 +2037,7 @@ async def handle_ready_phase(
     )
 
     if fill_confirmed:
+        _entry_ts = time.time()
         current_position = {
             "trade_id": trade_id,
             "ticker": ticker,
@@ -2046,18 +2047,26 @@ async def handle_ready_phase(
             "stop_loss_price_cents": sl_price,
             "mode": mode,
             "strike": strike,
+            "entry_ts": _entry_ts,
         }
         current_phase = "LOCKED"
         last_action, last_skip_reason = "trade", ""
         log.info(f"{ticker}: LOCKED. SL={sl_price}c")
-        mode_icon = "📄" if mode == "paper" else "💵"
-        dir_icon  = "⬆" if side == "yes" else "⬇"
+        mode_icon  = "📄" if mode == "paper" else "💵"
+        dir_icon   = "⬆" if side == "yes" else "⬇"
+        _win_pct   = int(brain.get("win_prob", 0) * 100)
+        _ev        = round((brain.get("win_prob", 0) - fill_price / 100) * 100, 1)
+        _ev_str    = f"+{_ev}%" if _ev >= 0 else f"{_ev}%"
+        _payout    = round((100 - fill_price) * contracts / 100, 2)
+        _cost      = round(fill_price * contracts / 100, 2)
+        _time_str  = datetime.now(timezone.utc).strftime("%H:%M UTC")
         await send_telegram(
-            f"{mode_icon} <b>TRADE ENTERED</b>\n"
-            f"{dir_icon} <b>{side.upper()}</b>  {contracts}x @ {fill_price}¢\n"
-            f"Market: <code>{ticker}</code>\n"
-            f"Win prob: {int(brain.get('win_prob', 0) * 100)}%  |  SL: {sl_price}¢\n"
-            f"BTC: ${btc_price:,.0f}  |  {int(secs_left // 60)}m {int(secs_left % 60)}s left"
+            f"{mode_icon} <b>TRADE ENTERED</b>  —  {_time_str}\n"
+            f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
+            f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
+            f"Win prob: {_win_pct}%  |  EV: {_ev_str}  |  SL: {sl_price}¢\n"
+            f"Strike: ${strike:,.0f}  |  BTC: ${btc_price:,.0f}\n"
+            f"Time left: {int(secs_left // 60)}m {int(secs_left % 60)}s  |  <code>{ticker}</code>"
         )
     else:
         current_phase = "DONE"
@@ -2109,12 +2118,17 @@ async def handle_locked_phase(
             "profit_percent": round(profit_pct, 2),
         })
         result_icon = "✅" if outcome == "win" else "❌"
-        pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+        pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+        pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
         mode_icon = "📄" if pos["mode"] == "paper" else "💵"
+        _time_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
+        _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
         await send_telegram(
-            f"{result_icon} <b>{'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}</b>\n"
-            f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']}x  {ticker}\n"
-            f"Entry: {pos['entry_price_cents']}¢  →  Exit: {exit_price}¢  (expiry)"
+            f"{result_icon} <b>{'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
+            f"Entry: {pos['entry_price_cents']}¢  →  Expiry: {exit_price}¢\n"
+            f"BTC: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}  |  <code>{ticker}</code>"
         )
 
         # Cooldown disabled — no sit-out after losses
@@ -2177,12 +2191,17 @@ async def handle_locked_phase(
             "profit_percent": round(profit_pct, 2),
         })
         exit_label = "🛑 STOP LOSS" if exit_reason == "stop_loss" else "⚠️ LATE BAIL"
-        pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+        pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+        pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
         mode_icon = "📄" if pos["mode"] == "paper" else "💵"
+        _time_str = datetime.now(timezone.utc).strftime("%H:%M UTC")
+        _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
+        _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
         await send_telegram(
-            f"{exit_label}  <b>{pnl_str}</b>\n"
-            f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']}x  {ticker}\n"
-            f"Entry: {pos['entry_price_cents']}¢  →  Exit: {exit_price}¢"
+            f"{exit_label}  <b>{pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
+            f"Entry: {pos['entry_price_cents']}¢  →  Exit: {exit_price}¢\n"
+            f"BTC: ${btc_price:,.0f}  |  {int(secs_left // 60)}m {int(secs_left % 60)}s left  |  <code>{ticker}</code>"
         )
 
         # Cooldown disabled — re-enter immediately after stop loss or exit
