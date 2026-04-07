@@ -1051,7 +1051,7 @@ def calibrate_brain() -> None:
             tier_label = "TIER 2 HUGE REWARD"
         elif overall_wr >= 0.50:
             _brain_cal["reward_tier"]       = 1
-            _brain_cal["min_edge_override"] = 0.15   # same as default
+            _brain_cal["min_edge_override"] = 0.10   # same as default
             _brain_cal["confidence_bonus"]  = 5
             tier_label = "TIER 1 REWARD"
         elif overall_wr >= 0.40:
@@ -1233,7 +1233,7 @@ BTC PRICE MOVEMENT:
 PRINTER BRAIN STATE (your decisions will be stored and feed back into this):
   Overall win rate:     {_brain_cal['overall_wr']:.0%}
   Reward tier:          {_brain_cal['reward_tier']} / 3  (tier 3 = ≥85% WR = max reward)
-  Min EV required:      {(_brain_cal['min_edge_override'] or 0.15):.0%} early / 8% last 3min
+  Min EV required:      {(_brain_cal['min_edge_override'] or 0.10):.0%} early / 8% last 3min
   Prob scale factor:    {_brain_cal['prob_scale']:.2f}  (1.0 = neutral, <1 = overestimating)
   YES win rate:         {_brain_cal['bullish_wr']:.0%}
   NO  win rate:         {_brain_cal['bearish_wr']:.0%}
@@ -1445,7 +1445,7 @@ def printer_brain(
     # is near-certain but markets reprice slowly, so edge exists even at lower EV.
     # This lets the bot find a trade in almost every session's final minutes
     # while staying selective early when outcomes are still uncertain.
-    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.15
+    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.10
     if secs_left < 3 * 60:
         min_ev = min(base_ev, 0.08)   # last 3 min: lower bar, near-certain outcomes
     else:
