@@ -79,6 +79,7 @@ api_key: str = ""
 current_market: dict | None = None
 current_phase: str = "DONE"   # WATCH | READY | LOCKED | DONE
 current_position: dict | None = None
+_order_attempted_tickers: set = set()  # tickers where an order was attempted this session
 
 # Market cache
 _market_cache: dict | None = None
@@ -2019,7 +2020,9 @@ async def handle_ready_phase(
         last_action, last_skip_reason = "skip", reason
         return
 
-    # Place order
+    # Place order — mark ticker as attempted BEFORE placing so re-entry is blocked
+    # even if the bot crashes or fill_confirmed comes back False
+    _order_attempted_tickers.add(ticker)
     log.info(f"{ticker}: TRADE {side} {contracts}x @ {int(entry_price_cents)}c (score={score}, mode={mode})")
     result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode)
 
@@ -2313,6 +2316,7 @@ async def main_loop() -> None:
     global current_market, current_phase, current_position
     global last_confidence_score, last_confidence_breakdown
     global last_action, last_skip_reason
+    global _order_attempted_tickers
 
     prev_ticker: str | None = None
 
@@ -2392,6 +2396,7 @@ async def main_loop() -> None:
                     current_phase = "WATCH"
                     current_position = None
                     prev_ticker = ticker
+                    _order_attempted_tickers.discard(prev_ticker)  # clear old ticker
 
                 secs_left = seconds_remaining(market)
                 elapsed = seconds_elapsed(market)
@@ -2439,9 +2444,10 @@ async def main_loop() -> None:
 
                 # ── DONE ───────────────────────────────────────────────────
                 if current_phase == "DONE":
-                    # Re-enter READY if this market still has meaningful time left
-                    # (e.g. stop loss triggered at minute 8, still 7 min remaining)
-                    if secs_left > 3 * 60:
+                    # Re-enter READY only if no order was attempted for this ticker.
+                    # This prevents duplicate orders when fill_confirmed=False but
+                    # the order actually went through on Kalshi.
+                    if secs_left > 3 * 60 and ticker not in _order_attempted_tickers:
                         log.info(
                             f"DONE → READY re-entry: {ticker} has {secs_left:.0f}s left."
                         )
