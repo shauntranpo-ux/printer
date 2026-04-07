@@ -1629,55 +1629,23 @@ async def place_order(
             log.error(f"No order_id in response: {data}")
             continue
 
-        # ── Check fill status from the POST response body first (fastest, no extra request)
+        # ── For IOC orders: "canceled" = zero fill. Everything else = filled.
+        # Don't guess specific status strings — Kalshi may return "resting",
+        # "executed", "filled", or others for a successful fill.
         post_order  = data.get("order") or data
         post_status = post_order.get("status", "")
         log.info(f"Order {order_id} POST status={post_status!r}")
 
-        if post_status in ("filled", "executed"):
-            fill_price     = post_order.get("yes_price", price_this_attempt)
-            filled_count   = post_order.get("contracts_count") or post_order.get("filled_count") or contracts
-            log.info(f"Order FILLED (POST response): {order_id} @ {fill_price}c x{filled_count} attempt={attempt}")
-            return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
-
         if post_status == "canceled":
-            # IOC got zero fill — retry at a higher price
-            log.info(f"Order {order_id} IOC zero-fill on attempt {attempt} — retrying")
+            # IOC explicitly got zero fill — safe to retry at higher price
+            log.info(f"Order {order_id} IOC zero-fill (canceled) — retrying")
             continue
 
-        # Status unclear in POST body — do ONE GET to confirm before deciding
-        check_path = f"/portfolio/orders/{order_id}"
-        try:
-            async with session.get(
-                KALSHI_BASE_URL + check_path,
-                headers=kalshi_headers("GET", check_path),
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
-            ) as resp:
-                order_data = await resp.json()
-            get_order  = order_data.get("order", order_data)
-            get_status = get_order.get("status", "")
-            log.info(f"Order {order_id} GET status={get_status!r}")
-
-            if get_status in ("filled", "executed"):
-                fill_price   = get_order.get("yes_price", price_this_attempt)
-                filled_count = get_order.get("contracts_count") or get_order.get("filled_count") or contracts
-                log.info(f"Order FILLED (GET confirm): {order_id} @ {fill_price}c x{filled_count} attempt={attempt}")
-                return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
-
-            if get_status == "canceled":
-                log.info(f"Order {order_id} confirmed canceled — retrying")
-                continue
-
-            # Unknown status after GET — STOP. Do not retry. Treat as possible fill
-            # to prevent placing a second order on a possibly-filled position.
-            log.error(f"Order {order_id} unknown status={get_status!r} after GET — stopping to prevent double-fill")
-            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
-
-        except Exception as exc:
-            # GET failed — order was placed (HTTP 200), status unknown.
-            # Stop here; do not retry to avoid double-filling.
-            log.error(f"Order status GET error: {exc} — stopping to prevent double-fill")
-            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
+        # Any non-canceled status on HTTP 200/201 = order accepted and (at least partially) filled
+        fill_price   = post_order.get("yes_price", price_this_attempt)
+        filled_count = post_order.get("contracts_count") or post_order.get("filled_count") or contracts
+        log.info(f"Order FILLED: {order_id} @ {fill_price}c x{filled_count} status={post_status!r}")
+        return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
 
     log.error(f"Order not filled after 2 attempts for {ticker} {side}@{entry_price_cents}c")
     await send_telegram(
