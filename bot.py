@@ -123,7 +123,7 @@ _adaptive: dict = {
 _brain_cal: dict = {
     "last_count":        0,
     "prob_scale":        1.0,   # multiplies our true_prob estimate (learned correction)
-    "min_edge_override": None,  # if set, overrides the 6% default
+    "min_edge_override": None,  # if set, overrides the 5% default
     "confidence_bonus":  0,     # added to confidence score as a reward
     "reward_tier":       0,     # 0=none 1=good(>50%) 2=great(>75%) 3=max(>85%)
     "overall_wr":        0.0,   # tracked for dashboard display
@@ -1050,27 +1050,27 @@ def calibrate_brain() -> None:
         _brain_cal["overall_wr"] = overall_wr
         if overall_wr >= 0.85:
             _brain_cal["reward_tier"]       = 3
-            _brain_cal["min_edge_override"] = 0.10   # proven accurate — lower bar early
+            _brain_cal["min_edge_override"] = 0.05   # proven accurate — lower bar early
             _brain_cal["confidence_bonus"]  = 25
             tier_label = "TIER 3 MAX REWARD"
         elif overall_wr >= 0.75:
             _brain_cal["reward_tier"]       = 2
-            _brain_cal["min_edge_override"] = 0.12
+            _brain_cal["min_edge_override"] = 0.07
             _brain_cal["confidence_bonus"]  = 15
             tier_label = "TIER 2 HUGE REWARD"
         elif overall_wr >= 0.50:
             _brain_cal["reward_tier"]       = 1
-            _brain_cal["min_edge_override"] = 0.10   # same as default
+            _brain_cal["min_edge_override"] = 0.05   # same as default
             _brain_cal["confidence_bonus"]  = 5
             tier_label = "TIER 1 REWARD"
         elif overall_wr >= 0.40:
             _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.18   # tighten slightly
+            _brain_cal["min_edge_override"] = 0.10   # tighten slightly
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "no reward (learning)"
         else:
             _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.20   # losing — require real edge early
+            _brain_cal["min_edge_override"] = 0.12   # losing — require real edge early
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "no reward (rebuild)"
 
@@ -1242,7 +1242,7 @@ BTC PRICE MOVEMENT:
 PRINTER BRAIN STATE (your decisions will be stored and feed back into this):
   Overall win rate:     {_brain_cal['overall_wr']:.0%}
   Reward tier:          {_brain_cal['reward_tier']} / 3  (tier 3 = ≥85% WR = max reward)
-  Min EV required:      {(_brain_cal['min_edge_override'] or 0.10):.0%} early / 8% last 3min
+  Min EV required:      {(_brain_cal['min_edge_override'] or 0.05):.0%} early / 3% last 3min
   Prob scale factor:    {_brain_cal['prob_scale']:.2f}  (1.0 = neutral, <1 = overestimating)
   YES win rate:         {_brain_cal['bullish_wr']:.0%}
   NO  win rate:         {_brain_cal['bearish_wr']:.0%}
@@ -1449,14 +1449,14 @@ def printer_brain(
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
     # ── 8. EV filter — dynamic threshold based on time remaining ─────────────
-    # Early/mid session (>3 min left): require 15% EV — only strong edges.
-    # Late session (≤3 min left): accept 8% EV — near expiry, win probability
+    # Early/mid session (>3 min left): require 5% EV — take good edges.
+    # Late session (≤3 min left): accept 3% EV — near expiry, win probability
     # is near-certain but markets reprice slowly, so edge exists even at lower EV.
     # This lets the bot find a trade in almost every session's final minutes
     # while staying selective early when outcomes are still uncertain.
-    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.10
+    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.05
     if secs_left < 3 * 60:
-        min_ev = min(base_ev, 0.08)   # last 3 min: lower bar, near-certain outcomes
+        min_ev = min(base_ev, 0.03)   # last 3 min: lower bar, near-certain outcomes
     else:
         min_ev = base_ev
 
@@ -1925,16 +1925,26 @@ async def handle_ready_phase(
     entry_price_cents = yes_ask if side == "yes" else no_ask
 
     # Dashboard breakdown from Brain v3 components
-    win_p_raw = _empirical_win_prob(abs((btc_price - strike) / strike), secs_left / 60)
+    win_p_raw   = _empirical_win_prob(abs((btc_price - strike) / strike), secs_left / 60)
+    _mom_label  = brain.get("mom_label",  "neutral")
+    _vel_signal = brain.get("vel_signal", "neutral")
+    _abs_pct    = brain.get("abs_pct", abs((btc_price - strike) / strike))
+    # Time score: less time remaining = outcome more certain = higher score (0→20)
+    _time_score = round(max(0.0, min(20.0, 20.0 * (1.0 - secs_left / (13 * 60)))), 1)
+    # Distance score: farther from strike = higher score (0→30, caps at 0.5%)
+    _dist_score = round(min(30.0, _abs_pct * 100.0 / 0.5 * 30.0), 1)
     breakdown = {
-        "win_prob_raw":  round(win_p_raw * 100, 1),
+        "win_prob_raw":   round(win_p_raw * 100, 1),
         "win_prob_final": round(brain.get("win_prob", win_p_raw) * 100, 1),
-        "ev":            round((brain.get("win_prob", 0.5) - entry_price_cents / 100) * 100, 1),
-        "contract_c":    round(entry_price_cents, 1),
-        "momentum":      brain.get("mom_label", "neutral"),
-        "velocity":      brain.get("vel_signal", "neutral"),
-        "time":          round(brain.get("mins_left", secs_left / 60), 1),
-        "distance":      round(brain.get("abs_pct", abs((btc_price - strike) / strike)) * 100, 3),
+        "ev":             round((brain.get("win_prob", 0.5) - entry_price_cents / 100) * 100, 1),
+        "contract_c":     round(entry_price_cents, 1),
+        "momentum":       30 if _mom_label in ("bullish", "bearish") else 0,
+        "momentum_label": _mom_label,
+        "velocity":       30 if _vel_signal == "favorable" else (10 if _vel_signal == "neutral" else 0),
+        "velocity_label": _vel_signal,
+        "time":           _time_score,
+        "distance":       _dist_score,
+        "distance_pct":   round(_abs_pct * 100, 3),
     }
 
     last_confidence_score = score
