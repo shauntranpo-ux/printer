@@ -1609,6 +1609,25 @@ async def place_order(
                 http_status = resp.status
         except Exception as exc:
             log.error(f"Order placement error (attempt {attempt}): {exc}")
+            # POST failed — check portfolio before retrying to avoid double-fill
+            try:
+                chk_path = f"/portfolio/positions?ticker={ticker}"
+                async with session.get(
+                    KALSHI_BASE_URL + chk_path,
+                    headers=kalshi_headers("GET", chk_path),
+                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                ) as chk_resp:
+                    chk_data = await chk_resp.json()
+                positions = chk_data.get("market_positions") or chk_data.get("positions") or []
+                for p in positions:
+                    if p.get("ticker") == ticker:
+                        held = p.get("position", 0)
+                        if (side == "yes" and held > 0) or (side == "no" and held < 0):
+                            held_count = abs(held)
+                            log.info(f"POST exception but portfolio shows {held_count}x position — treating as filled")
+                            return {"fill_confirmed": True, "fill_price_cents": price_this_attempt, "order_id": None, "filled_contracts": held_count}
+            except Exception as chk_exc:
+                log.error(f"Portfolio check after POST exception failed: {chk_exc}")
             continue
 
         if http_status not in (200, 201):
@@ -2200,48 +2219,60 @@ async def handle_locked_phase(
         log.info(f"[SL] Skipping SL check — {secs_left:.0f}s left, waiting for expiry")
         return
 
-    # Fetch orderbook for stop-loss price check
-    ob = None
+    # Fetch current bid price directly from the market — bypass fetch_orderbook's
+    # sanity checks which can reject valid prices during SL monitoring.
+    current_bid = None
     try:
-        ob = await fetch_orderbook(session, ticker, market)
+        mkt_path = f"/markets/{ticker}"
+        async with session.get(
+            KALSHI_BASE_URL + mkt_path,
+            headers=kalshi_headers("GET", mkt_path),
+            timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+        ) as resp:
+            if resp.status == 200:
+                mkt_body = await resp.json()
+                fresh = mkt_body.get("market", {})
+                if pos["side"] == "yes":
+                    yb = fresh.get("yes_bid_dollars")
+                    na = fresh.get("no_ask_dollars")
+                    if yb is not None:
+                        current_bid = int(round(float(yb) * 100))
+                    elif na is not None:
+                        current_bid = 100 - int(round(float(na) * 100))
+                else:
+                    nb = fresh.get("no_bid_dollars")
+                    ya = fresh.get("yes_ask_dollars")
+                    if nb is not None:
+                        current_bid = int(round(float(nb) * 100))
+                    elif ya is not None:
+                        current_bid = 100 - int(round(float(ya) * 100))
+            else:
+                log.error(f"[SL] Market fetch HTTP {resp.status} for {ticker}")
     except Exception as exc:
-        log.error(f"[SL] Orderbook error in LOCKED: {exc}")
+        log.error(f"[SL] Market fetch error: {exc}")
 
-    if ob is None:
+    if current_bid is None:
         pos["_sl_ob_failures"] = pos.get("_sl_ob_failures", 0) + 1
-        log.error(f"[SL] Orderbook unavailable (failure #{pos['_sl_ob_failures']}) — SL CHECK SKIPPED this cycle")
+        log.error(f"[SL] Could not get bid price (failure #{pos['_sl_ob_failures']}) — skipping cycle")
         if pos["_sl_ob_failures"] >= 3:
-            log.error(f"[SL] 3 consecutive orderbook failures — forcing exit to protect capital")
+            log.error(f"[SL] 3 consecutive price failures — forcing exit to protect capital")
             exit_price = await sell_position(
                 session, ticker, pos["side"], pos["contracts"], pos["mode"],
-                int(pos["entry_price_cents"] * 0.55)  # estimate ~45% down
+                int(pos["entry_price_cents"] * 0.50)
             )
             pnl = (exit_price - pos["entry_price_cents"]) * pos["contracts"] / 100
             db_update_trade(pos["trade_id"], {
                 "exit_price_cents": exit_price,
-                "exit_reason": "sl_ob_failure",
+                "exit_reason": "sl_price_failure",
                 "outcome": "loss",
                 "pnl_dollars": round(pnl, 2),
                 "profit_percent": round((exit_price - pos["entry_price_cents"]) / pos["entry_price_cents"] * 100, 2),
             })
-            await send_telegram(f"⚠️ <b>FORCED EXIT</b> — 3 orderbook failures\n${pnl:+.2f}  |  <code>{ticker}</code>")
+            await send_telegram(f"⚠️ <b>FORCED EXIT</b> — 3 price fetch failures\n${pnl:+.2f}  |  <code>{ticker}</code>")
             current_position = None
             current_phase = "DONE"
         return
-    pos["_sl_ob_failures"] = 0  # reset on success
-
-    try:
-        if pos["side"] == "yes":
-            current_bid = ob["best_yes_bid"] if ob.get("best_yes_bid") is not None else (100 - ob["best_no_ask"])
-        else:
-            current_bid = 100 - ob["best_yes_ask"]
-    except Exception as exc:
-        log.error(f"[SL] Bid price calculation error: {exc} — ob={ob}")
-        return
-
-    if current_bid is None:
-        log.error(f"[SL] current_bid is None — SL CHECK SKIPPED")
-        return
+    pos["_sl_ob_failures"] = 0
 
     unrealized = (current_bid - pos["entry_price_cents"]) * pos["contracts"] / 100
     log.info(
