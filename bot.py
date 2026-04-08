@@ -54,7 +54,7 @@ KALSHI_PATH_PREFIX = "/trade-api/v2"  # included in signature but not in the pat
 COINBASE_WS = "wss://advanced-trade-ws.coinbase.com"
 API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
 MARKET_CACHE_TTL = 30     # seconds to cache the active market
-WATCH_PHASE_SECONDS = 120  # skip first 2 min — orderbook is thin and pricing erratic
+WATCH_PHASE_SECONDS = 0   # evaluate immediately when a session starts
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
 CONFIDENCE_THRESHOLD = 67   # minimum win probability % to enter a trade
@@ -906,98 +906,6 @@ def calculate_momentum() -> tuple[float, str]:
     return pct, "neutral"
 
 
-def get_momentum_alignment(above: bool) -> tuple[str, float]:
-    """
-    Check momentum across 3 timeframes (1min, 3min, 5min).
-    Returns (alignment, adjustment):
-      - 'strong'  (+0.06): all 3 timeframes confirm direction
-      - 'moderate'(+0.03): 2 of 3 confirm
-      - 'neutral' (0.00):  1 of 3 confirm or no data
-      - 'opposing'(-0.05): 2+ timeframes oppose direction
-    """
-    if len(btc_prices) < 20:
-        return "neutral", 0.0
-
-    now = time.time()
-    current = btc_prices[-1][1]
-    confirms = 0
-    checks = 0
-
-    for lookback in (60, 180, 300):
-        ref_price = None
-        for ts, p in btc_prices:
-            if ts >= now - lookback:
-                ref_price = p
-                break
-        if ref_price is None or ref_price == 0:
-            continue
-        checks += 1
-        pct = (current - ref_price) / ref_price
-        if above and pct > 0.001:
-            confirms += 1
-        elif not above and pct < -0.001:
-            confirms += 1
-
-    if checks == 0:
-        return "neutral", 0.0
-
-    if confirms == 3:
-        return "strong", +0.06
-    if confirms == 2:
-        return "moderate", +0.03
-    if confirms == 1:
-        return "neutral", 0.0
-    return "opposing", -0.05
-
-
-def get_btc_volatility() -> float:
-    """
-    Return BTC price coefficient of variation over the last 3 minutes.
-    Higher = more volatile = less predictable continuation.
-    Typical calm: ~0.0003. High volatility: >0.002.
-    """
-    if len(btc_prices) < 10:
-        return 0.0
-    now = time.time()
-    recent = [p for t, p in btc_prices if now - t <= 180]
-    if len(recent) < 5:
-        return 0.0
-    mean = sum(recent) / len(recent)
-    if mean == 0:
-        return 0.0
-    variance = sum((p - mean) ** 2 for p in recent) / len(recent)
-    return (variance ** 0.5) / mean
-
-
-def get_candle_confirmation(above: bool) -> float:
-    """
-    Check last 3 one-minute candles for directional confirmation.
-    Returns probability adjustment: +0.03 (all confirm), +0.01 (2/3), 0 (1/3), -0.03 (0/3).
-    """
-    if len(btc_prices) < 60:
-        return 0.0
-    now = time.time()
-    confirms = 0
-    counted = 0
-    for i in range(1, 4):
-        t_start = now - i * 60
-        t_end   = now - (i - 1) * 60
-        candle  = [p for t, p in btc_prices if t_start <= t <= t_end]
-        if len(candle) < 2:
-            continue
-        counted += 1
-        bullish = candle[-1] > candle[0]
-        if (above and bullish) or (not above and not bullish):
-            confirms += 1
-    if counted == 0:
-        return 0.0
-    ratio = confirms / counted
-    if ratio >= 0.99:  return +0.03
-    if ratio >= 0.60:  return +0.01
-    if ratio >= 0.40:  return 0.0
-    return -0.03
-
-
 # ══════════════════════════════════════════════════════════════════════════════
 #  Contract price velocity tracking
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1505,33 +1413,30 @@ def printer_brain(
     # ── 1. Empirical win probability from backtest table ──────────────────────
     win_prob_raw = _empirical_win_prob(abs_pct, mins_left)
 
-    # ── 2. Multi-timeframe momentum alignment ─────────────────────────────────
-    # Checks 1-min, 3-min, 5-min. All confirming = strong signal.
-    mom_alignment, mom_adj = get_momentum_alignment(above)
+    # ── 2. Momentum adjustment (empirical: confirms avg 87% vs opposes 76%) ──────
+    # Flat adjustment — no strength multiplier to prevent direction flips.
+    # Confirms: BTC moving away from strike (+5%). Opposes: toward strike (-5%).
+    if mom_label == "bullish":
+        mom_adj = +0.05 if above else -0.05
+    elif mom_label == "bearish":
+        mom_adj = +0.05 if not above else -0.05
+    else:
+        mom_adj = 0.0
 
-    # ── 3. Candle confirmation (last 3 one-minute candles) ────────────────────
-    candle_adj = get_candle_confirmation(above)
+    # ── 3. Contract velocity ──────────────────────────────────────────────────
+    vel_adj = +0.01 if vel_signal == "favorable" else (-0.01 if vel_signal == "unfavorable" else 0.0)
 
-    # ── 4. Volatility penalty — high vol = continuation less reliable ─────────
-    vol = get_btc_volatility()
-    if vol > 0.003:       vol_adj = -0.08   # very high volatility — big penalty
-    elif vol > 0.0015:    vol_adj = -0.04   # elevated volatility
-    elif vol > 0.0008:    vol_adj = -0.02   # slightly choppy
-    else:                 vol_adj =  0.0    # calm — no penalty
-
-    # ── 5. Contract velocity ──────────────────────────────────────────────────
-    vel_adj = +0.015 if vel_signal == "favorable" else (-0.015 if vel_signal == "unfavorable" else 0.0)
-
-    # ── 6. Combined probability + learned calibration scale ──────────────────
-    win_prob = win_prob_raw + mom_adj + candle_adj + vel_adj + vol_adj
+    # ── 4. Combined probability + learned calibration scale ──────────────────
+    win_prob = win_prob_raw + mom_adj + vel_adj
     win_prob = 0.50 + (win_prob - 0.50) * _brain_cal["prob_scale"]
     win_prob = max(0.10, min(0.997, win_prob))
 
-    # ── 7. YES / NO win probabilities ────────────────────────────────────────
+    # ── 5. YES / NO win probabilities ────────────────────────────────────────
     prob_yes = win_prob if above else (1.0 - win_prob)
     prob_no  = 1.0 - prob_yes
 
-    # ── 8. Expected value vs actual contract price ────────────────────────────
+    # ── 6. Expected value vs actual contract price ────────────────────────────
+    # yes_ask / no_ask are in cents (0-100). $1 payout.
     yes_ev = prob_yes - (yes_ask / 100)
     no_ev  = prob_no  - (no_ask  / 100)
 
@@ -1539,50 +1444,29 @@ def printer_brain(
     if _brain_cal["bullish_wr"] < 0.35: yes_ev -= 0.04
     if _brain_cal["bearish_wr"] < 0.35: no_ev  -= 0.04
 
-    # ── 9. Pick side — always bet WITH BTC's current position ────────────────
+    # ── 7. Pick side — always bet WITH BTC's current position ────────────────
+    # The entire strategy is "BTC stays where it is." Never bet against it
+    # just because the opposite contract happens to be cheap — those are
+    # low-probability lottery tickets that flip the loss rate.
     if above:
         side, best_ev, entry_c, true_p = "yes", yes_ev, yes_ask, prob_yes
     else:
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
-    # ── 10. EV filter ────────────────────────────────────────────────────────
+    # ── 8. EV filter — dynamic threshold based on time remaining ─────────────
+    # Early/mid session (>3 min left): require 5% EV — take good edges.
+    # Late session (≤3 min left): accept 3% EV — near expiry, win probability
+    # is near-certain but markets reprice slowly, so edge exists even at lower EV.
+    # This lets the bot find a trade in almost every session's final minutes
+    # while staying selective early when outcomes are still uncertain.
     base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.05
     if secs_left < 3 * 60:
-        min_ev = min(base_ev, 0.03)
+        min_ev = min(base_ev, 0.03)   # last 3 min: lower bar, near-certain outcomes
     else:
         min_ev = base_ev
 
     skip_reason = ""
-
-    # ── 11. Near-strike filter ────────────────────────────────────────────────
-    # BTC within 0.1% of strike with > 5 min left = coin flip zone, skip.
-    if abs_pct < 0.001 and mins_left > 5:
-        skip_reason = f"BTC too close to strike ({abs_pct*100:.3f}% < 0.1%) with {mins_left:.1f}min left — coin flip zone"
-
-    # ── 12. Opposing momentum hard block ─────────────────────────────────────
-    # If ALL timeframes oppose the direction, skip regardless of EV.
-    if not skip_reason and mom_alignment == "opposing" and mins_left > 4:
-        skip_reason = f"All momentum timeframes oppose direction — skip (alignment={mom_alignment})"
-
-    # ── 13. Risk/reward filter ────────────────────────────────────────────────
-    # Potential win per contract vs potential loss at SL.
-    # Bad R/R = contract so expensive that one loss wipes multiple wins.
-    if not skip_reason:
-        win_per_c  = 100 - entry_c
-        loss_per_c = entry_c * (STOP_LOSS_PERCENT / 100)
-        rr = win_per_c / loss_per_c if loss_per_c > 0 else 99
-        # Also require the trade is profitable in expected value terms including SL
-        expected_val = true_p * win_per_c - (1 - true_p) * loss_per_c
-        if rr < 0.4:
-            skip_reason = f"R/R too poor: win {win_per_c:.0f}c vs SL loss {loss_per_c:.0f}c (R/R={rr:.2f})"
-        elif expected_val < 0:
-            skip_reason = f"Expected value negative after SL: {expected_val:.1f}c per contract"
-
-    # ── 14. High volatility hard block ───────────────────────────────────────
-    if not skip_reason and vol > 0.004:
-        skip_reason = f"BTC volatility too high ({vol*100:.3f}%) — unpredictable"
-
-    if not skip_reason and best_ev < min_ev:
+    if best_ev < min_ev:
         skip_reason = (
             f"EV {best_ev:+.1%} below {min_ev:.0%} minimum | "
             f"{side.upper()} at {entry_c:.0f}c, win prob {true_p:.1%}"
@@ -1590,24 +1474,25 @@ def printer_brain(
 
     action = "skip" if skip_reason else "trade"
 
-    # ── 15. Confidence = win probability 0-100 ───────────────────────────────
+    # ── 9. Confidence = win probability 0-100 ────────────────────────────────
     confidence = min(99, max(0, int(true_p * 100) + _brain_cal["confidence_bonus"]))
 
     if action == "trade":
         reasoning = (
-            f"BTC {abs_pct*100:.2f}% {'above' if above else 'below'} strike, "
-            f"{mins_left:.1f}min left. Win prob {true_p:.1%} "
-            f"(raw {win_prob_raw:.1%} mom={mom_adj:+.1%} candle={candle_adj:+.1%} vol={vol_adj:+.1%}). "
-            f"EV {best_ev:+.1%}. Momentum: {mom_alignment}. Vol: {vol*100:.3f}%."
+            f"BTC is {abs_pct*100:.2f}% {'above' if above else 'below'} strike "
+            f"with {mins_left:.1f} min left. Empirical win prob: {true_p:.1%} "
+            f"(raw {win_prob_raw:.1%} + mom {mom_adj:+.1%}). "
+            f"Contract {entry_c:.0f}c -> EV {best_ev:+.1%}. "
+            f"Momentum: {mom_label} ({mom_pct*100:+.2f}%)."
         )
     else:
         reasoning = skip_reason or f"No EV edge. Best: {best_ev:+.1%} (need {min_ev:.0%})"
 
     key_signals = [
-        f"BTC {pct_above*100:+.2f}% from strike | {mins_left:.1f}min left | vol={vol*100:.3f}%",
+        f"BTC {pct_above*100:+.2f}% from strike | {mins_left:.1f} min left",
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
         f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
-        f"Momentum: {mom_alignment}/{mom_label} ({mom_pct*100:+.2f}%) | Candles: {candle_adj:+.2f} | Vel: {vel_signal}",
+        f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal}",
     ]
 
     brain_log.info(
@@ -2477,7 +2362,7 @@ async def main_loop() -> None:
                     conn.close()
                     if completed >= _adaptive["last_calibrated_count"] + 20:
                         calibrate_from_history()
-                    if completed >= _brain_cal["last_count"] + 15:
+                    if completed >= _brain_cal["last_count"] + 5:
                         calibrate_brain()
                 except Exception:
                     pass
