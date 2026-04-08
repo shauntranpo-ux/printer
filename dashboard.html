@@ -532,12 +532,6 @@
         </div>
 
         <div class="s-group">
-          <label>Stop Loss %</label>
-          <input type="number" id="s-sl" min="10" max="50" step="1">
-          <button class="s-save" onclick="saveSetting('stop_loss_percent', parseFloat(document.getElementById('s-sl').value), this)">Save</button>
-        </div>
-
-        <div class="s-group">
           <label>Cooldown Markets</label>
           <input type="number" id="s-cooldown" min="0" max="10" step="1">
           <button class="s-save" onclick="saveSetting('cooldown_markets', parseInt(document.getElementById('s-cooldown').value), this)">Save</button>
@@ -825,7 +819,6 @@ function populateSettings(cfg) {
   const set = (id,val) => { const el=document.getElementById(id); if(el) el.value=val; };
   set('s-trade-amount', cfg.trade_amount_dollars);
   set('s-conf',         cfg.confidence_threshold);
-  set('s-sl',           cfg.stop_loss_percent);
   set('s-cooldown',     cfg.cooldown_markets);
   set('s-loss-limit',   cfg.daily_loss_limit_dollars);
   set('s-profit-target',cfg.daily_profit_target_dollars);
@@ -1061,10 +1054,9 @@ async function pollState() {
       const direction = pos ? (pos.side==='yes'?'⬆ UP':'⬇ DOWN') : '—';
       const entry     = pos ? `bought @ ${pos.entry_price_cents}¢` : '—';
       const qty       = pos ? pos.contracts+' contracts' : '—';
-      const sl        = pos ? pos.stop_loss_price_cents+'¢' : '—';
       document.getElementById('alert-main').textContent   = `${mode} · ${direction} · ${qty} · ${entry}`;
       document.getElementById('alert-detail').textContent = `Market: ${s.market_ticker||'—'}  |  Confidence: ${s.confidence_score||'—'}`;
-      document.getElementById('alert-sl').textContent     = `Stop loss: ${sl}`;
+      document.getElementById('alert-sl').textContent     = `Holding to expiry`;
       alert.classList.add('visible');
     } else { alert.classList.remove('visible'); }
 

@@ -53,8 +53,7 @@ _FULL_CONFIG_DEFAULT = {
     "bot_enabled": False,
     "mode": "paper",
     "trade_amount_dollars": 10,
-    "confidence_threshold": 67,
-    "stop_loss_percent": 50,
+    "confidence_threshold": 61,
     "cooldown_markets": 0,
     "daily_loss_limit_dollars": 5000,
     "daily_profit_target_dollars": 5000,
@@ -317,15 +316,14 @@ def api_config():
         return isinstance(v, (int, float)) and v > 0
 
     validators = {
-        "trade_amount_dollars":      is_positive_number,
-        "mode":                      lambda v: v in ("live", "paper"),
-        "daily_loss_limit_dollars":  is_positive_number,
+        "trade_amount_dollars":        is_positive_number,
+        "mode":                        lambda v: v in ("live", "paper"),
+        "daily_loss_limit_dollars":    is_positive_number,
         "daily_profit_target_dollars": is_positive_number,
-        "confidence_threshold":      lambda v: isinstance(v, (int, float)) and 50 <= v <= 100,
-        "stop_loss_percent":         lambda v: isinstance(v, (int, float)) and 10 <= v <= 50,
-        "cooldown_markets":          lambda v: isinstance(v, (int, float)) and 0 <= v <= 10,
-        "bot_enabled":               lambda v: isinstance(v, bool),
-        "claude_enabled":            lambda v: isinstance(v, bool),
+        "confidence_threshold":        lambda v: isinstance(v, (int, float)) and 50 <= v <= 100,
+        "cooldown_markets":            lambda v: isinstance(v, (int, float)) and 0 <= v <= 10,
+        "bot_enabled":                 lambda v: isinstance(v, bool),
+        "claude_enabled":              lambda v: isinstance(v, bool),
     }
 
     for key, value in data.items():
