@@ -57,7 +57,7 @@ MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 0   # evaluate immediately when a session starts
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
-CONFIDENCE_THRESHOLD = 67   # minimum win probability % to enter a trade
+CONFIDENCE_THRESHOLD = 72   # minimum win probability % to enter a trade
 STOP_LOSS_PERCENT    = 50   # exit if contract bid drops this % from entry price
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
@@ -2112,7 +2112,7 @@ async def handle_ready_phase(
             f"{mode_icon} <b>TRADE ENTERED</b>  —  {_time_str}\n"
             f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
             f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
-            f"Win prob: {_win_pct}%  |  EV: {_ev_str}  |  SL: {sl_price}¢\n"
+            f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
             f"Strike: ${strike:,.0f}  |  BTC: ${btc_price:,.0f}\n"
             f"Time left: {int(secs_left // 60)}m {int(secs_left % 60)}s  |  <code>{ticker}</code>"
         )
@@ -2132,9 +2132,8 @@ async def handle_locked_phase(
     strike: float,
 ) -> None:
     """
-    Monitor an open position for stop loss or expiry every 15 seconds.
-    Two consecutive stop-loss checks below the trigger price are required
-    before exiting to avoid false triggers in thin markets.
+    Hold an open position to expiry — no stop loss.
+    Exit only when the market settles and fetch the official Kalshi result.
     """
     global current_phase, current_position, cooldown_counter
 
@@ -2144,7 +2143,6 @@ async def handle_locked_phase(
         return
 
     pos = current_position
-    now = time.time()
 
     # Expiry check
     if secs_left <= 0:
@@ -2207,126 +2205,16 @@ async def handle_locked_phase(
             f"BTC: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}  |  <code>{ticker}</code>"
         )
 
-        # Cooldown disabled — no sit-out after losses
-
         current_position = None
         current_phase = "DONE"
         return
 
-    # Skip SL check in the final 60 seconds — market is near expiry and orderbook
-    # prices become unreliable as Kalshi settles. Let the expiry block handle it.
-    if secs_left < 60:
-        log.info(f"[SL] Skipping SL check — {secs_left:.0f}s left, waiting for expiry")
-        return
-
-    # Fetch current bid price directly from the market — bypass fetch_orderbook's
-    # sanity checks which can reject valid prices during SL monitoring.
-    current_bid = None
-    try:
-        mkt_path = f"/markets/{ticker}"
-        async with session.get(
-            KALSHI_BASE_URL + mkt_path,
-            headers=kalshi_headers("GET", mkt_path),
-            timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
-        ) as resp:
-            if resp.status == 200:
-                mkt_body = await resp.json()
-                fresh = mkt_body.get("market", {})
-                if pos["side"] == "yes":
-                    yb = fresh.get("yes_bid_dollars")
-                    na = fresh.get("no_ask_dollars")
-                    if yb is not None:
-                        current_bid = int(round(float(yb) * 100))
-                    elif na is not None:
-                        current_bid = 100 - int(round(float(na) * 100))
-                else:
-                    nb = fresh.get("no_bid_dollars")
-                    ya = fresh.get("yes_ask_dollars")
-                    if nb is not None:
-                        current_bid = int(round(float(nb) * 100))
-                    elif ya is not None:
-                        current_bid = 100 - int(round(float(ya) * 100))
-            else:
-                log.error(f"[SL] Market fetch HTTP {resp.status} for {ticker}")
-    except Exception as exc:
-        log.error(f"[SL] Market fetch error: {exc}")
-
-    if current_bid is None:
-        pos["_sl_ob_failures"] = pos.get("_sl_ob_failures", 0) + 1
-        log.error(f"[SL] Could not get bid price (failure #{pos['_sl_ob_failures']}) — skipping cycle")
-        if pos["_sl_ob_failures"] >= 3:
-            log.error(f"[SL] 3 consecutive price failures — forcing exit to protect capital")
-            exit_price = await sell_position(
-                session, ticker, pos["side"], pos["contracts"], pos["mode"],
-                int(pos["entry_price_cents"] * 0.50)
-            )
-            pnl = (exit_price - pos["entry_price_cents"]) * pos["contracts"] / 100
-            db_update_trade(pos["trade_id"], {
-                "exit_price_cents": exit_price,
-                "exit_reason": "sl_price_failure",
-                "outcome": "loss",
-                "pnl_dollars": round(pnl, 2),
-                "profit_percent": round((exit_price - pos["entry_price_cents"]) / pos["entry_price_cents"] * 100, 2),
-            })
-            await send_telegram(f"⚠️ <b>FORCED EXIT</b> — 3 price fetch failures\n${pnl:+.2f}  |  <code>{ticker}</code>")
-            current_position = None
-            current_phase = "DONE"
-        return
-    pos["_sl_ob_failures"] = 0
-
-    unrealized = (current_bid - pos["entry_price_cents"]) * pos["contracts"] / 100
+    # Still in the market — just hold and log
+    unrealized_at_entry = (50 - pos["entry_price_cents"]) * pos["contracts"] / 100
     log.info(
-        f"[SL CHECK] {ticker} | bid={current_bid}c | SL={pos['stop_loss_price_cents']}c | "
-        f"entry={pos['entry_price_cents']}c | unrealized=${unrealized:+.2f}"
+        f"[HOLDING] {ticker} | side={pos['side'].upper()} | entry={pos['entry_price_cents']}c "
+        f"| BTC=${btc_price:,.0f} | strike=${pos['strike']:,.0f} | {secs_left:.0f}s left"
     )
-
-    # Determine exit reason — standard SL OR late-stage bail-out
-    exit_reason = None
-    if current_bid <= pos["stop_loss_price_cents"]:
-        exit_reason = "stop_loss"
-        log.warning(
-            f"🛑 STOP LOSS TRIGGERED {ticker}: bid={current_bid}c <= SL={pos['stop_loss_price_cents']}c"
-        )
-    elif secs_left <= 120 and current_bid < pos["entry_price_cents"] * 0.6:
-        exit_reason = "late_bail"
-        log.warning(
-            f"⚠️ LATE BAIL {ticker}: {secs_left:.0f}s left, "
-            f"bid={current_bid}c < 60% of entry {pos['entry_price_cents']}c"
-        )
-
-    if exit_reason:
-        exit_price = await sell_position(
-            session, ticker, pos["side"], pos["contracts"], pos["mode"], current_bid
-        )
-        pnl = (exit_price - pos["entry_price_cents"]) * pos["contracts"] / 100
-        profit_pct = (exit_price - pos["entry_price_cents"]) / pos["entry_price_cents"] * 100 \
-                     if pos["entry_price_cents"] else 0
-
-        db_update_trade(pos["trade_id"], {
-            "exit_price_cents": exit_price,
-            "exit_reason": exit_reason,
-            "outcome": "loss",
-            "pnl_dollars": round(pnl, 2),
-            "profit_percent": round(profit_pct, 2),
-        })
-        exit_label = "🛑 STOP LOSS" if exit_reason == "stop_loss" else "⚠️ LATE BAIL"
-        pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-        pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
-        mode_icon = "📄" if pos["mode"] == "paper" else "💵"
-        _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
-        _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
-        _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
-        await send_telegram(
-            f"{exit_label}  <b>{pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
-            f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
-            f"Entry: {pos['entry_price_cents']}¢  →  Exit: {exit_price}¢\n"
-            f"BTC: ${btc_price:,.0f}  |  {int(secs_left // 60)}m {int(secs_left % 60)}s left  |  <code>{ticker}</code>"
-        )
-
-        # Cooldown disabled — re-enter immediately after stop loss or exit
-
-        current_position = None
-        current_phase = "DONE"
 
 
 # ══════════════════════════════════════════════════════════════════════════════
