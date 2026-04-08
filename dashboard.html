@@ -391,7 +391,7 @@
   <div class="grid-2">
     <div class="card">
       <div class="pnl-header">
-        <div class="pnl-title live-title">Live</div>
+        <div class="pnl-title live-title">Live <span id="live-trade-count" style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;"></span></div>
         <button class="reset-btn" onclick="openResetModal('live')">Reset</button>
       </div>
       <div class="pnl-big pnl-zero" id="live-pnl">$0.00</div>
@@ -405,7 +405,7 @@
     </div>
     <div class="card">
       <div class="pnl-header">
-        <div class="pnl-title paper-title">Paper</div>
+        <div class="pnl-title paper-title">Paper <span id="paper-trade-count" style="font-size:10px;font-weight:400;color:var(--muted);margin-left:6px;"></span></div>
         <button class="reset-btn" onclick="openResetModal('paper')">Reset</button>
       </div>
       <div class="pnl-big pnl-zero" id="paper-pnl">$0.00</div>
@@ -713,10 +713,9 @@ function toggleSettings() {
 // ── Charts ──
 function buildEquityCurve(trades, mode) {
   let cum = 0;
-  const today = new Date().toISOString().slice(0,10);
   const pts = [0];
-  trades.filter(t => t.mode === mode && t.ts && t.ts.startsWith(today) && t.outcome !== 'pending')
-    .sort((a,b) => a.ts.localeCompare(b.ts))
+  trades.filter(t => t.mode === mode && t.outcome !== 'pending' && t.pnl_dollars != null)
+    .sort((a,b) => (a.ts||'').localeCompare(b.ts||''))
     .forEach(t => { cum += (t.pnl_dollars || 0); pts.push(cum); });
   return pts;
 }
@@ -724,12 +723,12 @@ function drawChart(canvasId, data) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const dpr = window.devicePixelRatio || 1;
-  const rect = canvas.getBoundingClientRect();
-  canvas.width  = rect.width  * dpr;
-  canvas.height = rect.height * dpr;
+  const W = canvas.offsetWidth  || canvas.parentElement?.clientWidth  || 300;
+  const H = canvas.offsetHeight || 70;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
   const ctx = canvas.getContext('2d');
   ctx.scale(dpr, dpr);
-  const W = rect.width, H = rect.height;
   const pad = {t:6, b:6, l:4, r:4};
   ctx.clearRect(0, 0, W, H);
   if (!data || data.length < 2) {
@@ -1086,6 +1085,20 @@ async function pollTrades() {
     document.getElementById('paper-wr').textContent   = todayWinRate(paperTradesData, 'paper');
     document.getElementById('live-count').textContent  = todayCount(liveTradesData, 'live');
     document.getElementById('paper-count').textContent = todayCount(paperTradesData, 'paper');
+
+    // All-time counts + win rate in the P&L card headers
+    function allTimeStats(trades, mode) {
+      const settled = trades.filter(x => x.mode===mode && x.outcome !== 'pending');
+      const wins = settled.filter(x => x.outcome==='win').length;
+      const n = settled.length;
+      if (!n) return '';
+      const wr = Math.round(wins/n*100);
+      return `${n} trades · ${wr}% WR`;
+    }
+    const lcEl = document.getElementById('live-trade-count');
+    const pcEl = document.getElementById('paper-trade-count');
+    if (lcEl) lcEl.textContent = allTimeStats(liveTradesData,  'live');
+    if (pcEl) pcEl.textContent = allTimeStats(paperTradesData, 'paper');
 
     const allTrades = [...liveTradesData,...paperTradesData];
     scheduleChartUpdate(buildEquityCurve(allTrades,'live'), buildEquityCurve(allTrades,'paper'));
