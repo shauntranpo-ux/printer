@@ -120,6 +120,38 @@
   .score-track { flex: 1; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
   .score-fill  { height: 100%; border-radius: 2px; background: var(--amber); transition: width .4s ease; }
   .score-val   { font-size: 11px; color: var(--amber); width: 28px; text-align: right; font-weight: 600; }
+
+  /* ── Direction box ── */
+  .brain-right-wrap { display: flex; gap: 14px; align-items: flex-start; }
+  .direction-box {
+    flex-shrink: 0; width: 90px; border-radius: 8px; border: 2px solid var(--border);
+    background: var(--bg); display: flex; flex-direction: column;
+    align-items: center; justify-content: center; padding: 14px 8px; gap: 4px;
+    transition: border-color .3s, background .3s;
+  }
+  .direction-box.up   { border-color: rgba(57,211,83,.5);  background: rgba(57,211,83,.06);  }
+  .direction-box.down { border-color: rgba(248,81,73,.5);  background: rgba(248,81,73,.06);  }
+  .direction-box.wait { border-color: var(--border); background: var(--bg); }
+  .dir-arrow { font-size: 32px; line-height: 1; }
+  .dir-label { font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
+  .direction-box.up   .dir-arrow { color: var(--green); }
+  .direction-box.down .dir-arrow { color: var(--red);   }
+  .direction-box.up   .dir-label { color: var(--green); }
+  .direction-box.down .dir-label { color: var(--red);   }
+
+  /* ── Confluence checklist ── */
+  .confluence-list { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .cf-row { display: flex; align-items: center; gap: 8px; }
+  .cf-check {
+    width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; border: 1px solid var(--border);
+    background: var(--bg); color: var(--muted); transition: .2s;
+  }
+  .cf-check.pass { background: rgba(57,211,83,.15); border-color: rgba(57,211,83,.5); color: var(--green); }
+  .cf-check.fail { background: rgba(248,81,73,.10); border-color: rgba(248,81,73,.4); color: var(--red);   }
+  .cf-name  { font-size: 11px; color: var(--muted); flex: 1; }
+  .cf-val   { font-size: 11px; font-weight: 600; color: var(--text); text-align: right; }
   .tier-badge  { display: inline-block; padding: 3px 12px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; margin-bottom: 8px; }
   .tier-0 { background: #1a1f26; color: var(--muted); }
   .tier-1 { background: #1a2e1a; color: var(--green); }
@@ -411,35 +443,60 @@
           <div id="brain-claude-signals" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;"></div>
         </div>
       </div>
-      <!-- Right: current evaluation -->
+      <!-- Right: direction + confluence -->
       <div>
         <div class="c-label">Current Evaluation <span id="brain-total-score" style="color:var(--amber);font-weight:700;"></span></div>
-        <div id="brain-scores">
-          <div style="display:flex;gap:16px;margin-bottom:12px;">
-            <div class="stat">
-              <div class="s-label">Win Prob</div>
-              <div id="brain-win-prob" style="font-size:18px;font-weight:600;color:var(--amber);">—</div>
+        <div class="brain-right-wrap">
+
+          <!-- Direction box -->
+          <div class="direction-box wait" id="direction-box">
+            <div class="dir-arrow" id="dir-arrow">—</div>
+            <div class="dir-label" id="dir-label">WAIT</div>
+            <div style="font-size:9px;color:var(--muted);margin-top:4px;" id="dir-contract">—</div>
+          </div>
+
+          <!-- Confluence checklist -->
+          <div class="confluence-list">
+            <div class="cf-row">
+              <div class="cf-check" id="cf-conf">·</div>
+              <span class="cf-name">Confidence</span>
+              <span class="cf-val" id="cf-conf-val">—</span>
             </div>
-            <div class="stat">
-              <div class="s-label">EV</div>
-              <div id="brain-ev" style="font-size:18px;font-weight:600;color:var(--muted);">—</div>
+            <div class="cf-row">
+              <div class="cf-check" id="cf-ev">·</div>
+              <span class="cf-name">EV</span>
+              <span class="cf-val" id="cf-ev-val">—</span>
             </div>
-            <div class="stat">
-              <div class="s-label">Contract</div>
-              <div id="brain-contract" style="font-size:18px;font-weight:600;color:var(--text);">—</div>
+            <div class="cf-row">
+              <div class="cf-check" id="cf-mom">·</div>
+              <span class="cf-name">Momentum</span>
+              <span class="cf-val" id="cf-mom-val">—</span>
+            </div>
+            <div class="cf-row">
+              <div class="cf-check" id="cf-vel">·</div>
+              <span class="cf-name">Velocity</span>
+              <span class="cf-val" id="cf-vel-val">—</span>
+            </div>
+            <div class="cf-row">
+              <div class="cf-check" id="cf-vol">·</div>
+              <span class="cf-name">Vol Safe</span>
+              <span class="cf-val" id="cf-vol-val">—</span>
+            </div>
+            <div class="cf-row">
+              <div class="cf-check" id="cf-dist">·</div>
+              <span class="cf-name">BTC Distance</span>
+              <span class="cf-val" id="cf-dist-val">—</span>
+            </div>
+            <div class="cf-row">
+              <div class="cf-check" id="cf-time">·</div>
+              <span class="cf-name">Time Window</span>
+              <span class="cf-val" id="cf-time-val">—</span>
             </div>
           </div>
-          <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
-            <span id="sv-momentum" style="padding:2px 10px;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.06em;background:var(--bg);border:1px solid var(--border);color:var(--muted);">—</span>
-            <span id="sv-velocity" style="padding:2px 10px;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.06em;background:var(--bg);border:1px solid var(--border);color:var(--muted);">—</span>
-          </div>
-          <div class="score-bar"><span class="score-label">Time Left</span><div class="score-track"><div class="score-fill" id="sc-time" style="width:0%"></div></div><span class="score-val" id="sv-time">—</span></div>
-          <div class="score-bar"><span class="score-label">BTC Dist</span><div class="score-track"><div class="score-fill" id="sc-distance" style="width:0%"></div></div><span class="score-val" id="sv-distance">—</span></div>
         </div>
         <div style="margin-top:12px;font-size:10px;color:var(--muted);line-height:1.6;border-top:1px solid var(--border);padding-top:10px;">
-          The bot self-adjusts trade size based on recent performance.<br>
-          Tier 1 → normal. Tier 2 → 1.5× size. Tier 3 → 2× size.<br>
-          Win rate is tracked over the last 20 settled trades.
+          All 7 boxes green = bot is looking to enter.<br>
+          Vol Safe = BTC not moving fast enough to cross strike.
         </div>
       </div>
     </div>
@@ -877,54 +934,54 @@ async function pollState() {
     // ── Brain panel ──
     const bd = s.confidence_breakdown || {};
 
-    // Win prob
-    const wpEl = document.getElementById('brain-win-prob');
-    if (wpEl) {
-      const wp = bd.win_prob_final;
-      wpEl.textContent = wp != null ? wp.toFixed(1)+'%' : '—';
-      wpEl.style.color = wp >= 70 ? 'var(--green)' : wp >= 60 ? 'var(--amber)' : 'var(--red)';
+    // ── Direction box ──
+    const dirBox   = document.getElementById('direction-box');
+    const dirArrow = document.getElementById('dir-arrow');
+    const dirLabel = document.getElementById('dir-label');
+    const dirContr = document.getElementById('dir-contract');
+    if (dirBox && bd.side) {
+      const isUp = bd.side === 'yes';
+      dirBox.className  = 'direction-box ' + (isUp ? 'up' : 'down');
+      dirArrow.textContent = isUp ? '▲' : '▼';
+      dirLabel.textContent = isUp ? 'UP' : 'DOWN';
+      dirContr.textContent = bd.contract_c != null ? bd.contract_c + '¢' : '—';
+    } else if (dirBox) {
+      dirBox.className = 'direction-box wait';
+      dirArrow.textContent = '—'; dirLabel.textContent = 'WAIT';
+      if (dirContr) dirContr.textContent = '—';
     }
-    // EV
-    const evEl = document.getElementById('brain-ev');
-    if (evEl) {
-      const ev = bd.ev;
-      evEl.textContent = ev != null ? (ev >= 0 ? '+' : '') + ev.toFixed(1)+'%' : '—';
-      evEl.style.color = ev >= 10 ? 'var(--green)' : ev >= 0 ? 'var(--amber)' : 'var(--red)';
-    }
-    // Contract price
-    const ctEl = document.getElementById('brain-contract');
-    if (ctEl) ctEl.textContent = bd.contract_c != null ? bd.contract_c + '¢' : '—';
 
-    // Momentum badge
-    const momEl = document.getElementById('sv-momentum');
-    if (momEl) {
-      const lbl = bd.momentum_label || 'neutral';
-      momEl.textContent = lbl.toUpperCase();
-      const active = lbl !== 'neutral';
-      momEl.style.color = active ? 'var(--green)' : 'var(--muted)';
-      momEl.style.borderColor = active ? 'rgba(57,211,83,.35)' : 'var(--border)';
+    // ── Confluence checklist helper ──
+    function setCf(id, valId, pass, valText) {
+      const box = document.getElementById(id);
+      const val = document.getElementById(valId);
+      if (box) { box.textContent = pass ? '✓' : '✗'; box.className = 'cf-check ' + (pass ? 'pass' : 'fail'); }
+      if (val) val.textContent = valText;
     }
-    // Velocity badge
-    const velEl = document.getElementById('sv-velocity');
-    if (velEl) {
-      const lbl = bd.velocity_label || 'neutral';
-      velEl.textContent = lbl.toUpperCase();
-      velEl.style.color = lbl === 'favorable' ? 'var(--green)' : lbl === 'unfavorable' ? 'var(--red)' : 'var(--muted)';
-      velEl.style.borderColor = lbl === 'favorable' ? 'rgba(57,211,83,.35)' : lbl === 'unfavorable' ? 'rgba(248,81,73,.35)' : 'var(--border)';
-    }
-    // Time left bar
-    const tFill = document.getElementById('sc-time');
-    const tVal  = document.getElementById('sv-time');
-    if (tFill && bd.time != null) tFill.style.width = Math.min(100, Math.round(bd.time / 20 * 100)) + '%';
-    if (tVal && s.seconds_remaining != null) {
-      const sr = s.seconds_remaining;
-      tVal.textContent = Math.floor(sr/60) + 'm ' + (sr%60|0) + 's';
-    }
-    // BTC distance bar
-    const dFill = document.getElementById('sc-distance');
-    const dVal  = document.getElementById('sv-distance');
-    if (dFill && bd.distance != null) dFill.style.width = Math.min(100, Math.round(bd.distance / 30 * 100)) + '%';
-    if (dVal) dVal.textContent = bd.distance_pct != null ? bd.distance_pct.toFixed(3)+'%' : '—';
+
+    const wp  = bd.win_prob_final;
+    const ev  = bd.ev;
+    const mom = bd.momentum_label || 'neutral';
+    const vel = bd.velocity_label || 'neutral';
+    const vr  = bd.vol_ratio;
+    const dp  = bd.distance_pct;
+    const sr  = s.seconds_remaining;
+    const confThresh = (s.config && s.config.confidence_threshold) || 72;
+
+    setCf('cf-conf', 'cf-conf-val', wp != null && wp >= confThresh,
+          wp != null ? wp.toFixed(1)+'%' : '—');
+    setCf('cf-ev',   'cf-ev-val',   ev != null && ev >= 5,
+          ev != null ? (ev>=0?'+':'')+ev.toFixed(1)+'%' : '—');
+    setCf('cf-mom',  'cf-mom-val',  mom !== 'neutral',
+          mom.toUpperCase());
+    setCf('cf-vel',  'cf-vel-val',  vel === 'favorable',
+          vel.toUpperCase());
+    setCf('cf-vol',  'cf-vol-val',  vr != null && vr < 0.9,
+          vr != null ? 'ratio '+vr.toFixed(2) : 'no data');
+    setCf('cf-dist', 'cf-dist-val', dp != null && dp >= 0.10,
+          dp != null ? dp.toFixed(3)+'%' : '—');
+    setCf('cf-time', 'cf-time-val', sr != null && sr > 90 && sr < 13*60,
+          sr != null ? Math.floor(sr/60)+'m '+(sr%60|0)+'s' : '—');
 
     const totalScore = s.confidence_score;
     const tse = document.getElementById('brain-total-score');

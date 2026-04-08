@@ -1561,7 +1561,8 @@ def printer_brain(
             "reasoning": reasoning, "key_signals": key_signals,
             "win_prob": float(true_p),
             "mom_label": mom_label, "vel_signal": vel_signal,
-            "mins_left": mins_left, "abs_pct": abs_pct}
+            "mins_left": mins_left, "abs_pct": abs_pct,
+            "_rv": _rv, "_vol_ratio": _vol_ratio}
 
 
 
@@ -2037,6 +2038,8 @@ async def handle_ready_phase(
     _time_score = round(max(0.0, min(20.0, 20.0 * (1.0 - secs_left / (13 * 60)))), 1)
     # Distance score: farther from strike = higher score (0→30, caps at 0.5%)
     _dist_score = round(min(30.0, _abs_pct * 100.0 / 0.5 * 30.0), 1)
+    _brain_rv       = brain.get("_rv")
+    _brain_vol_ratio = brain.get("_vol_ratio")
     breakdown = {
         "win_prob_raw":   round(win_p_raw * 100, 1),
         "win_prob_final": round(brain.get("win_prob", win_p_raw) * 100, 1),
@@ -2049,6 +2052,9 @@ async def handle_ready_phase(
         "time":           _time_score,
         "distance":       _dist_score,
         "distance_pct":   round(_abs_pct * 100, 3),
+        "side":           side,
+        "vol_per_min":    round(_brain_rv * 100, 4) if _brain_rv is not None else None,
+        "vol_ratio":      round(_brain_vol_ratio, 3) if _brain_vol_ratio is not None else None,
     }
 
     last_confidence_score = score
