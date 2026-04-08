@@ -2417,11 +2417,19 @@ async def main_loop() -> None:
                         current_phase = "WATCH"
                         log.info(f"First market: {ticker}. Starting WATCH.")
                 elif ticker != prev_ticker:
-                    log.info(f"New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
-                    current_phase = "WATCH"
-                    current_position = None
-                    prev_ticker = ticker
-                    _order_attempted_tickers.discard(prev_ticker)  # clear old ticker
+                    if current_phase == "LOCKED":
+                        # Never reset a live position when the market rolls over.
+                        # The position is on the OLD ticker — keep monitoring it.
+                        log.info(f"Market rolled to {ticker} but position still open on {prev_ticker} — staying LOCKED.")
+                        # Keep using the old market object for SL monitoring this cycle
+                        ticker = prev_ticker
+                        market = _market_cache if _market_cache and _market_cache.get("ticker") == prev_ticker else market
+                    else:
+                        log.info(f"New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
+                        current_phase = "WATCH"
+                        current_position = None
+                        _order_attempted_tickers.discard(prev_ticker)
+                        prev_ticker = ticker
 
                 secs_left = seconds_remaining(market)
                 elapsed = seconds_elapsed(market)
