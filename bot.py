@@ -906,6 +906,39 @@ def calculate_momentum() -> tuple[float, str]:
     return pct, "neutral"
 
 
+def btc_realized_vol() -> float | None:
+    """
+    Realized BTC volatility: std dev of 1-minute percentage returns over the
+    last 10 minutes. Returns None if fewer than 4 samples are available.
+
+    Used to gate entries — if BTC is moving fast enough to plausibly cross the
+    strike before expiry, the empirical win-prob table understates the risk.
+    """
+    if len(btc_prices) < 2:
+        return None
+    now = time.time()
+    samples: list[float] = []
+    for minutes_ago in range(10, 0, -1):
+        target = now - minutes_ago * 60
+        best_price: float | None = None
+        best_delta = float("inf")
+        for ts, price in btc_prices:
+            delta = abs(ts - target)
+            if delta < best_delta and delta < 45:
+                best_delta = delta
+                best_price = price
+        if best_price is not None:
+            samples.append(best_price)
+    if len(samples) < 4:
+        return None
+    returns = [(samples[i] - samples[i - 1]) / samples[i - 1] for i in range(1, len(samples))]
+    if len(returns) < 3:
+        return None
+    mean = sum(returns) / len(returns)
+    variance = sum((r - mean) ** 2 for r in returns) / (len(returns) - 1)
+    return variance ** 0.5  # std dev of 1-min returns (as decimal)
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  Contract price velocity tracking
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1410,6 +1443,19 @@ def printer_brain(
     abs_pct   = abs(pct_above)
     above     = pct_above > 0
 
+    # ── 0. Realized volatility gate ──────────────────────────────────────────
+    # Brownian motion: expected BTC move before expiry ≈ vol * sqrt(mins_left).
+    # If that expected move ≥ 90% of the distance to strike, the distance is
+    # not large enough relative to current volatility — skip the trade.
+    _rv        = btc_realized_vol()
+    _vol_skip  = False
+    _vol_ratio = None
+    if _rv is not None and abs_pct > 0:
+        _expected_move = _rv * (mins_left ** 0.5)
+        _vol_ratio     = _expected_move / abs_pct
+        if _vol_ratio >= 0.9:
+            _vol_skip = True
+
     # ── 1. Empirical win probability from backtest table ──────────────────────
     win_prob_raw = _empirical_win_prob(abs_pct, mins_left)
 
@@ -1466,7 +1512,13 @@ def printer_brain(
         min_ev = base_ev
 
     skip_reason = ""
-    if best_ev < min_ev:
+    if _vol_skip:
+        _ratio_str = f"{_vol_ratio:.2f}" if _vol_ratio is not None else "?"
+        skip_reason = (
+            f"vol too high: expected move covers {_ratio_str}x the strike distance "
+            f"(dist={abs_pct*100:.2f}% | {mins_left:.1f} min left)"
+        )
+    elif best_ev < min_ev:
         skip_reason = (
             f"EV {best_ev:+.1%} below {min_ev:.0%} minimum | "
             f"{side.upper()} at {entry_c:.0f}c, win prob {true_p:.1%}"
@@ -1477,13 +1529,15 @@ def printer_brain(
     # ── 9. Confidence = win probability 0-100 ────────────────────────────────
     confidence = min(99, max(0, int(true_p * 100) + _brain_cal["confidence_bonus"]))
 
+    _rv_str = f"{_rv*100:.3f}%/min" if _rv is not None else "n/a"
+    _ratio_display = f"{_vol_ratio:.2f}" if _vol_ratio is not None else "n/a"
     if action == "trade":
         reasoning = (
             f"BTC is {abs_pct*100:.2f}% {'above' if above else 'below'} strike "
             f"with {mins_left:.1f} min left. Empirical win prob: {true_p:.1%} "
             f"(raw {win_prob_raw:.1%} + mom {mom_adj:+.1%}). "
             f"Contract {entry_c:.0f}c -> EV {best_ev:+.1%}. "
-            f"Momentum: {mom_label} ({mom_pct*100:+.2f}%)."
+            f"Momentum: {mom_label} ({mom_pct*100:+.2f}%). Vol: {_rv_str} (ratio {_ratio_display})."
         )
     else:
         reasoning = skip_reason or f"No EV edge. Best: {best_ev:+.1%} (need {min_ev:.0%})"
@@ -1493,13 +1547,15 @@ def printer_brain(
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
         f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
         f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal}",
+        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip ≥0.90)",
     ]
 
     brain_log.info(
         f"{action.upper():5} {side.upper():3} conf={confidence:3} | "
         f"dist={abs_pct*100:.3f}% {'UP' if above else 'DN'} | "
         f"ev={best_ev:+.1%} | prob={true_p:.1%} raw={win_prob_raw:.1%} mom={mom_adj:+.1%} | "
-        f"contract={entry_c:.0f}c | {mom_label} {mins_left:.1f}min"
+        f"contract={entry_c:.0f}c | {mom_label} {mins_left:.1f}min | "
+        f"vol={_rv_str} ratio={_ratio_display}"
     )
     return {"action": action, "side": side, "confidence": confidence,
             "reasoning": reasoning, "key_signals": key_signals,
