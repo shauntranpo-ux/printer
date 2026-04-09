@@ -1,0 +1,255 @@
+{
+  "generated_at": "2026-04-01T05:30:31.596121+00:00",
+  "config": {
+    "n_windows": 8,
+    "in_window_train_pct": 0.8,
+    "forward_pct": 0.2,
+    "n_mc_sims_per_window": 50,
+    "trade_amount_dollars": 5.0,
+    "train_period": "2020-01-01 \u2192 2024-05-14",
+    "oos_locked": "2024-05-14 \u2192 2026-03-30"
+  },
+  "summary": {
+    "windows_completed": 8,
+    "windows_passed": 8,
+    "windows_failed": 0,
+    "pass_rate_pct": 100.0,
+    "wfv_efficiency_ratio": 0.2386,
+    "wfv_efficiency_per_trade": 0.9844,
+    "verdict": "WARN_OVERFIT"
+  },
+  "windows": [
+    {
+      "window": 1,
+      "iw_train_range": "2020-01-01 \u2192 2020-06-08",
+      "forward_range": "2020-06-08 \u2192 2020-07-18",
+      "iw_train_size": 15316,
+      "forward_size": 3829,
+      "best_params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 80
+      },
+      "in_window": {
+        "total_trades": 2185,
+        "win_rate": 95.42,
+        "total_pnl": 4997.57,
+        "pnl_per_trade": 2.287217,
+        "sharpe": 348.004,
+        "max_drawdown": 11.89
+      },
+      "forward": {
+        "total_trades": 335,
+        "win_rate": 98.81,
+        "total_pnl": 838.32,
+        "pnl_per_trade": 2.502448,
+        "sharpe": 705.028,
+        "max_drawdown": 2.56
+      },
+      "pass_fail": "PASS"
+    },
+    {
+      "window": 2,
+      "iw_train_range": "2020-07-18 \u2192 2020-12-24",
+      "forward_range": "2020-12-24 \u2192 2021-02-02",
+      "iw_train_size": 15316,
+      "forward_size": 3829,
+      "best_params": {
+        "min_ev": 0.25,
+        "stop_loss_pct": 50.0,
+        "min_confidence": 80
+      },
+      "in_window": {
+        "total_trades": 5777,
+        "win_rate": 96.59,
+        "total_pnl": 12421.08,
+        "pnl_per_trade": 2.150092,
+        "sharpe": 335.048,
+        "max_drawdown": 6.77
+      },
+      "forward": {
+        "total_trades": 1327,
+        "win_rate": 87.64,
+        "total_pnl": 2141.32,
+        "pnl_per_trade": 1.613655,
+        "sharpe": 150.448,
+        "max_drawdown": 3.55
+      },
+      "pass_fail": "PASS"
+    },
+    {
+      "window": 3,
+      "iw_train_range": "2021-02-02 \u2192 2021-07-12",
+      "forward_range": "2021-07-12 \u2192 2021-08-21",
+      "iw_train_size": 15316,
+      "forward_size": 3829,
+      "best_params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 70
+      },
+      "in_window": {
+        "total_trades": 2261,
+        "win_rate": 93.06,
+        "total_pnl": 5130.57,
+        "pnl_per_trade": 2.26916,
+        "sharpe": 242.767,
+        "max_drawdown": 12.83
+      },
+      "forward": {
+        "total_trades": 620,
+        "win_rate": 94.52,
+        "total_pnl": 1514.22,
+        "pnl_per_trade": 2.44229,
+        "sharpe": 269.546,
+        "max_drawdown": 1.91
+      },
+      "pass_fail": "PASS"
+    },
+    {
+      "window": 4,
+      "iw_train_range": "2021-08-21 \u2192 2022-01-27",
+      "forward_range": "2022-01-27 \u2192 2022-03-08",
+      "iw_train_size": 15316,
+      "forward_size": 3829,
+      "best_params": {
+        "min_ev": 0.25,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 80
+      },
+      "in_window": {
+        "total_trades": 6265,
+        "win_rate": 94.3,
+        "total_pnl": 13031.81,
+        "pnl_per_trade": 2.080097,
+        "sharpe": 320.556,
+        "max_drawdown": 1.28
+      },
+      "forward": {
+        "total_trades": 1529,
+        "win_rate": 93.46,
+        "total_pnl": 3129.81,
+        "pnl_per_trade": 2.046965,
+        "sharpe": 291.381,
+        "max_drawdown": 30.16
+      },
+      "pass_fail": "PASS"
+    },
+    {
+      "window": 5,
+      "iw_train_range": "2022-03-08 \u2192 2022-08-15",
+      "forward_range": "2022-08-15 \u2192 2022-09-24",
+      "iw_train_size": 15316,
+      "forward_size": 3829,
+      "best_params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 50.0,
+        "min_confidence": 60
+      },
+      "in_window": {
+        "total_trades": 2250,
+        "win_rate": 94.62,
+        "total_pnl": 5533.46,
+        "pnl_per_trade": 2.459316,
+        "sharpe": 251.975,
+        "max_drawdown": 18.97
+      },
+      "forward": {
+        "total_trades": 617,
+        "win_rate": 95.79,
+        "total_pnl": 1559.72,
+        "pnl_per_trade": 2.527909,
+        "sharpe": 285.647,
+        "max_drawdown": 15.8
+      },
+      "pass_fail": "PASS"
+    },
+    {
+      "window": 6,
+      "iw_train_range": "2022-09-24 \u2192 2023-03-02",
+      "forward_range": "2023-03-02 \u2192 2023-04-11",
+      "iw_train_size": 15316,
+      "forward_size": 3829,
+      "best_params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 50.0,
+        "min_confidence": 80
+      },
+      "in_window": {
+        "total_trades": 1322,
+        "win_rate": 99.02,
+        "total_pnl": 3307.94,
+        "pnl_per_trade": 2.502224,
+        "sharpe": 671.166,
+        "max_drawdown": 2.86
+      },
+      "forward": {
+        "total_trades": 397,
+        "win_rate": 98.74,
+        "total_pnl": 985.06,
+        "pnl_per_trade": 2.481259,
+        "sharpe": 587.143,
+        "max_drawdown": 1.46
+      },
+      "pass_fail": "PASS"
+    },
+    {
+      "window": 7,
+      "iw_train_range": "2023-04-11 \u2192 2023-09-18",
+      "forward_range": "2023-09-18 \u2192 2023-10-27",
+      "iw_train_size": 15316,
+      "forward_size": 3829,
+      "best_params": {
+        "min_ev": 0.2,
+        "stop_loss_pct": 40.0,
+        "min_confidence": 80
+      },
+      "in_window": {
+        "total_trades": 5765,
+        "win_rate": 97.0,
+        "total_pnl": 11711.48,
+        "pnl_per_trade": 2.03148,
+        "sharpe": 338.636,
+        "max_drawdown": 3.76
+      },
+      "forward": {
+        "total_trades": 1570,
+        "win_rate": 95.61,
+        "total_pnl": 3105.89,
+        "pnl_per_trade": 1.978274,
+        "sharpe": 283.66,
+        "max_drawdown": 53.52
+      },
+      "pass_fail": "PASS"
+    },
+    {
+      "window": 8,
+      "iw_train_range": "2023-10-27 \u2192 2024-04-04",
+      "forward_range": "2024-04-04 \u2192 2024-05-14",
+      "iw_train_size": 15316,
+      "forward_size": 3829,
+      "best_params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 80
+      },
+      "in_window": {
+        "total_trades": 1869,
+        "win_rate": 98.56,
+        "total_pnl": 4649.03,
+        "pnl_per_trade": 2.487442,
+        "sharpe": 665.467,
+        "max_drawdown": 1.22
+      },
+      "forward": {
+        "total_trades": 513,
+        "win_rate": 97.08,
+        "total_pnl": 1226.11,
+        "pnl_per_trade": 2.390078,
+        "sharpe": 462.699,
+        "max_drawdown": 37.04
+      },
+      "pass_fail": "PASS"
+    }
+  ]
+}

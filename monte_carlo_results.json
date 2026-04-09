@@ -1,0 +1,267 @@
+{
+  "generated_at": "2026-04-01T05:20:20.052733+00:00",
+  "simulations_done": 392,
+  "simulations_total": 392,
+  "top_20": [
+    {
+      "rank": 1,
+      "sharpe_ratio": 424.248,
+      "win_rate": 0.9679,
+      "total_pnl_dollars": 43355.76,
+      "total_trades": 18270,
+      "max_drawdown_pct": 11.89,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 2,
+      "sharpe_ratio": 393.391,
+      "win_rate": 0.9702,
+      "total_pnl_dollars": 43425.47,
+      "total_trades": 18358,
+      "max_drawdown_pct": 37.79,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 35.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 3,
+      "sharpe_ratio": 392.614,
+      "win_rate": 0.9703,
+      "total_pnl_dollars": 43420.74,
+      "total_trades": 18356,
+      "max_drawdown_pct": 37.79,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 40.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 4,
+      "sharpe_ratio": 390.905,
+      "win_rate": 0.9702,
+      "total_pnl_dollars": 43363.86,
+      "total_trades": 18342,
+      "max_drawdown_pct": 37.79,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 50.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 5,
+      "sharpe_ratio": 384.366,
+      "win_rate": 0.9283,
+      "total_pnl_dollars": 41637.81,
+      "total_trades": 18389,
+      "max_drawdown_pct": 11.89,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 25.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 6,
+      "sharpe_ratio": 310.314,
+      "win_rate": 0.939,
+      "total_pnl_dollars": 110837.6,
+      "total_trades": 53580,
+      "max_drawdown_pct": 3.68,
+      "params": {
+        "min_ev": 0.25,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 7,
+      "sharpe_ratio": 299.989,
+      "win_rate": 0.9552,
+      "total_pnl_dollars": 112454.1,
+      "total_trades": 53714,
+      "max_drawdown_pct": 11.47,
+      "params": {
+        "min_ev": 0.25,
+        "stop_loss_pct": 35.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 8,
+      "sharpe_ratio": 294.214,
+      "win_rate": 0.9552,
+      "total_pnl_dollars": 112412.2,
+      "total_trades": 53830,
+      "max_drawdown_pct": 11.47,
+      "params": {
+        "min_ev": 0.25,
+        "stop_loss_pct": 40.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 9,
+      "sharpe_ratio": 293.573,
+      "win_rate": 0.955,
+      "total_pnl_dollars": 112334.81,
+      "total_trades": 53830,
+      "max_drawdown_pct": 11.47,
+      "params": {
+        "min_ev": 0.25,
+        "stop_loss_pct": 50.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 10,
+      "sharpe_ratio": 291.061,
+      "win_rate": 0.8658,
+      "total_pnl_dollars": 37362.36,
+      "total_trades": 18265,
+      "max_drawdown_pct": 40.35,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 20.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 11,
+      "sharpe_ratio": 281.559,
+      "win_rate": 0.8568,
+      "total_pnl_dollars": 36874.96,
+      "total_trades": 18322,
+      "max_drawdown_pct": 40.35,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 15.0,
+        "min_confidence": 80
+      }
+    },
+    {
+      "rank": 12,
+      "sharpe_ratio": 273.149,
+      "win_rate": 0.9496,
+      "total_pnl_dollars": 56520.97,
+      "total_trades": 21939,
+      "max_drawdown_pct": 15.8,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 70
+      }
+    },
+    {
+      "rank": 13,
+      "sharpe_ratio": 273.149,
+      "win_rate": 0.9496,
+      "total_pnl_dollars": 56520.97,
+      "total_trades": 21939,
+      "max_drawdown_pct": 15.8,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 60
+      }
+    },
+    {
+      "rank": 14,
+      "sharpe_ratio": 273.149,
+      "win_rate": 0.9496,
+      "total_pnl_dollars": 56520.97,
+      "total_trades": 21939,
+      "max_drawdown_pct": 15.8,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 50
+      }
+    },
+    {
+      "rank": 15,
+      "sharpe_ratio": 273.149,
+      "win_rate": 0.9496,
+      "total_pnl_dollars": 56520.97,
+      "total_trades": 21939,
+      "max_drawdown_pct": 15.8,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 65
+      }
+    },
+    {
+      "rank": 16,
+      "sharpe_ratio": 273.149,
+      "win_rate": 0.9496,
+      "total_pnl_dollars": 56520.97,
+      "total_trades": 21939,
+      "max_drawdown_pct": 15.8,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 55
+      }
+    },
+    {
+      "rank": 17,
+      "sharpe_ratio": 273.149,
+      "win_rate": 0.9496,
+      "total_pnl_dollars": 56520.97,
+      "total_trades": 21939,
+      "max_drawdown_pct": 15.8,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 30.0,
+        "min_confidence": 75
+      }
+    },
+    {
+      "rank": 18,
+      "sharpe_ratio": 264.792,
+      "win_rate": 0.9507,
+      "total_pnl_dollars": 56232.07,
+      "total_trades": 21913,
+      "max_drawdown_pct": 14.09,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 35.0,
+        "min_confidence": 50
+      }
+    },
+    {
+      "rank": 19,
+      "sharpe_ratio": 264.792,
+      "win_rate": 0.9507,
+      "total_pnl_dollars": 56232.07,
+      "total_trades": 21913,
+      "max_drawdown_pct": 14.09,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 35.0,
+        "min_confidence": 75
+      }
+    },
+    {
+      "rank": 20,
+      "sharpe_ratio": 264.792,
+      "win_rate": 0.9507,
+      "total_pnl_dollars": 56232.07,
+      "total_trades": 21913,
+      "max_drawdown_pct": 14.09,
+      "params": {
+        "min_ev": 0.3,
+        "stop_loss_pct": 35.0,
+        "min_confidence": 70
+      }
+    }
+  ]
+}

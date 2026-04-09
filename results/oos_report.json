@@ -1,0 +1,47 @@
+{
+  "generated_at": "2026-04-09T03:52:09.510649+00:00",
+  "params": {
+    "min_ev": 0.12,
+    "min_confidence": 72
+  },
+  "split": {
+    "generated_at": "2026-04-01T03:14:09.246394+00:00",
+    "start_year": 2020,
+    "train_ratio": 0.7,
+    "total_windows": 218805,
+    "train_windows": 153163,
+    "oos_windows": 65642,
+    "train_start_ts": 1577836800,
+    "train_end_ts": 1715682600,
+    "oos_start_ts": 1715683500,
+    "oos_end_ts": 1774828800,
+    "train_start_date": "2020-01-01",
+    "train_end_date": "2024-05-14",
+    "oos_start_date": "2024-05-14",
+    "oos_end_date": "2026-03-30"
+  },
+  "in_sample": {
+    "period": "2020-01-01 \u2192 2024-05-14",
+    "total_trades": 151312,
+    "win_rate": 0.8616,
+    "total_pnl_dollars": 228325.83,
+    "pnl_per_trade": 1.508974,
+    "sharpe_ratio": 104.279,
+    "max_drawdown_pct": 50.72,
+    "avg_confidence": 83.7,
+    "max_consec_losses": 6
+  },
+  "oos": {
+    "period": "2024-05-14 \u2192 2026-03-30",
+    "total_trades": 65248,
+    "win_rate": 0.8738,
+    "total_pnl_dollars": 115292.98,
+    "pnl_per_trade": 1.766996,
+    "sharpe_ratio": 123.033,
+    "max_drawdown_pct": 157.24,
+    "avg_confidence": 82.0,
+    "max_consec_losses": 7
+  },
+  "generalisation_efficiency": 1.171,
+  "verdict": "PASS"
+}

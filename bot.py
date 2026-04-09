@@ -54,11 +54,10 @@ KALSHI_PATH_PREFIX = "/trade-api/v2"  # included in signature but not in the pat
 COINBASE_WS = "wss://advanced-trade-ws.coinbase.com"
 API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
 MARKET_CACHE_TTL = 30     # seconds to cache the active market
-WATCH_PHASE_SECONDS = 0   # evaluate immediately when a session starts
+WATCH_PHASE_SECONDS = 540  # wait 9 minutes into each session before entering
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
-CONFIDENCE_THRESHOLD = 67   # minimum win probability % to enter a trade
-STOP_LOSS_PERCENT    = 50   # exit if contract bid drops this % from entry price
+CONFIDENCE_THRESHOLD = 72   # minimum win probability % to enter a trade
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -166,8 +165,7 @@ def _init_config() -> None:
         "bot_enabled": False,
         "trade_amount_dollars": 10,
         "mode": "paper",
-        "confidence_threshold": 67,
-        "stop_loss_percent": 50,
+        "confidence_threshold": 72,
         "cooldown_markets": 0,
         "daily_loss_limit_dollars": 5000,
         "daily_profit_target_dollars": 5000,
@@ -227,7 +225,6 @@ def init_db() -> None:
                 strike                REAL,
                 seconds_left_at_entry INTEGER,
                 fill_confirmed        INTEGER,
-                stop_loss_price_cents INTEGER,
                 exit_price_cents      INTEGER,
                 exit_reason           TEXT,
                 outcome               TEXT DEFAULT 'pending',
@@ -324,10 +321,10 @@ def db_write_trade(trade: dict) -> int | None:
                 ts, market_id, market_title, mode, side, contracts,
                 entry_price_cents, trade_amount_dollars, confidence_score,
                 model_prob, implied_prob, btc_price_at_entry, strike,
-                seconds_left_at_entry, fill_confirmed, stop_loss_price_cents,
+                seconds_left_at_entry, fill_confirmed,
                 exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
                 claude_confidence, claude_signals
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
             trade.get("mode"), trade.get("side"), trade.get("contracts"),
@@ -335,7 +332,7 @@ def db_write_trade(trade: dict) -> int | None:
             trade.get("confidence_score"), trade.get("model_prob"),
             trade.get("implied_prob"), trade.get("btc_price_at_entry"),
             trade.get("strike"), trade.get("seconds_left_at_entry"),
-            trade.get("fill_confirmed"), trade.get("stop_loss_price_cents"),
+            trade.get("fill_confirmed"),
             trade.get("exit_price_cents"), trade.get("exit_reason"),
             trade.get("outcome", "pending"), trade.get("pnl_dollars"),
             trade.get("profit_percent"),
@@ -1507,7 +1504,7 @@ def printer_brain(
     # is near-certain but markets reprice slowly, so edge exists even at lower EV.
     # This lets the bot find a trade in almost every session's final minutes
     # while staying selective early when outcomes are still uncertain.
-    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.08
+    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.12
     min_ev = base_ev
 
     skip_reason = ""
@@ -2106,8 +2103,6 @@ async def handle_ready_phase(
     # Use actual filled contract count (IOC may fill fewer than requested)
     contracts = result.get("filled_contracts") or contracts
 
-    stop_pct = STOP_LOSS_PERCENT
-    sl_price = int(fill_price * (1 - stop_pct / 100))
     trade_ts = datetime.now(timezone.utc).isoformat()
 
     trade_data = {
@@ -2126,7 +2121,6 @@ async def handle_ready_phase(
         "strike": strike,
         "seconds_left_at_entry": int(secs_left),
         "fill_confirmed": 1 if fill_confirmed else 0,
-        "stop_loss_price_cents": sl_price,
         "exit_price_cents": None,
         "exit_reason": None,
         "outcome": "pending",
@@ -2153,14 +2147,13 @@ async def handle_ready_phase(
             "side": side,
             "contracts": contracts,
             "entry_price_cents": fill_price,
-            "stop_loss_price_cents": sl_price,
             "mode": mode,
             "strike": strike,
             "entry_ts": _entry_ts,
         }
         current_phase = "LOCKED"
         last_action, last_skip_reason = "trade", ""
-        log.info(f"{ticker}: LOCKED. SL={sl_price}c")
+        log.info(f"{ticker}: LOCKED.")
         mode_icon  = "📄" if mode == "paper" else "💵"
         dir_icon   = "⬆" if side == "yes" else "⬇"
         _win_pct   = int(brain.get("win_prob", 0) * 100)

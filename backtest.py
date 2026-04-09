@@ -29,7 +29,7 @@ import pandas as pd
 # ─────────────────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────────────────
-CSV_PATH = r'C:\Users\alxnt\Downloads\btcusd_1-min_data.csv'
+CSV_PATH = r'C:\Users\alxnt\Downloads\d5ae29c4-33c6-11f1-b1e7-6dda37cfa7b9\binance_api_BTCUSDT_1m.csv'
 DB_PATH  = r'C:\Users\alxnt\kalshi-bot\kalshi_bot.db'
 
 _BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
@@ -102,10 +102,9 @@ def _load_best_params() -> dict:
             cfg = json.load(fh)
         return {
             "min_ev":         0.30,
-            "stop_loss_pct":  float(cfg.get("stop_loss_percent",   30.0)),
             "min_confidence": int(cfg.get("confidence_threshold", 80)),
         }
-    return {"min_ev": 0.30, "stop_loss_pct": 30.0, "min_confidence": 80}
+    return {"min_ev": 0.30, "min_confidence": 80}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Empirical win-probability table — identical to bot.py _BV3_TABLE
@@ -287,10 +286,12 @@ def load_data(start_year: int = 2020, verbose: bool = True, mode: str = "train")
     t0 = time.time()
     df = pd.read_csv(
         CSV_PATH,
-        dtype={"Timestamp": "float64", "Open": "float64", "High": "float64",
-               "Low": "float64", "Close": "float64", "Volume": "float64"},
+        dtype={"time": "float64", "open": "float64", "high": "float64",
+               "low": "float64", "close": "float64", "volume": "float64"},
         engine="c",
     )
+    df.rename(columns={"time": "Timestamp", "open": "Open", "high": "High",
+                        "low": "Low", "close": "Close", "volume": "Volume"}, inplace=True)
     df["ts"] = df["Timestamp"].astype("int64")
     df = df.dropna(subset=["Open", "Close"])
     df = df[df["Close"] > 0]
@@ -356,7 +357,6 @@ def run_backtest(
     start_year: int   = 2020,
     min_ev: float     = 0.15,
     trade_amount: float = 5.0,
-    stop_loss_pct: float = 35.0,
     watch_minutes: int  = 1,
     seed: int = 42,
     verbose: bool = True,
@@ -383,8 +383,7 @@ def run_backtest(
 
     if verbose:
         print(f"\nSimulating {total_windows:,} windows "
-              f"(min_ev={min_ev:.0%}, stop_loss={stop_loss_pct:.0f}%, "
-              f"trade=${trade_amount:.0f})...")
+              f"(min_ev={min_ev:.0%}, trade=${trade_amount:.0f})...")
 
     last_print = time.time()
 
@@ -437,38 +436,14 @@ def run_backtest(
             confidence = brain["confidence"]
             win_prob   = brain["win_prob"]
             ev         = brain["ev"]
-            contracts  = max(1, int(trade_amount * 100 / entry_c))
-            sl_price   = entry_c * (1.0 - stop_loss_pct / 100.0)
-
-            # ── Stop-loss monitoring for remaining minutes ─────────────────────
+            contracts   = max(1, int(trade_amount * 100 / entry_c))
             exit_reason = "expiry"
-            exit_price  = None
 
-            for chk_min in range(minute + 1, 15):
-                chk_btc = prices.get(chk_min)
-                if chk_btc is None:
-                    continue
-                chk_mins_left = float(15 - chk_min)
-                chk_yes_ask, chk_no_ask = simulate_amm_prices(chk_btc, strike, rng)
-                chk_bid = simulate_bid(side, chk_yes_ask, chk_no_ask, rng)
-
-                if chk_bid <= sl_price:
-                    exit_reason = "stop_loss"
-                    exit_price  = chk_bid
-                    break
-                if chk_mins_left <= 2.0 and chk_bid < entry_c * 0.6:
-                    exit_reason = "late_bail"
-                    exit_price  = chk_bid
-                    break
-
-            # ── Expiry outcome ────────────────────────────────────────────────
-            if exit_reason == "expiry":
-                above_at_close = final_close > strike
-                won = (side == "yes" and above_at_close) or \
-                      (side == "no"  and not above_at_close)
-                exit_price = 100.0 if won else 0.0
-            else:
-                won = (exit_price is not None) and (exit_price > entry_c)
+            # ── Expiry outcome — hold to settlement, no stop loss ─────────────
+            above_at_close = final_close > strike
+            won = (side == "yes" and above_at_close) or \
+                  (side == "no"  and not above_at_close)
+            exit_price = 100.0 if won else 0.0
 
             pnl        = (exit_price - entry_c) * contracts / 100.0
             profit_pct = (exit_price - entry_c) / entry_c * 100.0 if entry_c else 0.0
@@ -478,7 +453,6 @@ def run_backtest(
                 "minute_in":    minute,
                 "side":         side,
                 "entry_c":      round(entry_c,    1),
-                "sl_price":     round(sl_price,   1),
                 "exit_price":   round(exit_price, 1),
                 "exit_reason":  exit_reason,
                 "outcome":      "win" if won else "loss",
@@ -551,9 +525,15 @@ def run_backtest(
         m = t["minute_in"]
         minute_dist[m] = minute_dist.get(m, 0) + 1
 
-    # Side distribution
-    yes_trades = sum(1 for t in trades if t["side"] == "yes")
-    no_trades  = total - yes_trades
+    # Side distribution + per-side win rates
+    yes_trade_list = [t for t in trades if t["side"] == "yes"]
+    no_trade_list  = [t for t in trades if t["side"] == "no"]
+    yes_trades = len(yes_trade_list)
+    no_trades  = len(no_trade_list)
+    yes_wr = (sum(1 for t in yes_trade_list if t["outcome"] == "win") / yes_trades
+              if yes_trades else 0.0)
+    no_wr  = (sum(1 for t in no_trade_list  if t["outcome"] == "win") / no_trades
+              if no_trades  else 0.0)
 
     # Exit reason breakdown
     exit_dist = {}
@@ -562,16 +542,13 @@ def run_backtest(
         exit_dist[r] = exit_dist.get(r, 0) + 1
 
     # Stop-loss win rate vs expiry win rate
-    sl_exits = [t for t in trades if t["exit_reason"] in ("stop_loss", "late_bail")]
     exp_exits = [t for t in trades if t["exit_reason"] == "expiry"]
-    sl_wr  = sum(1 for t in sl_exits  if t["outcome"] == "win") / len(sl_exits)  if sl_exits  else 0.0
     exp_wr = sum(1 for t in exp_exits if t["outcome"] == "win") / len(exp_exits) if exp_exits else 0.0
 
     result = {
         "start_year":             start_year,
         "min_ev":                 min_ev,
         "trade_amount_dollars":   trade_amount,
-        "stop_loss_pct":          stop_loss_pct,
         "total_windows":          total_windows,
         "windows_skipped":        skipped,
         "total_trades":           total,
@@ -586,8 +563,9 @@ def run_backtest(
         "avg_profit_percent":     round(avg_profit_pct, 2),
         "yes_trades":             yes_trades,
         "no_trades":              no_trades,
+        "yes_win_rate":           round(yes_wr, 4),
+        "no_win_rate":            round(no_wr,  4),
         "exit_dist":              exit_dist,
-        "sl_win_rate":            round(sl_wr,  3),
         "expiry_win_rate":        round(exp_wr, 3),
         "minute_dist":            dict(sorted(minute_dist.items())),
     }
@@ -641,7 +619,8 @@ def print_report(r: dict) -> None:
     print(f"  Windows simulated : {r['total_windows']:>10,}")
     print(f"  Trades placed     : {r['total_trades']:>10,}  "
           f"({r['total_trades']/r['total_windows']*100:.1f}% of windows)")
-    print(f"  YES / NO split    : {r['yes_trades']:,} / {r['no_trades']:,}")
+    print(f"  YES / NO split    : {r['yes_trades']:,} / {r['no_trades']:,}  "
+          f"(WR: YES={r.get('yes_win_rate',0)*100:.1f}%  NO={r.get('no_win_rate',0)*100:.1f}%)")
     print("-" * W)
     print(f"  Win rate          : {r['win_rate']*100:>10.1f}%")
     print(f"  Total P&L         : ${r['total_pnl_dollars']:>9.2f}")
@@ -653,8 +632,6 @@ def print_report(r: dict) -> None:
     print(f"  Max consec losses : {r['max_consecutive_losses']:>10}")
     print("-" * W)
     print(f"  Exit at expiry    : {r['exit_dist'].get('expiry',0):>6,}  WR={r['expiry_win_rate']*100:.1f}%")
-    print(f"  Stop-loss exits   : {r['exit_dist'].get('stop_loss',0):>6,}  WR={r['sl_win_rate']*100:.1f}%")
-    print(f"  Late bail exits   : {r['exit_dist'].get('late_bail',0):>6,}")
     print("-" * W)
     print("  Entry minute distribution:")
     for m, n in sorted(r["minute_dist"].items()):
@@ -667,7 +644,7 @@ def print_report(r: dict) -> None:
 # EV sweep — test multiple thresholds and rank them
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_sweep(start_year: int, trade_amount: float, stop_loss_pct: float) -> None:
+def run_sweep(start_year: int, trade_amount: float) -> None:
     thresholds = [0.05, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30]
     results = []
 
@@ -677,7 +654,6 @@ def run_sweep(start_year: int, trade_amount: float, stop_loss_pct: float) -> Non
             start_year=start_year,
             min_ev=ev,
             trade_amount=trade_amount,
-            stop_loss_pct=stop_loss_pct,
             verbose=False,
         )
         if r:
@@ -713,15 +689,13 @@ def run_sweep(start_year: int, trade_amount: float, stop_loss_pct: float) -> Non
 MONTE_CARLO_OUT = r'C:\Users\alxnt\kalshi-bot\monte_carlo_results.json'
 
 PARAM_SPACE = {
-    "min_ev":              [0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30],
-    "stop_loss_pct":       [15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 50.0],
-    "min_confidence":      [50, 55, 60, 65, 70, 75, 80],
+    "min_ev":         [0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30],
+    "min_confidence": [50, 55, 60, 65, 70, 75, 80],
 }
 
-# Pre-computed pool of all unique combinations (392 total)
+# Pre-computed pool of all unique combinations
 _ALL_COMBOS = list(itertools.product(
     PARAM_SPACE["min_ev"],
-    PARAM_SPACE["stop_loss_pct"],
     PARAM_SPACE["min_confidence"],
 ))
 
@@ -764,12 +738,11 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
     combos_to_run = combo_pool[:effective_n]
 
     t0 = time.time()
-    for i, (min_ev, stop_loss_pct, min_confidence) in enumerate(combos_to_run, 1):
+    for i, (min_ev, min_confidence) in enumerate(combos_to_run, 1):
 
         r = run_backtest(
             min_ev         = min_ev,
             trade_amount   = trade_amount,
-            stop_loss_pct  = stop_loss_pct,
             min_confidence = min_confidence,
             verbose        = False,
             _windows       = windows,
@@ -781,7 +754,6 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
 
         r["params"] = {
             "min_ev":         min_ev,
-            "stop_loss_pct":  stop_loss_pct,
             "min_confidence": min_confidence,
         }
         all_results.append(r)
@@ -850,8 +822,7 @@ def _print_mc_summary(top20: list) -> None:
     print("-" * W)
     for rank, r in enumerate(top20, 1):
         p = r["params"]
-        param_str = (f"ev={p['min_ev']:.0%} sl={p['stop_loss_pct']:.0f}% "
-                     f"conf={p['min_confidence']}")
+        param_str = f"ev={p['min_ev']:.0%} conf={p['min_confidence']}"
         print(f"  {rank:>4}  {r['sharpe_ratio']:>7.3f}  "
               f"{r['win_rate']*100:>7.1f}%  "
               f"${r['total_pnl_dollars']:>7.2f}  "
@@ -861,7 +832,6 @@ def _print_mc_summary(top20: list) -> None:
     print(f"\n  BEST PARAMS:")
     bp = best["params"]
     print(f"    min_ev          = {bp['min_ev']:.0%}")
-    print(f"    stop_loss_pct   = {bp['stop_loss_pct']:.0f}%")
     print(f"    min_confidence  = {bp['min_confidence']}")
     print(f"\n  Expected win rate     : {best['win_rate']*100:.1f}%")
     ann_return = (best["total_pnl_dollars"] / (best["total_trades"] * 5.0) *
@@ -875,28 +845,32 @@ def _print_mc_summary(top20: list) -> None:
 # OOS evaluation
 # ─────────────────────────────────────────────────────────────────────────────
 
-def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0) -> None:
+def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
+                 custom_ev: float | None = None,
+                 custom_confidence: int | None = None,
+                 custom_watch: int = 1) -> None:
     """
-    Evaluate the best-known params on the locked OOS holdout set.
+    Evaluate params on the locked OOS holdout set.
 
-    Steps
-    -----
-    1. Load or generate data/split_config.json.
-    2. Read best params from monte_carlo_results.json (rank-1 by Sharpe).
-    3. Load the full CSV once; split into train and OOS slices.
-    4. Run run_backtest() on train slice (in-sample reference).
-    5. Run run_backtest() on OOS slice (true out-of-sample).
-    6. Print side-by-side comparison and generalisation verdict.
-    7. Save full report to results/oos_report.json.
+    Pass custom_ev / custom_confidence to test your own settings instead of
+    the Monte Carlo best params.
     """
     split_cfg = _ensure_split(start_year)
-    params    = _load_best_params()
+
+    if custom_ev is not None or custom_confidence is not None:
+        base = _load_best_params()
+        params = {
+            "min_ev":         custom_ev         if custom_ev         is not None else base["min_ev"],
+            "min_confidence": custom_confidence if custom_confidence is not None else base["min_confidence"],
+        }
+    else:
+        params = _load_best_params()
 
     print("\n" + "=" * 70)
     print("  OOS EVALUATION")
     print("=" * 70)
-    print(f"  Best params  :  ev={params['min_ev']:.0%}  "
-          f"sl={params['stop_loss_pct']:.0f}%  conf={params['min_confidence']}")
+    src = "custom" if (custom_ev is not None or custom_confidence is not None) else "MC best"
+    print(f"  Params ({src})  :  ev={params['min_ev']:.0%}  conf={params['min_confidence']}")
     print(f"  Train period :  {split_cfg['train_start_date']} → "
           f"{split_cfg['train_end_date']}  ({split_cfg['train_windows']:,} windows)")
     print(f"  OOS period   :  {split_cfg['oos_start_date']} → "
@@ -913,8 +887,8 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0) -> None:
     train_r = run_backtest(
         min_ev         = params["min_ev"],
         trade_amount   = trade_amount,
-        stop_loss_pct  = params["stop_loss_pct"],
         min_confidence = params["min_confidence"],
+        watch_minutes  = custom_watch,
         verbose        = False,
         _windows       = train_w,
         _price_lookup  = train_pl,
@@ -924,8 +898,8 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0) -> None:
     oos_r = run_backtest(
         min_ev         = params["min_ev"],
         trade_amount   = trade_amount,
-        stop_loss_pct  = params["stop_loss_pct"],
         min_confidence = params["min_confidence"],
+        watch_minutes  = custom_watch,
         verbose        = False,
         _windows       = oos_w,
         _price_lookup  = oos_pl,
@@ -1057,8 +1031,10 @@ if __name__ == "__main__":
                         help="Min EV threshold, e.g. 0.15 = 15%% (default: 0.15)")
     parser.add_argument("--amount",       type=float, default=5.0,
                         help="Trade amount in dollars (default: 5)")
-    parser.add_argument("--stop-loss",    type=float, default=35.0,
-                        help="Stop-loss percent (default: 35)")
+    parser.add_argument("--confidence",   type=int,   default=0,
+                        help="Min confidence %% to enter a trade (default: 0 = no filter)")
+    parser.add_argument("--watch",        type=int,   default=1,
+                        help="Earliest minute to enter a trade (default: 1, try 8 or 9)")
     parser.add_argument("--sweep",        action="store_true",
                         help="Run multiple EV thresholds and compare results")
     parser.add_argument("--monte-carlo",    action="store_true",
@@ -1070,6 +1046,12 @@ if __name__ == "__main__":
     parser.add_argument("--oos-eval",       action="store_true",
                         help="Run best params on the locked OOS holdout set and "
                              "print in-sample vs OOS comparison")
+    parser.add_argument("--oos-ev",         type=float, default=None,
+                        help="Custom EV threshold for OOS eval (e.g. 0.12)")
+    parser.add_argument("--oos-confidence", type=int,   default=None,
+                        help="Custom confidence threshold for OOS eval (e.g. 72)")
+    parser.add_argument("--oos-watch",      type=int,   default=1,
+                        help="Earliest entry minute for OOS eval (default: 1)")
     parser.add_argument("--generate-split", action="store_true",
                         help="Generate (or regenerate) the 70/30 train/OOS split "
                              "config and exit  (saves data/split_config.json)")
@@ -1123,7 +1105,13 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if args.oos_eval:
-        run_oos_eval(start_year=args.start_year, trade_amount=args.amount)
+        run_oos_eval(
+            start_year        = args.start_year,
+            trade_amount      = args.amount,
+            custom_ev         = args.oos_ev,
+            custom_confidence = args.oos_confidence,
+            custom_watch      = args.oos_watch,
+        )
         sys.exit(0)
 
     if args.monte_carlo:
@@ -1133,13 +1121,14 @@ if __name__ == "__main__":
             trade_amount  = args.amount,
         )
     elif args.sweep:
-        run_sweep(args.start_year, args.amount, args.stop_loss)
+        run_sweep(args.start_year, args.amount)
     else:
         result = run_backtest(
-            start_year    = args.start_year,
-            min_ev        = args.ev,
-            trade_amount  = args.amount,
-            stop_loss_pct = args.stop_loss,
+            start_year     = args.start_year,
+            min_ev         = args.ev,
+            trade_amount   = args.amount,
+            min_confidence = args.confidence,
+            watch_minutes  = args.watch,
         )
         if result:
             print_report(result)

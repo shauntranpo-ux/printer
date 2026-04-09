@@ -1,0 +1,16 @@
+{
+  "generated_at": "2026-04-01T03:14:09.246394+00:00",
+  "start_year": 2020,
+  "train_ratio": 0.7,
+  "total_windows": 218805,
+  "train_windows": 153163,
+  "oos_windows": 65642,
+  "train_start_ts": 1577836800,
+  "train_end_ts": 1715682600,
+  "oos_start_ts": 1715683500,
+  "oos_end_ts": 1774828800,
+  "train_start_date": "2020-01-01",
+  "train_end_date": "2024-05-14",
+  "oos_start_date": "2024-05-14",
+  "oos_end_date": "2026-03-30"
+}
