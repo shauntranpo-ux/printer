@@ -57,7 +57,7 @@ MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 540  # wait 9 minutes into each session before entering
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
-CONFIDENCE_THRESHOLD = 72   # minimum win probability % to enter a trade
+CONFIDENCE_THRESHOLD = 80   # minimum win probability % to enter a trade
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -123,7 +123,7 @@ _adaptive: dict = {
 _brain_cal: dict = {
     "last_count":        0,
     "prob_scale":        1.0,   # multiplies our true_prob estimate (learned correction)
-    "min_edge_override": None,  # if set, overrides the 12% default
+    "min_edge_override": None,  # if set, overrides the 20% default
     "confidence_bonus":  0,     # added to confidence score as a reward
     "reward_tier":       0,     # 0=none 1=good(>50%) 2=great(>75%) 3=max(>85%)
     "overall_wr":        0.0,   # tracked for dashboard display
@@ -165,7 +165,7 @@ def _init_config() -> None:
         "bot_enabled": False,
         "trade_amount_dollars": 10,
         "mode": "paper",
-        "confidence_threshold": 72,
+        "confidence_threshold": 80,
         "cooldown_markets": 0,
         "daily_loss_limit_dollars": 5000,
         "daily_profit_target_dollars": 5000,
@@ -1087,27 +1087,27 @@ def calibrate_brain() -> None:
         _brain_cal["overall_wr"] = overall_wr
         if overall_wr >= 0.85:
             _brain_cal["reward_tier"]       = 3
-            _brain_cal["min_edge_override"] = 0.12   # backtested optimum — never go lower
+            _brain_cal["min_edge_override"] = 0.20   # backtested optimum — never go lower
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "TIER 3 MAX REWARD"
         elif overall_wr >= 0.75:
             _brain_cal["reward_tier"]       = 2
-            _brain_cal["min_edge_override"] = 0.12
+            _brain_cal["min_edge_override"] = 0.20
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "TIER 2 HUGE REWARD"
         elif overall_wr >= 0.50:
             _brain_cal["reward_tier"]       = 1
-            _brain_cal["min_edge_override"] = 0.12   # backtested baseline
+            _brain_cal["min_edge_override"] = 0.20   # backtested baseline
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "TIER 1 REWARD"
         elif overall_wr >= 0.40:
             _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.15   # tighten above baseline
+            _brain_cal["min_edge_override"] = 0.25   # tighten above baseline
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "no reward (learning)"
         else:
             _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.18   # losing — tighten hard
+            _brain_cal["min_edge_override"] = 0.30   # losing — tighten hard
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "no reward (rebuild)"
 
@@ -1504,7 +1504,7 @@ def printer_brain(
     # is near-certain but markets reprice slowly, so edge exists even at lower EV.
     # This lets the bot find a trade in almost every session's final minutes
     # while staying selective early when outcomes are still uncertain.
-    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.12
+    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.20
     min_ev = base_ev
 
     skip_reason = ""

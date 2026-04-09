@@ -627,7 +627,7 @@ def print_report(r: dict) -> None:
     print("-" * W)
     print("  Entry minute distribution:")
     for m, n in sorted(r["minute_dist"].items()):
-        bar = "█" * (n * 30 // max(r["minute_dist"].values()))
+        bar = "#" * (n * 30 // max(r["minute_dist"].values()))
         print(f"    min {m:2d}: {n:6,}  {bar}")
     print("=" * W)
 
