@@ -57,7 +57,7 @@ MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 0   # evaluate immediately when a session starts
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
-CONFIDENCE_THRESHOLD = 65   # minimum win probability % to enter a trade
+CONFIDENCE_THRESHOLD = 67   # minimum win probability % to enter a trade
 STOP_LOSS_PERCENT    = 50   # exit if contract bid drops this % from entry price
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
@@ -522,7 +522,9 @@ async def btc_feed_task() -> None:
                         for event in data.get("events", []):
                             for ticker in event.get("tickers", []):
                                 price = float(ticker["price"])
-                                btc_prices.append((time.time(), price))
+                                now_ts = time.time()
+                                if not btc_prices or (now_ts - btc_prices[-1][0]) >= 5.0:
+                                    btc_prices.append((now_ts, price))
                     except Exception as parse_exc:
                         log.debug(f"BTC feed parse error: {parse_exc}")
         except Exception as exc:
@@ -1088,18 +1090,18 @@ def calibrate_brain() -> None:
         _brain_cal["overall_wr"] = overall_wr
         if overall_wr >= 0.85:
             _brain_cal["reward_tier"]       = 3
-            _brain_cal["min_edge_override"] = 0.05   # proven accurate — lower bar early
-            _brain_cal["confidence_bonus"]  = 25
+            _brain_cal["min_edge_override"] = 0.08   # proven accurate — still require real edge
+            _brain_cal["confidence_bonus"]  = 0
             tier_label = "TIER 3 MAX REWARD"
         elif overall_wr >= 0.75:
             _brain_cal["reward_tier"]       = 2
-            _brain_cal["min_edge_override"] = 0.07
-            _brain_cal["confidence_bonus"]  = 15
+            _brain_cal["min_edge_override"] = 0.08
+            _brain_cal["confidence_bonus"]  = 0
             tier_label = "TIER 2 HUGE REWARD"
         elif overall_wr >= 0.50:
             _brain_cal["reward_tier"]       = 1
-            _brain_cal["min_edge_override"] = 0.05   # same as default
-            _brain_cal["confidence_bonus"]  = 5
+            _brain_cal["min_edge_override"] = 0.08   # same as default
+            _brain_cal["confidence_bonus"]  = 0
             tier_label = "TIER 1 REWARD"
         elif overall_wr >= 0.40:
             _brain_cal["reward_tier"]       = 0
@@ -1453,7 +1455,7 @@ def printer_brain(
     if _rv is not None and abs_pct > 0:
         _expected_move = _rv * (mins_left ** 0.5)
         _vol_ratio     = _expected_move / abs_pct
-        if _vol_ratio >= 0.9:
+        if _vol_ratio >= 0.75:
             _vol_skip = True
 
     # ── 1. Empirical win probability from backtest table ──────────────────────
@@ -1505,11 +1507,8 @@ def printer_brain(
     # is near-certain but markets reprice slowly, so edge exists even at lower EV.
     # This lets the bot find a trade in almost every session's final minutes
     # while staying selective early when outcomes are still uncertain.
-    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.05
-    if secs_left < 3 * 60:
-        min_ev = min(base_ev, 0.03)   # last 3 min: lower bar, near-certain outcomes
-    else:
-        min_ev = base_ev
+    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.08
+    min_ev = base_ev
 
     skip_reason = ""
     if _vol_skip:
@@ -1635,7 +1634,7 @@ async def place_order(
 
     path = "/portfolio/orders"
 
-    for attempt in range(2):  # 1 initial + 1 retry only
+    for attempt in range(3):  # 1 initial + 2 retries
         price_this_attempt = min(99, entry_price_cents + attempt)
         yes_price = price_this_attempt if side == "yes" else (100 - price_this_attempt)
         client_order_id = f"btcbot_{int(time.time() * 1000)}_{attempt}"
@@ -1652,8 +1651,8 @@ async def place_order(
         }
 
         if attempt > 0:
-            log.info(f"Order retry 1/1 at {price_this_attempt}c...")
-            await asyncio.sleep(0.5)
+            log.info(f"Order retry {attempt}/2 at {price_this_attempt}c...")
+            await asyncio.sleep(1.0)
 
         try:
             async with session.post(
@@ -1749,7 +1748,7 @@ async def place_order(
     except Exception as exc:
         log.error(f"Portfolio check error: {exc}")
 
-    log.error(f"Order not filled after 2 attempts for {ticker} {side}@{entry_price_cents}c")
+    log.error(f"Order not filled after 3 attempts for {ticker} {side}@{entry_price_cents}c")
     await send_telegram(
         f"⚠️ <b>ORDER NOT FILLED</b>  —  no liquidity\n"
         f"{side.upper()}  {contracts}x @ {entry_price_cents}¢  |  <code>{ticker}</code>"
