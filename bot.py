@@ -83,6 +83,13 @@ _order_attempted_tickers: set = set()  # tickers where an order was attempted th
 # Market cache
 _market_cache: dict | None = None
 _market_cache_ts: float = 0.0
+_all_markets_cache: list = []
+_all_markets_cache_ts: float = 0.0
+
+# Live BV3 correction table — tracks actual win rates per (dist_idx, time_idx) bucket
+# Updated after every resolved trade. Blended into _empirical_win_prob().
+_bv3_corrections: dict = {}  # (dist_idx, time_idx) -> [wins, total]
+_BV3_CORRECTIONS_FILE = "bv3_corrections.json"
 
 # Daily-limit tracking
 limit_triggered: bool = False
@@ -540,19 +547,24 @@ def get_btc_price() -> float | None:
 #  Market fetching
 # ══════════════════════════════════════════════════════════════════════════════
 
-async def fetch_current_market(session: aiohttp.ClientSession) -> dict | None:
+async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool = False) -> dict | None | list:
     """
-    Fetch the soonest-expiring open BTC 15-minute market from Kalshi.
+    Fetch open BTC 15-minute market(s) from Kalshi.
     Results are cached for MARKET_CACHE_TTL seconds to avoid hammering the API.
 
+    Args:
+        return_all: if True, return the full sorted list of valid markets.
+                    if False (default), return only the soonest-expiring one.
+
     Returns:
-        Market dict, or None if no markets are available.
+        Market dict (or None) when return_all=False.
+        List of market dicts (possibly empty) when return_all=True.
     """
-    global _market_cache, _market_cache_ts
+    global _market_cache, _market_cache_ts, _all_markets_cache, _all_markets_cache_ts
 
     now = time.time()
     if _market_cache and (now - _market_cache_ts) < MARKET_CACHE_TTL:
-        return _market_cache
+        return _all_markets_cache if return_all else _market_cache
 
     path = "/markets"
     # Only look at known 15-minute BTC series — never fall back to daily/weekly markets
@@ -639,10 +651,15 @@ async def fetch_current_market(session: aiohttp.ClientSession) -> dict | None:
             return None
 
     pool.sort(key=lambda m: m.get("close_time", ""))
-    _market_cache = pool[0]
+    _market_cache    = pool[0]
     _market_cache_ts = now
-    log.info(f"Active market: {_market_cache.get('ticker')} | {_market_cache.get('title')} | closes {_market_cache.get('close_time')}")
-    return _market_cache
+    _all_markets_cache    = pool
+    _all_markets_cache_ts = now
+    log.info(
+        f"Active market: {_market_cache.get('ticker')} | {_market_cache.get('title')} "
+        f"| closes {_market_cache.get('close_time')} | ({len(pool)} window(s) total)"
+    )
+    return pool if return_all else _market_cache
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1418,7 +1435,89 @@ def _empirical_win_prob(abs_pct: float, mins_left: float) -> float:
     if t_high > 12:
         return row[12]
 
-    return row[t_low] + (row[t_high] - row[t_low]) * frac
+    bv3_val = row[t_low] + (row[t_high] - row[t_low]) * frac
+
+    # ── Blend with live corrections if we have enough samples ─────────────────
+    key = (bidx, min(t_low, 12))
+    if key in _bv3_corrections:
+        wins, total = _bv3_corrections[key]
+        if total >= 5:
+            live_wr = wins / total
+            # alpha grows 0→0.40 as samples grow 5→50; table always dominates early on
+            alpha = min(0.40, (total - 5) / 45 * 0.40)
+            return bv3_val * (1.0 - alpha) + live_wr * alpha
+
+    return bv3_val
+
+
+def _bv3_bucket_indices(abs_pct: float, mins_left: float) -> tuple[int, int]:
+    """Return (dist_idx, time_idx) for a given trade — used to record outcomes."""
+    bidx = len(_BV3_DIST_BOUNDS)
+    for i, bound in enumerate(_BV3_DIST_BOUNDS):
+        if abs_pct < bound:
+            bidx = i
+            break
+    bidx = min(bidx, len(_BV3_TABLE) - 1)
+    t_low = max(0, min(12, int(max(1.0, mins_left)) - 1))
+    return bidx, t_low
+
+
+def _load_bv3_corrections() -> None:
+    """Load persisted live BV3 corrections from disk on startup."""
+    global _bv3_corrections
+    try:
+        with open(_BV3_CORRECTIONS_FILE, "r", encoding="utf-8") as fh:
+            raw = json.load(fh)
+        _bv3_corrections = {
+            (int(k.split(",")[0]), int(k.split(",")[1])): v
+            for k, v in raw.items()
+        }
+        total_samples = sum(v[1] for v in _bv3_corrections.values())
+        log.info(f"BV3 corrections loaded: {len(_bv3_corrections)} buckets, {total_samples} total samples.")
+    except FileNotFoundError:
+        _bv3_corrections = {}
+    except Exception as exc:
+        log.warning(f"BV3 corrections load error: {exc}")
+        _bv3_corrections = {}
+
+
+def _save_bv3_corrections() -> None:
+    """Persist live BV3 corrections to disk."""
+    try:
+        serialisable = {f"{k[0]},{k[1]}": v for k, v in _bv3_corrections.items()}
+        with open(_BV3_CORRECTIONS_FILE, "w", encoding="utf-8") as fh:
+            json.dump(serialisable, fh)
+    except Exception as exc:
+        log.warning(f"BV3 corrections save error: {exc}")
+
+
+def _update_bv3_correction(dist_idx: int, time_idx: int, won: bool) -> None:
+    """Record one trade outcome into the live BV3 correction table."""
+    key = (dist_idx, time_idx)
+    if key not in _bv3_corrections:
+        _bv3_corrections[key] = [0, 0]
+    _bv3_corrections[key][1] += 1
+    if won:
+        _bv3_corrections[key][0] += 1
+    wins, total = _bv3_corrections[key]
+    log.info(f"BV3 correction updated: bucket {key} -> {wins}/{total} ({wins/total:.0%})")
+    _save_bv3_corrections()
+
+
+def _session_ev_adjustment() -> float:
+    """
+    Return a small EV threshold delta based on UTC hour of day.
+
+    US session (13-20 UTC): lower threshold by 0.02 — clearest trends, easiest holds.
+    Asian dead hours (00-06 UTC): raise threshold by 0.02 — choppy/rangebound.
+    All other hours: neutral.
+    """
+    hour = datetime.now(timezone.utc).hour
+    if 13 <= hour < 20:
+        return -0.02
+    if 0 <= hour < 6:
+        return +0.02
+    return 0.0
 
 
 def printer_brain(
@@ -1514,7 +1613,10 @@ def printer_brain(
     # This lets the bot find a trade in almost every session's final minutes
     # while staying selective early when outcomes are still uncertain.
     base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.20
-    min_ev = base_ev
+    # Time-of-day session adjustment: ±0.02 based on US/Asian session hours
+    session_adj = _session_ev_adjustment()
+    # Never let session adjustment push min_ev below 0.18 (safety floor)
+    min_ev = max(0.18, base_ev + session_adj)
 
     skip_reason = ""
     if _vol_skip:
@@ -1547,10 +1649,11 @@ def printer_brain(
     else:
         reasoning = skip_reason or f"No EV edge. Best: {best_ev:+.1%} (need {min_ev:.0%})"
 
+    _sess_label = "US" if session_adj < 0 else ("Asia-dead" if session_adj > 0 else "neutral")
     key_signals = [
         f"BTC {pct_above*100:+.2f}% from strike | {mins_left:.1f} min left",
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
-        f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
+        f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%} session={_sess_label} {session_adj:+.0%})",
         f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal}",
         f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip ≥0.90)",
     ]
@@ -1579,24 +1682,51 @@ def calculate_contracts(
     trade_amount_dollars: float,
     entry_price_cents: int,
     liquidity: int,
-) -> int:
+    win_prob: float = 0.85,
+) -> tuple[int, float]:
     """
-    Calculate contract count for a trade. Never exceeds the dollar amount.
+    Kelly Criterion position sizing.
+
+    Kelly fraction f* = (p*b - (1-p)) / b
+      where b = (100 - price) / price  (decimal payout odds on a $1 contract)
+
+    Normalized so that a "typical" trade (85% win, 80c) = 1.0x base bet.
+    Capped at 3x, floored at 0.5x to prevent overbetting and underbetting.
 
     Returns:
-        Number of contracts (0 if trade amount is too small for even one contract).
+        (contracts, kelly_dollars_used)
     """
     if entry_price_cents <= 0:
-        return 0
-    trade_cents = trade_amount_dollars * 100
-    contracts = int(trade_cents / entry_price_cents)  # floor — never goes over dollar amount
-    contracts = min(contracts, liquidity)             # cap at available liquidity
+        return 0, 0.0
+
+    # Kelly fraction
+    b = (100 - entry_price_cents) / entry_price_cents   # payout odds
+    if b <= 0:
+        kelly_f = 0.0
+    else:
+        kelly_f = max(0.0, (win_prob * b - (1.0 - win_prob)) / b)
+
+    # Normalize to typical trade (85% win, 80c → kelly_f ≈ 0.2125)
+    _typical_kelly = 0.2125
+    multiplier = kelly_f / _typical_kelly if _typical_kelly > 0 else 1.0
+    multiplier = max(0.5, min(3.0, multiplier))
+
+    kelly_dollars = trade_amount_dollars * multiplier
+    trade_cents   = kelly_dollars * 100
+    contracts = int(trade_cents / entry_price_cents)
+    contracts = min(contracts, liquidity)
     contracts = max(contracts, 0)
-    # Safety: verify cost never exceeds trade amount
+
     actual_cost = contracts * entry_price_cents / 100
-    if actual_cost > trade_amount_dollars + 0.01:
+    if actual_cost > kelly_dollars + 0.01:
         contracts = max(0, contracts - 1)
-    return contracts
+
+    log.info(
+        f"Kelly sizing: win_prob={win_prob:.0%} price={entry_price_cents}c "
+        f"f*={kelly_f:.3f} mult={multiplier:.2f}x "
+        f"bet=${kelly_dollars:.2f} (base=${trade_amount_dollars}) -> {contracts} contracts"
+    )
+    return contracts, kelly_dollars
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1995,12 +2125,66 @@ async def handle_ready_phase(
         current_phase = "DONE"
         return
 
-    # Orderbook — retry next cycle if temporarily unavailable
+    # ── Multi-window best-pick ────────────────────────────────────────────────
+    # If multiple 15-min windows are open simultaneously, evaluate all of them
+    # and trade the one with the highest EV. Falls back to primary market if
+    # only one window is open or fetching alternatives fails.
+    global current_market
     try:
-        ob = await fetch_orderbook(session, ticker, market)
-    except Exception as exc:
-        log.error(f"Orderbook error in READY: {exc}")
-        return
+        all_windows = await fetch_current_market(session, return_all=True)
+        if isinstance(all_windows, list) and len(all_windows) > 1:
+            log.info(f"Multi-window: {len(all_windows)} open windows — evaluating all for best EV.")
+            best_market  = market
+            best_ticker  = ticker
+            best_ev      = None
+            best_ob      = None
+            best_strike  = strike
+            for candidate in all_windows:
+                try:
+                    c_ticker = candidate.get("ticker", "")
+                    c_strike = parse_strike(candidate)
+                    if c_strike is None:
+                        continue
+                    c_ob = await fetch_orderbook(session, c_ticker, candidate)
+                    if c_ob is None:
+                        continue
+                    c_brain = printer_brain(
+                        btc_price, c_strike,
+                        c_ob["best_yes_ask"], c_ob["best_no_ask"],
+                        elapsed, secs_left, c_ticker,
+                    )
+                    c_win_prob = c_brain.get("win_prob", 0.5)
+                    c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
+                    c_ev       = c_win_prob - c_entry / 100
+                    log.info(f"  Window {c_ticker}: ev={c_ev:+.1%} side={c_brain['side']} strike=${c_strike:,.0f}")
+                    if best_ev is None or c_ev > best_ev:
+                        best_ev     = c_ev
+                        best_market = candidate
+                        best_ticker = c_ticker
+                        best_ob     = c_ob
+                        best_strike = c_strike
+                except Exception as _exc:
+                    log.warning(f"  Multi-window eval error for {candidate.get('ticker','?')}: {_exc}")
+            if best_ticker != ticker:
+                log.info(f"Multi-window: switching to {best_ticker} (EV {best_ev:+.1%}) over {ticker}")
+                market  = best_market
+                ticker  = best_ticker
+                strike  = best_strike
+                current_market = best_market
+            ob = best_ob
+        else:
+            ob = None  # fetch below
+    except Exception as _mw_exc:
+        log.warning(f"Multi-window evaluation error: {_mw_exc}")
+        ob = None
+
+    # Orderbook — retry next cycle if temporarily unavailable
+    if ob is None:
+        try:
+            ob = await fetch_orderbook(session, ticker, market)
+        except Exception as exc:
+            log.error(f"Orderbook error in READY: {exc}")
+            return
 
     if ob is None:
         last_action, last_skip_reason = "watching", "no price data — retrying"
@@ -2088,10 +2272,13 @@ async def handle_ready_phase(
 
     # Cooldown disabled — trade every session regardless of prior outcome
 
-    # Position sizing
+    # Position sizing — Kelly Criterion
     trade_amount = config.get("trade_amount_dollars", 20)
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
-    contracts = calculate_contracts(trade_amount, int(entry_price_cents), avail_liquidity)
+    win_prob_for_kelly = brain.get("win_prob", 0.85)
+    contracts, kelly_dollars = calculate_contracts(
+        trade_amount, int(entry_price_cents), avail_liquidity, win_prob_for_kelly
+    )
     if contracts == 0:
         reason = "trade amount too small for current contract price"
         log.info(f"{ticker}: {reason}")
@@ -2150,6 +2337,9 @@ async def handle_ready_phase(
 
     if fill_confirmed:
         _entry_ts = time.time()
+        _abs_pct_at_entry = abs(btc_price - strike) / strike
+        _mins_left_at_entry = secs_left / 60
+        _bv3_dist_idx, _bv3_time_idx = _bv3_bucket_indices(_abs_pct_at_entry, _mins_left_at_entry)
         current_position = {
             "trade_id": trade_id,
             "ticker": ticker,
@@ -2159,6 +2349,8 @@ async def handle_ready_phase(
             "mode": mode,
             "strike": strike,
             "entry_ts": _entry_ts,
+            "_bv3_dist_idx": _bv3_dist_idx,
+            "_bv3_time_idx": _bv3_time_idx,
         }
         current_phase = "LOCKED"
         last_action, last_skip_reason = "trade", ""
@@ -2247,6 +2439,13 @@ async def handle_locked_phase(
                      if pos["entry_price_cents"] else 0
 
         log.info(f"{ticker} expired. Outcome={outcome}, P&L=${pnl:.2f}")
+
+        # Update live BV3 correction table with actual outcome
+        _d = pos.get("_bv3_dist_idx")
+        _t = pos.get("_bv3_time_idx")
+        if _d is not None and _t is not None:
+            _update_bv3_correction(_d, _t, outcome == "win")
+
         db_update_trade(pos["trade_id"], {
             "exit_price_cents": exit_price,
             "exit_reason": "expiry",
@@ -2582,6 +2781,7 @@ async def main() -> None:
     _init_config()
     load_credentials()
     init_db()
+    _load_bv3_corrections()
     _init_claude()
 
     # Verify Kalshi credentials and log account balance before doing anything
