@@ -555,9 +555,9 @@ async def fetch_current_market(session: aiohttp.ClientSession) -> dict | None:
         return _market_cache
 
     path = "/markets"
-    # Try known Kalshi BTC series tickers; fall back to no filter
+    # Only look at known 15-minute BTC series — never fall back to daily/weekly markets
     all_markets = []
-    for series in ("KXBTC15M", "BTCD", "KXBTC", "BTC"):
+    for series in ("KXBTC15M", "KXBTC", "BTC15M", "BTC"):
         params = {"series_ticker": series, "status": "open", "limit": 20}
         try:
             async with session.get(
@@ -594,6 +594,15 @@ async def fetch_current_market(session: aiohttp.ClientSession) -> dict | None:
             mins_left = -1
         log.info(f"  Market: {m.get('ticker')} | closes in {mins_left:.1f}m | {m.get('title','')[:60]}")
 
+    # Drop obviously non-15-min markets by title keyword
+    all_markets = [m for m in all_markets
+                   if "range" not in m.get("title", "").lower()
+                   and "daily" not in m.get("title", "").lower()]
+
+    if not all_markets:
+        log.warning("No valid 15-minute markets after filtering. Waiting for next window.")
+        return None
+
     # Try to identify 15-minute markets by open→close duration
     def market_duration_minutes(m):
         try:
@@ -626,8 +635,8 @@ async def fetch_current_market(session: aiohttp.ClientSession) -> dict | None:
             log.info(f"No 15-min duration match — using {len(soon)} markets closing within 20 min.")
             pool = soon
         else:
-            log.warning(f"No short-window markets found. Using soonest-expiring of {len(all_markets)} total.")
-            pool = all_markets
+            log.warning("No 15-minute markets found. Waiting for next window.")
+            return None
 
     pool.sort(key=lambda m: m.get("close_time", ""))
     _market_cache = pool[0]
