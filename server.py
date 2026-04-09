@@ -53,7 +53,7 @@ _FULL_CONFIG_DEFAULT = {
     "bot_enabled": False,
     "mode": "paper",
     "trade_amount_dollars": 10,
-    "confidence_threshold": 61,
+    "confidence_threshold": 65,
     "cooldown_markets": 0,
     "daily_loss_limit_dollars": 5000,
     "daily_profit_target_dollars": 5000,

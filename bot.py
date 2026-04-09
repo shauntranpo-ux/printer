@@ -57,7 +57,7 @@ MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 0   # evaluate immediately when a session starts
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
-CONFIDENCE_THRESHOLD = 61   # minimum win probability % to enter a trade
+CONFIDENCE_THRESHOLD = 65   # minimum win probability % to enter a trade
 STOP_LOSS_PERCENT    = 50   # exit if contract bid drops this % from entry price
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
