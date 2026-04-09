@@ -123,7 +123,7 @@ _adaptive: dict = {
 _brain_cal: dict = {
     "last_count":        0,
     "prob_scale":        1.0,   # multiplies our true_prob estimate (learned correction)
-    "min_edge_override": None,  # if set, overrides the 5% default
+    "min_edge_override": None,  # if set, overrides the 12% default
     "confidence_bonus":  0,     # added to confidence score as a reward
     "reward_tier":       0,     # 0=none 1=good(>50%) 2=great(>75%) 3=max(>85%)
     "overall_wr":        0.0,   # tracked for dashboard display
@@ -1087,27 +1087,27 @@ def calibrate_brain() -> None:
         _brain_cal["overall_wr"] = overall_wr
         if overall_wr >= 0.85:
             _brain_cal["reward_tier"]       = 3
-            _brain_cal["min_edge_override"] = 0.08   # proven accurate — still require real edge
+            _brain_cal["min_edge_override"] = 0.12   # backtested optimum — never go lower
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "TIER 3 MAX REWARD"
         elif overall_wr >= 0.75:
             _brain_cal["reward_tier"]       = 2
-            _brain_cal["min_edge_override"] = 0.08
+            _brain_cal["min_edge_override"] = 0.12
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "TIER 2 HUGE REWARD"
         elif overall_wr >= 0.50:
             _brain_cal["reward_tier"]       = 1
-            _brain_cal["min_edge_override"] = 0.08   # same as default
+            _brain_cal["min_edge_override"] = 0.12   # backtested baseline
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "TIER 1 REWARD"
         elif overall_wr >= 0.40:
             _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.10   # tighten slightly
+            _brain_cal["min_edge_override"] = 0.15   # tighten above baseline
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "no reward (learning)"
         else:
             _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.12   # losing — require real edge early
+            _brain_cal["min_edge_override"] = 0.18   # losing — tighten hard
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "no reward (rebuild)"
 
@@ -1279,7 +1279,7 @@ BTC PRICE MOVEMENT:
 PRINTER BRAIN STATE (your decisions will be stored and feed back into this):
   Overall win rate:     {_brain_cal['overall_wr']:.0%}
   Reward tier:          {_brain_cal['reward_tier']} / 3  (tier 3 = ≥85% WR = max reward)
-  Min EV required:      {(_brain_cal['min_edge_override'] or 0.05):.0%} early / 3% last 3min
+  Min EV required:      {(_brain_cal['min_edge_override'] or 0.12):.0%}
   Prob scale factor:    {_brain_cal['prob_scale']:.2f}  (1.0 = neutral, <1 = overestimating)
   YES win rate:         {_brain_cal['bullish_wr']:.0%}
   NO  win rate:         {_brain_cal['bearish_wr']:.0%}

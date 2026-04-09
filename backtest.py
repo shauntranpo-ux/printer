@@ -186,14 +186,6 @@ def simulate_amm_prices(btc_price: float, strike: float, rng: random.Random) -> 
     return yes_ask, no_ask
 
 
-def simulate_bid(side: str, yes_ask: float, no_ask: float, rng: random.Random) -> float:
-    """Bid price for an existing position = ask minus a small spread."""
-    spread = rng.uniform(2.0, 4.0)
-    if side == "yes":
-        return max(1.0, yes_ask - spread)
-    else:
-        return max(1.0, no_ask - spread)
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Brain decision (stateless replica of printer_brain from bot.py)
