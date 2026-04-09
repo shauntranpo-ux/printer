@@ -1672,15 +1672,9 @@ def printer_brain(
 
     # ── 8. EV filter — dynamic threshold based on time remaining ─────────────
     # Early/mid session (>3 min left): require 5% EV — take good edges.
-    # Late session (≤3 min left): accept 3% EV — near expiry, win probability
-    # is near-certain but markets reprice slowly, so edge exists even at lower EV.
-    # This lets the bot find a trade in almost every session's final minutes
-    # while staying selective early when outcomes are still uncertain.
-    base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.20
-    # Time-of-day session adjustment: ±0.02 based on US/Asian session hours
-    session_adj = _session_ev_adjustment()
-    # Never let session adjustment push min_ev below 0.05 (5% edge floor)
-    min_ev = max(0.05, base_ev + session_adj)
+    # EV floor — 5% matches the dashboard gate so all-green = bot trades.
+    # Calibration reward tiers adjust prob_scale and confidence_bonus instead.
+    min_ev = 0.05
 
     skip_reason = ""
     if _vol_skip:
@@ -1713,11 +1707,10 @@ def printer_brain(
     else:
         reasoning = skip_reason or f"No EV edge. Best: {best_ev:+.1%} (need {min_ev:.0%})"
 
-    _sess_label = "US" if session_adj < 0 else ("Asia-dead" if session_adj > 0 else "neutral")
     key_signals = [
         f"BTC {pct_above*100:+.2f}% from strike | {mins_left:.1f} min left",
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
-        f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%} session={_sess_label} {session_adj:+.0%})",
+        f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
         f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal}",
         f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip ≥0.90)",
     ]
