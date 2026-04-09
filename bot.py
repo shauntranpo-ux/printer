@@ -2432,13 +2432,9 @@ async def handle_ready_phase(
     last_confidence_score = score
     last_confidence_breakdown = breakdown
 
-    # Hard win-probability floor — never trade if raw win prob is below threshold,
-    # regardless of confidence bonus from reward tier.
-    # Uses the actual win probability, not the bonus-inflated confidence score.
     raw_win_pct = int(brain.get("win_prob", 0) * 100)
-    if do_trade and raw_win_pct < CONFIDENCE_THRESHOLD:
-        skip_reason_ai = f"win prob {raw_win_pct}% below floor {CONFIDENCE_THRESHOLD}%"
-        do_trade = False
+    # Confidence gate removed — EV ≥ 5% already encodes win_prob vs price.
+    # Requiring 75% win_prob on top blocks all contrarian/cheap-side bets.
 
     # ── Reversal model — runs whenever main strategy skips ───────────────────
     # Evaluates exhaustion-reversal setups independent of the continuation model.
