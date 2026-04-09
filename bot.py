@@ -54,7 +54,7 @@ KALSHI_PATH_PREFIX = "/trade-api/v2"  # included in signature but not in the pat
 COINBASE_WS = "wss://advanced-trade-ws.coinbase.com"
 API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
 MARKET_CACHE_TTL = 30     # seconds to cache the active market
-WATCH_PHASE_SECONDS = 540  # wait 9 minutes into each session before entering
+WATCH_PHASE_SECONDS = 90   # wait 90s into each 15-min session before evaluating
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
 CONFIDENCE_THRESHOLD = 80   # minimum win probability % to enter a trade
@@ -662,6 +662,21 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
             return [] if return_all else None
 
     pool.sort(key=lambda m: m.get("close_time", ""))
+
+    # Prefer the shortest-duration markets (KXBTC15M 15-min over KXBTCD 60-min).
+    # If we have any markets within 5 minutes of the minimum duration, use only those.
+    # This prevents 60-min KXBTCD markets from polluting the multi-window pool when
+    # a 15-min KXBTC15M market is available.
+    durations = [market_duration_minutes(m) for m in pool]
+    valid_durations = [d for d in durations if d is not None]
+    if valid_durations:
+        min_dur = min(valid_durations)
+        focused = [m for m, d in zip(pool, durations) if d is not None and d <= min_dur + 5]
+        if focused and len(focused) < len(pool):
+            log.info(f"Focusing pool from {len(pool)} to {len(focused)} markets "
+                     f"(duration ≤ {min_dur + 5:.0f}m, dropping {len(pool) - len(focused)} longer-duration markets)")
+            pool = focused
+
     _market_cache    = pool[0]
     _market_cache_ts = now
     _all_markets_cache    = pool
