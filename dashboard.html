@@ -981,7 +981,7 @@ function _updateAiPanel(s, bd, wp, ev, vr, confThresh) {
   const sr     = s.seconds_remaining;
   const mom    = (bd && bd.momentum_label) || 'neutral';
   const vel    = (bd && bd.velocity_label) || 'neutral';
-  const evMin  = (s.config && s.config.min_ev_pct) || 5;   // real bot EV floor %
+  const evMin  = (s.config && s.config.min_ev_pct) || 8;   // real bot EV floor %
 
   // ── Gate thresholds (labels) ──
   ['ai-conf-thresh', 'ai-cmp-conf-thresh'].forEach(id => {
