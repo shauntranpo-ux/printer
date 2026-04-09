@@ -57,7 +57,7 @@ MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 90   # wait 90s into each 15-min session before evaluating
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
-CONFIDENCE_THRESHOLD = 75   # minimum win probability % to enter a trade
+CONFIDENCE_THRESHOLD = 65   # minimum win probability % to enter a trade
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -2433,8 +2433,9 @@ async def handle_ready_phase(
     last_confidence_breakdown = breakdown
 
     raw_win_pct = int(brain.get("win_prob", 0) * 100)
-    # Confidence gate removed — EV ≥ 5% already encodes win_prob vs price.
-    # Requiring 75% win_prob on top blocks all contrarian/cheap-side bets.
+    if do_trade and raw_win_pct < CONFIDENCE_THRESHOLD:
+        skip_reason_ai = f"win prob {raw_win_pct}% below floor {CONFIDENCE_THRESHOLD}%"
+        do_trade = False
 
     # ── Reversal model — runs whenever main strategy skips ───────────────────
     # Evaluates exhaustion-reversal setups independent of the continuation model.
