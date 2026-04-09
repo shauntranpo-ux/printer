@@ -105,6 +105,7 @@ last_confidence_score: int = 0
 last_confidence_breakdown: dict = {}
 last_action: str = ""
 last_skip_reason: str = ""
+last_reversal_reason: str = ""   # most recent reversal signal evaluation (pass/fail)
 
 # Contract price history — tracks YES ask over time per ticker for velocity signal
 _contract_price_history: dict = {}   # ticker → deque[(ts, price)]
@@ -1731,10 +1732,109 @@ def printer_brain(
     return {"action": action, "side": side, "confidence": confidence,
             "reasoning": reasoning, "key_signals": key_signals,
             "win_prob": float(true_p),
-            "mom_label": mom_label, "vel_signal": vel_signal,
-            "mins_left": mins_left, "abs_pct": abs_pct,
+            "mom_label": mom_label, "mom_pct": float(mom_pct),
+            "vel_signal": vel_signal,
+            "mins_left": mins_left, "abs_pct": abs_pct, "above": above,
             "_rv": _rv, "_vol_ratio": _vol_ratio}
 
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Reversal signal
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _reversal_signal(
+    abs_pct: float,
+    mins_left: float,
+    mom_pct: float,
+    mom_label: str,
+    vel_signal: str,
+    above: bool,       # True = BTC currently ABOVE strike
+    yes_ask: float,
+    no_ask: float,
+    vol_ratio: float | None,
+) -> dict:
+    """
+    Evaluate an exhaustion-reversal setup.
+
+    Fires when:
+      - BTC has made a strong directional move (momentum in current direction)
+      - The opposing contract is very cheap (≤ 20¢) — market prices reversal unlikely
+      - Deceleration signals present (velocity unfavorable for current side)
+      - Time window optimal (3–12 min remaining)
+
+    Returns a dict: {signal, side, ask, prob, ev, reason}
+    """
+    # The reversal bets the OPPOSITE of where BTC currently sits
+    rev_side = "no" if above else "yes"
+    rev_ask  = no_ask if above else yes_ask
+
+    # Gate 1: contract must be cheap — this is what makes reversal bets worth taking
+    if rev_ask > 20:
+        return {"signal": False, "reason": f"reversal contract {rev_ask:.0f}¢ > 20¢, not cheap enough"}
+
+    # Gate 2: time window — needs 3–12 min for the reversal to play out
+    if mins_left < 3 or mins_left > 12:
+        return {"signal": False, "reason": f"time {mins_left:.1f}m outside 3–12m reversal window"}
+
+    # Gate 3: momentum must be strongly WITH BTC's current side — need exhaustion to reverse
+    mom_in_current = (mom_label == "bullish" and above) or (mom_label == "bearish" and not above)
+    if not mom_in_current or abs(mom_pct) < 0.10:
+        return {
+            "signal": False,
+            "reason": f"insufficient exhaustion signal (mom={mom_label} {mom_pct*100:+.2f}%, above={above})",
+        }
+
+    # Gate 4: distance not too extreme — hard to reverse when BTC is far from strike
+    if abs_pct > 0.80:
+        return {"signal": False, "reason": f"BTC too far from strike ({abs_pct*100:.2f}%) for reliable reversal"}
+
+    # ── Reversal probability ──────────────────────────────────────────────────
+    # Base: complement of the BV3 continuation probability
+    bv3_cont = _empirical_win_prob(abs_pct, mins_left)
+    rev_prob  = 1.0 - bv3_cont
+
+    # Exhaustion boost: stronger momentum → more likely to have exhausted, mean-revert
+    exhaust_boost = min(0.08, max(0.0, (abs(mom_pct) - 0.10) * 0.30))
+
+    # Velocity deceleration boost: price movement slowing = reversal more likely
+    vel_boost = 0.04 if vel_signal == "unfavorable" else 0.0
+
+    # High-vol penalty: unpredictable in wild markets
+    vol_penalty = 0.0
+    if vol_ratio is not None and vol_ratio > 0.50:
+        vol_penalty = min(0.10, (vol_ratio - 0.50) * 0.20)
+
+    rev_prob = max(0.05, min(0.45, rev_prob + exhaust_boost + vel_boost - vol_penalty))
+
+    # ── Reversal EV ──────────────────────────────────────────────────────────
+    rev_ev = rev_prob - (rev_ask / 100)
+
+    # Lower EV bar than main strategy (8%) since we're buying cheap contrarian contracts
+    if rev_ev < 0.08:
+        return {
+            "signal": False,
+            "reason": (
+                f"reversal EV {rev_ev:+.1%} below 8% minimum "
+                f"(prob={rev_prob:.1%} vs market {rev_ask:.0f}¢)"
+            ),
+        }
+
+    reason = (
+        f"REVERSAL {rev_side.upper()} @ {rev_ask:.0f}¢ | "
+        f"prob={rev_prob:.1%} (base={bv3_cont:.1%} cont → {1-bv3_cont:.1%} rev, "
+        f"+exhaust={exhaust_boost:.1%} +vel={vel_boost:.1%} -vol={vol_penalty:.1%}) | "
+        f"EV={rev_ev:+.1%} | exhaustion: {mom_label} {mom_pct*100:+.2f}%"
+    )
+    brain_log.info(f"REVERSAL signal: {reason}")
+    return {
+        "signal": True,
+        "side": rev_side,
+        "ask": rev_ask,
+        "prob": rev_prob,
+        "ev": rev_ev,
+        "reason": reason,
+    }
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2139,6 +2239,7 @@ def write_state_file(
         "brain_n": _brain_cal["last_count"],
         "last_action": action,
         "last_skip_reason": skip_reason,
+        "last_reversal_reason": last_reversal_reason,
         "mode": config.get("mode", "paper"),
         "today_live_pnl": db_get_today_pnl("live"),
         "today_paper_pnl": db_get_today_pnl("paper"),
@@ -2204,7 +2305,7 @@ async def handle_ready_phase(
     """
     global current_phase, current_position
     global last_confidence_score, last_confidence_breakdown
-    global last_action, last_skip_reason, cooldown_counter
+    global last_action, last_skip_reason, cooldown_counter, last_reversal_reason
 
     mode = config.get("mode", "paper")
 
@@ -2349,6 +2450,42 @@ async def handle_ready_phase(
         skip_reason_ai = f"win prob {raw_win_pct}% below floor {CONFIDENCE_THRESHOLD}%"
         do_trade = False
 
+    # ── Reversal model — runs whenever main strategy skips ───────────────────
+    # Evaluates exhaustion-reversal setups independent of the continuation model.
+    # Uses 50% of configured trade amount. Never fires when main strategy trades.
+    _rev = None
+    if not do_trade:
+        _rev = _reversal_signal(
+            abs_pct       = brain.get("abs_pct", abs((btc_price - strike) / strike)),
+            mins_left     = secs_left / 60,
+            mom_pct       = brain.get("mom_pct", 0.0),
+            mom_label     = brain.get("mom_label", "neutral"),
+            vel_signal    = brain.get("vel_signal", "neutral"),
+            above         = brain.get("above", btc_price > strike),
+            yes_ask       = yes_ask,
+            no_ask        = no_ask,
+            vol_ratio     = brain.get("_vol_ratio"),
+        )
+        if _rev and _rev["signal"]:
+            log.info(f"{ticker}: {_rev['reason']}")
+            side              = _rev["side"]
+            entry_price_cents = _rev["ask"]
+            score             = int(_rev["prob"] * 100)
+            do_trade          = True
+            skip_reason_ai    = ""
+            _is_reversal      = True
+            last_reversal_reason = _rev["reason"]
+        else:
+            rev_reason = _rev["reason"] if _rev else "reversal not evaluated"
+            last_reversal_reason = rev_reason
+            log.info(f"{ticker}: watching — {skip_reason_ai} | reversal: {rev_reason}")
+            _log_entry(market, "READY", secs_left, btc_price, strike,
+                       int(entry_price_cents), score, "skip", skip_reason_ai, mode)
+            last_action, last_skip_reason = "watching", skip_reason_ai
+            return
+    else:
+        _is_reversal = False
+
     if not do_trade:
         log.info(f"{ticker}: watching — {skip_reason_ai}")
         _log_entry(market, "READY", secs_left, btc_price, strike,
@@ -2365,9 +2502,12 @@ async def handle_ready_phase(
     # Cooldown disabled — trade every session regardless of prior outcome
 
     # Position sizing — Kelly Criterion
+    # Reversal trades use 50% of configured amount (contrarian = smaller size)
     trade_amount = config.get("trade_amount_dollars", 20)
+    if _is_reversal:
+        trade_amount = trade_amount * 0.50
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
-    win_prob_for_kelly = brain.get("win_prob", 0.85)
+    win_prob_for_kelly = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0.85)
     contracts, kelly_dollars = calculate_contracts(
         trade_amount, int(entry_price_cents), avail_liquidity, win_prob_for_kelly
     )
@@ -2449,14 +2589,16 @@ async def handle_ready_phase(
         log.info(f"{ticker}: LOCKED.")
         mode_icon  = "📄" if mode == "paper" else "💵"
         dir_icon   = "⬆" if side == "yes" else "⬇"
-        _win_pct   = int(brain.get("win_prob", 0) * 100)
-        _ev        = round((brain.get("win_prob", 0) - fill_price / 100) * 100, 1)
+        _win_prob_used = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0)
+        _win_pct   = int(_win_prob_used * 100)
+        _ev        = round((_win_prob_used - fill_price / 100) * 100, 1)
         _ev_str    = f"+{_ev}%" if _ev >= 0 else f"{_ev}%"
         _payout    = round((100 - fill_price) * contracts / 100, 2)
         _cost      = round(fill_price * contracts / 100, 2)
         _time_str  = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+        _strat_tag = "🔄 REVERSAL TRADE" if _is_reversal else "TRADE ENTERED"
         await send_telegram(
-            f"{mode_icon} <b>TRADE ENTERED</b>  —  {_time_str}\n"
+            f"{mode_icon} <b>{_strat_tag}</b>  —  {_time_str}\n"
             f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
             f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
             f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"

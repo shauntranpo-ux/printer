@@ -959,7 +959,16 @@ function _generateThought(s, bd, wp, ev, vr, confThresh) {
     if (!gateVol)  reasons.push(`volatility too high (ratio ${vr != null ? vr.toFixed(2) : '?'})`);
 
     if (reasons.length) {
-      return { dot: 'skip', text: `<strong>EVALUATING</strong> · ${shortTicker} · no trade: ${reasons.join(', ')}` };
+      const revReason = s.last_reversal_reason || '';
+      let revSuffix = '';
+      if (revReason) {
+        // If reversal fired, reason starts with "REVERSAL " (uppercase from _reversal_signal)
+        const revFired = revReason.startsWith('REVERSAL');
+        revSuffix = revFired
+          ? ` | <span style="color:var(--green)">🔄 reversal: ${revReason}</span>`
+          : ` | <span style="color:var(--muted)">🔄 ${revReason}</span>`;
+      }
+      return { dot: 'skip', text: `<strong>EVALUATING</strong> · ${shortTicker} · no trade: ${reasons.join(', ')}${revSuffix}` };
     }
 
     const lastAct = s.last_action || '';
