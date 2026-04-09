@@ -1671,8 +1671,8 @@ def printer_brain(
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
     # ── 8. EV filter ──────────────────────────────────────────────────────────
-    # 8% floor: calibrated backtest optimum for ~80%+ win rate on continuation bets.
-    min_ev = 0.08
+    # 5% floor: requires real edge without needing extreme market mispricing.
+    min_ev = 0.05
 
     skip_reason = ""
     if _vol_skip:
@@ -2234,7 +2234,7 @@ def write_state_file(
         "mode": config.get("mode", "paper"),
         "today_live_pnl": db_get_today_pnl("live"),
         "today_paper_pnl": db_get_today_pnl("paper"),
-        "config": {**config, "confidence_threshold": CONFIDENCE_THRESHOLD, "min_ev_pct": 8},
+        "config": {**config, "confidence_threshold": CONFIDENCE_THRESHOLD, "min_ev_pct": 5},
         "cooldown_counter": cooldown_counter,
         "limit_triggered": limit_triggered,
         "limit_reason": limit_reason,
