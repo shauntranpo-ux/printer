@@ -166,11 +166,20 @@
   .tier-1 { background: #1a2e1a; color: var(--green); }
   .tier-2 { background: #2e200a; color: var(--amber); }
   .tier-3 { background: #2e0d0d; color: var(--red);   }
-  .decision-box { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; font-size: 11px; line-height: 1.6; }
-  .decision-action { font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
-  .decision-action.trade { color: var(--green); }
-  .decision-action.skip  { color: var(--muted); }
-  .decision-reason { color: var(--text); margin-top: 2px; }
+  .thinking-feed { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 0; min-height: 180px; max-height: 230px; overflow-y: auto; margin-bottom: 10px; display: flex; flex-direction: column; justify-content: flex-end; }
+  .thinking-entry { display: flex; align-items: flex-start; gap: 9px; padding: 6px 12px; border-bottom: 1px solid rgba(30,42,53,0.5); font-size: 11px; line-height: 1.5; }
+  .thinking-entry:last-child { border-bottom: none; }
+  .thinking-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+  .thinking-dot.watch  { background: var(--blue); }
+  .thinking-dot.ready  { background: var(--amber); }
+  .thinking-dot.trade  { background: var(--green); box-shadow: 0 0 5px var(--green); }
+  .thinking-dot.skip   { background: var(--muted); }
+  .thinking-dot.locked { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
+  .thinking-dot.wait   { background: #333; }
+  .thinking-text { flex: 1; color: var(--text); }
+  .thinking-text strong { font-weight: 600; }
+  .thinking-text.dim { color: var(--muted); }
+  .thinking-time { color: var(--muted); font-size: 10px; white-space: nowrap; flex-shrink: 0; padding-top: 1px; }
 
   /* ── Settings ── */
   .card-title.toggle-title { cursor: pointer; user-select: none; }
@@ -441,10 +450,13 @@
           <div class="stat"><div class="s-label">Min Edge</div><div class="s-value" id="brain-edge-val">—</div></div>
           <div class="stat"><div class="s-label">Trades Eval</div><div class="s-value" id="brain-trades-val">—</div></div>
         </div>
-        <div class="c-label">Last Decision</div>
-        <div class="decision-box">
-          <div class="decision-action skip" id="brain-action">WAITING</div>
-          <div class="decision-reason" id="brain-reason">Bot has not evaluated a market yet.</div>
+        <div class="c-label">What AI is Thinking</div>
+        <div class="thinking-feed" id="thinking-feed">
+          <div class="thinking-entry">
+            <div class="thinking-dot wait"></div>
+            <div class="thinking-text dim">Waiting for bot data...</div>
+            <div class="thinking-time">—</div>
+          </div>
         </div>
         <div id="brain-claude" style="display:none;">
           <div class="c-label">Claude AI Reasoning</div>
@@ -900,6 +912,106 @@ async function confirmReset() {
 }
 document.getElementById('reset-modal').addEventListener('click', function(e){ if(e.target===this) closeResetModal(); });
 
+// ── What AI is Thinking feed ──
+const _thinkingLog = [];     // [{dot, text, ts}]  newest last
+let _lastThinkingKey = '';   // deduplicate consecutive identical thoughts
+const _MAX_THINKING = 5;
+
+function _fmtAgo(ts) {
+  const d = Math.floor((Date.now() - ts) / 1000);
+  if (d < 5)  return 'just now';
+  if (d < 60) return d + 's ago';
+  return Math.floor(d / 60) + 'm ago';
+}
+
+function _generateThought(s, bd, wp, ev, vr, confThresh) {
+  const phase  = s.phase || '';
+  const ticker = s.market_ticker || '';
+  const sr     = s.seconds_remaining;
+  const shortTicker = ticker.replace(/^KXBTC15M-\w+-/, '') || ticker.slice(-12) || '—';
+
+  if (phase === 'WATCH') {
+    const elapsed = bd && bd.elapsed_secs != null ? bd.elapsed_secs : (s.elapsed_secs || '?');
+    const minsLeft = sr != null ? (sr / 60).toFixed(1) : '?';
+    return {
+      dot:  'watch',
+      text: `<strong>WATCH</strong> · ${shortTicker || ticker} · ${minsLeft}m left — waiting for 90s observation window`,
+    };
+  }
+
+  if (phase === 'READY' || phase === 'LOCKED') {
+    if (phase === 'LOCKED') {
+      const pos  = s.open_position || {};
+      const side = pos.side === 'yes' ? '↑ YES' : '↓ NO';
+      const qty  = pos.contracts || '?';
+      const px   = pos.entry_price_cents || '?';
+      return { dot: 'locked', text: `<strong>IN POSITION</strong> · ${side} · ${qty} contracts @ ${px}¢ · holding to expiry` };
+    }
+
+    // READY — check each gate in priority order
+    const reasons = [];
+    const gateConf = wp != null && wp >= confThresh;
+    const gateEv   = ev != null && ev >= 5;
+    const gateVol  = vr != null && vr < 0.9;
+
+    if (!gateConf) reasons.push(`confidence ${wp != null ? wp.toFixed(1)+'%' : '?'} < ${confThresh}% threshold`);
+    if (!gateEv)   reasons.push(`EV ${ev != null ? (ev>=0?'+':'')+ev.toFixed(1)+'%' : '?'} below minimum`);
+    if (!gateVol)  reasons.push(`volatility too high (ratio ${vr != null ? vr.toFixed(2) : '?'})`);
+
+    if (reasons.length) {
+      return { dot: 'skip', text: `<strong>EVALUATING</strong> · ${shortTicker} · no trade: ${reasons.join(', ')}` };
+    }
+
+    const lastAct = s.last_action || '';
+    if (lastAct === 'trade') {
+      return { dot: 'trade', text: `<strong>TRADE</strong> · all gates clear, position opened on ${shortTicker}` };
+    }
+    const lastReason = s.last_skip_reason || '';
+    return { dot: 'ready', text: `<strong>READY</strong> · all gates clear · ${lastReason || 'looking for best entry'}` };
+  }
+
+  if (phase === 'DONE') {
+    return { dot: 'wait', text: `<strong>DONE</strong> · ${shortTicker || 'last window'} closed · waiting for next 15-min market` };
+  }
+
+  // No market / unknown
+  if (!ticker) {
+    return { dot: 'wait', text: `<strong>SEARCHING</strong> · scanning Kalshi for active KXBTC15M markets...` };
+  }
+  return { dot: 'wait', text: `<strong>WAITING</strong> · ${ticker} · ${phase || 'unknown phase'}` };
+}
+
+function _pushThinkingEntry(s, bd, wp, ev, vr, confThresh) {
+  const thought = _generateThought(s, bd, wp, ev, vr, confThresh);
+  if (!thought) return;
+
+  // Deduplicate: don't push if same as last entry (except LOCKED/WATCH which update frequently)
+  const key = thought.dot + '|' + thought.text;
+  const alwaysUpdate = (s.phase === 'WATCH' || s.phase === 'LOCKED');
+  if (!alwaysUpdate && key === _lastThinkingKey) return;
+  _lastThinkingKey = key;
+
+  _thinkingLog.push({ dot: thought.dot, text: thought.text, ts: Date.now() });
+  if (_thinkingLog.length > _MAX_THINKING) _thinkingLog.shift();
+  _renderThinkingFeed();
+}
+
+function _renderThinkingFeed() {
+  const feed = document.getElementById('thinking-feed');
+  if (!feed) return;
+  feed.innerHTML = _thinkingLog.map(e =>
+    `<div class="thinking-entry">
+      <div class="thinking-dot ${e.dot}"></div>
+      <div class="thinking-text">${e.text}</div>
+      <div class="thinking-time">${_fmtAgo(e.ts)}</div>
+    </div>`
+  ).join('');
+  feed.scrollTop = feed.scrollHeight;
+}
+
+// Refresh timestamps every 10s without re-pushing
+setInterval(() => { if (_thinkingLog.length) _renderThinkingFeed(); }, 10000);
+
 // ── Main poll ──
 async function pollState() {
   try {
@@ -1014,16 +1126,8 @@ async function pollState() {
     if (edEl) edEl.textContent = s.brain_min_edge != null ? (s.brain_min_edge*100).toFixed(0)+'%' : '—';
     if (trEl) trEl.textContent = s.brain_n   != null ? s.brain_n : '—';
 
-    // Last decision
-    const actionEl  = document.getElementById('brain-action');
-    const reasonEl  = document.getElementById('brain-reason');
-    const lastAct   = s.last_action || '';
-    const lastReason= s.last_skip_reason || '';
-    if (actionEl) {
-      actionEl.textContent = lastAct ? lastAct.toUpperCase() : 'WAITING';
-      actionEl.className   = 'decision-action ' + (lastAct === 'trade' ? 'trade' : 'skip');
-    }
-    if (reasonEl) reasonEl.textContent = lastReason || (lastAct === 'trade' ? 'Position opened.' : 'Waiting for next market window.');
+    // ── What AI is Thinking feed ──
+    _pushThinkingEntry(s, bd, wp, ev, vr, confThresh);
 
     // Claude AI reasoning
     const claudeBox = document.getElementById('brain-claude');
