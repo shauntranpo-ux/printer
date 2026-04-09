@@ -109,7 +109,9 @@ def _telegram_notify(text: str) -> None:
         log.warning(f"Telegram notify error (server): {exc}")
 
 
-_CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 5, "confidence_threshold": 72}
+_CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 25, "confidence_threshold": 80,
+                   "cooldown_markets": 0, "daily_loss_limit_dollars": 50000,
+                   "daily_profit_target_dollars": 50000, "claude_enabled": False}
 _STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
                    "phase": "waiting", "mode": "paper"}
 
