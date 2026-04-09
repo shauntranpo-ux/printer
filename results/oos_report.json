@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-04-09T03:52:09.510649+00:00",
+  "generated_at": "2026-04-09T04:32:40.706553+00:00",
   "params": {
-    "min_ev": 0.12,
-    "min_confidence": 72
+    "min_ev": 0.2,
+    "min_confidence": 80
   },
   "split": {
     "generated_at": "2026-04-01T03:14:09.246394+00:00",
@@ -22,26 +22,26 @@
   },
   "in_sample": {
     "period": "2020-01-01 \u2192 2024-05-14",
-    "total_trades": 151312,
-    "win_rate": 0.8616,
-    "total_pnl_dollars": 228325.83,
-    "pnl_per_trade": 1.508974,
-    "sharpe_ratio": 104.279,
-    "max_drawdown_pct": 50.72,
-    "avg_confidence": 83.7,
-    "max_consec_losses": 6
+    "total_trades": 84116,
+    "win_rate": 0.941,
+    "total_pnl_dollars": 147770.47,
+    "pnl_per_trade": 1.756746,
+    "sharpe_ratio": 199.505,
+    "max_drawdown_pct": 2.89,
+    "avg_confidence": 92.1,
+    "max_consec_losses": 4
   },
   "oos": {
     "period": "2024-05-14 \u2192 2026-03-30",
-    "total_trades": 65248,
-    "win_rate": 0.8738,
-    "total_pnl_dollars": 115292.98,
-    "pnl_per_trade": 1.766996,
-    "sharpe_ratio": 123.033,
-    "max_drawdown_pct": 157.24,
-    "avg_confidence": 82.0,
-    "max_consec_losses": 7
+    "total_trades": 34166,
+    "win_rate": 0.9607,
+    "total_pnl_dollars": 65470.3,
+    "pnl_per_trade": 1.916241,
+    "sharpe_ratio": 260.361,
+    "max_drawdown_pct": 23.21,
+    "avg_confidence": 91.8,
+    "max_consec_losses": 4
   },
-  "generalisation_efficiency": 1.171,
+  "generalisation_efficiency": 1.0908,
   "verdict": "PASS"
 }
