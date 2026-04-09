@@ -1039,9 +1039,9 @@ if __name__ == "__main__":
                         help="Run best params on the locked OOS holdout set and "
                              "print in-sample vs OOS comparison")
     parser.add_argument("--oos-ev",         type=float, default=None,
-                        help="Custom EV threshold for OOS eval (e.g. 0.12)")
+                        help="Custom EV threshold for OOS eval (e.g. 0.20)")
     parser.add_argument("--oos-confidence", type=int,   default=None,
-                        help="Custom confidence threshold for OOS eval (e.g. 72)")
+                        help="Custom confidence threshold for OOS eval (e.g. 80)")
     parser.add_argument("--oos-watch",      type=int,   default=1,
                         help="Earliest entry minute for OOS eval (default: 1)")
     parser.add_argument("--generate-split", action="store_true",

@@ -112,11 +112,10 @@ def _mini_mc(windows, price_lookup, n_sims: int,
     best_sharpe  = -math.inf
     best_result  = None
 
-    for min_ev, stop_loss_pct, min_confidence in combos:
+    for min_ev, min_confidence in combos:
         r = run_backtest(
             min_ev         = min_ev,
             trade_amount   = trade_amount,
-            stop_loss_pct  = stop_loss_pct,
             min_confidence = min_confidence,
             verbose        = False,
             _windows       = windows,
@@ -130,7 +129,6 @@ def _mini_mc(windows, price_lookup, n_sims: int,
             best_result = r
             best_params = {
                 "min_ev":         min_ev,
-                "stop_loss_pct":  stop_loss_pct,
                 "min_confidence": min_confidence,
             }
 
@@ -236,14 +234,12 @@ def run_walk_forward(
             continue
 
         print(f"     Best params  : ev={best_params['min_ev']:.0%}  "
-              f"sl={best_params['stop_loss_pct']:.0f}%  "
               f"conf={best_params['min_confidence']}")
 
         # ── Run forward period with best params ───────────────────────────────
         fwd_r = run_backtest(
             min_ev         = best_params["min_ev"],
             trade_amount   = trade_amount,
-            stop_loss_pct  = best_params["stop_loss_pct"],
             min_confidence = best_params["min_confidence"],
             verbose        = False,
             _windows       = fwd_w,

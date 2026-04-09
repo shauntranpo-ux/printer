@@ -52,11 +52,11 @@ except Exception as _dir_err:
 _FULL_CONFIG_DEFAULT = {
     "bot_enabled": False,
     "mode": "paper",
-    "trade_amount_dollars": 10,
-    "confidence_threshold": 65,
+    "trade_amount_dollars": 25,
+    "confidence_threshold": 80,
     "cooldown_markets": 0,
-    "daily_loss_limit_dollars": 5000,
-    "daily_profit_target_dollars": 5000,
+    "daily_loss_limit_dollars": 50000,
+    "daily_profit_target_dollars": 50000,
     "claude_enabled": False,
 }
 if not os.path.exists("config.json"):

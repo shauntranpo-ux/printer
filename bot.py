@@ -3,7 +3,7 @@ bot.py — Core trading logic for the Kalshi BTC 15-minute prediction market bot
 
 Connects to Coinbase WebSocket for live BTC prices, polls Kalshi for the
 soonest-expiring BTC 15-minute market, evaluates a four-component confidence
-score, places paper or live orders, monitors stop loss, and enforces daily
+score, places paper or live orders, and enforces daily
 loss / profit limits. Writes bot_state.json every cycle for server.py to read.
 
 Start via runner.py, not directly.
@@ -1279,7 +1279,7 @@ BTC PRICE MOVEMENT:
 PRINTER BRAIN STATE (your decisions will be stored and feed back into this):
   Overall win rate:     {_brain_cal['overall_wr']:.0%}
   Reward tier:          {_brain_cal['reward_tier']} / 3  (tier 3 = ≥85% WR = max reward)
-  Min EV required:      {(_brain_cal['min_edge_override'] or 0.12):.0%}
+  Min EV required:      {(_brain_cal['min_edge_override'] or 0.20):.0%}
   Prob scale factor:    {_brain_cal['prob_scale']:.2f}  (1.0 = neutral, <1 = overestimating)
   YES win rate:         {_brain_cal['bullish_wr']:.0%}
   NO  win rate:         {_brain_cal['bearish_wr']:.0%}
@@ -2186,7 +2186,7 @@ async def handle_locked_phase(
     strike: float,
 ) -> None:
     """
-    Hold an open position to expiry — no stop loss.
+    Hold an open position to expiry — exit at settlement.
     Exit only when the market settles and fetch the official Kalshi result.
     """
     global current_phase, current_position, cooldown_counter

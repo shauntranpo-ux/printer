@@ -166,8 +166,7 @@ def run_stress_test(
     print("\n" + "=" * 68)
     print("  EXECUTION NOISE STRESS TEST")
     print("=" * 68)
-    print(f"  Params   :  ev={params['min_ev']:.0%}  "
-          f"sl={params['stop_loss_pct']:.0f}%  conf={params['min_confidence']}")
+    print(f"  Params   :  ev={params['min_ev']:.0%}  conf={params['min_confidence']}")
     print(f"  Iters    :  {n_iters:,}")
     print(f"  Max slip :  {max_slippage_bps:.0f} bps")
     print(f"  Latency  :  {latency_ms} ms  "
@@ -183,7 +182,6 @@ def run_stress_test(
         start_year     = start_year,
         min_ev         = params["min_ev"],
         trade_amount   = trade_amount,
-        stop_loss_pct  = params["stop_loss_pct"],
         min_confidence = params["min_confidence"],
         verbose        = False,
         _trades_out    = base_trades,
