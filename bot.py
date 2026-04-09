@@ -170,12 +170,12 @@ def _init_config() -> None:
     # Build defaults
     defaults = {
         "bot_enabled": False,
-        "trade_amount_dollars": 10,
+        "trade_amount_dollars": 25,
         "mode": "paper",
         "confidence_threshold": 80,
         "cooldown_markets": 0,
-        "daily_loss_limit_dollars": 5000,
-        "daily_profit_target_dollars": 5000,
+        "daily_loss_limit_dollars": 50000,
+        "daily_profit_target_dollars": 50000,
         "claude_enabled": False,
     }
 
@@ -416,8 +416,7 @@ def db_get_today_pnl(mode: str) -> float:
 async def send_telegram(text: str) -> None:
     """Send a Telegram notification. Silent no-op if env vars are not set."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        log.warning("Telegram skipped — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set")
-        return
+        return  # silently skip — Telegram is optional
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     try:
         async with aiohttp.ClientSession() as tg:
@@ -594,7 +593,7 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
 
     if not all_markets:
         log.warning("All series tickers returned no markets.")
-        return _market_cache
+        return _all_markets_cache if return_all else _market_cache
 
     # Log all markets with their close times so we can see what's available
     now_utc = datetime.now(timezone.utc)
@@ -613,7 +612,7 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
 
     if not all_markets:
         log.warning("No valid 15-minute markets after filtering. Waiting for next window.")
-        return None
+        return [] if return_all else None
 
     # Try to identify 15-minute markets by open→close duration
     def market_duration_minutes(m):
@@ -628,8 +627,8 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         except Exception:
             return None
 
-    fifteen = [m for m in all_markets if market_duration_minutes(m) is not None
-               and 13 <= market_duration_minutes(m) <= 17]
+    fifteen = [m for m in all_markets
+               if (lambda d: d is not None and 13 <= d <= 17)(market_duration_minutes(m))]
 
     if fifteen:
         log.info(f"Found {len(fifteen)} 15-min market(s) by duration.")
@@ -648,7 +647,7 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
             pool = soon
         else:
             log.warning("No 15-minute markets found. Waiting for next window.")
-            return None
+            return [] if return_all else None
 
     pool.sort(key=lambda m: m.get("close_time", ""))
     _market_cache    = pool[0]
@@ -1778,10 +1777,6 @@ async def place_order(
     _bump_per_retry = 2   # cents per retry (2c handles fast BTC moves)
     _max_retries    = 5
 
-    # Track the "base" price — we re-fetch each attempt but cap how far we'll chase
-    _original_price = entry_price_cents
-    _price_ceiling  = min(99, _original_price + _bump_per_retry * _max_retries)
-
     for attempt in range(_max_retries):
         # ── Re-fetch fresh price before each attempt ───────────────────────────
         # Orderbook data from READY eval can be 5-30s stale by here. A fresh
@@ -1798,8 +1793,10 @@ async def place_order(
             log.info(f"Price updated: {entry_price_cents}c -> {fresh_price}c for {side.upper()} on {ticker}")
             entry_price_cents = fresh_price
 
-        # Bump price on retries; cap at ceiling
-        price_this_attempt = min(_price_ceiling, entry_price_cents + attempt * _bump_per_retry)
+        # Always bump from the latest fresh price. No static ceiling — the fresh
+        # price already tracks the market; we just add the per-attempt bump on top.
+        # Hard cap at 99c for YES side; for NO side the 99 cap is effectively unreachable.
+        price_this_attempt = min(99, entry_price_cents + attempt * _bump_per_retry)
         yes_price = price_this_attempt if side == "yes" else (100 - price_this_attempt)
         client_order_id = f"btcbot_{int(time.time() * 1000)}_{attempt}"
 
@@ -1912,7 +1909,7 @@ async def place_order(
     except Exception as exc:
         log.error(f"Portfolio check error: {exc}")
 
-    log.error(f"Order not filled after 3 attempts for {ticker} {side}@{entry_price_cents}c")
+    log.error(f"Order not filled after {_max_retries} attempts for {ticker} {side}@{entry_price_cents}c")
     await send_telegram(
         f"⚠️ <b>ORDER NOT FILLED</b>  —  no liquidity\n"
         f"{side.upper()}  {contracts}x @ {entry_price_cents}¢  |  <code>{ticker}</code>"
@@ -2169,17 +2166,20 @@ async def handle_ready_phase(
             best_strike  = strike
             for candidate in all_windows:
                 try:
-                    c_ticker = candidate.get("ticker", "")
-                    c_strike = parse_strike(candidate)
+                    c_ticker   = candidate.get("ticker", "")
+                    c_strike   = parse_strike(candidate)
                     if c_strike is None:
                         continue
+                    # Use each window's own timing — they may have different close times
+                    c_secs_left = seconds_remaining(candidate)
+                    c_elapsed   = seconds_elapsed(candidate)
                     c_ob = await fetch_orderbook(session, c_ticker, candidate)
                     if c_ob is None:
                         continue
                     c_brain = printer_brain(
                         btc_price, c_strike,
                         c_ob["best_yes_ask"], c_ob["best_no_ask"],
-                        elapsed, secs_left, c_ticker,
+                        c_elapsed, c_secs_left, c_ticker,
                     )
                     c_win_prob = c_brain.get("win_prob", 0.5)
                     c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
@@ -2337,7 +2337,7 @@ async def handle_ready_phase(
         "side": side,
         "contracts": contracts,
         "entry_price_cents": fill_price,
-        "trade_amount_dollars": trade_amount,
+        "trade_amount_dollars": round(kelly_dollars, 2),  # actual Kelly-sized amount, not base
         "confidence_score": score,
         "model_prob": brain.get("win_prob", 0.5),
         "implied_prob": implied_prob(entry_price_cents),
@@ -2500,7 +2500,6 @@ async def handle_locked_phase(
         return
 
     # Still in the market — just hold and log
-    unrealized_at_entry = (50 - pos["entry_price_cents"]) * pos["contracts"] / 100
     log.info(
         f"[HOLDING] {ticker} | side={pos['side'].upper()} | entry={pos['entry_price_cents']}c "
         f"| BTC=${btc_price:,.0f} | strike=${pos['strike']:,.0f} | {secs_left:.0f}s left"
