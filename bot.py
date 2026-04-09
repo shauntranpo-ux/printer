@@ -1750,10 +1750,16 @@ async def place_order(
     contracts: int,
     entry_price_cents: int,
     mode: str,
+    market: dict | None = None,
 ) -> dict:
     """
     Place a fill-or-kill limit order on Kalshi.
-    Retries up to 3 times, bumping price by 1c each attempt to ensure fill.
+
+    Re-fetches a fresh price before each attempt — the price from READY
+    evaluation can be stale by the time we reach this call (brain + Claude
+    evaluation takes time, and BTC markets reprice fast).
+
+    Retries up to 5 times, bumping by 2c each attempt.
     In paper mode, simulates an instant fill without hitting the API.
 
     Returns:
@@ -1769,9 +1775,31 @@ async def place_order(
         }
 
     path = "/portfolio/orders"
+    _bump_per_retry = 2   # cents per retry (2c handles fast BTC moves)
+    _max_retries    = 5
 
-    for attempt in range(3):  # 1 initial + 2 retries
-        price_this_attempt = min(99, entry_price_cents + attempt)
+    # Track the "base" price — we re-fetch each attempt but cap how far we'll chase
+    _original_price = entry_price_cents
+    _price_ceiling  = min(99, _original_price + _bump_per_retry * _max_retries)
+
+    for attempt in range(_max_retries):
+        # ── Re-fetch fresh price before each attempt ───────────────────────────
+        # Orderbook data from READY eval can be 5-30s stale by here. A fresh
+        # fetch ensures we're pricing against the actual current market.
+        fresh_price = None
+        try:
+            fresh_ob = await fetch_orderbook(session, ticker, market)
+            if fresh_ob is not None:
+                fresh_price = fresh_ob["best_yes_ask"] if side == "yes" else fresh_ob["best_no_ask"]
+        except Exception as _fe:
+            log.warning(f"Fresh price fetch failed (attempt {attempt}): {_fe}")
+
+        if fresh_price is not None and fresh_price != entry_price_cents:
+            log.info(f"Price updated: {entry_price_cents}c -> {fresh_price}c for {side.upper()} on {ticker}")
+            entry_price_cents = fresh_price
+
+        # Bump price on retries; cap at ceiling
+        price_this_attempt = min(_price_ceiling, entry_price_cents + attempt * _bump_per_retry)
         yes_price = price_this_attempt if side == "yes" else (100 - price_this_attempt)
         client_order_id = f"btcbot_{int(time.time() * 1000)}_{attempt}"
 
@@ -1787,8 +1815,8 @@ async def place_order(
         }
 
         if attempt > 0:
-            log.info(f"Order retry {attempt}/2 at {price_this_attempt}c...")
-            await asyncio.sleep(1.0)
+            log.info(f"Order retry {attempt}/{_max_retries-1} at {price_this_attempt}c (fresh={fresh_price}c)...")
+            await asyncio.sleep(0.5)
 
         try:
             async with session.post(
@@ -2291,7 +2319,7 @@ async def handle_ready_phase(
     # even if the bot crashes or fill_confirmed comes back False
     _order_attempted_tickers.add(ticker)
     log.info(f"{ticker}: TRADE {side} {contracts}x @ {int(entry_price_cents)}c (score={score}, mode={mode})")
-    result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode)
+    result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market)
 
     fill_confirmed = result["fill_confirmed"]
     fill_price = result.get("fill_price_cents") or int(entry_price_cents)
