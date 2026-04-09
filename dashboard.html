@@ -140,8 +140,10 @@
   .direction-box.down .dir-label { color: var(--red);   }
 
   /* ── Confluence checklist ── */
-  .confluence-list { flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  .confluence-list { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+  .cf-section-label { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; margin-top: 4px; margin-bottom: 2px; }
   .cf-row { display: flex; align-items: center; gap: 8px; }
+  /* Hard gates — checkboxes */
   .cf-check {
     width: 16px; height: 16px; border-radius: 3px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
@@ -150,6 +152,13 @@
   }
   .cf-check.pass { background: rgba(57,211,83,.15); border-color: rgba(57,211,83,.5); color: var(--green); }
   .cf-check.fail { background: rgba(248,81,73,.10); border-color: rgba(248,81,73,.4); color: var(--red);   }
+  /* Soft signals — dot badges */
+  .cf-dot {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    background: var(--border); transition: .2s; margin-left: 4px; margin-right: 1px;
+  }
+  .cf-dot.on  { background: var(--green); box-shadow: 0 0 4px var(--green); }
+  .cf-dot.off { background: #444; }
   .cf-name  { font-size: 11px; color: var(--muted); flex: 1; }
   .cf-val   { font-size: 11px; font-weight: 600; color: var(--text); text-align: right; }
   .tier-badge  { display: inline-block; padding: 3px 12px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: .06em; margin-bottom: 8px; }
@@ -457,6 +466,7 @@
 
           <!-- Confluence checklist -->
           <div class="confluence-list">
+            <div class="cf-section-label">Gates — must pass</div>
             <div class="cf-row">
               <div class="cf-check" id="cf-conf">·</div>
               <span class="cf-name">Confidence</span>
@@ -468,35 +478,36 @@
               <span class="cf-val" id="cf-ev-val">—</span>
             </div>
             <div class="cf-row">
-              <div class="cf-check" id="cf-mom">·</div>
-              <span class="cf-name">Momentum</span>
-              <span class="cf-val" id="cf-mom-val">—</span>
-            </div>
-            <div class="cf-row">
-              <div class="cf-check" id="cf-vel">·</div>
-              <span class="cf-name">Velocity</span>
-              <span class="cf-val" id="cf-vel-val">—</span>
-            </div>
-            <div class="cf-row">
               <div class="cf-check" id="cf-vol">·</div>
               <span class="cf-name">Vol Safe</span>
               <span class="cf-val" id="cf-vol-val">—</span>
             </div>
+            <div class="cf-section-label" style="margin-top:6px;">Signals — informational</div>
             <div class="cf-row">
-              <div class="cf-check" id="cf-dist">·</div>
+              <div class="cf-dot" id="cf-mom"></div>
+              <span class="cf-name">Momentum</span>
+              <span class="cf-val" id="cf-mom-val">—</span>
+            </div>
+            <div class="cf-row">
+              <div class="cf-dot" id="cf-vel"></div>
+              <span class="cf-name">Velocity</span>
+              <span class="cf-val" id="cf-vel-val">—</span>
+            </div>
+            <div class="cf-row">
+              <div class="cf-dot" id="cf-dist"></div>
               <span class="cf-name">BTC Distance</span>
               <span class="cf-val" id="cf-dist-val">—</span>
             </div>
             <div class="cf-row">
-              <div class="cf-check" id="cf-time">·</div>
+              <div class="cf-dot" id="cf-time"></div>
               <span class="cf-name">Time Window</span>
               <span class="cf-val" id="cf-time-val">—</span>
             </div>
           </div>
         </div>
         <div style="margin-top:12px;font-size:10px;color:var(--muted);line-height:1.6;border-top:1px solid var(--border);padding-top:10px;">
-          All 7 boxes green = bot is looking to enter.<br>
-          Vol Safe = BTC not moving fast enough to cross strike.
+          All 3 gates ✓ = bot will enter if a trade is available.<br>
+          Signals are informational — they adjust win probability but don't block trades.
         </div>
       </div>
     </div>
@@ -943,12 +954,18 @@ async function pollState() {
       if (dirContr) dirContr.textContent = '—';
     }
 
-    // ── Confluence checklist helper ──
-    function setCf(id, valId, pass, valText) {
+    // ── Confluence helpers ──
+    function setGate(id, valId, pass, valText) {
       const box = document.getElementById(id);
       const val = document.getElementById(valId);
       if (box) { box.textContent = pass ? '✓' : '✗'; box.className = 'cf-check ' + (pass ? 'pass' : 'fail'); }
       if (val) val.textContent = valText;
+    }
+    function setSig(id, valId, on, valText) {
+      const dot = document.getElementById(id);
+      const val = document.getElementById(valId);
+      if (dot) dot.className = 'cf-dot ' + (on ? 'on' : 'off');
+      if (val) { val.textContent = valText; val.style.color = on ? 'var(--green)' : 'var(--muted)'; }
     }
 
     const wp  = bd.win_prob_final;
@@ -958,22 +975,23 @@ async function pollState() {
     const vr  = bd.vol_ratio;
     const dp  = bd.distance_pct;
     const sr  = s.seconds_remaining;
-    const confThresh = (s.config && s.config.confidence_threshold) || 72;
+    const confThresh = (s.config && s.config.confidence_threshold) || 61;
 
-    setCf('cf-conf', 'cf-conf-val', wp != null && wp >= confThresh,
-          wp != null ? wp.toFixed(1)+'%' : '—');
-    setCf('cf-ev',   'cf-ev-val',   ev != null && ev >= 5,
-          ev != null ? (ev>=0?'+':'')+ev.toFixed(1)+'%' : '—');
-    setCf('cf-mom',  'cf-mom-val',  mom !== 'neutral',
-          mom.toUpperCase());
-    setCf('cf-vel',  'cf-vel-val',  vel === 'favorable',
-          vel.toUpperCase());
-    setCf('cf-vol',  'cf-vol-val',  vr != null && vr < 0.9,
-          vr != null ? 'ratio '+vr.toFixed(2) : 'no data');
-    setCf('cf-dist', 'cf-dist-val', dp != null && dp >= 0.10,
-          dp != null ? dp.toFixed(3)+'%' : '—');
-    setCf('cf-time', 'cf-time-val', sr != null && sr > 90 && sr < 13*60,
-          sr != null ? Math.floor(sr/60)+'m '+(sr%60|0)+'s' : '—');
+    // Hard gates
+    setGate('cf-conf', 'cf-conf-val', wp != null && wp >= confThresh,
+            wp != null ? wp.toFixed(1)+'%' : '—');
+    setGate('cf-ev',   'cf-ev-val',   ev != null && ev >= 5,
+            ev != null ? (ev>=0?'+':'')+ev.toFixed(1)+'%' : '—');
+    setGate('cf-vol',  'cf-vol-val',  vr != null && vr < 0.9,
+            vr != null ? 'ratio '+vr.toFixed(2) : 'no data');
+
+    // Soft signals
+    setSig('cf-mom',  'cf-mom-val',  mom !== 'neutral',  mom.toUpperCase());
+    setSig('cf-vel',  'cf-vel-val',  vel === 'favorable', vel.toUpperCase());
+    setSig('cf-dist', 'cf-dist-val', dp != null && dp >= 0.10,
+           dp != null ? dp.toFixed(3)+'%' : '—');
+    setSig('cf-time', 'cf-time-val', sr != null && sr > 90 && sr < 13*60,
+           sr != null ? Math.floor(sr/60)+'m '+(sr%60|0)+'s' : '—');
 
     const totalScore = s.confidence_score;
     const tse = document.getElementById('brain-total-score');
