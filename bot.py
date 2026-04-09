@@ -1661,8 +1661,11 @@ def printer_brain(
     if _brain_cal["bullish_wr"] < 0.35: yes_ev -= 0.04
     if _brain_cal["bearish_wr"] < 0.35: no_ev  -= 0.04
 
-    # ── 7. Pick side — whichever has higher EV ───────────────────────────────
-    if yes_ev >= no_ev:
+    # ── 7. Pick side — always bet with BTC's position (continuation) ────────
+    # Best-EV switching caused confidence gate failures: contrarian contracts
+    # have 20-35% win prob and always fail the 65% floor. Continuation side
+    # naturally has 65-85% win prob; EV gate (3%) handles negative-EV skips.
+    if above:
         side, best_ev, entry_c, true_p = "yes", yes_ev, yes_ask, prob_yes
     else:
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
