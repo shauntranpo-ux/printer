@@ -1671,9 +1671,8 @@ def printer_brain(
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
     # ── 8. EV filter ──────────────────────────────────────────────────────────
-    # 3% floor: at NO=72c with 75% win prob EV is +3% — real edge, should trade.
-    # 5% was too strict and killed valid in-the-money entries.
-    min_ev = 0.03
+    # 5% floor: only enter when BV3 model sees meaningful edge over market price.
+    min_ev = 0.05
 
     skip_reason = ""
     if _vol_skip:
@@ -2235,7 +2234,7 @@ def write_state_file(
         "mode": config.get("mode", "paper"),
         "today_live_pnl": db_get_today_pnl("live"),
         "today_paper_pnl": db_get_today_pnl("paper"),
-        "config": {**config, "confidence_threshold": CONFIDENCE_THRESHOLD, "min_ev_pct": 3},
+        "config": {**config, "confidence_threshold": CONFIDENCE_THRESHOLD, "min_ev_pct": 5},
         "cooldown_counter": cooldown_counter,
         "limit_triggered": limit_triggered,
         "limit_reason": limit_reason,
