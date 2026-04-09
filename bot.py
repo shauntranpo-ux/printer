@@ -1667,11 +1667,10 @@ def printer_brain(
     else:
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
-    # ── 8. EV filter — dynamic threshold based on time remaining ─────────────
-    # Early/mid session (>3 min left): require 5% EV — take good edges.
-    # EV floor — 5% matches the dashboard gate so all-green = bot trades.
-    # Calibration reward tiers adjust prob_scale and confidence_bonus instead.
-    min_ev = 0.05
+    # ── 8. EV filter ──────────────────────────────────────────────────────────
+    # 3% floor: at NO=72c with 75% win prob EV is +3% — real edge, should trade.
+    # 5% was too strict and killed valid in-the-money entries.
+    min_ev = 0.03
 
     skip_reason = ""
     if _vol_skip:
@@ -2233,7 +2232,7 @@ def write_state_file(
         "mode": config.get("mode", "paper"),
         "today_live_pnl": db_get_today_pnl("live"),
         "today_paper_pnl": db_get_today_pnl("paper"),
-        "config": {**config, "confidence_threshold": CONFIDENCE_THRESHOLD, "min_ev_pct": 5},
+        "config": {**config, "confidence_threshold": CONFIDENCE_THRESHOLD, "min_ev_pct": 3},
         "cooldown_counter": cooldown_counter,
         "limit_triggered": limit_triggered,
         "limit_reason": limit_reason,
