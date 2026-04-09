@@ -2470,9 +2470,10 @@ async def main_loop() -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
-    """Verify Kalshi credentials work by fetching active markets. Exits on auth failure."""
+    """Verify Kalshi credentials work and log all available BTC market series."""
     path = "/markets"
-    params = {"status": "open", "series_ticker": "KXBTC15M", "limit": 1}
+    # Auth check — must succeed or we exit
+    params = {"status": "open", "limit": 1}
     try:
         async with session.get(
             KALSHI_BASE_URL + path,
@@ -2487,13 +2488,97 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
             if resp.status != 200:
                 log.error(f"Kalshi connection check failed: HTTP {resp.status} — {data}")
                 sys.exit(1)
-            markets = data.get("markets", [])
-            log.info(f"Kalshi connected. Active KXBTC15M markets visible: {len(markets)}")
+            log.info("Kalshi auth OK.")
     except SystemExit:
         raise
     except Exception as exc:
         log.error(f"Kalshi connection check failed: {exc}")
         sys.exit(1)
+
+    # ── Market discovery: log everything BTC-related so we can find the right ticker ──
+    now_utc = datetime.now(timezone.utc)
+    log.info("=== KALSHI MARKET DISCOVERY START ===")
+
+    # 1. Try every known series ticker
+    for series in ("KXBTC15M", "KXBTC", "BTC15M", "BTC", "BTCUSD", "KXBTCUSD", "KXBTCUSD15M"):
+        try:
+            async with session.get(
+                KALSHI_BASE_URL + path,
+                headers=kalshi_headers("GET", path),
+                params={"series_ticker": series, "status": "open", "limit": 20},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                d = await resp.json()
+                markets = d.get("markets", [])
+                log.info(f"  series={series!r} -> {len(markets)} markets")
+                for m in markets[:5]:
+                    try:
+                        close_dt = datetime.fromisoformat(m["close_time"].replace("Z", "+00:00"))
+                        mins_left = (close_dt - now_utc).total_seconds() / 60
+                        open_dt   = datetime.fromisoformat(m.get("open_time","").replace("Z", "+00:00"))
+                        duration  = (close_dt - open_dt).total_seconds() / 60
+                    except Exception:
+                        mins_left = duration = -1
+                    log.info(f"    ticker={m.get('ticker')} closes_in={mins_left:.1f}m dur={duration:.0f}m title={m.get('title','')[:60]}")
+        except Exception as exc:
+            log.info(f"  series={series!r} -> ERROR: {exc}")
+
+    # 2. Broad scan: any open market closing within 2 hours
+    try:
+        max_ts = int(now_utc.timestamp()) + 7200
+        async with session.get(
+            KALSHI_BASE_URL + path,
+            headers=kalshi_headers("GET", path),
+            params={"status": "open", "limit": 200, "max_close_ts": max_ts},
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            d = await resp.json()
+            all_short = d.get("markets", [])
+        btc_short = [m for m in all_short
+                     if "btc" in m.get("ticker","").lower()
+                     or "btc" in m.get("title","").lower()
+                     or "bitcoin" in m.get("title","").lower()]
+        log.info(f"  Broad scan (closes <2h): {len(all_short)} total, {len(btc_short)} BTC-related")
+        for m in btc_short:
+            try:
+                close_dt = datetime.fromisoformat(m["close_time"].replace("Z", "+00:00"))
+                mins_left = (close_dt - now_utc).total_seconds() / 60
+                open_dt   = datetime.fromisoformat(m.get("open_time","").replace("Z", "+00:00"))
+                duration  = (close_dt - open_dt).total_seconds() / 60
+            except Exception:
+                mins_left = duration = -1
+            log.info(f"    ticker={m.get('ticker')} closes_in={mins_left:.1f}m dur={duration:.0f}m title={m.get('title','')[:60]}")
+        if not btc_short:
+            log.info("    (no BTC markets closing within 2h — showing first 5 of any market)")
+            for m in all_short[:5]:
+                log.info(f"    ticker={m.get('ticker')} title={m.get('title','')[:60]}")
+    except Exception as exc:
+        log.info(f"  Broad scan ERROR: {exc}")
+
+    # 3. /series endpoint — find any BTC-related series
+    try:
+        async with session.get(
+            KALSHI_BASE_URL + "/series",
+            headers=kalshi_headers("GET", "/series"),
+            params={"limit": 200},
+            timeout=aiohttp.ClientTimeout(total=10),
+        ) as resp:
+            if resp.status == 200:
+                d = await resp.json()
+                all_series = d.get("series", [])
+                btc_series = [s for s in all_series
+                              if "btc" in s.get("ticker","").lower()
+                              or "bitcoin" in s.get("title","").lower()
+                              or "btc" in s.get("title","").lower()]
+                log.info(f"  /series: {len(all_series)} total, {len(btc_series)} BTC-related")
+                for s in btc_series:
+                    log.info(f"    series_ticker={s.get('ticker')} title={s.get('title','')[:60]}")
+            else:
+                log.info(f"  /series returned HTTP {resp.status}")
+    except Exception as exc:
+        log.info(f"  /series ERROR: {exc}")
+
+    log.info("=== KALSHI MARKET DISCOVERY END ===")
 
 
 async def main() -> None:
