@@ -566,9 +566,13 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         return _all_markets_cache if return_all else _market_cache
 
     path = "/markets"
-    # Only look at known 15-minute BTC series — never fall back to daily/weekly markets
+    # Priority order: KXBTCD/BTCD-B are the active "Above/below" short-duration BTC markets.
+    # KXBTC15M is legacy (no active markets as of 2026). KXBTC returns 25-hour daily range
+    # markets that get filtered out — still included as fallback.
+    _SERIES_SEARCH_ORDER = ("KXBTCD", "BTCD-B", "KXBTC15M", "BTC15M", "KXBTC", "BTC")
     all_markets = []
-    for series in ("KXBTC15M", "KXBTC", "BTC15M", "BTC"):
+    seen_tickers: set[str] = set()
+    for series in _SERIES_SEARCH_ORDER:
         params = {"series_ticker": series, "status": "open", "limit": 20}
         try:
             async with session.get(
@@ -583,11 +587,16 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
                     continue
                 data = await resp.json()
             batch = data.get("markets", [])
-            if batch:
-                log.info(f"Series {series!r} returned {len(batch)} markets: "
+            new_count = 0
+            for m in batch:
+                t = m.get("ticker", "")
+                if t and t not in seen_tickers:
+                    seen_tickers.add(t)
+                    all_markets.append(m)
+                    new_count += 1
+            if new_count:
+                log.info(f"Series {series!r} returned {new_count} new markets: "
                          + ", ".join(m.get("ticker", "?") for m in batch[:5]))
-                all_markets.extend(batch)
-                break   # found markets — stop trying other series
         except Exception as exc:
             log.error(f"Market fetch error (series={series}): {exc}")
 
@@ -605,16 +614,17 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
             mins_left = -1
         log.info(f"  Market: {m.get('ticker')} | closes in {mins_left:.1f}m | {m.get('title','')[:60]}")
 
-    # Drop obviously non-15-min markets by title keyword
+    # Drop obviously long-duration markets by title keyword.
+    # "range" = KXBTC daily price-range markets (~1500 min). Keep "above/below" (KXBTCD).
     all_markets = [m for m in all_markets
                    if "range" not in m.get("title", "").lower()
                    and "daily" not in m.get("title", "").lower()]
 
     if not all_markets:
-        log.warning("No valid 15-minute markets after filtering. Waiting for next window.")
+        log.warning("No valid short-duration markets after title filtering. Waiting for next window.")
         return [] if return_all else None
 
-    # Try to identify 15-minute markets by open→close duration
+    # Compute duration for each market
     def market_duration_minutes(m):
         try:
             open_str  = m.get("open_time") or m.get("open_date")
@@ -627,26 +637,28 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         except Exception:
             return None
 
-    fifteen = [m for m in all_markets
-               if (lambda d: d is not None and 13 <= d <= 17)(market_duration_minutes(m))]
+    # Accept any short-duration market: 1-60 minutes (covers 5-min, 15-min, 30-min, hourly)
+    short_dur = [m for m in all_markets
+                 if (lambda d: d is not None and 1 <= d <= 75)(market_duration_minutes(m))]
 
-    if fifteen:
-        log.info(f"Found {len(fifteen)} 15-min market(s) by duration.")
-        pool = fifteen
+    if short_dur:
+        log.info(f"Found {len(short_dur)} short-duration market(s). "
+                 + " | ".join(f"{m.get('ticker')} {market_duration_minutes(m):.0f}m" for m in short_dur[:5]))
+        pool = short_dur
     else:
-        # Fall back: markets closing within 20 minutes (soonest active window)
+        # Fall back: any market closing within 60 minutes
         soon = [
             m for m in all_markets
-            if (lambda c: 0 < c <= 20)(
+            if (lambda c: 0 < c <= 60)(
                 (datetime.fromisoformat(m["close_time"].replace("Z", "+00:00")) - now_utc).total_seconds() / 60
                 if m.get("close_time") else -1
             )
         ]
         if soon:
-            log.info(f"No 15-min duration match — using {len(soon)} markets closing within 20 min.")
+            log.info(f"No short-duration match by open→close — using {len(soon)} markets closing within 60 min.")
             pool = soon
         else:
-            log.warning("No 15-minute markets found. Waiting for next window.")
+            log.warning("No short-duration markets found. Waiting for next window.")
             return [] if return_all else None
 
     pool.sort(key=lambda m: m.get("close_time", ""))
@@ -714,7 +726,18 @@ def seconds_remaining(market: dict) -> float:
 
 
 def seconds_elapsed(market: dict) -> float:
-    """Estimate seconds since market open (assumes 15-minute duration)."""
+    """Estimate seconds since market open, using the market's actual duration."""
+    try:
+        open_str  = market.get("open_time") or market.get("open_date")
+        close_str = market.get("close_time")
+        if open_str and close_str:
+            open_dt  = datetime.fromisoformat(open_str.replace("Z", "+00:00"))
+            close_dt = datetime.fromisoformat(close_str.replace("Z", "+00:00"))
+            duration_secs = (close_dt - open_dt).total_seconds()
+            return max(0.0, duration_secs - seconds_remaining(market))
+    except Exception:
+        pass
+    # Fallback: assume 15-minute window
     return max(0.0, 15 * 60 - seconds_remaining(market))
 
 
@@ -2726,8 +2749,8 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
     now_utc = datetime.now(timezone.utc)
     log.info("=== KALSHI MARKET DISCOVERY START ===")
 
-    # 1. Try every known series ticker
-    for series in ("KXBTC15M", "KXBTC", "BTC15M", "BTC", "BTCUSD", "KXBTCUSD", "KXBTCUSD15M"):
+    # 1. Try every known series ticker (KXBTCD / BTCD-B first — the active "above/below" BTC markets)
+    for series in ("KXBTCD", "BTCD-B", "KXBTC15M", "KXBTC", "BTC15M", "BTC", "BTCUSD", "KXBTCUSD", "KXBTCUSD15M"):
         try:
             async with session.get(
                 KALSHI_BASE_URL + path,
@@ -2750,8 +2773,8 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
         except Exception as exc:
             log.info(f"  series={series!r} -> ERROR: {exc}")
 
-    # 2. Broad scan via KXBTC series (avoids Kalshi 500 on filterless queries)
-    for scan_series in ("KXBTC", "KXBTC15M", "BTC"):
+    # 2. Broad scan (avoids Kalshi 500 on filterless queries)
+    for scan_series in ("KXBTCD", "BTCD-B", "KXBTC", "KXBTC15M", "BTC"):
         try:
             async with session.get(
                 KALSHI_BASE_URL + path,
