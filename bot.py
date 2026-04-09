@@ -173,7 +173,7 @@ def _init_config() -> None:
         "bot_enabled": False,
         "trade_amount_dollars": 25,
         "mode": "paper",
-        "confidence_threshold": 80,
+        "confidence_threshold": 72,
         "cooldown_markets": 0,
         "daily_loss_limit_dollars": 50000,
         "daily_profit_target_dollars": 50000,
