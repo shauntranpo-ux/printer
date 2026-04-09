@@ -57,7 +57,7 @@ MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 90   # wait 90s into each 15-min session before evaluating
 
 # ── Strategy constants — hardcoded so Railway deploys never revert them ───────
-CONFIDENCE_THRESHOLD = 80   # minimum win probability % to enter a trade
+CONFIDENCE_THRESHOLD = 65   # minimum win probability % to enter a trade
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -1679,8 +1679,8 @@ def printer_brain(
     base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.20
     # Time-of-day session adjustment: ±0.02 based on US/Asian session hours
     session_adj = _session_ev_adjustment()
-    # Never let session adjustment push min_ev below 0.22 (safety floor)
-    min_ev = max(0.22, base_ev + session_adj)
+    # Never let session adjustment push min_ev below 0.05 (5% edge floor)
+    min_ev = max(0.05, base_ev + session_adj)
 
     skip_reason = ""
     if _vol_skip:
@@ -2243,7 +2243,7 @@ def write_state_file(
         "mode": config.get("mode", "paper"),
         "today_live_pnl": db_get_today_pnl("live"),
         "today_paper_pnl": db_get_today_pnl("paper"),
-        "config": config,
+        "config": {**config, "confidence_threshold": CONFIDENCE_THRESHOLD, "min_ev_pct": 5},
         "cooldown_counter": cooldown_counter,
         "limit_triggered": limit_triggered,
         "limit_reason": limit_reason,

@@ -166,20 +166,27 @@
   .tier-1 { background: #1a2e1a; color: var(--green); }
   .tier-2 { background: #2e200a; color: var(--amber); }
   .tier-3 { background: #2e0d0d; color: var(--red);   }
-  .thinking-feed { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 4px 0; min-height: 180px; max-height: 230px; overflow-y: auto; margin-bottom: 10px; display: flex; flex-direction: column; justify-content: flex-end; }
-  .thinking-entry { display: flex; align-items: flex-start; gap: 9px; padding: 6px 12px; border-bottom: 1px solid rgba(30,42,53,0.5); font-size: 11px; line-height: 1.5; }
-  .thinking-entry:last-child { border-bottom: none; }
-  .thinking-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
-  .thinking-dot.watch  { background: var(--blue); }
-  .thinking-dot.ready  { background: var(--amber); }
-  .thinking-dot.trade  { background: var(--green); box-shadow: 0 0 5px var(--green); }
-  .thinking-dot.skip   { background: var(--muted); }
-  .thinking-dot.locked { background: var(--amber); box-shadow: 0 0 5px var(--amber); }
-  .thinking-dot.wait   { background: #333; }
-  .thinking-text { flex: 1; color: var(--text); }
-  .thinking-text strong { font-weight: 600; }
-  .thinking-text.dim { color: var(--muted); }
-  .thinking-time { color: var(--muted); font-size: 10px; white-space: nowrap; flex-shrink: 0; padding-top: 1px; }
+  /* ── AI Thinking Panel ── */
+  .ai-panel { background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 10px 12px; margin-bottom: 10px; }
+  .ai-gate-row { display: grid; grid-template-columns: 82px 82px 14px 1fr 62px; align-items: center; gap: 6px; padding: 7px 0; border-bottom: 1px solid rgba(30,42,53,0.35); }
+  .ai-gate-row:last-of-type { border-bottom: none; }
+  .ai-gate-label { font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: .07em; text-transform: uppercase; }
+  .ai-gate-want { font-size: 10px; color: #4e6070; }
+  .ai-gate-want span { color: var(--muted); }
+  .ai-gate-sep { font-size: 10px; color: var(--border); text-align: center; }
+  .ai-gate-see { font-size: 11px; font-weight: 600; color: var(--text); }
+  .ai-gate-see.pass { color: var(--green); }
+  .ai-gate-see.fail { color: var(--red); }
+  .ai-gate-badge { font-size: 9px; font-weight: 700; letter-spacing: .06em; text-align: right; padding: 2px 5px; border-radius: 3px; }
+  .ai-gate-badge.pass { color: var(--green); background: rgba(57,211,83,.10); }
+  .ai-gate-badge.fail { color: var(--red); background: rgba(248,81,73,.10); }
+  .ai-divider { border-top: 1px solid var(--border); margin: 10px 0 8px; }
+  .ai-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .ai-compare-header { font-size: 9px; font-weight: 700; color: var(--muted); letter-spacing: .07em; margin-bottom: 6px; text-transform: uppercase; }
+  .ai-compare-item { font-size: 10px; color: var(--muted); padding: 2px 0; line-height: 1.5; }
+  .ai-compare-item.live-pass { color: var(--green); }
+  .ai-compare-item.live-fail { color: var(--red); }
+  .ai-compare-item.live-ok   { color: var(--text); }
 
   /* ── Settings ── */
   .card-title.toggle-title { cursor: pointer; user-select: none; }
@@ -451,11 +458,49 @@
           <div class="stat"><div class="s-label">Trades Eval</div><div class="s-value" id="brain-trades-val">—</div></div>
         </div>
         <div class="c-label">What AI is Thinking</div>
-        <div class="thinking-feed" id="thinking-feed">
-          <div class="thinking-entry">
-            <div class="thinking-dot wait"></div>
-            <div class="thinking-text dim">Waiting for bot data...</div>
-            <div class="thinking-time">—</div>
+        <div class="ai-panel" id="ai-panel">
+          <!-- Gate rows -->
+          <div class="ai-gate-row">
+            <div class="ai-gate-label">Confidence</div>
+            <div class="ai-gate-want">WANTS ≥ <span id="ai-conf-thresh">—</span></div>
+            <div class="ai-gate-sep">→</div>
+            <div class="ai-gate-see" id="ai-conf-see">—</div>
+            <div class="ai-gate-badge" id="ai-conf-badge">—</div>
+          </div>
+          <div class="ai-gate-row">
+            <div class="ai-gate-label">Edge (EV)</div>
+            <div class="ai-gate-want">WANTS ≥ <span id="ai-ev-thresh">+5%</span></div>
+            <div class="ai-gate-sep">→</div>
+            <div class="ai-gate-see" id="ai-ev-see">—</div>
+            <div class="ai-gate-badge" id="ai-ev-badge">—</div>
+          </div>
+          <div class="ai-gate-row">
+            <div class="ai-gate-label">Vol Safe</div>
+            <div class="ai-gate-want">WANTS &lt; <span>0.90</span></div>
+            <div class="ai-gate-sep">→</div>
+            <div class="ai-gate-see" id="ai-vol-see">—</div>
+            <div class="ai-gate-badge" id="ai-vol-badge">—</div>
+          </div>
+          <!-- Divider -->
+          <div class="ai-divider"></div>
+          <!-- Entry comparison -->
+          <div class="ai-compare">
+            <div>
+              <div class="ai-compare-header">Looking For</div>
+              <div class="ai-compare-item">Conf ≥ <span id="ai-cmp-conf-thresh">—</span></div>
+              <div class="ai-compare-item">EV ≥ <span id="ai-cmp-ev-thresh">+5%</span></div>
+              <div class="ai-compare-item">Vol ratio &lt; 0.90</div>
+              <div class="ai-compare-item">Time 1.5 – 13m left</div>
+              <div class="ai-compare-item">Momentum signal</div>
+            </div>
+            <div>
+              <div class="ai-compare-header">Seeing Now</div>
+              <div class="ai-compare-item" id="ai-cmp-conf">—</div>
+              <div class="ai-compare-item" id="ai-cmp-ev">—</div>
+              <div class="ai-compare-item" id="ai-cmp-vol">—</div>
+              <div class="ai-compare-item" id="ai-cmp-time">—</div>
+              <div class="ai-compare-item" id="ai-cmp-mom">—</div>
+            </div>
           </div>
         </div>
         <div id="brain-claude" style="display:none;">
@@ -912,11 +957,7 @@ async function confirmReset() {
 }
 document.getElementById('reset-modal').addEventListener('click', function(e){ if(e.target===this) closeResetModal(); });
 
-// ── What AI is Thinking feed ──
-const _thinkingLog = [];     // [{dot, text, ts}]  newest last
-let _lastThinkingKey = '';   // deduplicate consecutive identical thoughts
-const _MAX_THINKING = 5;
-
+// ── What AI is Thinking panel ──
 function _fmtAgo(ts) {
   const d = Math.floor((Date.now() - ts) / 1000);
   if (d < 5)  return 'just now';
@@ -924,102 +965,65 @@ function _fmtAgo(ts) {
   return Math.floor(d / 60) + 'm ago';
 }
 
-function _generateThought(s, bd, wp, ev, vr, confThresh) {
-  const phase  = s.phase || '';
-  const ticker = s.market_ticker || '';
+function _setGate(seeId, badgeId, pass, seeText) {
+  const seeEl   = document.getElementById(seeId);
+  const badgeEl = document.getElementById(badgeId);
+  if (seeEl)   { seeEl.textContent = seeText; seeEl.className = 'ai-gate-see ' + (pass ? 'pass' : 'fail'); }
+  if (badgeEl) { badgeEl.textContent = pass ? '✓ CLEAR' : '✗ FAIL'; badgeEl.className = 'ai-gate-badge ' + (pass ? 'pass' : 'fail'); }
+}
+
+function _setCmp(id, cls, text) {
+  const el = document.getElementById(id);
+  if (el) { el.textContent = text; el.className = 'ai-compare-item ' + cls; }
+}
+
+function _updateAiPanel(s, bd, wp, ev, vr, confThresh) {
   const sr     = s.seconds_remaining;
-  const shortTicker = ticker.replace(/^KXBTC15M-\w+-/, '') || ticker.slice(-12) || '—';
+  const mom    = (bd && bd.momentum_label) || 'neutral';
+  const vel    = (bd && bd.velocity_label) || 'neutral';
+  const evMin  = (s.config && s.config.min_ev_pct) || 5;   // real bot EV floor %
 
-  if (phase === 'WATCH') {
-    const elapsed = bd && bd.elapsed_secs != null ? bd.elapsed_secs : (s.elapsed_secs || '?');
-    const minsLeft = sr != null ? (sr / 60).toFixed(1) : '?';
-    return {
-      dot:  'watch',
-      text: `<strong>WATCH</strong> · ${shortTicker || ticker} · ${minsLeft}m left — waiting for 90s observation window`,
-    };
-  }
+  // ── Gate thresholds (labels) ──
+  ['ai-conf-thresh', 'ai-cmp-conf-thresh'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.textContent = confThresh + '%';
+  });
+  ['ai-ev-thresh', 'ai-cmp-ev-thresh'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.textContent = '+' + evMin + '%';
+  });
 
-  if (phase === 'READY' || phase === 'LOCKED') {
-    if (phase === 'LOCKED') {
-      const pos  = s.open_position || {};
-      const side = pos.side === 'yes' ? '↑ YES' : '↓ NO';
-      const qty  = pos.contracts || '?';
-      const px   = pos.entry_price_cents || '?';
-      return { dot: 'locked', text: `<strong>IN POSITION</strong> · ${side} · ${qty} contracts @ ${px}¢ · holding to expiry` };
-    }
+  // ── Gate: Confidence ──
+  const confPass = wp != null && wp >= confThresh;
+  _setGate('ai-conf-see', 'ai-conf-badge', confPass, wp != null ? wp.toFixed(1) + '%' : '—');
 
-    // READY — check each gate in priority order
-    const reasons = [];
-    const gateConf = wp != null && wp >= confThresh;
-    const gateEv   = ev != null && ev >= 5;
-    const gateVol  = vr != null && vr < 0.9;
+  // ── Gate: EV ──
+  const evPass = ev != null && ev >= evMin;
+  _setGate('ai-ev-see', 'ai-ev-badge', evPass, ev != null ? (ev >= 0 ? '+' : '') + ev.toFixed(1) + '%' : '—');
 
-    if (!gateConf) reasons.push(`confidence ${wp != null ? wp.toFixed(1)+'%' : '?'} < ${confThresh}% threshold`);
-    if (!gateEv)   reasons.push(`EV ${ev != null ? (ev>=0?'+':'')+ev.toFixed(1)+'%' : '?'} below minimum`);
-    if (!gateVol)  reasons.push(`volatility too high (ratio ${vr != null ? vr.toFixed(2) : '?'})`);
+  // ── Gate: Vol ──
+  const volPass = vr != null && vr < 0.9;
+  _setGate('ai-vol-see', 'ai-vol-badge', volPass, vr != null ? 'ratio ' + vr.toFixed(2) : 'no data');
 
-    if (reasons.length) {
-      const revReason = s.last_reversal_reason || '';
-      let revSuffix = '';
-      if (revReason) {
-        // If reversal fired, reason starts with "REVERSAL " (uppercase from _reversal_signal)
-        const revFired = revReason.startsWith('REVERSAL');
-        revSuffix = revFired
-          ? ` | <span style="color:var(--green)">🔄 reversal: ${revReason}</span>`
-          : ` | <span style="color:var(--muted)">🔄 ${revReason}</span>`;
-      }
-      return { dot: 'skip', text: `<strong>EVALUATING</strong> · ${shortTicker} · no trade: ${reasons.join(', ')}${revSuffix}` };
-    }
+  // ── Seeing Now column ──
+  _setCmp('ai-cmp-conf', confPass ? 'live-pass' : 'live-fail',
+    wp != null ? wp.toFixed(1) + '%' + (confPass ? '' : ' ← need +' + (confThresh - wp).toFixed(1) + '%') : '—');
 
-    const lastAct = s.last_action || '';
-    if (lastAct === 'trade') {
-      return { dot: 'trade', text: `<strong>TRADE</strong> · all gates clear, position opened on ${shortTicker}` };
-    }
-    const lastReason = s.last_skip_reason || '';
-    return { dot: 'ready', text: `<strong>READY</strong> · all gates clear · ${lastReason || 'looking for best entry'}` };
-  }
+  _setCmp('ai-cmp-ev', evPass ? 'live-pass' : 'live-fail',
+    ev != null ? (ev >= 0 ? '+' : '') + ev.toFixed(1) + '%' + (evPass ? '' : ' ← need +' + (evMin - ev).toFixed(1) + '% more') : '—');
 
-  if (phase === 'DONE') {
-    return { dot: 'wait', text: `<strong>DONE</strong> · ${shortTicker || 'last window'} closed · waiting for next 15-min market` };
-  }
+  _setCmp('ai-cmp-vol', volPass ? 'live-pass' : (vr == null ? 'live-ok' : 'live-fail'),
+    vr != null ? 'ratio ' + vr.toFixed(2) + (volPass ? '' : ' ← too high') : 'no data');
 
-  // No market / unknown
-  if (!ticker) {
-    return { dot: 'wait', text: `<strong>SEARCHING</strong> · scanning Kalshi for active KXBTC15M markets...` };
-  }
-  return { dot: 'wait', text: `<strong>WAITING</strong> · ${ticker} · ${phase || 'unknown phase'}` };
+  const timeOk  = sr != null && sr > 90 && sr < 13 * 60;
+  const timeStr = sr != null
+    ? Math.floor(sr / 60) + 'm ' + String(sr % 60 | 0).padStart(2, '0') + 's left'
+    : '—';
+  _setCmp('ai-cmp-time', timeOk ? 'live-pass' : (sr == null ? 'live-ok' : 'live-fail'),
+    sr != null ? timeStr + (timeOk ? '' : sr <= 90 ? ' ← too late' : ' ← too early') : '—');
+
+  const momOk  = mom !== 'neutral';
+  const momStr = mom.toUpperCase() + (vel !== 'neutral' ? ' / ' + vel : '');
+  _setCmp('ai-cmp-mom', momOk ? 'live-pass' : 'live-fail', momStr || 'NEUTRAL');
 }
-
-function _pushThinkingEntry(s, bd, wp, ev, vr, confThresh) {
-  const thought = _generateThought(s, bd, wp, ev, vr, confThresh);
-  if (!thought) return;
-
-  // Deduplicate: don't push if same as last entry (except LOCKED/WATCH which update frequently)
-  const key = thought.dot + '|' + thought.text;
-  const alwaysUpdate = (s.phase === 'WATCH' || s.phase === 'LOCKED');
-  if (!alwaysUpdate && key === _lastThinkingKey) return;
-  _lastThinkingKey = key;
-
-  _thinkingLog.push({ dot: thought.dot, text: thought.text, ts: Date.now() });
-  if (_thinkingLog.length > _MAX_THINKING) _thinkingLog.shift();
-  _renderThinkingFeed();
-}
-
-function _renderThinkingFeed() {
-  const feed = document.getElementById('thinking-feed');
-  if (!feed) return;
-  feed.innerHTML = _thinkingLog.map(e =>
-    `<div class="thinking-entry">
-      <div class="thinking-dot ${e.dot}"></div>
-      <div class="thinking-text">${e.text}</div>
-      <div class="thinking-time">${_fmtAgo(e.ts)}</div>
-    </div>`
-  ).join('');
-  feed.scrollTop = feed.scrollHeight;
-}
-
-// Refresh timestamps every 10s without re-pushing
-setInterval(() => { if (_thinkingLog.length) _renderThinkingFeed(); }, 10000);
 
 // ── Main poll ──
 async function pollState() {
@@ -1135,8 +1139,8 @@ async function pollState() {
     if (edEl) edEl.textContent = s.brain_min_edge != null ? (s.brain_min_edge*100).toFixed(0)+'%' : '—';
     if (trEl) trEl.textContent = s.brain_n   != null ? s.brain_n : '—';
 
-    // ── What AI is Thinking feed ──
-    _pushThinkingEntry(s, bd, wp, ev, vr, confThresh);
+    // ── What AI is Thinking panel ──
+    _updateAiPanel(s, bd, wp, ev, vr, confThresh);
 
     // Claude AI reasoning
     const claudeBox = document.getElementById('brain-claude');
