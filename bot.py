@@ -2471,14 +2471,12 @@ async def main_loop() -> None:
 
 async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
     """Verify Kalshi credentials work and log all available BTC market series."""
-    path = "/markets"
-    # Auth check — must succeed or we exit. Use KXBTC (known series) to avoid Kalshi 500s on broad queries.
-    params = {"status": "open", "series_ticker": "KXBTC", "limit": 1}
+    # Auth check via /portfolio/balance — avoids market query-exchange service entirely
+    balance_path = "/portfolio/balance"
     try:
         async with session.get(
-            KALSHI_BASE_URL + path,
-            headers=kalshi_headers("GET", path),
-            params=params,
+            KALSHI_BASE_URL + balance_path,
+            headers=kalshi_headers("GET", balance_path),
             timeout=aiohttp.ClientTimeout(total=10),
         ) as resp:
             data = await resp.json()
@@ -2488,12 +2486,15 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
             if resp.status != 200:
                 log.error(f"Kalshi connection check failed: HTTP {resp.status} — {data}")
                 sys.exit(1)
-            log.info("Kalshi auth OK.")
+            balance = data.get("balance", "?")
+            log.info(f"Kalshi auth OK. Account balance: {balance} cents")
     except SystemExit:
         raise
     except Exception as exc:
         log.error(f"Kalshi connection check failed: {exc}")
         sys.exit(1)
+
+    path = "/markets"
 
     # ── Market discovery: log everything BTC-related so we can find the right ticker ──
     now_utc = datetime.now(timezone.utc)
