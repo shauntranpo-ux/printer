@@ -1625,6 +1625,32 @@ def printer_brain(
     prob_yes = win_prob if above else (1.0 - win_prob)
     prob_no  = 1.0 - prob_yes
 
+    # ── 5b. Market-implied probability anchor ────────────────────────────────
+    # The BV3 model uses historical average BTC behavior. In volatile/trending
+    # regimes (crash days, news spikes) the market's live pricing is more
+    # accurate than the backtest table. When our model and the market disagree
+    # by >25 percentage points, blend toward market consensus so EV stays
+    # realistic and doesn't show fictitious 40-60% edges.
+    #
+    # Market-implied prob for the side we'd bet:
+    mkt_implied = (yes_ask / 100) if above else (no_ask / 100)
+    model_side_prob = prob_yes if above else prob_no
+    divergence = model_side_prob - mkt_implied   # positive = model more optimistic
+    if divergence > 0.25:
+        # Blend weight grows from 0→0.5 as divergence goes from 25%→65%
+        blend = min(0.50, (divergence - 0.25) / 0.40 * 0.50)
+        blended = model_side_prob * (1 - blend) + mkt_implied * blend
+        if above:
+            prob_yes = blended
+            prob_no  = 1.0 - blended
+        else:
+            prob_no  = blended
+            prob_yes = 1.0 - blended
+        brain_log.debug(
+            f"Market-anchor: model={model_side_prob:.1%} mkt={mkt_implied:.1%} "
+            f"div={divergence:.1%} blend={blend:.2f} → {blended:.1%}"
+        )
+
     # ── 6. Expected value vs actual contract price ────────────────────────────
     # yes_ask / no_ask are in cents (0-100). $1 payout.
     yes_ev = prob_yes - (yes_ask / 100)
@@ -1652,8 +1678,8 @@ def printer_brain(
     base_ev = _brain_cal["min_edge_override"] if _brain_cal["min_edge_override"] is not None else 0.20
     # Time-of-day session adjustment: ±0.02 based on US/Asian session hours
     session_adj = _session_ev_adjustment()
-    # Never let session adjustment push min_ev below 0.18 (safety floor)
-    min_ev = max(0.18, base_ev + session_adj)
+    # Never let session adjustment push min_ev below 0.22 (safety floor)
+    min_ev = max(0.22, base_ev + session_adj)
 
     skip_reason = ""
     if _vol_skip:
