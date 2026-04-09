@@ -1598,7 +1598,7 @@ def printer_brain(
     if _rv is not None and abs_pct > 0:
         _expected_move = _rv * (mins_left ** 0.5)
         _vol_ratio     = _expected_move / abs_pct
-        if _vol_ratio >= 0.75:
+        if _vol_ratio >= 0.90:
             _vol_skip = True
 
     # ── 1. Empirical win probability from backtest table ──────────────────────
@@ -1661,11 +1661,8 @@ def printer_brain(
     if _brain_cal["bullish_wr"] < 0.35: yes_ev -= 0.04
     if _brain_cal["bearish_wr"] < 0.35: no_ev  -= 0.04
 
-    # ── 7. Pick side — always bet WITH BTC's current position ────────────────
-    # The entire strategy is "BTC stays where it is." Never bet against it
-    # just because the opposite contract happens to be cheap — those are
-    # low-probability lottery tickets that flip the loss rate.
-    if above:
+    # ── 7. Pick side — whichever has higher EV ───────────────────────────────
+    if yes_ev >= no_ev:
         side, best_ev, entry_c, true_p = "yes", yes_ev, yes_ask, prob_yes
     else:
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
