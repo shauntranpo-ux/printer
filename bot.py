@@ -846,7 +846,7 @@ async def fetch_orderbook(
     return {
         "best_yes_ask": best_yes_ask,
         "best_no_ask":  best_no_ask,
-        "best_yes_bid": best_yes_bid,  # may be None — only used for SL monitoring
+        "best_yes_bid": best_yes_bid,  # may be None
         "yes_liquidity": yes_liquidity,
         "no_liquidity":  no_liquidity,
     }
