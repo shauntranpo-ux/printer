@@ -54,7 +54,6 @@ _FULL_CONFIG_DEFAULT = {
     "mode": "paper",
     "trade_amount_dollars": 25,
     "confidence_threshold": 72,
-    "cooldown_markets": 0,
     "daily_loss_limit_dollars": 50000,
     "daily_profit_target_dollars": 50000,
     "claude_enabled": False,
@@ -110,7 +109,7 @@ def _telegram_notify(text: str) -> None:
 
 
 _CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 25, "confidence_threshold": 72,
-                   "cooldown_markets": 0, "daily_loss_limit_dollars": 50000,
+                   "daily_loss_limit_dollars": 50000,
                    "daily_profit_target_dollars": 50000, "claude_enabled": False}
 _STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
                    "phase": "waiting", "mode": "paper"}
@@ -323,7 +322,6 @@ def api_config():
         "daily_loss_limit_dollars":    is_positive_number,
         "daily_profit_target_dollars": is_positive_number,
         "confidence_threshold":        lambda v: isinstance(v, (int, float)) and 50 <= v <= 100,
-        "cooldown_markets":            lambda v: isinstance(v, (int, float)) and 0 <= v <= 10,
         "bot_enabled":                 lambda v: isinstance(v, bool),
         "claude_enabled":              lambda v: isinstance(v, bool),
     }
@@ -332,8 +330,7 @@ def api_config():
         if key not in validators:
             continue
         if validators[key](value):
-            # Coerce cooldown_markets to int
-            config[key] = int(value) if key == "cooldown_markets" else value
+            config[key] = value
         else:
             errors.append(f"Invalid value for {key!r}: {value!r}")
 

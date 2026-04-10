@@ -56,8 +56,6 @@ API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
 MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 90   # wait 90s into each 15-min session before evaluating
 
-# ── Strategy constants — hardcoded so Railway deploys never revert them ───────
-CONFIDENCE_THRESHOLD = 72   # minimum win probability % to enter a trade
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -97,8 +95,6 @@ limit_reason: str = ""
 pre_limit_mode: str | None = None
 daily_reset_date = None
 
-# Cooldown
-cooldown_counter: int = 0
 
 # Last evaluation info (written to state file)
 last_confidence_score: int = 0
@@ -174,7 +170,6 @@ def _init_config() -> None:
         "trade_amount_dollars": 25,
         "mode": "paper",
         "confidence_threshold": 72,
-        "cooldown_markets": 0,
         "daily_loss_limit_dollars": 50000,
         "daily_profit_target_dollars": 50000,
         "claude_enabled": False,
@@ -2234,8 +2229,7 @@ def write_state_file(
         "mode": config.get("mode", "paper"),
         "today_live_pnl": db_get_today_pnl("live"),
         "today_paper_pnl": db_get_today_pnl("paper"),
-        "config": {**config, "confidence_threshold": CONFIDENCE_THRESHOLD, "min_ev_pct": 5},
-        "cooldown_counter": cooldown_counter,
+        "config": {**config, "min_ev_pct": 5},
         "limit_triggered": limit_triggered,
         "limit_reason": limit_reason,
         "open_position": current_position,
@@ -2296,7 +2290,7 @@ async def handle_ready_phase(
     """
     global current_phase, current_position
     global last_confidence_score, last_confidence_breakdown
-    global last_action, last_skip_reason, cooldown_counter, last_reversal_reason
+    global last_action, last_skip_reason, last_reversal_reason
 
     mode = config.get("mode", "paper")
 
@@ -2434,8 +2428,9 @@ async def handle_ready_phase(
     last_confidence_breakdown = breakdown
 
     raw_win_pct = int(brain.get("win_prob", 0) * 100)
-    if do_trade and raw_win_pct < CONFIDENCE_THRESHOLD:
-        skip_reason_ai = f"win prob {raw_win_pct}% below floor {CONFIDENCE_THRESHOLD}%"
+    conf_threshold = int(config.get("confidence_threshold", 72))
+    if do_trade and raw_win_pct < conf_threshold:
+        skip_reason_ai = f"win prob {raw_win_pct}% below floor {conf_threshold}%"
         do_trade = False
 
     # ── Reversal model — runs whenever main strategy skips ───────────────────
@@ -2612,7 +2607,7 @@ async def handle_locked_phase(
     Hold an open position to expiry — exit at settlement.
     Exit only when the market settles and fetch the official Kalshi result.
     """
-    global current_phase, current_position, cooldown_counter
+    global current_phase, current_position
 
     if current_position is None:
         log.warning("LOCKED phase with no position. Moving to DONE.")
