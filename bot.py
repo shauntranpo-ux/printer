@@ -1593,7 +1593,7 @@ def printer_brain(
     if _rv is not None and abs_pct > 0:
         _expected_move = _rv * (mins_left ** 0.5)
         _vol_ratio     = _expected_move / abs_pct
-        if _vol_ratio >= 0.90:
+        if _vol_ratio >= 1.20:
             _vol_skip = True
 
     # ── 1. Empirical win probability from backtest table ──────────────────────
@@ -1705,7 +1705,7 @@ def printer_brain(
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
         f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
         f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal}",
-        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip ≥0.90)",
+        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip ≥1.20)",
     ]
 
     brain_log.info(
