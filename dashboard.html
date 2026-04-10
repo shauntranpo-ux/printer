@@ -1151,7 +1151,15 @@ async function pollState() {
       `<div class="cb-item"><span class="cb-name">BTC Dist</span><span class="cb-val">${bd.distance_pct!=null?bd.distance_pct.toFixed(3)+'%':'—'}</span></div>`,
     ].join('');
 
-    // PnL is now driven by pollTrades (always in sync with trade table)
+    const lpnl = s.today_live_pnl  || 0;
+    const ppnl = s.today_paper_pnl || 0;
+    const lEl = document.getElementById('live-pnl'),  pEl = document.getElementById('paper-pnl');
+    lEl.textContent = fmtPnl(lpnl); lEl.className = `pnl-big ${pnlClass(lpnl)}`;
+    pEl.textContent = fmtPnl(ppnl); pEl.className = `pnl-big ${pnlClass(ppnl)}`;
+    const tlEl = document.getElementById('today-live-pnl');
+    const tpEl = document.getElementById('today-paper-pnl');
+    if (tlEl) { tlEl.textContent = fmtPnl(lpnl); tlEl.className = `s-value ${pnlClass(lpnl)}`; }
+    if (tpEl) { tpEl.textContent = fmtPnl(ppnl); tpEl.className = `s-value ${pnlClass(ppnl)}`; }
 
     const badge = document.getElementById('limit-badge');
     if (s.limit_triggered && s.limit_reason) {
@@ -1212,22 +1220,6 @@ async function pollTrades() {
     const pcEl = document.getElementById('paper-trade-count');
     if (lcEl) lcEl.textContent = allTimeStats(liveTradesData,  'live');
     if (pcEl) pcEl.textContent = allTimeStats(paperTradesData, 'paper');
-
-    // PnL calculated directly from trades — always in sync with the table
-    const todayStr = new Date().toISOString().slice(0, 10);
-    function todayPnl(trades, mode) {
-      return trades
-        .filter(x => x.mode === mode && x.outcome !== 'pending' && (x.ts||'').startsWith(todayStr))
-        .reduce((sum, x) => sum + (x.pnl_dollars || 0), 0);
-    }
-    const lpnl = todayPnl(liveTradesData, 'live');
-    const ppnl = todayPnl(paperTradesData, 'paper');
-    const lEl = document.getElementById('live-pnl'), pEl = document.getElementById('paper-pnl');
-    if (lEl) { lEl.textContent = fmtPnl(lpnl); lEl.className = `pnl-big ${pnlClass(lpnl)}`; }
-    if (pEl) { pEl.textContent = fmtPnl(ppnl); pEl.className = `pnl-big ${pnlClass(ppnl)}`; }
-    const tlEl = document.getElementById('today-live-pnl'), tpEl = document.getElementById('today-paper-pnl');
-    if (tlEl) { tlEl.textContent = fmtPnl(lpnl); tlEl.className = `s-value ${pnlClass(lpnl)}`; }
-    if (tpEl) { tpEl.textContent = fmtPnl(ppnl); tpEl.className = `s-value ${pnlClass(ppnl)}`; }
 
     const allTrades = [...liveTradesData,...paperTradesData];
     scheduleChartUpdate(buildEquityCurve(allTrades,'live'), buildEquityCurve(allTrades,'paper'));

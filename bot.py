@@ -2711,6 +2711,24 @@ async def main_loop() -> None:
 
     prev_ticker: str | None = None
 
+    # ── Recover open position from state file after a crash/restart ──────────
+    try:
+        with open(_STATE_FILE, "r") as _sf:
+            _saved = json.load(_sf)
+        _saved_pos = _saved.get("open_position")
+        _saved_phase = _saved.get("phase", "")
+        if _saved_pos and _saved_phase == "LOCKED" and _saved_pos.get("trade_id"):
+            current_position = _saved_pos
+            current_phase    = "LOCKED"
+            log.warning(
+                f"Recovered open position from state file: "
+                f"trade_id={_saved_pos.get('trade_id')} "
+                f"side={_saved_pos.get('side')} "
+                f"ticker={_saved_pos.get('ticker')}"
+            )
+    except Exception:
+        pass  # fresh start, no state to recover
+
     # TCPConnector with keepalive_timeout prevents stale pooled connections
     # from silently breaking API calls after many hours of uptime.
     connector = aiohttp.TCPConnector(keepalive_timeout=30, limit=10)
