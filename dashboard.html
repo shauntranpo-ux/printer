@@ -1257,12 +1257,22 @@ async function pollState(){
     const dBox=document.getElementById('dash-claude');
     const reasoning=s.claude_reasoning||'';
     const sigHtml=(s.claude_key_signals||[]).map(sig=>`<span style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--blue);">${sig}</span>`).join('');
-    if(reasoning){
-      if(cBox){cBox.style.display='block';document.getElementById('brain-claude-text').textContent=reasoning;document.getElementById('brain-claude-signals').innerHTML=sigHtml;}
-      if(dBox){dBox.style.display='block';document.getElementById('dash-claude-text').textContent=reasoning;document.getElementById('dash-claude-signals').innerHTML=sigHtml;}
-    }else{
-      if(cBox)cBox.style.display='none';
-      if(dBox)dBox.style.display='none';
+    if(cBox){
+      if(reasoning){cBox.style.display='block';document.getElementById('brain-claude-text').textContent=reasoning;document.getElementById('brain-claude-signals').innerHTML=sigHtml;}
+      else cBox.style.display='none';
+    }
+    // dash-claude: always visible, placeholder when no reasoning yet
+    if(dBox){
+      dBox.style.display='block';
+      const dtxt=document.getElementById('dash-claude-text');
+      const dsig=document.getElementById('dash-claude-signals');
+      if(reasoning){
+        if(dtxt){dtxt.textContent=reasoning;dtxt.style.color='';}
+        if(dsig)dsig.innerHTML=sigHtml;
+      }else{
+        if(dtxt){dtxt.textContent='No Claude reasoning yet — waiting for next evaluation...';dtxt.style.color='#718096';}
+        if(dsig)dsig.innerHTML='';
+      }
     }
 
     // Confidence chips
