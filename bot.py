@@ -54,7 +54,7 @@ KALSHI_PATH_PREFIX = "/trade-api/v2"  # included in signature but not in the pat
 COINBASE_WS = "wss://advanced-trade-ws.coinbase.com"
 API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
 MARKET_CACHE_TTL = 30     # seconds to cache the active market
-WATCH_PHASE_SECONDS = 90   # wait 90s into each 15-min session before evaluating
+WATCH_PHASE_SECONDS = 30   # wait 30s into each 15-min session before evaluating
 
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
@@ -109,7 +109,7 @@ _contract_price_history: dict = {}   # ticker → deque[(ts, price)]
 # Claude AI client
 _claude_client = None       # AsyncAnthropic instance, set in main()
 _claude_cache: dict = {}    # cache_key → {ts, result}
-CLAUDE_CACHE_TTL = 25       # seconds between Claude calls for same market+side
+CLAUDE_CACHE_TTL = 15       # seconds between Claude calls for same market+side
 
 # Claude's last analysis (written to state file for dashboard)
 last_claude_reasoning: str = ""
@@ -1241,7 +1241,7 @@ def _init_claude() -> None:
         log.warning("ANTHROPIC_API_KEY not set — Claude AI disabled (falling back to rule-based).")
         return
     _claude_client = _anthropic_module.AsyncAnthropic(api_key=ak)
-    log.info("Claude AI client ready (claude-opus-4-6 with adaptive thinking).")
+    log.info("Claude AI client ready (claude-haiku-4-5 — borderline filter mode).")
 
 
 def _recent_trades_for_claude() -> list:
@@ -1309,11 +1309,11 @@ async def claude_analysis(
     recent_trades = _recent_trades_for_claude()
 
     system_prompt = (
-        "You are an expert quantitative trader specialising in short-duration binary prediction markets on Kalshi. "
-        "A YES contract pays $1 if BTC closes ABOVE the strike. A NO contract pays $1 if BTC closes AT OR BELOW the strike. "
-        "You receive the cost of each side and decide: which side (if any) has genuine edge right now? "
-        "Be aggressive — only skip when there is truly no edge. If a contract is mispriced, take it. "
-        "Respond with valid JSON only."
+        "You are a fast quantitative filter for a Kalshi BTC binary options bot. "
+        "The primary model (Brain v3) has already evaluated this trade using empirical win probabilities from 7.4M rows of BTC data. "
+        "You are being consulted because the trade is BORDERLINE — the expected value is between 2-5% or confidence is 60-84. "
+        "Your job: confirm or reject. Be decisive. Only reject if you see a clear red flag (momentum reversal, vol spike, price stalling at strike). "
+        "Respond with valid JSON only — no markdown, no explanation outside the JSON."
     )
 
     user_prompt = f"""Kalshi BTC 15-minute market. Decide whether to trade and which side.
@@ -1364,9 +1364,8 @@ Respond with exactly this JSON:
 
     try:
         stream = _claude_client.messages.stream(
-            model="claude-opus-4-6",
-            max_tokens=1024,
-            thinking={"type": "adaptive"},
+            model="claude-haiku-4-5-20251001",
+            max_tokens=512,
             system=system_prompt,
             messages=[{"role": "user", "content": user_prompt}],
         )
@@ -2381,18 +2380,49 @@ async def handle_ready_phase(
     do_trade = brain["action"] == "trade"
     skip_reason_ai = brain["reasoning"]
 
-    # ── Claude — optional override (only if enabled in config) ───────────────
+    # ── Claude — blend with brain, don't replace it ──────────────────────────
+    # HIGH CONFIDENCE (brain win_prob >= 0.85 and action=trade) → trade immediately, skip Claude
+    # HARD SKIP (brain EV < 0.02) → skip, don't waste API call
+    # BORDERLINE (EV between 0.02-0.05, OR confidence 60-84) → ask Claude
     _active_claude_result = None
-    if config.get("claude_enabled", False):
-        claude_result = await claude_analysis(
-            btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker
-        )
-        if claude_result is not None:
-            _active_claude_result = claude_result
-            side     = claude_result["side"]
-            score    = claude_result["confidence"]
-            do_trade = claude_result["action"] == "trade"
-            skip_reason_ai = claude_result.get("reasoning", "")
+    entry_price_cents = yes_ask if side == "yes" else no_ask
+    brain_ev = brain.get("win_prob", 0.5) - (entry_price_cents / 100)
+    brain_win_prob = brain.get("win_prob", 0.5)
+
+    if config.get("claude_enabled", False) and _claude_client is not None:
+        if brain_win_prob >= 0.85 and do_trade:
+            # High confidence — go straight through
+            log.info(f"{ticker}: Brain high-conf {score}, skipping Claude")
+        elif brain_ev < 0.02:
+            # Hard skip — no edge worth evaluating
+            pass
+        else:
+            # Borderline — get Claude's second opinion
+            claude_result = await claude_analysis(
+                btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker
+            )
+            if claude_result is not None:
+                _active_claude_result = claude_result
+                claude_conf = claude_result.get("confidence", 50)
+                # 70% brain, 30% Claude
+                blended_score = int(0.70 * score + 0.30 * claude_conf)
+                # Claude can upgrade a brain skip to a trade if it's confident enough
+                if not do_trade and claude_result["action"] == "trade" and claude_conf >= 75:
+                    do_trade = True
+                    side = claude_result["side"]
+                    score = blended_score
+                    skip_reason_ai = ""
+                    log.info(f"{ticker}: Claude upgraded skip→trade (claude_conf={claude_conf}, blended={blended_score})")
+                # Claude can downgrade a brain trade to skip if it's bearish
+                elif do_trade and claude_result["action"] == "skip" and claude_conf < 40:
+                    do_trade = False
+                    score = blended_score
+                    skip_reason_ai = f"Claude vetoed (conf={claude_conf}): {claude_result.get('reasoning', '')[:80]}"
+                    log.info(f"{ticker}: Claude vetoed trade (claude_conf={claude_conf})")
+                else:
+                    # Blend score but keep brain's action
+                    score = blended_score
+                    log.info(f"{ticker}: Claude blended score {score} (brain={brain['confidence']}, claude={claude_conf})")
 
     entry_price_cents = yes_ask if side == "yes" else no_ask
 
@@ -2891,6 +2921,10 @@ async def main_loop() -> None:
                 write_state_file(config, market, current_phase, secs_left, btc_price,
                                  last_confidence_score, last_confidence_breakdown,
                                  last_action, last_skip_reason)
+
+                if current_phase == "READY":
+                    await asyncio.sleep(5)
+                    continue
 
             except Exception as exc:
                 log.error(f"Main loop unhandled error: {exc}", exc_info=True)
