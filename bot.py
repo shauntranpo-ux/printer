@@ -1999,8 +1999,9 @@ async def place_order(
         if http_status not in (200, 201):
             log.error(f"Order HTTP {http_status}: {data}")
             err_code = (data.get("error") or {}).get("code", "")
-            if err_code in ("insufficient_funds", "authentication_error", "not_found", "forbidden",
-                           "fill_or_kill_insufficient_resting_volume"):
+            if err_code in ("insufficient_funds", "authentication_error", "not_found", "forbidden"):
+                # fill_or_kill_insufficient_resting_volume is intentionally retryable:
+                # bumping the price on the next attempt may find liquidity.
                 log.error(f"Non-retryable error ({err_code}). Stopping order attempts.")
                 await send_telegram(
                     f"🚫 <b>ORDER FAILED</b>  —  {err_code}\n"
@@ -2026,9 +2027,21 @@ async def place_order(
             log.info(f"Order {order_id} IOC zero-fill (canceled) — retrying")
             continue
 
-        # Any non-canceled status on HTTP 200/201 = order accepted and (at least partially) filled
-        fill_price   = post_order.get("yes_price", price_this_attempt)
-        filled_count = post_order.get("contracts_count") or post_order.get("filled_count") or contracts
+        # Determine actual fill count — must use explicit None check because
+        # Kalshi sometimes returns contracts_count=0 on 'executed' status when
+        # there was no counter-party.  Python `or` treats 0 as falsy and would
+        # incorrectly fall through to the original `contracts` value.
+        cc = post_order.get("contracts_count")
+        fc = post_order.get("filled_count")
+        filled_count = cc if cc is not None else (fc if fc is not None else contracts)
+
+        if filled_count == 0:
+            # Non-canceled status but zero fill (Kalshi 'executed' with no counter-party).
+            # Treat exactly like a canceled IOC — bump price and retry.
+            log.warning(f"Order {order_id} status={post_status!r} but filled_count=0 — bumping price and retrying")
+            continue
+
+        fill_price = post_order.get("yes_price", price_this_attempt)
         log.info(f"Order FILLED: {order_id} @ {fill_price}c x{filled_count} status={post_status!r}")
         return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
 
