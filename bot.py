@@ -1923,7 +1923,7 @@ async def place_order(
         }
 
     path = "/portfolio/orders"
-    _bump_per_retry = 2   # cents per retry (2c handles fast BTC moves)
+    _bump_per_retry = 3   # cents per retry — 3c gives 0/3/6/9/12c spread across 5 attempts
     _max_retries    = 5
 
     for attempt in range(_max_retries):
@@ -2569,6 +2569,21 @@ async def handle_ready_phase(
 
     trade_ts = datetime.now(timezone.utc).isoformat()
 
+    _log_entry(
+        market, "READY", secs_left, btc_price, strike, int(entry_price_cents),
+        score, "trade" if fill_confirmed else "skip",
+        "" if fill_confirmed else "order not filled",
+        mode,
+    )
+
+    if not fill_confirmed:
+        current_phase = "DONE"
+        last_action, last_skip_reason = "skip", "order not filled"
+        log.info(f"{ticker}: order not filled. Moving to DONE.")
+        return
+
+    # Only write to trades DB when the order actually filled.
+    # Unfilled attempts are recorded in market_log (via _log_entry above).
     trade_data = {
         "ts": trade_ts,
         "market_id": ticker,
@@ -2577,76 +2592,61 @@ async def handle_ready_phase(
         "side": side,
         "contracts": contracts,
         "entry_price_cents": fill_price,
-        "trade_amount_dollars": round(kelly_dollars, 2),  # actual Kelly-sized amount, not base
+        "trade_amount_dollars": round(kelly_dollars, 2),
         "confidence_score": score,
         "model_prob": brain.get("win_prob", 0.5),
         "implied_prob": implied_prob(entry_price_cents),
         "btc_price_at_entry": btc_price,
         "strike": strike,
         "seconds_left_at_entry": int(secs_left),
-        "fill_confirmed": 1 if fill_confirmed else 0,
+        "fill_confirmed": 1,
         "exit_price_cents": None,
         "exit_reason": None,
-        # "pending" = open position being tracked; "unfilled" = order attempt that
-        # got no fill (kept for audit trail but NOT shown as an open trade on the dashboard)
-        "outcome": "pending" if fill_confirmed else "unfilled",
+        "outcome": "pending",
         "pnl_dollars": None,
         "profit_percent": None,
-        # Store Claude's view at time of trade so brain can learn from it later
         "claude_confidence": _active_claude_result["confidence"] if _active_claude_result else None,
         "claude_signals":    json.dumps(_active_claude_result["key_signals"]) if _active_claude_result else None,
     }
     trade_id = db_write_trade(trade_data)
 
-    _log_entry(
-        market, "READY", secs_left, btc_price, strike, int(entry_price_cents),
-        score, "trade" if fill_confirmed else "skip",
-        "" if fill_confirmed else "order not filled",
-        mode,
+    _entry_ts = time.time()
+    _abs_pct_at_entry = abs(btc_price - strike) / strike
+    _mins_left_at_entry = secs_left / 60
+    _bv3_dist_idx, _bv3_time_idx = _bv3_bucket_indices(_abs_pct_at_entry, _mins_left_at_entry)
+    current_position = {
+        "trade_id": trade_id,
+        "ticker": ticker,
+        "side": side,
+        "contracts": contracts,
+        "entry_price_cents": fill_price,
+        "mode": mode,
+        "strike": strike,
+        "entry_ts": _entry_ts,
+        "_bv3_dist_idx": _bv3_dist_idx,
+        "_bv3_time_idx": _bv3_time_idx,
+    }
+    current_phase = "LOCKED"
+    last_action, last_skip_reason = "trade", ""
+    log.info(f"{ticker}: LOCKED.")
+    mode_icon  = "📄" if mode == "paper" else "💵"
+    dir_icon   = "⬆" if side == "yes" else "⬇"
+    _win_prob_used = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0)
+    _win_pct   = int(_win_prob_used * 100)
+    _ev        = round((_win_prob_used - fill_price / 100) * 100, 1)
+    _ev_str    = f"+{_ev}%" if _ev >= 0 else f"{_ev}%"
+    _payout    = round((100 - fill_price) * contracts / 100, 2)
+    _cost      = round(fill_price * contracts / 100, 2)
+    _time_str  = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+    _strat_tag = "🔄 REVERSAL TRADE" if _is_reversal else "TRADE ENTERED"
+    await send_telegram(
+        f"{mode_icon} <b>{_strat_tag}</b>  —  {_time_str}\n"
+        f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
+        f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
+        f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
+        f"Strike: ${strike:,.0f}  |  BTC: ${btc_price:,.0f}\n"
+        f"Time left: {int(secs_left // 60)}m {int(secs_left % 60)}s  |  <code>{ticker}</code>"
     )
-
-    if fill_confirmed:
-        _entry_ts = time.time()
-        _abs_pct_at_entry = abs(btc_price - strike) / strike
-        _mins_left_at_entry = secs_left / 60
-        _bv3_dist_idx, _bv3_time_idx = _bv3_bucket_indices(_abs_pct_at_entry, _mins_left_at_entry)
-        current_position = {
-            "trade_id": trade_id,
-            "ticker": ticker,
-            "side": side,
-            "contracts": contracts,
-            "entry_price_cents": fill_price,
-            "mode": mode,
-            "strike": strike,
-            "entry_ts": _entry_ts,
-            "_bv3_dist_idx": _bv3_dist_idx,
-            "_bv3_time_idx": _bv3_time_idx,
-        }
-        current_phase = "LOCKED"
-        last_action, last_skip_reason = "trade", ""
-        log.info(f"{ticker}: LOCKED.")
-        mode_icon  = "📄" if mode == "paper" else "💵"
-        dir_icon   = "⬆" if side == "yes" else "⬇"
-        _win_prob_used = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0)
-        _win_pct   = int(_win_prob_used * 100)
-        _ev        = round((_win_prob_used - fill_price / 100) * 100, 1)
-        _ev_str    = f"+{_ev}%" if _ev >= 0 else f"{_ev}%"
-        _payout    = round((100 - fill_price) * contracts / 100, 2)
-        _cost      = round(fill_price * contracts / 100, 2)
-        _time_str  = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
-        _strat_tag = "🔄 REVERSAL TRADE" if _is_reversal else "TRADE ENTERED"
-        await send_telegram(
-            f"{mode_icon} <b>{_strat_tag}</b>  —  {_time_str}\n"
-            f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
-            f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
-            f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
-            f"Strike: ${strike:,.0f}  |  BTC: ${btc_price:,.0f}\n"
-            f"Time left: {int(secs_left // 60)}m {int(secs_left % 60)}s  |  <code>{ticker}</code>"
-        )
-    else:
-        current_phase = "DONE"
-        last_action, last_skip_reason = "skip", "order not filled"
-        log.info(f"{ticker}: order not filled. Moving to DONE.")
 
 
 async def handle_locked_phase(
