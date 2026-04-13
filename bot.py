@@ -1665,8 +1665,8 @@ def printer_brain(
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
     # ── 8. EV filter ──────────────────────────────────────────────────────────
-    # 15% floor: requires meaningful edge, consistent with WFA-validated params.
-    min_ev = 0.15
+    # 7% floor: requires meaningful edge, consistent with WFA-validated params.
+    min_ev = 0.07
 
     skip_reason = ""
     if _vol_skip:
