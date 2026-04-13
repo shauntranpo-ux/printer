@@ -1670,8 +1670,10 @@ def printer_brain(
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
     # ── 8. EV filter ──────────────────────────────────────────────────────────
-    # 7% floor: requires meaningful edge, consistent with WFA-validated params.
-    min_ev = 0.07
+    # Base 7% floor + session adjustment: US session (13-20 UTC) lowers bar by
+    # 2% — clearest trends, easiest holds. Asian dead hours (00-06 UTC) raise
+    # bar by 2% — choppy/rangebound conditions need stronger edge to compensate.
+    min_ev = 0.07 + _session_ev_adjustment()
 
     skip_reason = ""
     if _vol_skip:
@@ -1715,7 +1717,7 @@ def printer_brain(
     brain_log.info(
         f"{action.upper():5} {side.upper():3} conf={confidence:3} | "
         f"dist={abs_pct*100:.3f}% {'UP' if above else 'DN'} | "
-        f"ev={best_ev:+.1%} | prob={true_p:.1%} raw={win_prob_raw:.1%} mom={mom_adj:+.1%} | "
+        f"ev={best_ev:+.1%} floor={min_ev:.0%} | prob={true_p:.1%} raw={win_prob_raw:.1%} mom={mom_adj:+.1%} | "
         f"contract={entry_c:.0f}c | {mom_label} {mins_left:.1f}min | "
         f"vol={_rv_str} ratio={_ratio_display}"
     )
@@ -1767,16 +1769,20 @@ def _reversal_signal(
     if mins_left < 3 or mins_left > 12:
         return {"signal": False, "reason": f"time {mins_left:.1f}m outside 3–12m reversal window"}
 
-    # Gate 3: momentum must be strongly WITH BTC's current side — need exhaustion to reverse
+    # Gate 3: momentum must be strongly WITH BTC's current side — need exhaustion to reverse.
+    # 0.007 = 0.7% move in 3 min. calculate_momentum() labels anything > 0.5% as bullish/bearish,
+    # so this adds a small extra bar above the label threshold to confirm the move is meaningful.
     mom_in_current = (mom_label == "bullish" and above) or (mom_label == "bearish" and not above)
-    if not mom_in_current or abs(mom_pct) < 0.10:
+    if not mom_in_current or abs(mom_pct) < 0.007:
         return {
             "signal": False,
             "reason": f"insufficient exhaustion signal (mom={mom_label} {mom_pct*100:+.2f}%, above={above})",
         }
 
-    # Gate 4: distance not too extreme — hard to reverse when BTC is far from strike
-    if abs_pct > 0.80:
+    # Gate 4: distance not too extreme — hard to reverse when BTC is far from strike.
+    # 0.010 = 1.0%. At 1%+ distance the BV3 continuation rate is 97-100%; even a
+    # cheap opposing contract can't generate enough reversal probability to beat the EV bar.
+    if abs_pct > 0.010:
         return {"signal": False, "reason": f"BTC too far from strike ({abs_pct*100:.2f}%) for reliable reversal"}
 
     # ── Reversal probability ──────────────────────────────────────────────────
@@ -1784,8 +1790,11 @@ def _reversal_signal(
     bv3_cont = _empirical_win_prob(abs_pct, mins_left)
     rev_prob  = 1.0 - bv3_cont
 
-    # Exhaustion boost: stronger momentum → more likely to have exhausted, mean-revert
-    exhaust_boost = min(0.08, max(0.0, (abs(mom_pct) - 0.10) * 0.30))
+    # Exhaustion boost: stronger momentum → more likely to have exhausted, mean-revert.
+    # Grows from 0 at the gate threshold (0.7%) to the 0.08 cap at ~2.7% move.
+    # Formula rescaled to match corrected gate: was (pct - 0.10) * 0.30, which was
+    # permanently zero because pct never reaches 10%.
+    exhaust_boost = min(0.08, max(0.0, (abs(mom_pct) - 0.007) * 4.0))
 
     # Velocity deceleration boost: price movement slowing = reversal more likely
     vel_boost = 0.04 if vel_signal == "unfavorable" else 0.0
