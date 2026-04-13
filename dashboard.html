@@ -1261,7 +1261,7 @@ async function pollState(){
       if(reasoning){cBox.style.display='block';document.getElementById('brain-claude-text').textContent=reasoning;document.getElementById('brain-claude-signals').innerHTML=sigHtml;}
       else cBox.style.display='none';
     }
-    // dash-claude: always visible, placeholder when no reasoning yet
+    // dash-claude: always visible — real reasoning if available, else live synthesis
     if(dBox){
       dBox.style.display='block';
       const dtxt=document.getElementById('dash-claude-text');
@@ -1270,7 +1270,28 @@ async function pollState(){
         if(dtxt){dtxt.textContent=reasoning;dtxt.style.color='';}
         if(dsig)dsig.innerHTML=sigHtml;
       }else{
-        if(dtxt){dtxt.textContent='No Claude reasoning yet — waiting for next evaluation...';dtxt.style.color='#718096';}
+        // Build a live analysis from available state signals
+        const ph=s.phase||'WATCH';
+        const action=(s.last_action||'watching');
+        const skip=s.last_skip_reason||'';
+        const wpF=wp!=null?wp.toFixed(1)+'%':'—';
+        const evF=ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—';
+        const vrF=vr!=null?vr.toFixed(2):'—';
+        const momF=(bd.momentum_label||'neutral').toUpperCase();
+        const velF=(bd.velocity_label||'neutral').toUpperCase();
+        const srF=s.seconds_remaining!=null?Math.floor(s.seconds_remaining/60)+'m '+String(s.seconds_remaining%60|0).padStart(2,'0')+'s':'—';
+        const side=bd.side==='yes'?'UP (YES)':bd.side==='no'?'DOWN (NO)':'—';
+        const passConf=wp!=null&&wp>=confThresh, passEv=ev!=null&&ev>=5, passVol=vr!=null&&vr<1.2;
+        const nPass=[passConf,passEv,passVol].filter(Boolean).length;
+        let lines=[];
+        lines.push(`Phase: ${ph} | Direction: ${side} | Action: ${action.toUpperCase()}`);
+        if(skip)lines.push(`Skip reason: ${skip}`);
+        lines.push(`\nSignal summary — ${nPass}/3 gates passing`);
+        lines.push(`  Win probability: ${wpF} (need ≥${confThresh}%) ${passConf?'✓':'✗'}`);
+        lines.push(`  Expected value:  ${evF} (need ≥+5%) ${passEv?'✓':'✗'}`);
+        lines.push(`  Vol ratio:       ${vrF} (need <1.20) ${passVol?'✓':'✗'}`);
+        lines.push(`\nMomentum: ${momF} | Velocity: ${velF} | Time left: ${srF}`);
+        if(dtxt){dtxt.textContent=lines.join('\n');dtxt.style.color='';}
         if(dsig)dsig.innerHTML='';
       }
     }
