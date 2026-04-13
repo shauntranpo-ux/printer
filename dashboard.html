@@ -1193,7 +1193,7 @@ async function pollState(){
     const bd=s.confidence_breakdown||{};
     const wp=bd.win_prob_final,ev=bd.ev,mom=bd.momentum_label||'neutral',vel=bd.velocity_label||'neutral';
     const vr=bd.vol_ratio,dp=bd.distance_pct,sr=s.seconds_remaining;
-    const confThresh=(s.config&&s.config.confidence_threshold)||61;
+    const confThresh=(s.config&&s.config.confidence_threshold)||72;
 
     // Direction box
     const dirBox=document.getElementById('direction-box');

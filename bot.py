@@ -2241,7 +2241,7 @@ def write_state_file(
         "mode": config.get("mode", "paper"),
         "today_live_pnl": db_get_today_pnl("live"),
         "today_paper_pnl": db_get_today_pnl("paper"),
-        "config": {**config, "min_ev_pct": 5},
+        "config": {**config, "min_ev_pct": 7},
         "limit_triggered": limit_triggered,
         "limit_reason": limit_reason,
         "open_position": current_position,
