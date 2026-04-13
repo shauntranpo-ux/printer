@@ -464,11 +464,11 @@ tr:last-child td { border-bottom: none; }
           <div class="sub-stats">
             <div class="sub-stat">
               <div class="sub-val" id="today-live-pnl">$0.00</div>
-              <div class="sub-lbl">Live Today</div>
+              <div class="sub-lbl" id="today-live-lbl">Live Today</div>
             </div>
             <div class="sub-stat">
               <div class="sub-val" id="today-paper-pnl">$0.00</div>
-              <div class="sub-lbl">Paper Today</div>
+              <div class="sub-lbl" id="today-paper-lbl">Paper Today</div>
             </div>
             <div class="sub-stat">
               <div class="sub-val" id="live-count">0</div>
@@ -521,7 +521,13 @@ tr:last-child td { border-bottom: none; }
         <!-- EQUITY CHART -->
         <div class="card chart-card">
           <div class="chart-card-head">
-            <div class="chart-card-title">Equity Curve</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div class="chart-card-title">Equity Curve</div>
+              <div class="chart-tabs">
+                <button class="chart-tab active" id="vtab-today" onclick="setChartView('today')">Today</button>
+                <button class="chart-tab" id="vtab-all" onclick="setChartView('all')">All Time</button>
+              </div>
+            </div>
             <div class="chart-tabs">
               <button class="chart-tab active" id="ctab-live"  onclick="setChartTab('live')">Live <span id="live-trade-count" style="font-weight:400;opacity:0.7;"></span></button>
               <button class="chart-tab"         id="ctab-paper" onclick="setChartTab('paper')">Paper <span id="paper-trade-count" style="font-weight:400;opacity:0.7;"></span></button>
@@ -557,6 +563,13 @@ tr:last-child td { border-bottom: none; }
         </div>
 
       </div><!-- /mid-row -->
+
+      <!-- CLAUDE BRAIN BOX -->
+      <div id="dash-claude" class="card" style="display:none;padding:12px 14px;margin-bottom:12px;">
+        <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">Claude AI Reasoning</div>
+        <div class="claude-box" id="dash-claude-text"></div>
+        <div id="dash-claude-signals" style="display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;"></div>
+      </div>
 
     </div><!-- /panel-dashboard -->
 
@@ -762,9 +775,10 @@ tr:last-child td { border-bottom: none; }
 // ── State ──
 let liveTradesData=[], paperTradesData=[];
 let countdownSecs=0, countdownInterval=null;
-let liveChartTarget=[], paperChartTarget=[], liveChartCurrent=[], paperChartCurrent=[];
+let liveChartTarget={pts:[],pendingStart:0}, paperChartTarget={pts:[],pendingStart:0};
+let liveChartCurrent={pts:[],pendingStart:0}, paperChartCurrent={pts:[],pendingStart:0};
 let chartAnimFrame=null, settingsPopulated=false, settingsOpen=false, _resetMode=null;
-let _activeChartTab='live', _gaugeScore=0;
+let _activeChartTab='live', _gaugeScore=0, _chartView='today';
 
 // ── Tab navigation ──
 function switchMainTab(t) {
@@ -888,15 +902,28 @@ function drawGauge(canvasId, value, max) {
 }
 
 // ── Charts ──
-function buildEquityCurve(trades,mode){
+function buildEquityCurve(trades, mode, view) {
+  const today=new Date().toISOString().slice(0,10);
+  let pool=trades.filter(t=>t.mode===mode);
+  if(view==='today')pool=pool.filter(t=>t.ts&&t.ts.startsWith(today));
+  const resolved=pool.filter(t=>t.outcome!=='pending'&&t.pnl_dollars!=null)
+    .sort((a,b)=>(a.ts||'').localeCompare(b.ts||''));
+  const pending=pool.filter(t=>t.outcome==='pending');
   let cum=0; const pts=[0];
-  trades.filter(t=>t.mode===mode&&t.outcome!=='pending'&&t.pnl_dollars!=null)
-    .sort((a,b)=>(a.ts||'').localeCompare(b.ts||''))
-    .forEach(t=>{cum+=(t.pnl_dollars||0);pts.push(cum);});
-  return pts;
+  resolved.forEach(t=>{cum+=(t.pnl_dollars||0);pts.push(cum);});
+  const pendingStart=pts.length-1;
+  pending.forEach(t=>{
+    if(t.entry_price_cents!=null&&t.contracts!=null){
+      cum-=(t.entry_price_cents/100)*t.contracts; pts.push(cum);
+    }
+  });
+  return {pts, pendingStart};
 }
-function drawChart(canvasId,data){
+function drawChart(canvasId, chartData) {
   const canvas=document.getElementById(canvasId); if(!canvas)return;
+  const isObj=chartData&&chartData.pts!==undefined;
+  const data=isObj?chartData.pts:(Array.isArray(chartData)?chartData:[]);
+  const pendingStart=isObj?chartData.pendingStart:(data.length-1);
   const dpr=window.devicePixelRatio||1;
   const W=canvas.offsetWidth||canvas.parentElement?.clientWidth||300, H=canvas.offsetHeight||80;
   canvas.width=W*dpr; canvas.height=H*dpr;
@@ -913,36 +940,79 @@ function drawChart(canvasId,data){
   const zeroY=Math.min(H-pad.b,Math.max(pad.t,pad.t+((max-0)/range)*(H-pad.t-pad.b)));
   ctx.strokeStyle='#e4e8ed';ctx.lineWidth=1;ctx.setLineDash([3,3]);
   ctx.beginPath();ctx.moveTo(pad.l,zeroY);ctx.lineTo(W-pad.r,zeroY);ctx.stroke();ctx.setLineDash([]);
-  ctx.beginPath();
-  data.forEach((v,i)=>{const x=pad.l+i*xStep,y=pad.t+((max-v)/range)*(H-pad.t-pad.b);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
-  ctx.lineTo(pad.l+(data.length-1)*xStep,H-pad.b);ctx.lineTo(pad.l,H-pad.b);ctx.closePath();
-  const lastVal=data[data.length-1];
-  const grad=ctx.createLinearGradient(0,pad.t,0,H-pad.b);
-  if(lastVal>=0){grad.addColorStop(0,'rgba(39,174,96,0.15)');grad.addColorStop(1,'rgba(39,174,96,0.01)');}
-  else{grad.addColorStop(0,'rgba(231,76,60,0.01)');grad.addColorStop(1,'rgba(231,76,60,0.15)');}
-  ctx.fillStyle=grad;ctx.fill();
-  ctx.beginPath();
-  data.forEach((v,i)=>{const x=pad.l+i*xStep,y=pad.t+((max-v)/range)*(H-pad.t-pad.b);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);});
-  ctx.strokeStyle=lastVal>=0?'#27ae60':'#e74c3c';ctx.lineWidth=1.5;ctx.stroke();
+  const xy=(i)=>({x:pad.l+i*xStep,y:pad.t+((max-data[i])/range)*(H-pad.t-pad.b)});
+  const resolvedLen=Math.min(pendingStart+1,data.length);
+  const hasPending=data.length>pendingStart+1;
+  // Area fill (resolved only)
+  if(resolvedLen>=2){
+    ctx.beginPath();
+    for(let i=0;i<resolvedLen;i++){const {x,y}=xy(i);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.lineTo(xy(resolvedLen-1).x,H-pad.b);ctx.lineTo(pad.l,H-pad.b);ctx.closePath();
+    const lv=data[resolvedLen-1];
+    const grad=ctx.createLinearGradient(0,pad.t,0,H-pad.b);
+    if(lv>=0){grad.addColorStop(0,'rgba(39,174,96,0.15)');grad.addColorStop(1,'rgba(39,174,96,0.01)');}
+    else{grad.addColorStop(0,'rgba(231,76,60,0.01)');grad.addColorStop(1,'rgba(231,76,60,0.15)');}
+    ctx.fillStyle=grad;ctx.fill();
+  }
+  // Resolved line (solid)
+  if(resolvedLen>=2){
+    ctx.beginPath();
+    for(let i=0;i<resolvedLen;i++){const {x,y}=xy(i);i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);}
+    ctx.strokeStyle=data[resolvedLen-1]>=0?'#27ae60':'#e74c3c';ctx.lineWidth=1.5;ctx.setLineDash([]);ctx.stroke();
+  }
+  // Pending extension (dashed amber)
+  if(hasPending&&resolvedLen>=1){
+    ctx.beginPath();
+    const s=xy(resolvedLen-1);ctx.moveTo(s.x,s.y);
+    for(let i=resolvedLen;i<data.length;i++){const {x,y}=xy(i);ctx.lineTo(x,y);}
+    ctx.strokeStyle='#f39c12';ctx.lineWidth=1.2;ctx.setLineDash([3,3]);ctx.stroke();ctx.setLineDash([]);
+    const lp=xy(data.length-1);
+    ctx.beginPath();ctx.arc(lp.x,lp.y,3,0,Math.PI*2);ctx.fillStyle='#f39c12';ctx.fill();
+  }
 }
 function animateCharts(){
   let changed=false; const lerp=(a,b)=>a+(b-a)*0.25;
-  if(liveChartTarget.length>0){
-    if(liveChartCurrent.length!==liveChartTarget.length){liveChartCurrent=[...liveChartTarget];}
-    else{liveChartCurrent=liveChartCurrent.map((v,i)=>{const nv=lerp(v,liveChartTarget[i]);if(Math.abs(nv-liveChartTarget[i])>.01)changed=true;return nv;});}
-    drawChart('live-chart',liveChartCurrent);
+  function lerpChart(cur,tgt,cid){
+    if(!tgt.pts.length)return cur;
+    let pts;
+    if(cur.pts.length!==tgt.pts.length){pts=[...tgt.pts];}
+    else{pts=cur.pts.map((v,i)=>{const nv=lerp(v,tgt.pts[i]);if(Math.abs(nv-tgt.pts[i])>.01)changed=true;return nv;});}
+    const result={pts,pendingStart:tgt.pendingStart};
+    drawChart(cid,result);return result;
   }
-  if(paperChartTarget.length>0){
-    if(paperChartCurrent.length!==paperChartTarget.length){paperChartCurrent=[...paperChartTarget];}
-    else{paperChartCurrent=paperChartCurrent.map((v,i)=>{const nv=lerp(v,paperChartTarget[i]);if(Math.abs(nv-paperChartTarget[i])>.01)changed=true;return nv;});}
-    drawChart('paper-chart',paperChartCurrent);
-  }
+  liveChartCurrent=lerpChart(liveChartCurrent,liveChartTarget,'live-chart');
+  paperChartCurrent=lerpChart(paperChartCurrent,paperChartTarget,'paper-chart');
   if(changed)chartAnimFrame=requestAnimationFrame(animateCharts);
 }
 function scheduleChartUpdate(ld,pd){
   liveChartTarget=ld;paperChartTarget=pd;
   if(chartAnimFrame)cancelAnimationFrame(chartAnimFrame);
   chartAnimFrame=requestAnimationFrame(animateCharts);
+}
+function updateChartsAndPnl(){
+  const today=new Date().toISOString().slice(0,10);
+  scheduleChartUpdate(buildEquityCurve(liveTradesData,'live',_chartView),buildEquityCurve(paperTradesData,'paper',_chartView));
+  function calcPnl(trades,view){
+    let t=trades.filter(x=>x.outcome!=='pending'&&x.pnl_dollars!=null);
+    if(view==='today')t=t.filter(x=>x.ts&&x.ts.startsWith(today));
+    return t.reduce((s,x)=>s+(x.pnl_dollars||0),0);
+  }
+  const lpnl=calcPnl(liveTradesData,_chartView),ppnl=calcPnl(paperTradesData,_chartView);
+  const lEl=document.getElementById('live-pnl');
+  if(lEl){lEl.textContent=fmtPnl(lpnl);lEl.className='pnl-big-num '+(lpnl>0?'pos':lpnl<0?'neg':'');}
+  const pbEl=document.getElementById('paper-pnl-badge');
+  if(pbEl){pbEl.textContent='Paper: '+fmtPnl(ppnl);pbEl.className='badge '+(ppnl>0?'green':ppnl<0?'red':'gray');}
+  const ppEl=document.getElementById('paper-pnl');if(ppEl)ppEl.textContent=fmtPnl(ppnl);
+  // Sub-stats always = today's P&L
+  const tlpnl=calcPnl(liveTradesData,'today'),tppnl=calcPnl(paperTradesData,'today');
+  const tlEl=document.getElementById('today-live-pnl');if(tlEl)tlEl.textContent=fmtPnl(tlpnl);
+  const tpEl=document.getElementById('today-paper-pnl');if(tpEl)tpEl.textContent=fmtPnl(tppnl);
+}
+function setChartView(view){
+  _chartView=view;
+  document.getElementById('vtab-today').classList.toggle('active',view==='today');
+  document.getElementById('vtab-all').classList.toggle('active',view==='all');
+  updateChartsAndPnl();
 }
 
 // ── Formatters ──
@@ -956,9 +1026,13 @@ function renderTradeTable(tbodyId,trades){
   const tbody=document.getElementById(tbodyId); if(!tbody)return;
   if(!trades||trades.length===0){tbody.innerHTML='<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:14px;font-size:11px;">No trades yet</td></tr>';return;}
   tbody.innerHTML=trades.slice(0,50).map(t=>{
-    const pnl=t.pnl_dollars;
-    const pnlCls=pnl==null?'td-pend':pnl>0?'td-win':pnl<0?'td-loss':'';
-    return `<tr><td>${fmtTime(t.ts)}</td><td title="${t.market_id||''}">${shortTicker(t.market_id)}</td><td>${t.side==='yes'?'UP':t.side==='no'?'DN':'—'}</td><td>${t.contracts||'—'}</td><td>${t.entry_price_cents!=null?t.entry_price_cents+'c':'—'}</td><td>${t.exit_price_cents!=null?t.exit_price_cents+'c':'—'}</td><td>${t.exit_reason||'—'}</td><td class="${pnlCls}">${pnl!=null?fmtPnl(pnl):'—'}</td></tr>`;
+    const pnl=t.pnl_dollars, isPending=t.outcome==='pending';
+    const pnlCls=isPending?'':pnl>0?'td-win':pnl<0?'td-loss':'';
+    const pnlCell=isPending
+      ?'<span style="background:rgba(243,156,18,0.12);color:#f39c12;border:1px solid rgba(243,156,18,0.3);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;">OPEN</span>'
+      :(pnl!=null?fmtPnl(pnl):'—');
+    const rowStyle=isPending?'style="background:rgba(243,156,18,0.04);"':'';
+    return `<tr ${rowStyle}><td>${fmtTime(t.ts)}</td><td title="${t.market_id||''}">${shortTicker(t.market_id)}</td><td>${t.side==='yes'?'UP':t.side==='no'?'DN':'—'}</td><td>${t.contracts||'—'}</td><td>${t.entry_price_cents!=null?t.entry_price_cents+'c':'—'}</td><td>${t.exit_price_cents!=null?t.exit_price_cents+'c':'—'}</td><td>${t.exit_reason||t.outcome||'—'}</td><td class="${pnlCls}">${pnlCell}</td></tr>`;
   }).join('');
 }
 
@@ -1129,9 +1203,9 @@ async function pollState(){
     if(dirBox&&bd.side){
       const isUp=bd.side==='yes';
       dirBox.className='card dir-card '+(isUp?'up':'down');
-      dirArrow.textContent=isUp?'YES':'NO';
+      dirArrow.textContent=isUp?'UP':'DOWN';
       dirArrow.className='dir-big '+(isUp?'up':'down');
-      if(dirLabel)dirLabel.textContent=isUp?'UP':'DOWN';
+      if(dirLabel)dirLabel.textContent=isUp?'YES':'NO';
       if(dirContr)dirContr.textContent=bd.contract_c!=null?bd.contract_c+'c':'—';
     }else if(dirBox){
       dirBox.className='card dir-card wait';
@@ -1180,12 +1254,16 @@ async function pollState(){
 
     // Claude
     const cBox=document.getElementById('brain-claude');
+    const dBox=document.getElementById('dash-claude');
     const reasoning=s.claude_reasoning||'';
-    if(reasoning&&cBox){
-      cBox.style.display='block';
-      document.getElementById('brain-claude-text').textContent=reasoning;
-      document.getElementById('brain-claude-signals').innerHTML=(s.claude_key_signals||[]).map(sig=>`<span style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--blue);">${sig}</span>`).join('');
-    }else if(cBox)cBox.style.display='none';
+    const sigHtml=(s.claude_key_signals||[]).map(sig=>`<span style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--blue);">${sig}</span>`).join('');
+    if(reasoning){
+      if(cBox){cBox.style.display='block';document.getElementById('brain-claude-text').textContent=reasoning;document.getElementById('brain-claude-signals').innerHTML=sigHtml;}
+      if(dBox){dBox.style.display='block';document.getElementById('dash-claude-text').textContent=reasoning;document.getElementById('dash-claude-signals').innerHTML=sigHtml;}
+    }else{
+      if(cBox)cBox.style.display='none';
+      if(dBox)dBox.style.display='none';
+    }
 
     // Confidence chips
     const cbEl=document.getElementById('confidence-breakdown');
@@ -1195,16 +1273,7 @@ async function pollState(){
       `<div class="cb-item"><span class="cb-name">Mom</span><span class="cb-val">${bd.momentum_label||'—'}</span></div>`,
     ].join('');
 
-    // P&L
-    const lpnl=s.today_live_pnl||0,ppnl=s.today_paper_pnl||0;
-    const lEl=document.getElementById('live-pnl');
-    if(lEl){lEl.textContent=fmtPnl(lpnl);lEl.className='pnl-big-num '+(lpnl>0?'pos':lpnl<0?'neg':'');}
-    const tlEl=document.getElementById('today-live-pnl');if(tlEl)tlEl.textContent=fmtPnl(lpnl);
-    const tpEl=document.getElementById('today-paper-pnl');if(tpEl)tpEl.textContent=fmtPnl(ppnl);
-    const pbEl=document.getElementById('paper-pnl-badge');
-    if(pbEl){pbEl.textContent='Paper: '+fmtPnl(ppnl);pbEl.className='badge '+(ppnl>0?'green':ppnl<0?'red':'gray');}
-    // paper-pnl alias
-    const ppEl=document.getElementById('paper-pnl');if(ppEl){ppEl.textContent=fmtPnl(ppnl);}
+    // P&L is computed from trades in updateChartsAndPnl()
 
     // Limit badge
     const limitBadge=document.getElementById('limit-badge');
@@ -1257,16 +1326,16 @@ async function pollTrades(){
     if(lcEl)lcEl.textContent=ats(liveTradesData,'live');
     if(pcEl2)pcEl2.textContent=ats(paperTradesData,'paper');
 
-    const all=[...liveTradesData,...paperTradesData];
-    scheduleChartUpdate(buildEquityCurve(all,'live'),buildEquityCurve(all,'paper'));
+    updateChartsAndPnl();
   }catch(e){console.error('Trades poll error:',e);}
 }
 
 function exportCSV(){window.location.href='/api/export/trades';}
 
 // ── Start ──
-pollState(); pollTrades(); pollBotStatus();
-setInterval(pollState,5000); setInterval(pollTrades,5000); setInterval(pollBotStatus,15000);
+async function pollAll(){await Promise.all([pollState(),pollTrades()]);}
+pollAll(); pollBotStatus();
+setInterval(pollAll,3000); setInterval(pollBotStatus,15000);
 window.addEventListener('resize',()=>{
   drawChart('live-chart',liveChartCurrent);
   drawChart('paper-chart',paperChartCurrent);

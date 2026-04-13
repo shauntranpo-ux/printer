@@ -234,12 +234,12 @@ def api_trades():
         conn = get_db()
         if mode:
             rows = conn.execute(
-                "SELECT * FROM trades WHERE mode = ? ORDER BY ts DESC LIMIT 100",
+                "SELECT * FROM trades WHERE mode = ? ORDER BY ts DESC LIMIT 500",
                 (mode,),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT * FROM trades ORDER BY ts DESC LIMIT 100"
+                "SELECT * FROM trades ORDER BY ts DESC LIMIT 500"
             ).fetchall()
         conn.close()
         return jsonify([dict(r) for r in rows])
