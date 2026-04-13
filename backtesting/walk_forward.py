@@ -1,24 +1,24 @@
 #!/usr/bin/env python3
 """
-backtesting/walk_forward.py — Walk-Forward Validation (WFV) engine.
+backtesting/walk_forward.py - Walk-Forward Validation (WFV) engine.
 
 Rolls an optimisation window across the TRAIN partition only.
 The OOS holdout defined in data/split_config.json is never touched.
 
 How it works
 ------------
-  1. Load data/split_config.json → train boundaries.
+  1. Load data/split_config.json -> train boundaries.
   2. Load the CSV filtered to the train partition.
   3. Divide train windows into N equal sequential chunks.
   4. For each chunk:
-       a. In-window train  = first 80%  → run mini Monte Carlo → best params
-       b. Forward period   = last  20%  → run backtest with best params
+       a. In-window train  = first 80%  -> run mini Monte Carlo -> best params
+       b. Forward period   = last  20%  -> run backtest with best params
        c. Record metrics for both halves; flag PASS / FAIL.
   5. Calculate WFV Efficiency Ratio:
        avg(forward total P&L across windows) / avg(in-window total P&L across windows)
-     ≥ 0.70  →  PASS   (params generalise well)
-     0.50–0.70 →  MARGINAL
-     < 0.50  →  WARN OVERFIT
+     >= 0.70  ->  PASS   (params generalise well)
+     0.50-0.70 ->  MARGINAL
+     < 0.50  ->  WARN OVERFIT
   6. Save full results to results/wfv_report.json.
 
 Usage
@@ -41,7 +41,7 @@ import sys
 import time
 from datetime import datetime, timezone
 
-# ── Path setup — makes `import backtest` work from any cwd ───────────────────
+# -- Path setup - makes `import backtest` work from any cwd -------------------
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT     = os.path.dirname(_THIS_DIR)
 if _ROOT not in sys.path:
@@ -49,13 +49,13 @@ if _ROOT not in sys.path:
 
 from backtest import load_data, run_backtest, _ALL_COMBOS  # noqa: E402
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# -- Paths ---------------------------------------------------------------------
 _SPLIT_CFG_PATH = os.path.join(_ROOT, "data", "split_config.json")
 _RESULTS_DIR    = os.path.join(_ROOT, "results")
 WFV_REPORT_PATH = os.path.join(_RESULTS_DIR, "wfv_report.json")
 
 
-# ── Internal helpers ──────────────────────────────────────────────────────────
+# -- Internal helpers ----------------------------------------------------------
 
 def _load_split_cfg() -> dict | None:
     if not os.path.exists(_SPLIT_CFG_PATH):
@@ -135,7 +135,7 @@ def _mini_mc(windows, price_lookup, n_sims: int,
     return best_params, _metrics(best_result)
 
 
-# ── Main engine ───────────────────────────────────────────────────────────────
+# -- Main engine ---------------------------------------------------------------
 
 def run_walk_forward(
     n_windows: int          = 8,
@@ -155,7 +155,7 @@ def run_walk_forward(
     start_year          Earliest year of CSV data to load.
     trade_amount        Dollars per trade in each backtest.
     """
-    # ── Require split config ─────────────────────────────────────────────────
+    # -- Require split config -------------------------------------------------
     split_cfg = _load_split_cfg()
     if split_cfg is None:
         print("[WFV] ERROR: data/split_config.json not found.")
@@ -170,20 +170,20 @@ def run_walk_forward(
     print(f"  Windows         : {n_windows}")
     print(f"  In-win train    : {in_window_train_pct:.0%}  |  forward: {fwd_pct:.0%}")
     print(f"  MC sims/window  : {n_mc_sims}  (from {len(_ALL_COMBOS)} unique combos)")
-    print(f"  Train data      : {split_cfg['train_start_date']} → "
+    print(f"  Train data      : {split_cfg['train_start_date']} -> "
           f"{split_cfg['train_end_date']}  ({split_cfg['train_windows']:,} windows)")
-    print(f"  OOS holdout     : {split_cfg['oos_start_date']} → "
-          f"{split_cfg['oos_end_date']}  [LOCKED — not used]")
+    print(f"  OOS holdout     : {split_cfg['oos_start_date']} -> "
+          f"{split_cfg['oos_end_date']}  [LOCKED - not used]")
     print()
 
-    # ── Load train data ──────────────────────────────────────────────────────
+    # -- Load train data ------------------------------------------------------
     print("  Loading train partition ...")
     all_w, all_pl = load_data(start_year, verbose=True, mode="train")
     n_total = len(all_w)
 
     min_needed = n_windows * 20          # at least 20 windows per chunk
     if n_total < min_needed:
-        print(f"  [error] Only {n_total:,} train windows — need ≥{min_needed:,} "
+        print(f"  [error] Only {n_total:,} train windows - need >={min_needed:,} "
               f"for {n_windows} WFV windows.")
         sys.exit(1)
 
@@ -192,7 +192,7 @@ def run_walk_forward(
     iw_test_size  = chunk_size - iw_train_size
 
     print(f"\n  Chunk size     : {chunk_size:,} windows  "
-          f"→  {iw_train_size:,} train + {iw_test_size:,} forward per window")
+          f"->  {iw_train_size:,} train + {iw_test_size:,} forward per window")
     print()
 
     window_results: list[dict] = []
@@ -209,16 +209,16 @@ def run_walk_forward(
         fwd_w, fwd_pl = _slice(all_w, all_pl, forward_lo, forward_hi)
 
         if len(iw_w) == 0 or len(fwd_w) == 0:
-            print(f"  Window {w+1}/{n_windows}: empty slice — skipping.")
+            print(f"  Window {w+1}/{n_windows}: empty slice - skipping.")
             continue
 
         iw_d0, iw_d1   = _date_range(iw_w)
         fwd_d0, fwd_d1 = _date_range(fwd_w)
 
-        print(f"  ── Window {w+1}/{n_windows} "
-              + "─" * (W - 14 - len(str(w+1)) - len(str(n_windows))))
-        print(f"     In-win train : {iw_d0} → {iw_d1}  ({len(iw_w):,} windows)")
-        print(f"     Forward test : {fwd_d0} → {fwd_d1}  ({len(fwd_w):,} windows)")
+        print(f"  -- Window {w+1}/{n_windows} "
+              + "-" * (W - 14 - len(str(w+1)) - len(str(n_windows))))
+        print(f"     In-win train : {iw_d0} -> {iw_d1}  ({len(iw_w):,} windows)")
+        print(f"     Forward test : {fwd_d0} -> {fwd_d1}  ({len(fwd_w):,} windows)")
 
         t0 = time.time()
         print(f"     Optimising ({n_mc_sims} MC sims) ...", end="", flush=True)
@@ -236,7 +236,7 @@ def run_walk_forward(
         print(f"     Best params  : ev={best_params['min_ev']:.0%}  "
               f"conf={best_params['min_confidence']}")
 
-        # ── Run forward period with best params ───────────────────────────────
+        # -- Run forward period with best params -------------------------------
         fwd_r = run_backtest(
             min_ev         = best_params["min_ev"],
             trade_amount   = trade_amount,
@@ -264,8 +264,8 @@ def run_walk_forward(
 
         window_results.append({
             "window":         w + 1,
-            "iw_train_range": f"{iw_d0} → {iw_d1}",
-            "forward_range":  f"{fwd_d0} → {fwd_d1}",
+            "iw_train_range": f"{iw_d0} -> {iw_d1}",
+            "forward_range":  f"{fwd_d0} -> {fwd_d1}",
             "iw_train_size":  int(len(iw_w)),
             "forward_size":   int(len(fwd_w)),
             "best_params":    best_params,
@@ -280,13 +280,13 @@ def run_walk_forward(
         print("[WFV] No windows completed. Check data and split config.")
         return
 
-    # ── WFV Efficiency Ratio ─────────────────────────────────────────────────
+    # -- WFV Efficiency Ratio -------------------------------------------------
     # Specified as: avg(forward total PnL) / avg(in-window total PnL)
     avg_iw_pnl  = sum(r["in_window"]["total_pnl"]  for r in window_results) / len(window_results)
     avg_fwd_pnl = sum(r["forward"]["total_pnl"]    for r in window_results) / len(window_results)
     efficiency  = round(avg_fwd_pnl / avg_iw_pnl, 4) if avg_iw_pnl > 0 else 0.0
 
-    # Per-trade version (removes window-size bias) — shown alongside
+    # Per-trade version (removes window-size bias) - shown alongside
     valid_pt = [r for r in window_results if r["in_window"]["pnl_per_trade"] > 0]
     if valid_pt:
         avg_iw_ppt  = sum(r["in_window"]["pnl_per_trade"]  for r in valid_pt) / len(valid_pt)
@@ -304,13 +304,13 @@ def run_walk_forward(
                  split_cfg, n_windows, n_mc_sims, in_window_train_pct, trade_amount)
 
 
-# ── Output helpers ────────────────────────────────────────────────────────────
+# -- Output helpers ------------------------------------------------------------
 
 def _print_summary(results, efficiency, eff_pt,
                    avg_iw_pnl, avg_fwd_pnl, pass_rate, elapsed) -> None:
     W = 72
     print("=" * W)
-    print("  WALK-FORWARD RESULTS — per window")
+    print("  WALK-FORWARD RESULTS - per window")
     print("=" * W)
     print(f"  {'Win':>3}  {'Forward Period':>23}  "
           f"{'WR':>6}  {'Fwd P&L':>9}  {'Sharpe':>7}  {'MaxDD':>6}  {'Flag':>5}")
@@ -372,8 +372,8 @@ def _save_report(results, efficiency, eff_pt, pass_rate,
             "forward_pct":           round(1.0 - iw_train_pct, 2),
             "n_mc_sims_per_window":  n_mc_sims,
             "trade_amount_dollars":  trade_amount,
-            "train_period":  f"{split_cfg['train_start_date']} → {split_cfg['train_end_date']}",
-            "oos_locked":    f"{split_cfg['oos_start_date']} → {split_cfg['oos_end_date']}",
+            "train_period":  f"{split_cfg['train_start_date']} -> {split_cfg['train_end_date']}",
+            "oos_locked":    f"{split_cfg['oos_start_date']} -> {split_cfg['oos_end_date']}",
         },
         "summary": {
             "windows_completed":          len(results),
@@ -392,11 +392,11 @@ def _save_report(results, efficiency, eff_pt, pass_rate,
     print(f"  Report saved : {WFV_REPORT_PATH}")
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
+# -- CLI -----------------------------------------------------------------------
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(
-        description="Walk-Forward Validation — Kalshi BTC 15-minute strategy"
+        description="Walk-Forward Validation - Kalshi BTC 15-minute strategy"
     )
     ap.add_argument("--windows",    type=int,   default=8,
                     help="Number of rolling WFV windows (default: 8)")

@@ -1135,7 +1135,7 @@ def calibrate_brain() -> None:
             if avg_predicted > 0:
                 raw_scale = overall_wr / avg_predicted
                 _brain_cal["prob_scale"] = 0.95 * _brain_cal["prob_scale"] + 0.05 * raw_scale
-                # Floor at 0.85 — the table is built on 7.4M rows; trust it
+                # Floor at 0.85 — the table is built on 4.5M rows; trust it
                 _brain_cal["prob_scale"] = max(0.85, min(1.5, _brain_cal["prob_scale"]))
 
         # ── 2. Win-rate reward tiers (priority = win rate, not profit) ───────────
@@ -1310,7 +1310,7 @@ async def claude_analysis(
 
     system_prompt = (
         "You are a fast quantitative filter for a Kalshi BTC binary options bot. "
-        "The primary model (Brain v3) has already evaluated this trade using empirical win probabilities from 7.4M rows of BTC data. "
+        "The primary model (Brain v3) has already evaluated this trade using empirical win probabilities from 4.5M rows of BTC data. "
         "You are being consulted because the trade is BORDERLINE — the expected value is between 2-5% or confidence is 60-84. "
         "Your job: confirm or reject. Be decisive. Only reject if you see a clear red flag (momentum reversal, vol spike, price stalling at strike). "
         "Respond with valid JSON only — no markdown, no explanation outside the JSON."
@@ -1408,11 +1408,11 @@ Respond with exactly this JSON:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-#  Printer Brain v3 — Empirically Calibrated from 7.4M rows of BTC 1-min data
+#  Printer Brain v3 — Empirically Calibrated from 4.5M rows of BTC 1-min data
 # ══════════════════════════════════════════════════════════════════════════════
 
 # Empirical win-probability table: P(BTC stays on same side at window close)
-# Derived from backtest of 7.4M rows btcusd_1-min_data.csv (2020-2026 regime)
+# Derived from backtest of 4.5M rows binance_api_BTCUSDT_1m.csv (2017-2026 regime)
 # Simulated all 15-min KXBTC15M-equivalent windows, measured each minute within.
 #
 # Rows = distance bucket (abs % BTC is from strike):
@@ -1562,7 +1562,7 @@ def printer_brain(
     ticker: str,
 ) -> dict:
     """
-    Printer Brain v3 — empirically calibrated from 7.4M rows BTC 1-min data.
+    Printer Brain v3 — empirically calibrated from 4.5M rows BTC 1-min data.
 
     Key findings from backtest (2020-2026 regime):
       - Even within 0.1% of strike BTC stays on same side ~70% of the time
@@ -1665,8 +1665,8 @@ def printer_brain(
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
     # ── 8. EV filter ──────────────────────────────────────────────────────────
-    # 5% floor: requires real edge without needing extreme market mispricing.
-    min_ev = 0.05
+    # 15% floor: requires meaningful edge, consistent with WFA-validated params.
+    min_ev = 0.15
 
     skip_reason = ""
     if _vol_skip:

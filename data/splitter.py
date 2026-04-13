@@ -25,7 +25,7 @@ import pandas as pd
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 _THIS_DIR         = os.path.dirname(os.path.abspath(__file__))
-CSV_PATH          = r"C:\Users\alxnt\Downloads\btcusd_1-min_data.csv"
+CSV_PATH          = r"C:\Users\alxnt\Downloads\d5ae29c4-33c6-11f1-b1e7-6dda37cfa7b9\binance_api_BTCUSDT_1m.csv"
 SPLIT_CONFIG_PATH = os.path.join(_THIS_DIR, "split_config.json")
 TRAIN_RATIO       = 0.70
 
@@ -51,10 +51,11 @@ def generate_split(start_year: int = 2020, force: bool = False) -> dict:
 
     df = pd.read_csv(
         CSV_PATH,
-        usecols=["Timestamp", "Open", "Close"],
-        dtype={"Timestamp": "float64", "Open": "float64", "Close": "float64"},
+        usecols=["time", "open", "close"],
+        dtype={"time": "float64", "open": "float64", "close": "float64"},
         engine="c",
     )
+    df.rename(columns={"time": "Timestamp", "open": "Open", "close": "Close"}, inplace=True)
     df["ts"] = df["Timestamp"].astype("int64")
     df = df.dropna(subset=["Open", "Close"])
     df = df[df["Close"] > 0]
