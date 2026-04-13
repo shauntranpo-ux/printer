@@ -292,8 +292,12 @@ def init_db() -> None:
             )
         """)
 
-        # Migrate existing DB — add Claude columns if not present
-        for col, typedef in (("claude_confidence", "INTEGER"), ("claude_signals", "TEXT")):
+        # Migrate existing DB — add new columns if not present
+        for col, typedef in (
+            ("claude_confidence", "INTEGER"),
+            ("claude_signals", "TEXT"),
+            ("order_id", "TEXT"),
+        ):
             try:
                 c.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")
             except Exception:
@@ -326,8 +330,8 @@ def db_write_trade(trade: dict) -> int | None:
                 model_prob, implied_prob, btc_price_at_entry, strike,
                 seconds_left_at_entry, fill_confirmed,
                 exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                claude_confidence, claude_signals
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                claude_confidence, claude_signals, order_id
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
             trade.get("mode"), trade.get("side"), trade.get("contracts"),
@@ -340,6 +344,7 @@ def db_write_trade(trade: dict) -> int | None:
             trade.get("outcome", "pending"), trade.get("pnl_dollars"),
             trade.get("profit_percent"),
             trade.get("claude_confidence"), trade.get("claude_signals"),
+            trade.get("order_id"),
         ))
         row_id = c.lastrowid
         conn.commit()
@@ -2607,6 +2612,7 @@ async def handle_ready_phase(
         "profit_percent": None,
         "claude_confidence": _active_claude_result["confidence"] if _active_claude_result else None,
         "claude_signals":    json.dumps(_active_claude_result["key_signals"]) if _active_claude_result else None,
+        "order_id":          order_id,
     }
     trade_id = db_write_trade(trade_data)
 
@@ -2623,6 +2629,8 @@ async def handle_ready_phase(
         "mode": mode,
         "strike": strike,
         "entry_ts": _entry_ts,
+        "market_close_time": market.get("close_time", ""),
+        "order_id": order_id,
         "_bv3_dist_idx": _bv3_dist_idx,
         "_bv3_time_idx": _bv3_time_idx,
     }
@@ -2651,16 +2659,14 @@ async def handle_ready_phase(
 
 async def handle_locked_phase(
     session: aiohttp.ClientSession,
-    config: dict,
-    market: dict,
-    ticker: str,
     btc_price: float,
     secs_left: float,
-    strike: float,
 ) -> None:
     """
     Hold an open position to expiry — exit at settlement.
     Exit only when the market settles and fetch the official Kalshi result.
+    secs_left is passed as a fallback; the position's stored close_time is
+    used when available so market rollovers don't break expiry detection.
     """
     global current_phase, current_position
 
@@ -2670,6 +2676,19 @@ async def handle_locked_phase(
         return
 
     pos = current_position
+    ticker = pos["ticker"]
+    strike = pos["strike"]
+
+    # Compute secs_left from the position's stored market close time.
+    # This is immune to market rollovers — the passed secs_left can be stale
+    # (from a new market) when the old market has already expired.
+    _stored_close = pos.get("market_close_time", "")
+    if _stored_close:
+        try:
+            close_dt = datetime.fromisoformat(_stored_close.replace("Z", "+00:00"))
+            secs_left = max(0.0, (close_dt - datetime.now(timezone.utc)).total_seconds())
+        except Exception:
+            pass  # fall back to caller-supplied secs_left
 
     # Expiry check
     if secs_left <= 0:
@@ -2904,7 +2923,7 @@ async def main_loop() -> None:
                 if current_phase == "LOCKED":
                     try:
                         await handle_locked_phase(
-                            session, config, market, ticker, btc_price, secs_left, strike
+                            session, btc_price, secs_left
                         )
                     except Exception as exc:
                         log.error(f"LOCKED phase error: {exc}", exc_info=True)

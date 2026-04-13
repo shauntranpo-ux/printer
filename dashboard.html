@@ -582,7 +582,7 @@ tr:last-child td { border-bottom: none; }
         </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Time</th><th>Market</th><th>Dir</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Reason</th><th>P&L</th></tr></thead>
+            <thead><tr><th>Time</th><th>Market</th><th>Dir</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Fill</th><th>Reason</th><th>P&L</th></tr></thead>
             <tbody id="live-trades"></tbody>
           </table>
         </div>
@@ -591,7 +591,7 @@ tr:last-child td { border-bottom: none; }
         <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Paper Trades <span id="paper-wr" style="font-weight:500;margin-left:6px;"></span></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Time</th><th>Market</th><th>Dir</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Reason</th><th>P&L</th></tr></thead>
+            <thead><tr><th>Time</th><th>Market</th><th>Dir</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Fill</th><th>Reason</th><th>P&L</th></tr></thead>
             <tbody id="paper-trades"></tbody>
           </table>
         </div>
@@ -1024,7 +1024,7 @@ function shortTicker(t){if(!t)return '—';return t.length>16?t.slice(0,16)+'…
 // ── Trade table ──
 function renderTradeTable(tbodyId,trades){
   const tbody=document.getElementById(tbodyId); if(!tbody)return;
-  if(!trades||trades.length===0){tbody.innerHTML='<tr><td colspan="8" style="color:var(--muted);text-align:center;padding:14px;font-size:11px;">No trades yet</td></tr>';return;}
+  if(!trades||trades.length===0){tbody.innerHTML='<tr><td colspan="9" style="color:var(--muted);text-align:center;padding:14px;font-size:11px;">No trades yet</td></tr>';return;}
   tbody.innerHTML=trades.slice(0,50).map(t=>{
     const pnl=t.pnl_dollars, isPending=t.outcome==='pending';
     const pnlCls=isPending?'':pnl>0?'td-win':pnl<0?'td-loss':'';
@@ -1032,7 +1032,17 @@ function renderTradeTable(tbodyId,trades){
       ?'<span style="background:rgba(243,156,18,0.12);color:#f39c12;border:1px solid rgba(243,156,18,0.3);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;">OPEN</span>'
       :(pnl!=null?fmtPnl(pnl):'—');
     const rowStyle=isPending?'style="background:rgba(243,156,18,0.04);"':'';
-    return `<tr ${rowStyle}><td>${fmtTime(t.ts)}</td><td title="${t.market_id||''}">${shortTicker(t.market_id)}</td><td>${t.side==='yes'?'UP':t.side==='no'?'DN':'—'}</td><td>${t.contracts||'—'}</td><td>${t.entry_price_cents!=null?t.entry_price_cents+'c':'—'}</td><td>${t.exit_price_cents!=null?t.exit_price_cents+'c':'—'}</td><td>${t.exit_reason||t.outcome||'—'}</td><td class="${pnlCls}">${pnlCell}</td></tr>`;
+    // Market: show title if available, ticker as tooltip; append order_id hint for live trades
+    const mktLabel=t.market_title||shortTicker(t.market_id);
+    const mktTitle=`${t.market_id||''}${t.order_id?' · '+t.order_id:''}`;
+    const mktCell=`<span title="${mktTitle}" style="cursor:default;">${mktLabel}</span>`;
+    // Fill confirmation badge
+    const fillBadge=isPending
+      ?'<span style="background:rgba(243,156,18,0.12);color:#f39c12;border:1px solid rgba(243,156,18,0.3);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">PENDING</span>'
+      :(t.fill_confirmed
+        ?'<span style="background:rgba(39,174,96,0.1);color:var(--green-d);border:1px solid rgba(39,174,96,0.25);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">CONF</span>'
+        :'<span style="background:var(--red-l);color:var(--red);border:1px solid rgba(231,76,60,0.25);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">UNFILL</span>');
+    return `<tr ${rowStyle}><td>${fmtTime(t.ts)}</td><td>${mktCell}</td><td>${t.side==='yes'?'UP':t.side==='no'?'DN':'—'}</td><td>${t.contracts||'—'}</td><td>${t.entry_price_cents!=null?t.entry_price_cents+'c':'—'}</td><td>${t.exit_price_cents!=null?t.exit_price_cents+'c':'—'}</td><td>${fillBadge}</td><td>${t.exit_reason||t.outcome||'—'}</td><td class="${pnlCls}">${pnlCell}</td></tr>`;
   }).join('');
 }
 
