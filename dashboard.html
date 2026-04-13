@@ -1021,6 +1021,12 @@ function pnlClass(v){return !v?'pnl-zero':v>0?'pnl-positive':'pnl-negative';}
 function fmtTime(ts){if(!ts)return '—';return new Date(ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true});}
 function shortTicker(t){if(!t)return '—';return t.length>16?t.slice(0,16)+'…':t;}
 
+// ── HTML escape helper (prevents XSS in title attributes and inner content) ──
+function escHtml(s){
+  if(s==null)return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 // ── Trade table ──
 function renderTradeTable(tbodyId,trades){
   const tbody=document.getElementById(tbodyId); if(!tbody)return;
@@ -1033,8 +1039,8 @@ function renderTradeTable(tbodyId,trades){
       :(pnl!=null?fmtPnl(pnl):'—');
     const rowStyle=isPending?'style="background:rgba(243,156,18,0.04);"':'';
     // Market: show title if available, ticker as tooltip; append order_id hint for live trades
-    const mktLabel=t.market_title||shortTicker(t.market_id);
-    const mktTitle=`${t.market_id||''}${t.order_id?' · '+t.order_id:''}`;
+    const mktLabel=escHtml(t.market_title||shortTicker(t.market_id));
+    const mktTitle=escHtml(`${t.market_id||''}${t.order_id?' · '+t.order_id:''}`);
     const mktCell=`<span title="${mktTitle}" style="cursor:default;">${mktLabel}</span>`;
     // Fill confirmation badge
     const fillBadge=isPending

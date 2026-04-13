@@ -30,7 +30,7 @@ import pandas as pd
 # Config
 # -----------------------------------------------------------------------------
 CSV_PATH = r'C:\Users\alxnt\Downloads\d5ae29c4-33c6-11f1-b1e7-6dda37cfa7b9\binance_api_BTCUSDT_1m.csv'
-DB_PATH  = r'C:\Users\alxnt\kalshi-bot\kalshi_bot.db'
+DB_PATH  = os.path.join(_BASE_DIR, "kalshi_bot.db")
 
 _BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
 _SPLIT_CFG_PATH   = os.path.join(_BASE_DIR, "data", "split_config.json")
@@ -678,7 +678,7 @@ def run_sweep(start_year: int, trade_amount: float) -> None:
 # Monte Carlo parameter search
 # -----------------------------------------------------------------------------
 
-MONTE_CARLO_OUT = r'C:\Users\alxnt\kalshi-bot\monte_carlo_results.json'
+MONTE_CARLO_OUT = os.path.join(_BASE_DIR, "monte_carlo_results.json")
 
 PARAM_SPACE = {
     "min_ev":         [0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30],
