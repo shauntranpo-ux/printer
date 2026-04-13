@@ -607,14 +607,6 @@
           <button class="s-save" onclick="saveSetting('daily_profit_target_dollars', parseFloat(document.getElementById('s-profit-target').value), this)">Save</button>
         </div>
 
-        <div class="s-group">
-          <label>Claude AI</label>
-          <div class="tog-wrap">
-            <span class="tog-lbl">Off</span>
-            <label class="tog"><input type="checkbox" id="s-claude" onchange="saveSetting('claude_enabled', this.checked)"><span class="tog-slider"></span></label>
-            <span class="tog-lbl">On</span>
-          </div>
-        </div>
 
       </div><!-- /settings-grid -->
     </div><!-- /settings-body -->
@@ -879,7 +871,6 @@ function populateSettings(cfg) {
   set('s-loss-limit',   cfg.daily_loss_limit_dollars);
   set('s-profit-target',cfg.daily_profit_target_dollars);
   const claudeEl = document.getElementById('s-claude');
-  if (claudeEl) claudeEl.checked = !!cfg.claude_enabled;
   updateBotToggleUI(cfg.bot_enabled !== false);
   updateModePillVisual(cfg.mode || 'paper');  // visual only — no save
 }

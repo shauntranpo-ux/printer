@@ -2389,7 +2389,7 @@ async def handle_ready_phase(
     brain_ev = brain.get("win_prob", 0.5) - (entry_price_cents / 100)
     brain_win_prob = brain.get("win_prob", 0.5)
 
-    if config.get("claude_enabled", False) and _claude_client is not None:
+    if _claude_client is not None:
         if brain_win_prob >= 0.85 and do_trade:
             # High confidence — go straight through
             log.info(f"{ticker}: Brain high-conf {score}, skipping Claude")

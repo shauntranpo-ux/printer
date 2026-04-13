@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-backtest.py — Strategy backtest for KXBTC15M printer_brain trading logic.
+backtest.py - Strategy backtest for KXBTC15M printer_brain trading logic.
 
 Loads 7.4M rows of BTC 1-min data, segments into 15-minute windows matching
 Kalshi market structure, runs the full printer_brain decision loop (entry,
@@ -26,9 +26,9 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Config
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 CSV_PATH = r'C:\Users\alxnt\Downloads\d5ae29c4-33c6-11f1-b1e7-6dda37cfa7b9\binance_api_BTCUSDT_1m.csv'
 DB_PATH  = r'C:\Users\alxnt\kalshi-bot\kalshi_bot.db'
 
@@ -38,9 +38,9 @@ _RESULTS_DIR      = os.path.join(_BASE_DIR, "results")
 OOS_REPORT_PATH   = os.path.join(_RESULTS_DIR, "oos_report.json")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Split config helpers (reads data/split_config.json written by data/splitter.py)
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 def _load_split_cfg() -> dict | None:
     """Return the train/OOS split config, or None if not yet generated."""
@@ -57,7 +57,7 @@ def _ensure_split(start_year: int) -> dict:
     cfg = _load_split_cfg()
     if cfg:
         return cfg
-    print("[OOS] No data/split_config.json found — generating split now ...")
+    print("[OOS] No data/split_config.json found - generating split now ...")
     import importlib.util
     _sfile = os.path.join(_BASE_DIR, "data", "splitter.py")
     if not os.path.exists(_sfile):
@@ -106,10 +106,10 @@ def _load_best_params() -> dict:
         }
     return {"min_ev": 0.30, "min_confidence": 80}
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Empirical win-probability table — identical to bot.py _BV3_TABLE
+# -----------------------------------------------------------------------------
+# Empirical win-probability table - identical to bot.py _BV3_TABLE
 # Rows = distance bucket, Cols = minutes remaining (1-min to 13-min)
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 _BV3_TABLE = [
     # 1min   2min   3min   4min   5min   6min   7min   8min   9min  10min  11min  12min  13min
     [0.850, 0.796, 0.758, 0.727, 0.705, 0.686, 0.672, 0.656, 0.639, 0.624, 0.606, 0.595, 0.578],  # 0.0-0.1%
@@ -146,18 +146,18 @@ def _empirical_win_prob(abs_pct: float, mins_left: float) -> float:
     return row[t_low] + (row[t_high] - row[t_low]) * frac
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # AMM price simulator
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 def simulate_amm_prices(btc_price: float, strike: float, rng: random.Random) -> tuple[float, float]:
     """
     Simulate realistic Kalshi AMM yes_ask / no_ask prices based on BTC
     distance from strike.  Matches observed live pricing behaviour:
 
-        < 0.1%  distance → yes_ask 45-55c  (near 50/50)
-        0.1-0.3% distance → favoured side 62-75c
-        0.3%+   distance → favoured side 77-92c
+        < 0.1%  distance -> yes_ask 45-55c  (near 50/50)
+        0.1-0.3% distance -> favoured side 62-75c
+        0.3%+   distance -> favoured side 77-92c
 
     Returns (yes_ask_cents, no_ask_cents).  Sum is always > 100 (AMM spread).
     """
@@ -167,14 +167,14 @@ def simulate_amm_prices(btc_price: float, strike: float, rng: random.Random) -> 
     spread = rng.uniform(3.0, 6.0)
 
     if ap < 0.10:
-        # Coin-flip zone — tiny edge to whichever side BTC is on
+        # Coin-flip zone - tiny edge to whichever side BTC is on
         base = rng.uniform(49.0, 54.0) if above else rng.uniform(46.0, 51.0)
         yes_ask = base
     elif ap < 0.30:
         if above:
             yes_ask = rng.uniform(62.0, 75.0)
         else:
-            yes_ask = 100 - rng.uniform(62.0, 75.0)  # NO favoured → YES is cheap
+            yes_ask = 100 - rng.uniform(62.0, 75.0)  # NO favoured -> YES is cheap
     else:
         if above:
             yes_ask = rng.uniform(77.0, 92.0)
@@ -187,9 +187,9 @@ def simulate_amm_prices(btc_price: float, strike: float, rng: random.Random) -> 
 
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Brain decision (stateless replica of printer_brain from bot.py)
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 def brain_decide(
     btc_price: float,
@@ -257,9 +257,9 @@ def compute_momentum(recent_closes: list) -> str:
     return "neutral"
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Main backtest
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 def load_data(start_year: int = 2020, verbose: bool = True, mode: str = "train"):
     """
@@ -267,11 +267,11 @@ def load_data(start_year: int = 2020, verbose: bool = True, mode: str = "train")
 
     mode
     ----
-    'train'  — only the 70% training partition (default).
+    'train'  - only the 70% training partition (default).
                If data/split_config.json does not exist yet, all data is
-               returned with a warning — run  python data/splitter.py  first.
-    'oos'    — only the 30% OOS holdout (use only via --oos-eval).
-    'full'   — all windows, no split applied (internal use).
+               returned with a warning - run  python data/splitter.py  first.
+    'oos'    - only the 30% OOS holdout (use only via --oos-eval).
+    'full'   - all windows, no split applied (internal use).
     """
     if verbose:
         print(f"\nLoading {CSV_PATH}...")
@@ -321,12 +321,12 @@ def load_data(start_year: int = 2020, verbose: bool = True, mode: str = "train")
                include_groups=False)
     )
 
-    # ── Apply train / OOS split ───────────────────────────────────────────────
+    # -- Apply train / OOS split -----------------------------------------------
     if mode != "full":
         cfg = _load_split_cfg()
         if cfg is None:
             if verbose:
-                print("  [warn] data/split_config.json not found — using all data.")
+                print("  [warn] data/split_config.json not found - using all data.")
                 print("         Run  python data/splitter.py  to enforce train/OOS split.")
         else:
             ts_lo = cfg["train_start_ts"] if mode == "train" else cfg["oos_start_ts"]
@@ -361,14 +361,14 @@ def run_backtest(
 ) -> dict:
     rng = random.Random(seed)
 
-    # ── Load data (or use pre-loaded) ─────────────────────────────────────────
+    # -- Load data (or use pre-loaded) -----------------------------------------
     if _windows is None or _price_lookup is None:
         windows, price_lookup = load_data(start_year, verbose=verbose)
     else:
         windows      = _windows
         price_lookup = _price_lookup
 
-    # ── Simulation loop ───────────────────────────────────────────────────────
+    # -- Simulation loop -------------------------------------------------------
     trades         = []
     skipped        = 0
     total_windows  = len(windows)
@@ -418,11 +418,11 @@ def run_backtest(
             if brain["action"] != "trade":
                 continue
 
-            # ── Confidence filter ─────────────────────────────────────────────
+            # -- Confidence filter ---------------------------------------------
             if brain["confidence"] < min_confidence:
                 continue
 
-            # ── Entry ─────────────────────────────────────────────────────────
+            # -- Entry ---------------------------------------------------------
             side       = brain["side"]
             entry_c    = brain["entry_c"]
             confidence = brain["confidence"]
@@ -431,7 +431,7 @@ def run_backtest(
             contracts   = max(1, int(trade_amount * 100 / entry_c))
             exit_reason = "expiry"
 
-            # ── Expiry outcome — hold to settlement, no stop loss ─────────────
+            # -- Expiry outcome - hold to settlement, no stop loss -------------
             above_at_close = final_close > strike
             won = (side == "yes" and above_at_close) or \
                   (side == "no"  and not above_at_close)
@@ -462,11 +462,11 @@ def run_backtest(
         if not trade_placed:
             skipped += 1
 
-    # ── Expose trades for stress testing ─────────────────────────────────────
+    # -- Expose trades for stress testing -------------------------------------
     if _trades_out is not None:
         _trades_out.extend(trades)
 
-    # ── Statistics ────────────────────────────────────────────────────────────
+    # -- Statistics ------------------------------------------------------------
     if not trades:
         print("No trades placed. Try reducing --ev threshold.")
         return {}
@@ -564,9 +564,9 @@ def run_backtest(
     return result
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # DB writer
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 def write_to_db(r: dict, start_year: int) -> None:
     conn = sqlite3.connect(DB_PATH)
@@ -597,16 +597,16 @@ def write_to_db(r: dict, start_year: int) -> None:
     conn.close()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Report printer
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 def print_report(r: dict) -> None:
     if not r:
         return
     W = 60
     print("\n" + "=" * W)
-    print(f"  BACKTEST RESULTS  —  {r['start_year']}+  |  min_ev={r['min_ev']:.0%}")
+    print(f"  BACKTEST RESULTS  -  {r['start_year']}+  |  min_ev={r['min_ev']:.0%}")
     print("=" * W)
     print(f"  Windows simulated : {r['total_windows']:>10,}")
     print(f"  Trades placed     : {r['total_trades']:>10,}  "
@@ -632,16 +632,16 @@ def print_report(r: dict) -> None:
     print("=" * W)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# EV sweep — test multiple thresholds and rank them
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
+# EV sweep - test multiple thresholds and rank them
+# -----------------------------------------------------------------------------
 
 def run_sweep(start_year: int, trade_amount: float) -> None:
     thresholds = [0.05, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30]
     results = []
 
     for ev in thresholds:
-        print(f"\n── Sweep: min_ev={ev:.0%} ──────────────────────────────")
+        print(f"\n-- Sweep: min_ev={ev:.0%} ------------------------------")
         r = run_backtest(
             start_year=start_year,
             min_ev=ev,
@@ -660,7 +660,7 @@ def run_sweep(start_year: int, trade_amount: float) -> None:
         return
 
     print("\n" + "=" * 80)
-    print("  SWEEP SUMMARY — ranked by Sharpe ratio")
+    print("  SWEEP SUMMARY - ranked by Sharpe ratio")
     print("=" * 80)
     print(f"{'min_ev':>8}  {'trades':>8}  {'win_rate':>9}  {'pnl':>8}  "
           f"{'sharpe':>7}  {'max_dd':>7}  {'cons_loss':>9}")
@@ -674,9 +674,9 @@ def run_sweep(start_year: int, trade_amount: float) -> None:
               f"{r['max_consecutive_losses']:>9}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Monte Carlo parameter search
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 MONTE_CARLO_OUT = r'C:\Users\alxnt\kalshi-bot\monte_carlo_results.json'
 
@@ -704,27 +704,27 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
     simulated order-book imbalance exceeds the threshold AND the brain confidence
     is at or above the minimum.
 
-    entry_window = (lo_sec, hi_sec) — a trade in a window must originate between
+    entry_window = (lo_sec, hi_sec) - a trade in a window must originate between
     lo_sec and hi_sec seconds into the 15-minute window (900 s total).
     """
     rng_mc = random.Random(0)          # reproducible sampling
-    top20: list[dict] = []             # sorted best→worst by Sharpe
+    top20: list[dict] = []             # sorted best->worst by Sharpe
     all_results: list[dict] = []
 
     total_combos = len(_ALL_COMBOS)
     effective_n  = min(n_simulations, total_combos)
-    print(f"\nMonte Carlo — {effective_n:,} simulations "
+    print(f"\nMonte Carlo - {effective_n:,} simulations "
           f"({total_combos:,} unique combos, seed=0)")
     print(f"  start_year={start_year}, trade_amount=${trade_amount}")
     print("  Writing progress to:", MONTE_CARLO_OUT)
     print()
 
-    # Load CSV once — reused across all simulations
+    # Load CSV once - reused across all simulations
     print("  Loading data (once)...")
     windows, price_lookup = load_data(start_year, verbose=True)
     print()
 
-    # Shuffle once, then iterate — avoids duplicate runs while staying random
+    # Shuffle once, then iterate - avoids duplicate runs while staying random
     combo_pool = list(_ALL_COMBOS)
     rng_mc.shuffle(combo_pool)
     combos_to_run = combo_pool[:effective_n]
@@ -807,7 +807,7 @@ def _print_mc_summary(top20: list) -> None:
     best = top20[0]
     W = 70
     print("\n" + "=" * W)
-    print("  MONTE CARLO SUMMARY — top 20 by Sharpe ratio")
+    print("  MONTE CARLO SUMMARY - top 20 by Sharpe ratio")
     print("=" * W)
     print(f"  {'Rank':>4}  {'Sharpe':>7}  {'WinRate':>8}  "
           f"{'PnL':>8}  {'Trades':>7}  {'MaxDD':>7}  params")
@@ -833,9 +833,9 @@ def _print_mc_summary(top20: list) -> None:
     print(f"\n  Full results saved to : {MONTE_CARLO_OUT}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # OOS evaluation
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
                  custom_ev: float | None = None,
@@ -863,12 +863,12 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
     print("=" * 70)
     src = "custom" if (custom_ev is not None or custom_confidence is not None) else "MC best"
     print(f"  Params ({src})  :  ev={params['min_ev']:.0%}  conf={params['min_confidence']}")
-    print(f"  Train period :  {split_cfg['train_start_date']} → "
+    print(f"  Train period :  {split_cfg['train_start_date']} -> "
           f"{split_cfg['train_end_date']}  ({split_cfg['train_windows']:,} windows)")
-    print(f"  OOS period   :  {split_cfg['oos_start_date']} → "
+    print(f"  OOS period   :  {split_cfg['oos_start_date']} -> "
           f"{split_cfg['oos_end_date']}  ({split_cfg['oos_windows']:,} windows)")
 
-    # Load full dataset once, then slice — avoids reading CSV twice
+    # Load full dataset once, then slice - avoids reading CSV twice
     print("\n  Loading full dataset ...")
     all_windows, all_pl = load_data(start_year, verbose=True, mode="full")
 
@@ -909,7 +909,7 @@ def _print_oos_comparison(train_r: dict, oos_r: dict,
                            split_cfg: dict, params: dict) -> None:
     W = 72
     print("\n" + "=" * W)
-    print("  IN-SAMPLE vs OOS HOLDOUT — side by side")
+    print("  IN-SAMPLE vs OOS HOLDOUT - side by side")
     print("=" * W)
 
     # Header row
@@ -922,8 +922,8 @@ def _print_oos_comparison(train_r: dict, oos_r: dict,
         print(f"  {label:<28}  {fmt.format(tv):>20}  {fmt.format(ov):>16}")
 
     print(f"  {'Period':<28}  "
-          f"{split_cfg['train_start_date']+' → '+split_cfg['train_end_date']:>20}  "
-          f"{split_cfg['oos_start_date']+' → '+split_cfg['oos_end_date']:>16}")
+          f"{split_cfg['train_start_date']+' -> '+split_cfg['train_end_date']:>20}  "
+          f"{split_cfg['oos_start_date']+' -> '+split_cfg['oos_end_date']:>16}")
     print(f"  {'Windows':<28}  {split_cfg['train_windows']:>20,}  "
           f"{split_cfg['oos_windows']:>16,}")
     row("Total trades",          train_r["total_trades"],       oos_r["total_trades"],       "{:,}")
@@ -935,23 +935,23 @@ def _print_oos_comparison(train_r: dict, oos_r: dict,
     row("Max consec losses",     train_r["max_consecutive_losses"],oos_r["max_consecutive_losses"],"{}")
     print("=" * W)
 
-    # Generalisation efficiency — per-trade P&L basis (removes window-count bias)
+    # Generalisation efficiency - per-trade P&L basis (removes window-count bias)
     t_ppt = (train_r["total_pnl_dollars"] / train_r["total_trades"]
              if train_r["total_trades"] else 0.0)
     o_ppt = (oos_r["total_pnl_dollars"]   / oos_r["total_trades"]
              if oos_r["total_trades"]   else 0.0)
     eff   = round(o_ppt / t_ppt, 4) if t_ppt > 0 else 0.0
 
-    print(f"\n  P&L per trade — in-sample: ${t_ppt:.4f}  |  OOS: ${o_ppt:.4f}")
+    print(f"\n  P&L per trade - in-sample: ${t_ppt:.4f}  |  OOS: ${o_ppt:.4f}")
     print(f"  Generalisation efficiency (OOS / in-sample P&L per trade): {eff:.2f}")
     if eff >= 0.70:
-        verdict = "✓ PASS"
+        verdict = "[OK] PASS"
         note    = "Strategy generalises well to unseen data."
     elif eff >= 0.50:
         verdict = "~ MARGINAL"
         note    = "Some degradation on OOS data (50-70%). Monitor closely."
     else:
-        verdict = "✗ WARN — POSSIBLE OVERFIT"
+        verdict = "[X] WARN - POSSIBLE OVERFIT"
         note    = "Significant OOS degradation (<50%). Consider re-tuning on more data."
     print(f"  Verdict  :  {verdict}")
     print(f"  Note     :  {note}")
@@ -973,7 +973,7 @@ def _save_oos_report(train_r: dict, oos_r: dict,
         "params":       params,
         "split":        split_cfg,
         "in_sample": {
-            "period":              (f"{split_cfg['train_start_date']} → "
+            "period":              (f"{split_cfg['train_start_date']} -> "
                                     f"{split_cfg['train_end_date']}"),
             "total_trades":        train_r.get("total_trades"),
             "win_rate":            train_r.get("win_rate"),
@@ -985,7 +985,7 @@ def _save_oos_report(train_r: dict, oos_r: dict,
             "max_consec_losses":   train_r.get("max_consecutive_losses"),
         },
         "oos": {
-            "period":              (f"{split_cfg['oos_start_date']} → "
+            "period":              (f"{split_cfg['oos_start_date']} -> "
                                     f"{split_cfg['oos_end_date']}"),
             "total_trades":        oos_r.get("total_trades"),
             "win_rate":            oos_r.get("win_rate"),
@@ -1009,9 +1009,9 @@ def _save_oos_report(train_r: dict, oos_r: dict,
     print(f"  Report saved to: {OOS_REPORT_PATH}")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 # Entry point
-# ─────────────────────────────────────────────────────────────────────────────
+# -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -1126,4 +1126,4 @@ if __name__ == "__main__":
             print_report(result)
             if not args.no_db:
                 write_to_db(result, args.start_year)
-                print(f"\nResults saved to {DB_PATH} → stress_test_results table.")
+                print(f"\nResults saved to {DB_PATH} -> stress_test_results table.")
