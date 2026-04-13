@@ -1061,7 +1061,7 @@ async function saveSetting(key,value,btn){
 // ── Helpers ──
 function todayWinRate(trades,mode){
   const today=new Date().toISOString().slice(0,10);
-  const t=trades.filter(x=>x.mode===mode&&x.ts&&x.ts.startsWith(today)&&x.outcome!=='pending');
+  const t=trades.filter(x=>x.mode===mode&&x.ts&&x.ts.startsWith(today)&&x.outcome!=='pending'&&x.outcome!=='unfilled');
   if(!t.length)return '—';
   const w=t.filter(x=>x.outcome==='win').length;
   return `${Math.round(w/t.length*100)}% (${w}/${t.length})`;
@@ -1349,7 +1349,7 @@ async function pollTrades(){
     const sbWr=document.getElementById('sb-wr');if(sbWr)sbWr.textContent=lwr!=='—'?lwr:pwr;
 
     function ats(trades,mode){
-      const s=trades.filter(x=>x.mode===mode&&x.outcome!=='pending');
+      const s=trades.filter(x=>x.mode===mode&&x.outcome!=='pending'&&x.outcome!=='unfilled');
       const w=s.filter(x=>x.outcome==='win').length,n=s.length;
       if(!n)return '';return `${n} · ${Math.round(w/n*100)}%`;
     }

@@ -2023,7 +2023,14 @@ async def place_order(
         log.info(f"Order {order_id} POST status={post_status!r}")
 
         if post_status == "canceled":
-            # IOC explicitly got zero fill — safe to retry at higher price
+            # For IOC orders "canceled" means either:
+            #   (a) zero fill — contracts_count=0 → retry at higher price
+            #   (b) partial fill — contracts_count>0 (filled + remainder canceled)
+            _cc_canceled = post_order.get("contracts_count")
+            if _cc_canceled:
+                _fp_canceled = post_order.get("yes_price", price_this_attempt)
+                log.info(f"Order {order_id} IOC partial fill: {_cc_canceled} contracts @ {_fp_canceled}c (canceled remainder)")
+                return {"fill_confirmed": True, "fill_price_cents": _fp_canceled, "order_id": order_id, "filled_contracts": _cc_canceled}
             log.info(f"Order {order_id} IOC zero-fill (canceled) — retrying")
             continue
 
@@ -2552,10 +2559,13 @@ async def handle_ready_phase(
     result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market)
 
     fill_confirmed = result["fill_confirmed"]
-    fill_price = result.get("fill_price_cents") or int(entry_price_cents)
+    _fp = result.get("fill_price_cents")
+    fill_price = _fp if _fp is not None else int(entry_price_cents)
     order_id = result.get("order_id")
-    # Use actual filled contract count (IOC may fill fewer than requested)
-    contracts = result.get("filled_contracts") or contracts
+    # Use actual filled contract count (IOC may fill fewer than requested).
+    # Must use explicit None check — 0 is falsy but a valid (unfilled) count.
+    _fc = result.get("filled_contracts")
+    contracts = _fc if _fc is not None else contracts
 
     trade_ts = datetime.now(timezone.utc).isoformat()
 
@@ -2577,7 +2587,9 @@ async def handle_ready_phase(
         "fill_confirmed": 1 if fill_confirmed else 0,
         "exit_price_cents": None,
         "exit_reason": None,
-        "outcome": "pending",
+        # "pending" = open position being tracked; "unfilled" = order attempt that
+        # got no fill (kept for audit trail but NOT shown as an open trade on the dashboard)
+        "outcome": "pending" if fill_confirmed else "unfilled",
         "pnl_dollars": None,
         "profit_percent": None,
         # Store Claude's view at time of trade so brain can learn from it later
