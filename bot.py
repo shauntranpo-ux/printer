@@ -1279,15 +1279,13 @@ def _recent_trades_for_claude() -> list:
 
 async def _fetch_market_context(session: aiohttp.ClientSession) -> dict:
     """
-    Pull real-time BTC market sentiment from free public APIs + optional social signals.
+    Pull real-time BTC market sentiment from free public APIs.
 
-    Sources (always):
+    Sources (always, no auth required):
       - alternative.me Fear & Greed Index  — 0 (extreme fear) to 100 (extreme greed)
-      - CryptoPanic BTC news               — latest 5 headlines, no auth required
+      - CryptoPanic BTC news               — latest 5 headlines
 
     Sources (optional, env-var gated):
-      - Twitter/X v2 search                — TWITTER_BEARER_TOKEN (X Basic $100/mo)
-        Monitors high-impact accounts: Trump, Elon, Saylor, POTUS, SEC, Cramer
       - NewsAPI.org keyword search          — NEWSAPI_KEY (100 req/day free tier)
 
     Returns cached result if < _MARKET_CONTEXT_TTL seconds old.
@@ -1298,7 +1296,7 @@ async def _fetch_market_context(session: aiohttp.ClientSession) -> dict:
     if now - _market_context_ts < _MARKET_CONTEXT_TTL:
         return _market_context
 
-    ctx: dict = {"fear_greed": None, "news": [], "tweets": []}
+    ctx: dict = {"fear_greed": None, "news": []}
     timeout = aiohttp.ClientTimeout(total=6)
 
     # ── Fear & Greed Index ──────────────────────────────────────────────────
@@ -1358,61 +1356,13 @@ async def _fetch_market_context(session: aiohttp.ClientSession) -> dict:
         except Exception as exc:
             log.debug(f"[ctx] NewsAPI fetch failed: {exc}")
 
-    # ── Twitter / X v2 (optional) ──────────────────────────────────────────
-    twitter_token = os.environ.get("TWITTER_BEARER_TOKEN", "")
-    if twitter_token:
-        # High-impact accounts that move crypto markets
-        watch_accounts = [
-            "realDonaldTrump",   # US president — crypto/tariff policy
-            "elonmusk",          # DOGE/BTC market mover
-            "michael_saylor",    # MicroStrategy, BTC maximalist
-            "POTUS",             # Official WH account
-            "SECGov",            # Regulatory news
-            "jimcramer",         # Inverse indicator / retail sentiment
-        ]
-        query = " OR ".join(f"from:{acc}" for acc in watch_accounts)
-        query += " (bitcoin OR crypto OR btc) -is:retweet"
-        try:
-            async with session.get(
-                "https://api.twitter.com/2/tweets/search/recent",
-                headers={"Authorization": f"Bearer {twitter_token}"},
-                params={
-                    "query": query,
-                    "max_results": 10,
-                    "tweet.fields": "created_at,author_id,public_metrics",
-                    "expansions": "author_id",
-                    "user.fields": "username",
-                },
-                timeout=timeout,
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json(content_type=None)
-                    # Build username lookup from includes
-                    users = {
-                        u["id"]: u["username"]
-                        for u in (data.get("includes", {}).get("users") or [])
-                    }
-                    for tweet in (data.get("data") or []):
-                        ctx["tweets"].append({
-                            "author": users.get(tweet.get("author_id", ""), "unknown"),
-                            "text": tweet.get("text", "")[:280],
-                            "likes": tweet.get("public_metrics", {}).get("like_count", 0),
-                        })
-                elif resp.status == 429:
-                    log.debug("[ctx] Twitter rate-limited — skipping this cycle")
-                else:
-                    log.debug(f"[ctx] Twitter returned HTTP {resp.status}")
-        except Exception as exc:
-            log.debug(f"[ctx] Twitter fetch failed: {exc}")
-
     _market_context = ctx
     _market_context_ts = time.time()
 
     fg = ctx["fear_greed"]
     fg_desc = f"F&G={fg['value']}({fg['label']})" if fg else "F&G=n/a"
     log.info(
-        f"[ctx] Market context updated — {fg_desc} "
-        f"news={len(ctx['news'])} tweets={len(ctx['tweets'])}"
+        f"[ctx] Market context updated — {fg_desc} news={len(ctx['news'])}"
     )
     return ctx
 
@@ -1474,36 +1424,19 @@ async def claude_analysis(
         for n in ctx.get("news", [])[:5]
     ) or "  (no recent headlines)"
 
-    tweet_lines = "\n".join(
-        f"  @{t['author']} ({t['likes']}♥): {t['text'][:140]}"
-        for t in ctx.get("tweets", [])[:6]
-    ) or "  (no recent high-impact tweets)"
-
-    has_social = bool(ctx.get("tweets"))
-    social_note = (
-        "  High-impact accounts monitored: Trump, Musk, Saylor, POTUS, SEC, Cramer."
-        if has_social else
-        "  (Twitter feed not configured — set TWITTER_BEARER_TOKEN for live social signals)"
-    )
-
     sentiment_block = f"""\nREAL-TIME MARKET SENTIMENT:
 {fg_line}
 
-RECENT CRYPTO NEWS (last 2 min):
-{news_lines}
-
-SOCIAL SIGNALS — HIGH-IMPACT ACCOUNTS:
-{social_note}
-{tweet_lines}"""
+RECENT CRYPTO NEWS:
+{news_lines}"""
 
     system_prompt = (
         "You are a fast quantitative filter for a Kalshi BTC binary options bot. "
         "The primary model (Brain v3) has already evaluated this trade using empirical win probabilities from 4.5M rows of BTC data. "
         "You are being consulted because the trade is BORDERLINE — the expected value is between 2-5% or confidence is 60-84. "
-        "You now have access to real-time market sentiment data including the Fear & Greed Index, "
-        "breaking crypto news, and social signals from high-impact accounts (Trump, Musk, Saylor, SEC). "
+        "You have access to real-time market sentiment: Fear & Greed Index and breaking crypto news. "
         "Your job: confirm or reject. Be decisive. Only reject if you see a clear red flag "
-        "(momentum reversal, vol spike, price stalling at strike, or negative macro catalyst from news/social). "
+        "(momentum reversal, vol spike, price stalling at strike, or obvious negative macro catalyst from news). "
         "Respond with valid JSON only — no markdown, no explanation outside the JSON."
     )
 
@@ -1784,7 +1717,7 @@ def printer_brain(
     if _rv is not None and abs_pct > 0:
         _expected_move = _rv * (mins_left ** 0.5)
         _vol_ratio     = _expected_move / abs_pct
-        if _vol_ratio >= 1.20:
+        if _vol_ratio >= 1.50:
             _vol_skip = True
 
     # ── 1. Empirical win probability from backtest table ──────────────────────
@@ -1857,10 +1790,10 @@ def printer_brain(
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
     # ── 8. EV filter ──────────────────────────────────────────────────────────
-    # Base 7% floor + session adjustment: US session (13-20 UTC) lowers bar by
-    # 2% — clearest trends, easiest holds. Asian dead hours (00-06 UTC) raise
-    # bar by 2% — choppy/rangebound conditions need stronger edge to compensate.
-    min_ev = 0.07 + _session_ev_adjustment()
+    # Base 5% floor + session adjustment: US session (13-20 UTC) lowers bar by
+    # 2% to 3% — clearest trends, easiest holds. Asian dead hours (00-06 UTC)
+    # raise bar by 2% to 7% — choppy/rangebound conditions need stronger edge.
+    min_ev = 0.05 + _session_ev_adjustment()
 
     skip_reason = ""
     if _vol_skip:
@@ -1898,7 +1831,7 @@ def printer_brain(
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
         f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
         f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal}",
-        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip ≥1.20)",
+        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip ≥1.50)",
     ]
 
     brain_log.info(
