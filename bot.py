@@ -475,8 +475,9 @@ def init_db() -> None:
         # Migrate existing DB — add new columns if not present
         for col, typedef in (
             ("claude_confidence", "INTEGER"),
-            ("claude_signals", "TEXT"),
-            ("order_id", "TEXT"),
+            ("claude_signals",    "TEXT"),
+            ("order_id",          "TEXT"),
+            ("asset",             "TEXT DEFAULT 'BTC'"),  # multi-asset support
         ):
             try:
                 c.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")
@@ -503,8 +504,8 @@ async def db_write_trade(trade: dict) -> int | None:
                     model_prob, implied_prob, btc_price_at_entry, strike,
                     seconds_left_at_entry, fill_confirmed,
                     exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                    claude_confidence, claude_signals, order_id
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    claude_confidence, claude_signals, order_id, asset
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
                 trade.get("mode"), trade.get("side"), trade.get("contracts"),
@@ -517,7 +518,7 @@ async def db_write_trade(trade: dict) -> int | None:
                 trade.get("outcome", "pending"), trade.get("pnl_dollars"),
                 trade.get("profit_percent"),
                 trade.get("claude_confidence"), trade.get("claude_signals"),
-                trade.get("order_id"),
+                trade.get("order_id"), trade.get("asset", "BTC"),
             ))
             await db.commit()
             return cur.lastrowid
