@@ -29,10 +29,9 @@ import pandas as pd
 # -----------------------------------------------------------------------------
 # Config
 # -----------------------------------------------------------------------------
-CSV_PATH = r'C:\Users\alxnt\Downloads\d5ae29c4-33c6-11f1-b1e7-6dda37cfa7b9\binance_api_BTCUSDT_1m.csv'
-DB_PATH  = os.path.join(_BASE_DIR, "kalshi_bot.db")
-
-_BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
+CSV_PATH  = r'C:\Users\alxnt\Downloads\d5ae29c4-33c6-11f1-b1e7-6dda37cfa7b9\binance_api_BTCUSDT_1m.csv'
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH   = os.path.join(_BASE_DIR, "kalshi_bot.db")
 _SPLIT_CFG_PATH   = os.path.join(_BASE_DIR, "data", "split_config.json")
 _RESULTS_DIR      = os.path.join(_BASE_DIR, "results")
 OOS_REPORT_PATH   = os.path.join(_RESULTS_DIR, "oos_report.json")
@@ -261,7 +260,7 @@ def compute_momentum(recent_closes: list) -> str:
 # Main backtest
 # -----------------------------------------------------------------------------
 
-def load_data(start_year: int = 2020, verbose: bool = True, mode: str = "train"):
+def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True, mode: str = "train"):
     """
     Load and preprocess the CSV once.  Returns (windows, price_lookup).
 
@@ -291,9 +290,10 @@ def load_data(start_year: int = 2020, verbose: bool = True, mode: str = "train")
         print(f"  Loaded {len(df):,} rows in {time.time()-t0:.1f}s")
 
     df["year"] = pd.to_datetime(df["ts"], unit="s").dt.year
-    df = df[df["year"] >= start_year].copy()
+    df = df[(df["year"] >= start_year) & (df["year"] <= end_year)].copy()
     if verbose:
-        print(f"  Filtered to {start_year}+: {len(df):,} rows")
+        yr_range = f"{start_year}-{end_year}" if end_year < 9999 else f"{start_year}+"
+        print(f"  Filtered to {yr_range}: {len(df):,} rows")
 
     df["window_start"]     = (df["ts"] // 900) * 900
     df["minute_in_window"] = (df["ts"] - df["window_start"]) // 60
@@ -346,13 +346,15 @@ def load_data(start_year: int = 2020, verbose: bool = True, mode: str = "train")
 
 
 def run_backtest(
-    start_year: int   = 2020,
-    min_ev: float     = 0.15,
-    trade_amount: float = 5.0,
+    start_year: int     = 2020,
+    end_year: int       = 9999,
+    min_ev: float       = 0.05,
+    trade_amount: float = 25.0,
     watch_minutes: int  = 1,
     seed: int = 42,
     verbose: bool = True,
-    min_confidence: int = 0,
+    min_confidence: int = 65,
+    vol_threshold: float = 1.50,   # skip if expected_move / abs_pct >= this
     # Pre-loaded data (skips CSV load when provided)
     _windows=None,
     _price_lookup=None,
@@ -363,7 +365,7 @@ def run_backtest(
 
     # -- Load data (or use pre-loaded) -----------------------------------------
     if _windows is None or _price_lookup is None:
-        windows, price_lookup = load_data(start_year, verbose=verbose)
+        windows, price_lookup = load_data(start_year, end_year=end_year, verbose=verbose)
     else:
         windows      = _windows
         price_lookup = _price_lookup
@@ -407,6 +409,25 @@ def run_backtest(
             recent = [prices[m] for m in range(max(0, minute - 3), minute + 1)
                       if m in prices]
             mom = compute_momentum(recent)
+
+            # -- Vol gate (mirrors bot.py realized vol gate) ------------------
+            # Use within-window prices as 1-min return series.
+            # Real bot looks back 10 min across window boundaries; here we
+            # use however many minutes are available in this window (≥4 req).
+            abs_pct = abs((btc - strike) / strike)
+            vol_skip = False
+            if abs_pct > 0:
+                vol_prices = [prices[m] for m in range(max(0, minute - 10), minute + 1)
+                              if m in prices]
+                if len(vol_prices) >= 4:
+                    vol_rets = [(vol_prices[i] - vol_prices[i-1]) / vol_prices[i-1]
+                                for i in range(1, len(vol_prices))]
+                    rv = float(np.std(vol_rets))
+                    expected_move = rv * (mins_left ** 0.5)
+                    if expected_move / abs_pct >= vol_threshold:
+                        vol_skip = True
+            if vol_skip:
+                continue
 
             # Simulate AMM prices
             yes_ask, no_ask = simulate_amm_prices(btc, strike, rng)
@@ -1010,6 +1031,108 @@ def _save_oos_report(train_r: dict, oos_r: dict,
 
 
 # -----------------------------------------------------------------------------
+# Period comparison — runs the current live strategy across multiple date ranges
+# -----------------------------------------------------------------------------
+
+def run_period_comparison(trade_amount: float = 25.0) -> None:
+    """
+    Run the current live strategy parameters across three date ranges and
+    print a side-by-side comparison table.
+
+    Live params replicated here:
+      min_ev        = 0.05  (5% neutral floor; 3% US hours in live bot)
+      min_confidence= 65    (config.json confidence_threshold)
+      vol_threshold = 1.50  (skip if expected_move >= 1.5× strike distance)
+      trade_amount  = $25   (config.json trade_amount_dollars)
+    """
+    MIN_EV      = 0.05
+    MIN_CONF    = 65
+    VOL_THRESH  = 1.50
+
+    periods = [
+        ("2020 → 2026  (full history)", 2020, 2026),
+        ("2024 → 2025  (recent bull)",  2024, 2025),
+        ("2025 → 2026  (live regime)",  2025, 2026),
+    ]
+
+    results = []
+    for label, sy, ey in periods:
+        print(f"\n{'-'*60}")
+        print(f"  Period: {label}")
+        print(f"{'-'*60}")
+        windows, price_lookup = load_data(
+            start_year=sy, end_year=ey, verbose=True, mode="full"
+        )
+        if len(windows) == 0:
+            print("  [!] No data for this period — skipping.")
+            continue
+        r = run_backtest(
+            start_year     = sy,
+            end_year       = ey,
+            min_ev         = MIN_EV,
+            trade_amount   = trade_amount,
+            min_confidence = MIN_CONF,
+            vol_threshold  = VOL_THRESH,
+            verbose        = True,
+            _windows       = windows,
+            _price_lookup  = price_lookup,
+        )
+        if r:
+            r["label"] = label
+            results.append(r)
+            print_report(r)
+
+    if not results:
+        return
+
+    # ── Annotate computed fields ─────────────────────────────────────────────
+    for r in results:
+        t = r.get("total_trades", 0)
+        w = r.get("total_windows", 1)
+        r["_trade_rate"]   = t / w * 100 if w else 0
+        r["_pnl_per_trade"] = r.get("total_pnl_dollars", 0) / t if t else 0
+        # Annualised: 96 windows/day × 365 days = 35,040 slots/year
+        r["_ann_pnl"] = r["_pnl_per_trade"] * 35040 if t else 0
+
+    # ── Side-by-side summary ─────────────────────────────────────────────────
+    W = 78
+    print("\n\n" + "=" * W)
+    print("  PERIOD COMPARISON  —  current live strategy params")
+    print(f"  min_ev={MIN_EV:.0%}  |  confidence≥{MIN_CONF}  |  vol_gate≥{VOL_THRESH}  |  ${trade_amount}/trade")
+    print("=" * W)
+
+    col = 22
+
+    def row(label, key, fmt):
+        line = f"  {label:<28}"
+        for r in results:
+            v = r.get(key, 0)
+            line += f"  {fmt.format(v):>{col}}"
+        print(line)
+
+    hdr = f"  {'Metric':<28}"
+    for r in results:
+        lbl = r["label"].split("(")[0].strip()
+        hdr += f"  {lbl:>{col}}"
+    print(hdr)
+    print("-" * W)
+
+    row("Windows",           "total_windows",          "{:,}")
+    row("Trades placed",     "total_trades",           "{:,}")
+    row("Trade rate",        "_trade_rate",             "{:.1f}%")
+    row("Win rate",          "win_rate",               "{:.1%}")
+    row("Total P&L",         "total_pnl_dollars",      "${:,.2f}")
+    row("P&L per trade",     "_pnl_per_trade",         "${:.4f}")
+    row("Ann. P&L (est.)",   "_ann_pnl",               "${:,.0f}")
+    row("Sharpe ratio",      "sharpe_ratio",           "{:.3f}")
+    row("Max drawdown",      "max_drawdown_percent",   "{:.1f}%")
+    row("Max consec losses", "max_consecutive_losses", "{}")
+    row("Avg confidence",    "avg_confidence",         "{:.1f}")
+    print("=" * W)
+    print()
+
+
+# -----------------------------------------------------------------------------
 # Entry point
 # -----------------------------------------------------------------------------
 
@@ -1017,14 +1140,18 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Backtest printer_brain strategy against historical BTC data"
     )
+    parser.add_argument("--periods",       action="store_true",
+                        help="Run period comparison: 2020-26 / 2024-25 / 2025-26 at live params")
     parser.add_argument("--start-year",   type=int,   default=2020,
                         help="First year of data to include (default: 2020)")
-    parser.add_argument("--ev",           type=float, default=0.15,
-                        help="Min EV threshold, e.g. 0.15 = 15%% (default: 0.15)")
-    parser.add_argument("--amount",       type=float, default=5.0,
-                        help="Trade amount in dollars (default: 5)")
-    parser.add_argument("--confidence",   type=int,   default=0,
-                        help="Min confidence %% to enter a trade (default: 0 = no filter)")
+    parser.add_argument("--end-year",     type=int,   default=9999,
+                        help="Last year of data to include (default: all)")
+    parser.add_argument("--ev",           type=float, default=0.05,
+                        help="Min EV threshold, e.g. 0.05 = 5%% (default: 0.05)")
+    parser.add_argument("--amount",       type=float, default=25.0,
+                        help="Trade amount in dollars (default: 25)")
+    parser.add_argument("--confidence",   type=int,   default=65,
+                        help="Min confidence %% to enter a trade (default: 65)")
     parser.add_argument("--watch",        type=int,   default=1,
                         help="Earliest minute to enter a trade (default: 1, try 8 or 9)")
     parser.add_argument("--sweep",        action="store_true",
@@ -1062,6 +1189,10 @@ if __name__ == "__main__":
     parser.add_argument("--st-latency-ms",  type=int,   default=0,
                         help="Latency in ms for miss model (default: 0)")
     args = parser.parse_args()
+
+    if args.periods:
+        run_period_comparison(trade_amount=args.amount)
+        sys.exit(0)
 
     if args.generate_split:
         _ensure_split(args.start_year)
@@ -1117,6 +1248,7 @@ if __name__ == "__main__":
     else:
         result = run_backtest(
             start_year     = args.start_year,
+            end_year       = args.end_year,
             min_ev         = args.ev,
             trade_amount   = args.amount,
             min_confidence = args.confidence,
