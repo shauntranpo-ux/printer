@@ -666,21 +666,11 @@ tr:last-child td { border-bottom: none; }
               <span class="tog-lbl">Live</span>
             </div>
           </div>
-          <div class="s-group">
-            <label>Trade Amount ($)</label>
-            <input type="number" id="s-trade-amount" min="1" step="1">
-            <button class="s-save" onclick="saveSetting('trade_amount_dollars',parseFloat(document.getElementById('s-trade-amount').value),this)">Save</button>
-          </div>
         </div>
       </div>
       <div class="card" style="padding:16px;margin-bottom:12px;">
         <div class="s-section-title">Risk Management</div>
         <div class="settings-grid">
-          <div class="s-group">
-            <label>Confidence Threshold</label>
-            <input type="number" id="s-conf" min="50" max="100" step="1">
-            <button class="s-save" onclick="saveSetting('confidence_threshold',parseFloat(document.getElementById('s-conf').value),this)">Save</button>
-          </div>
           <div class="s-group">
             <label>Daily Loss Limit ($)</label>
             <input type="number" id="s-loss-limit" min="1" step="1">
@@ -1066,8 +1056,6 @@ function renderTradeTable(tbodyId,trades){
 function populateSettings(cfg){
   if(!cfg)return;
   const set=(id,val)=>{const el=document.getElementById(id);if(el)el.value=val;};
-  set('s-trade-amount',cfg.trade_amount_dollars);
-  set('s-conf',cfg.confidence_threshold);
   set('s-loss-limit',cfg.daily_loss_limit_dollars);
   set('s-profit-target',cfg.daily_profit_target_dollars);
   set('s-min-ev',cfg.min_ev_base!=null?cfg.min_ev_base:3);
