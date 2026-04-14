@@ -29,6 +29,17 @@ import websockets
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
+import asset_manager
+from asset_manager import (
+    ASSET_CONFIG,
+    load_bv3_tables,
+    empirical_win_prob  as _am_win_prob,
+    bv3_bucket_indices  as _am_bv3_bucket,
+    get_price           as _am_get_price,
+    price_age_seconds   as _am_price_age,
+    binance_feed_task,
+)
+
 try:
     import anthropic as _anthropic_module
     _ANTHROPIC_AVAILABLE = True
@@ -75,7 +86,9 @@ _DB_FILE     = os.environ.get("BOT_DB_FILE",     "kalshi_bot.db")
 _STATE_FILE  = os.environ.get("BOT_STATE_FILE",  "bot_state.json")
 
 # ─────────────────────────── global state ─────────────────────────────────────
-btc_prices: deque = deque(maxlen=500)   # (unix_ts, price_float)
+# btc_prices is an alias to asset_manager's BTC price deque.
+# All existing code that reads btc_prices (momentum, vol, feed) works unchanged.
+btc_prices: deque = asset_manager._prices["BTC"]
 
 private_key = None    # loaded on startup
 api_key: str = ""
@@ -308,6 +321,7 @@ def read_config() -> dict:
     try:
         with open(_CONFIG_FILE, "r") as fh:
             cfg = json.load(fh)
+        cfg.setdefault("enabled_assets", ["BTC"])  # multi-asset: defaults to BTC-only
         _last_good_config = cfg
         return cfg
     except json.JSONDecodeError as exc:
@@ -711,9 +725,7 @@ async def btc_feed_task() -> None:
 
 def get_btc_price() -> float | None:
     """Return the most recent BTC price, or None if no data received yet."""
-    if not btc_prices:
-        return None
-    return btc_prices[-1][1]
+    return _am_get_price("BTC")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1797,6 +1809,24 @@ def _bv3_bucket_indices(abs_pct: float, mins_left: float) -> tuple[int, int]:
     return bidx, t_low
 
 
+def _win_prob_for_asset(asset: str, abs_pct: float, mins_left: float) -> float:
+    """
+    Per-asset wrapper for win probability lookup.
+    BTC: uses the existing _empirical_win_prob (includes live corrections blending).
+    Others: delegates directly to asset_manager (no correction blending yet).
+    """
+    if asset == "BTC":
+        return _empirical_win_prob(abs_pct, mins_left)
+    return _am_win_prob(asset, abs_pct, mins_left)
+
+
+def _bv3_bucket_indices_for_asset(asset: str, abs_pct: float, mins_left: float) -> tuple[int, int]:
+    """Per-asset wrapper for bucket index lookup."""
+    if asset == "BTC":
+        return _bv3_bucket_indices(abs_pct, mins_left)
+    return _am_bv3_bucket(asset, abs_pct, mins_left)
+
+
 def _load_bv3_corrections() -> None:
     """Load persisted live BV3 corrections from disk on startup."""
     global _bv3_corrections
@@ -1873,6 +1903,7 @@ def printer_brain(
     min_ev_base: float = 3.0,
     vol_gate_thresh: float = 1.80,
     kalshi_fee: float = 0.07,
+    asset: str = "BTC",
 ) -> dict:
     """
     Printer Brain v3 — empirically calibrated from 4.5M rows BTC 1-min data.
@@ -1909,7 +1940,7 @@ def printer_brain(
             _vol_skip = True
 
     # ── 1. Empirical win probability from backtest table ──────────────────────
-    win_prob_raw = _empirical_win_prob(abs_pct, mins_left)
+    win_prob_raw = _win_prob_for_asset(asset, abs_pct, mins_left)
 
     # ── 2. Momentum adjustment (empirical: confirms avg 87% vs opposes 76%) ──────
     # Flat adjustment — no strength multiplier to prevent direction flips.
@@ -3280,8 +3311,9 @@ async def main_loop() -> None:
                                            last_confidence_breakdown, last_action, last_skip_reason)
                     await asyncio.sleep(10)
                     continue
-                if btc_prices and (time.time() - btc_prices[-1][0]) > 60:
-                    age = int(time.time() - btc_prices[-1][0])
+                _btc_age = _am_price_age("BTC")
+                if _btc_age is not None and _btc_age > 60:
+                    age = int(_btc_age)
                     log.warning(f"BTC price stale ({age}s old) — skipping cycle.")
                     await write_state_file(config, current_market, current_phase, 0,
                                            btc_price, last_confidence_score,
@@ -3643,19 +3675,23 @@ async def main() -> None:
     async with aiohttp.ClientSession() as verify_session:
         await verify_kalshi_connection(verify_session)
 
-    # Start the BTC WebSocket feed as a background task
-    asyncio.create_task(btc_feed_task())
+    # Load BV3 tables for all assets (full tables for live trading)
+    load_bv3_tables(use_pre2023=False)
 
-    # Wait for the first BTC price — retry indefinitely so a transient network
-    # hiccup on startup doesn't kill the process and burn a Railway restart credit.
-    log.info("Waiting for BTC price feed...")
+    # Start Binance multi-asset price feed
+    _startup_config = read_config()
+    _enabled = _startup_config.get("enabled_assets", ["BTC"])
+    asyncio.create_task(binance_feed_task(_enabled))
+
+    # Wait for the first BTC price
+    log.info(f"Waiting for price feeds ({_enabled})...")
     waited = 0
     while get_btc_price() is None:
         await asyncio.sleep(1)
         waited += 1
         if waited % 30 == 0:
             log.warning(f"Still waiting for BTC price feed ({waited}s elapsed)...")
-    log.info(f"BTC feed ready after {waited}s. Current price: ${get_btc_price():,.2f}")
+    log.info(f"Price feed ready after {waited}s. BTC: ${get_btc_price():,.2f}")
     _startup_cfg = read_config()
     await send_telegram(f"🤖 <b>Printer bot started</b>\nBTC: ${get_btc_price():,.2f}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
 
