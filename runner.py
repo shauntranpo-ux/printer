@@ -16,12 +16,34 @@ import signal
 import subprocess
 import sys
 import time
+import urllib.request
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_STRATEGIES_FILE = os.path.join(BASE_DIR, "strategies.json")
-RESTART_BACKOFF = 10   # seconds to wait before restarting a crashed process
-POLL_INTERVAL   = 5    # seconds between health-check loops
+RESTART_BACKOFF      = 10   # seconds to wait before restarting a crashed process
+POLL_INTERVAL        = 5    # seconds between health-check loops
+MAX_CRASHES_PER_HOUR = 5    # halt permanently if a strategy crashes this many times in 1 hour
+
+
+def _send_telegram_sync(text: str) -> None:
+    """Fire-and-forget synchronous Telegram notification from the runner process."""
+    token   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID",   "")
+    if not token or not chat_id:
+        return
+    try:
+        payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{token}/sendMessage",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+    except Exception as exc:
+        print(f"[runner] Telegram error: {exc}")
 
 
 # Each entry: {"name": str, "strategy": dict, "proc": Popen, "last_crash": float}
@@ -98,7 +120,14 @@ def main():
 
     for s in strategies:
         proc = _start_bot(s)
-        _procs.append({"name": s["name"], "strategy": s, "proc": proc, "last_crash": 0.0})
+        _procs.append({
+            "name":        s["name"],
+            "strategy":    s,
+            "proc":        proc,
+            "last_crash":  0.0,
+            "crash_times": [],   # timestamps of each crash in the last hour
+            "halted":      False,
+        })
         print(f"[runner]   '{s['name']}' PID={proc.pid}  state={s['state_file']}")
 
     print(f"[runner] {len(strategies)} strategy instance(s) running. Ctrl+C to stop.\n")
@@ -109,6 +138,10 @@ def main():
             now = time.time()
 
             for entry in _procs:
+                # Skip permanently halted strategies — they need a manual restart
+                if entry.get("halted"):
+                    continue
+
                 proc = entry["proc"]
                 if proc.poll() is None:
                     continue
@@ -117,17 +150,42 @@ def main():
                 since_crash = now - entry["last_crash"]
 
                 if entry["last_crash"] == 0.0:
-                    print(f"[runner] '{entry['name']}' exited ({code}). "
+                    print(f"[runner] '{entry['name']}' exited (code={code}). "
                           f"Waiting {RESTART_BACKOFF}s before restart ...")
                     entry["last_crash"] = now
+                    # Record crash timestamp for circuit breaker
+                    entry["crash_times"].append(now)
                 elif since_crash >= RESTART_BACKOFF:
-                    new_proc = _start_bot(entry["strategy"])
-                    entry["proc"]       = new_proc
-                    entry["last_crash"] = 0.0
-                    print(f"[runner] '{entry['name']}' restarted (PID={new_proc.pid}).")
+                    # Circuit breaker: count crashes in the last hour
+                    cutoff = now - 3600
+                    recent = [t for t in entry["crash_times"] if t > cutoff]
+                    entry["crash_times"] = recent  # prune old entries in place
 
-            running = [e["name"] for e in _procs if e["proc"].poll() is None]
-            print(f"[runner] OK | bots running: {running}")
+                    if len(recent) >= MAX_CRASHES_PER_HOUR:
+                        msg = (
+                            f"CRITICAL: '{entry['name']}' crashed {len(recent)}x "
+                            f"in the last hour — halting restarts to prevent account damage."
+                        )
+                        print(f"[runner] {msg}")
+                        _send_telegram_sync(
+                            f"🚨 <b>CRASH LOOP HALTED — {entry['name']}</b>\n"
+                            f"Crashed {len(recent)}× in the last hour.\n"
+                            f"Manual restart required: ssh → python runner.py"
+                        )
+                        entry["halted"] = True
+                    else:
+                        new_proc = _start_bot(entry["strategy"])
+                        entry["proc"]       = new_proc
+                        entry["last_crash"] = 0.0
+                        print(f"[runner] '{entry['name']}' restarted "
+                              f"(PID={new_proc.pid}, crashes_1h={len(recent)}).")
+
+            running = [e["name"] for e in _procs if e["proc"].poll() is None and not e.get("halted")]
+            halted  = [e["name"] for e in _procs if e.get("halted")]
+            status  = f"[runner] OK | running: {running}"
+            if halted:
+                status += f" | HALTED (crash loop): {halted}"
+            print(status)
         except Exception as exc:
             print(f"[runner] Loop error (continuing): {exc}")
 

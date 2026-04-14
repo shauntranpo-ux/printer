@@ -222,8 +222,10 @@ def brain_decide(
     prob_yes = win_prob if above else (1.0 - win_prob)
     prob_no  = 1.0 - prob_yes
 
-    yes_ev = prob_yes - (yes_ask / 100)
-    no_ev  = prob_no  - (no_ask  / 100)
+    # Kalshi platform fee: ~7c per $1 contract (matches bot.py KALSHI_FEE constant)
+    KALSHI_FEE = 0.07
+    yes_ev = prob_yes - (yes_ask / 100) - KALSHI_FEE
+    no_ev  = prob_no  - (no_ask  / 100) - KALSHI_FEE
 
     if bullish_wr < 0.35: yes_ev -= 0.04
     if bearish_wr < 0.35: no_ev  -= 0.04
@@ -345,6 +347,19 @@ def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True
     return windows, price_lookup
 
 
+# Read fee from config.json if present; fall back to 7 (matches bot.py default).
+# To change the fee, edit kalshi_fee_per_contract_cents in config.json.
+def _load_fee_from_config() -> int:
+    _cfg_path = os.path.join(_BASE_DIR, "config.json")
+    try:
+        with open(_cfg_path) as _fh:
+            return int(json.load(_fh).get("kalshi_fee_per_contract_cents", 7))
+    except Exception:
+        return 7
+
+KALSHI_FEE_CENTS: int = _load_fee_from_config()
+
+
 def run_backtest(
     start_year: int     = 2020,
     end_year: int       = 9999,
@@ -355,6 +370,7 @@ def run_backtest(
     verbose: bool = True,
     min_confidence: int = 65,
     vol_threshold: float = 1.50,   # skip if expected_move / abs_pct >= this
+    kelly_cap: float    = 0.25,    # quarter-Kelly cap; matches bot.py default
     # Pre-loaded data (skips CSV load when provided)
     _windows=None,
     _price_lookup=None,
@@ -411,17 +427,42 @@ def run_backtest(
             mom = compute_momentum(recent)
 
             # -- Vol gate (mirrors bot.py realized vol gate) ------------------
-            # Use within-window prices as 1-min return series.
-            # Real bot looks back 10 min across window boundaries; here we
-            # use however many minutes are available in this window (≥4 req).
+            # FIX: Original code used only prices from minute 0..`minute`
+            # within the current window. At minute 2, that's 3 data points —
+            # too few for a stable std estimate and ignores prior-window vol.
+            #
+            # The live bot uses btc_prices deque (500 entries), always giving
+            # 10+ minutes of lookback across window boundaries. The mismatch
+            # made the backtest vol gate inconsistent with live behavior,
+            # slightly inflating simulated results.
+            #
+            # Fix: collect the last 10 minutes crossing the 15-min boundary.
+            # If prior-window data is unavailable, skip the vol gate for that
+            # evaluation rather than using a ≤3-point estimate.
             abs_pct = abs((btc - strike) / strike)
             vol_skip = False
             if abs_pct > 0:
-                vol_prices = [prices[m] for m in range(max(0, minute - 10), minute + 1)
-                              if m in prices]
+                within_prices = [prices[m] for m in range(0, minute + 1) if m in prices]
+
+                if len(within_prices) >= 10:
+                    vol_prices = within_prices[-10:]
+                else:
+                    prev_ws = window_start - 900
+                    prev_dict = price_lookup.get(prev_ws, {})
+                    if prev_dict:
+                        need = 10 - len(within_prices)
+                        prev_tail = [prev_dict[m]
+                                     for m in sorted(prev_dict.keys())
+                                     if m >= 15 - need]
+                        vol_prices = prev_tail + within_prices
+                    else:
+                        # No prior-window data — skip vol gate rather than
+                        # using an unreliable sparse estimate.
+                        vol_prices = []
+
                 if len(vol_prices) >= 4:
-                    vol_rets = [(vol_prices[i] - vol_prices[i-1]) / vol_prices[i-1]
-                                for i in range(1, len(vol_prices))]
+                    vol_rets = [(vol_prices[j] - vol_prices[j-1]) / vol_prices[j-1]
+                                for j in range(1, len(vol_prices))]
                     rv = float(np.std(vol_rets))
                     expected_move = rv * (mins_left ** 0.5)
                     if expected_move / abs_pct >= vol_threshold:
@@ -449,7 +490,15 @@ def run_backtest(
             confidence = brain["confidence"]
             win_prob   = brain["win_prob"]
             ev         = brain["ev"]
-            contracts   = max(1, int(trade_amount * 100 / entry_c))
+
+            # Kelly sizing (matches bot.py calculate_contracts with kelly_cap)
+            _b = (100 - entry_c) / entry_c
+            _kf = max(0.0, (win_prob * _b - (1.0 - win_prob)) / _b) if _b > 0 else 0.0
+            _kf = min(_kf, kelly_cap)
+            _typical_kelly = 0.2125
+            _mult = max(0.5, min(3.0, _kf / _typical_kelly)) if _typical_kelly > 0 else 1.0
+            contracts = max(1, int(trade_amount * _mult * 100 / entry_c))
+
             exit_reason = "expiry"
 
             # -- Expiry outcome - hold to settlement, no stop loss -------------
@@ -458,7 +507,10 @@ def run_backtest(
                   (side == "no"  and not above_at_close)
             exit_price = 100.0 if won else 0.0
 
-            pnl        = (exit_price - entry_c) * contracts / 100.0
+            # Fee model: $0.07/contract deducted from every trade (conservative —
+            # Kalshi only charges on wins, but flat deduction simplifies accounting).
+            fee_total  = contracts * KALSHI_FEE_CENTS / 100.0
+            pnl        = (exit_price - entry_c) * contracts / 100.0 - fee_total
             profit_pct = (exit_price - entry_c) / entry_c * 100.0 if entry_c else 0.0
 
             trades.append({
@@ -470,6 +522,7 @@ def run_backtest(
                 "exit_reason":  exit_reason,
                 "outcome":      "win" if won else "loss",
                 "pnl":          round(pnl,        4),
+                "fee":          round(fee_total,  4),
                 "profit_pct":   round(profit_pct, 2),
                 "confidence":   confidence,
                 "win_prob":     round(win_prob,   4),
@@ -500,6 +553,24 @@ def run_backtest(
     pnls       = [t["pnl"] for t in trades]
     total_pnl  = sum(pnls)
 
+    # Fee totals (for reality-check no-fee comparison)
+    total_fees         = sum(t["fee"] for t in trades)
+    total_pnl_no_fees  = round(total_pnl + total_fees, 2)
+
+    # Daily Sharpe: group trade PnL by calendar day, then scale by √252
+    _daily_pnl: dict[int, float] = {}
+    for _t in trades:
+        _day = _t["window_start"] // 86400
+        _daily_pnl[_day] = _daily_pnl.get(_day, 0.0) + _t["pnl"]
+    _dpnls = list(_daily_pnl.values())
+    if len(_dpnls) > 1:
+        _mu_d  = sum(_dpnls) / len(_dpnls)
+        _var_d = sum((p - _mu_d) ** 2 for p in _dpnls) / (len(_dpnls) - 1)
+        _sd_d  = math.sqrt(_var_d)
+        sharpe_daily = round((_mu_d / _sd_d * math.sqrt(252)) if _sd_d > 0 else 0.0, 3)
+    else:
+        sharpe_daily = 0.0
+
     # Max drawdown (on cumulative PnL curve)
     cum, peak, max_dd = 0.0, 0.0, 0.0
     for p in pnls:
@@ -511,14 +582,19 @@ def run_backtest(
             if dd > max_dd:
                 max_dd = dd
 
-    # Annualised Sharpe (each trade is ~15 min; ~35,040 slots/year)
+    # Sharpe ratios
     if len(pnls) > 1:
         mu  = sum(pnls) / len(pnls)
         var = sum((p - mu) ** 2 for p in pnls) / (len(pnls) - 1)
         sd  = math.sqrt(var)
+        # Per-trade Sharpe: no annualization multiplier — honest baseline
+        sharpe_per_trade = (mu / sd) if sd > 0 else 0.0
+        # Annualised Sharpe: inflated by √35040 (each 15-min slot/year).
+        # WARNING: this number is misleading — use sharpe_per_trade for realistic assessment.
         sharpe = (mu / sd * math.sqrt(35040)) if sd > 0 else 0.0
     else:
         sharpe = 0.0
+        sharpe_per_trade = 0.0
 
     # Max consecutive losses
     max_cl, cur_cl = 0, 0
@@ -570,7 +646,12 @@ def run_backtest(
         "win_rate":               round(wr,         4),
         "total_pnl_dollars":      round(total_pnl,  2),
         "max_drawdown_percent":   round(max_dd,     2),
-        "sharpe_ratio":           round(sharpe,     3),
+        "sharpe_ratio":           round(sharpe,          3),
+        "sharpe_per_trade":       round(sharpe_per_trade, 4),
+        "sharpe_daily":           sharpe_daily,
+        "total_fees":             round(total_fees,       2),
+        "total_pnl_no_fees":      total_pnl_no_fees,
+        "fee_model":              f"${KALSHI_FEE_CENTS / 100:.2f}/contract included",
         "max_consecutive_losses": max_cl,
         "avg_confidence":         round(avg_conf,       1),
         "avg_profit_percent":     round(avg_profit_pct, 2),
@@ -625,10 +706,14 @@ def write_to_db(r: dict, start_year: int) -> None:
 def print_report(r: dict) -> None:
     if not r:
         return
-    W = 60
+    W = 64
     print("\n" + "=" * W)
     print(f"  BACKTEST RESULTS  -  {r['start_year']}+  |  min_ev={r['min_ev']:.0%}")
     print("=" * W)
+    print(f"  Fee model         : {r.get('fee_model', '$0.07/contract included')}")
+    print(f"  ⚠  WARNING: BV3 table built on 2017-2026 data — OOS period NOT clean.")
+    print(f"     See BV3_DATA_LEAKAGE_WARNING.md for details.")
+    print("-" * W)
     print(f"  Windows simulated : {r['total_windows']:>10,}")
     print(f"  Trades placed     : {r['total_trades']:>10,}  "
           f"({r['total_trades']/r['total_windows']*100:.1f}% of windows)")
@@ -641,7 +726,15 @@ def print_report(r: dict) -> None:
     print(f"  Avg confidence    : {r['avg_confidence']:>10.1f}")
     print("-" * W)
     print(f"  Max drawdown      : {r['max_drawdown_percent']:>9.1f}%")
-    print(f"  Sharpe ratio      : {r['sharpe_ratio']:>10.3f}")
+    spt = r.get("sharpe_per_trade", 0.0)
+    print(f"  Sharpe (annlzd)   : {r['sharpe_ratio']:>10.3f}  ← inflated by √35040")
+    print(f"  Sharpe (per-trade): {spt:>10.4f}  ← use this for honest assessment")
+    print(f"  NOTE: Per-slot annualized Sharpe is inflated by √35040 multiplier.")
+    print(f"        Use per-trade or daily Sharpe for realistic assessment.")
+    if spt > 3.0:
+        print(f"  ⚠  Per-trade Sharpe > 3.0 is suspicious.")
+        print(f"     Verify that simulated prices match real market prices before")
+        print(f"     trusting this number. Run price_validator.py to check.")
     print(f"  Max consec losses : {r['max_consecutive_losses']:>10}")
     print("-" * W)
     print(f"  Exit at expiry    : {r['exit_dist'].get('expiry',0):>6,}  WR={r['expiry_win_rate']*100:.1f}%")
@@ -651,6 +744,123 @@ def print_report(r: dict) -> None:
         bar = "#" * (n * 30 // max(r["minute_dist"].values()))
         print(f"    min {m:2d}: {n:6,}  {bar}")
     print("=" * W)
+
+
+# -----------------------------------------------------------------------------
+# Reality check — always-on block, cannot be disabled
+# -----------------------------------------------------------------------------
+
+def print_reality_check(r: dict) -> None:
+    """
+    Print a clearly labeled REALITY CHECK block at the end of every backtest run.
+    Cannot be disabled. Always prints.
+    """
+    if not r:
+        return
+
+    BORDER = "═" * 51
+
+    # Pull metrics from result
+    total      = r.get("total_trades", 0)
+    spt        = r.get("sharpe_per_trade", 0.0)
+    sdaily     = r.get("sharpe_daily",     0.0)
+    sann       = r.get("sharpe_ratio",     0.0)
+    wr         = r.get("win_rate",         0.0) * 100
+    pnl        = r.get("total_pnl_dollars",  0.0)
+    pnl_nf     = r.get("total_pnl_no_fees",  pnl)
+    fees       = r.get("total_fees",         0.0)
+    avg_pnl    = pnl    / total if total else 0.0
+    avg_pnl_nf = pnl_nf / total if total else 0.0
+    avg_fee    = fees   / total if total else 0.0
+
+    # Price validation CSV
+    pv_csv = os.path.join(_BASE_DIR, "price_validation_log.csv")
+    pv_samples      = 0
+    price_validated = False
+    if os.path.isfile(pv_csv):
+        try:
+            with open(pv_csv) as _fh:
+                pv_samples = max(0, len(_fh.readlines()) - 1)
+            price_validated = pv_samples >= 200
+        except Exception:
+            pass
+
+    # Walk-forward param variation (read wfv_report.json if present)
+    wfv_report_path = os.path.join(_BASE_DIR, "results", "wfv_report.json")
+    wfv_varied = None  # None = not run yet
+    if os.path.isfile(wfv_report_path):
+        try:
+            with open(wfv_report_path) as _wf:
+                _wfv = json.load(_wf)
+            _all_params = [w.get("best_params") for w in _wfv.get("windows", [])
+                           if w.get("best_params")]
+            if len(_all_params) >= 2:
+                _u_ev   = len({p.get("min_ev")          for p in _all_params})
+                _u_conf = len({p.get("min_confidence")  for p in _all_params})
+                _u_kel  = len({p.get("kelly_cap", 0.25) for p in _all_params})
+                wfv_varied = (_u_ev > 1 or _u_conf > 1 or _u_kel > 1)
+        except Exception:
+            pass
+
+    # Print the block
+    print("\n" + BORDER)
+    print("REALITY CHECK — READ THIS BEFORE TRUSTING RESULTS")
+    print(BORDER)
+    print()
+    print(f"Sharpe (per-trade):            {spt:.2f}")
+    print(f"Sharpe (daily, \u221a252):           {sdaily:.2f}")
+    print(f"Sharpe (per-slot, \u221a35040):      {sann:.2f}  \u2190 inflated, do not use for decisions")
+    print()
+    print(f"Win rate:                      {wr:.1f}%")
+    print(f"Avg PnL per trade (with fees): ${avg_pnl:.2f}")
+    print(f"Avg PnL per trade (no fees):   ${avg_pnl_nf:.2f}  \u2190 this is what old backtest reported")
+    print(f"Fee drag per trade:            -${avg_fee:.2f}")
+    print()
+    print(f"Total trades:                  {total:,}")
+    print(f"Total PnL (with fees):        ${pnl:.2f}")
+    print(f"Total PnL (no fees):          ${pnl_nf:.2f}  \u2190 old backtest reported this")
+    print()
+    print(f"BV3 data leakage:             \u26a0\ufe0f YES \u2014 OOS metrics unreliable")
+    if price_validated:
+        print(f"Price model validated:         \u2705 YES \u2014 {pv_samples} samples in price_validation_log.csv")
+    else:
+        _s = f"{pv_samples}/200 samples" if pv_samples else "0 samples"
+        print(f"Price model validated:         \u274c NO \u2014 {_s}, run price_validator.py for 200+ trades")
+    if wfv_varied is None:
+        print(f"Walk-forward param variation:  NOT RUN \u2014 use --walk-forward to check")
+    elif wfv_varied:
+        print(f"Walk-forward param variation:  YES \u2014 params changed across windows")
+    else:
+        print(f"Walk-forward param variation:  NO \u2014 params converged (edge may come from BV3 only)")
+    print()
+
+    # Verdicts — all matching rules print, in priority order
+    verdicts: list[str] = []
+    if not price_validated:
+        verdicts.append(
+            "UNRELIABLE \u2014 backtest uses simulated prices not compared to real Kalshi "
+            "prices. Run paper mode with price_validator.py before trusting any results."
+        )
+    if spt > 3.0:
+        verdicts.append(
+            "SUSPICIOUS \u2014 per-trade Sharpe above 3.0 suggests simulated prices are "
+            "too favorable."
+        )
+    if avg_pnl < 0.0:
+        verdicts.append(
+            "NEGATIVE EV \u2014 strategy loses money after fees with current parameters."
+        )
+    elif avg_pnl < 1.0:
+        verdicts.append(
+            "MARGINAL \u2014 edge is small after fees. Sensitive to price model accuracy."
+        )
+
+    if verdicts:
+        for v in verdicts:
+            print(f"VERDICT: {v}")
+    else:
+        print("VERDICT: No major flags. Note BV3 leakage means OOS metrics are still unreliable.")
+    print(BORDER)
 
 
 # -----------------------------------------------------------------------------
@@ -702,14 +912,16 @@ def run_sweep(start_year: int, trade_amount: float) -> None:
 MONTE_CARLO_OUT = os.path.join(_BASE_DIR, "monte_carlo_results.json")
 
 PARAM_SPACE = {
-    "min_ev":         [0.08, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30],
-    "min_confidence": [50, 55, 60, 65, 70, 75, 80],
+    "min_ev":         [0.03, 0.05, 0.08, 0.10, 0.12, 0.15],
+    "min_confidence": [60, 65, 70, 75, 80, 85],
+    "kelly_cap":      [0.10, 0.15, 0.20, 0.25],
 }
 
-# Pre-computed pool of all unique combinations
+# Pre-computed pool of all unique combinations (6 × 6 × 4 = 144)
 _ALL_COMBOS = list(itertools.product(
     PARAM_SPACE["min_ev"],
     PARAM_SPACE["min_confidence"],
+    PARAM_SPACE["kelly_cap"],
 ))
 
 
@@ -751,12 +963,13 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
     combos_to_run = combo_pool[:effective_n]
 
     t0 = time.time()
-    for i, (min_ev, min_confidence) in enumerate(combos_to_run, 1):
+    for i, (min_ev, min_confidence, kelly_cap) in enumerate(combos_to_run, 1):
 
         r = run_backtest(
             min_ev         = min_ev,
             trade_amount   = trade_amount,
             min_confidence = min_confidence,
+            kelly_cap      = kelly_cap,
             verbose        = False,
             _windows       = windows,
             _price_lookup  = price_lookup,
@@ -768,6 +981,7 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
         r["params"] = {
             "min_ev":         min_ev,
             "min_confidence": min_confidence,
+            "kelly_cap":      kelly_cap,
         }
         all_results.append(r)
 
@@ -835,7 +1049,7 @@ def _print_mc_summary(top20: list) -> None:
     print("-" * W)
     for rank, r in enumerate(top20, 1):
         p = r["params"]
-        param_str = f"ev={p['min_ev']:.0%} conf={p['min_confidence']}"
+        param_str = f"ev={p['min_ev']:.0%} conf={p['min_confidence']} kelly={p.get('kelly_cap', 0.25):.2f}"
         print(f"  {rank:>4}  {r['sharpe_ratio']:>7.3f}  "
               f"{r['win_rate']*100:>7.1f}%  "
               f"${r['total_pnl_dollars']:>7.2f}  "
@@ -846,6 +1060,7 @@ def _print_mc_summary(top20: list) -> None:
     bp = best["params"]
     print(f"    min_ev          = {bp['min_ev']:.0%}")
     print(f"    min_confidence  = {bp['min_confidence']}")
+    print(f"    kelly_cap       = {bp.get('kelly_cap', 0.25):.2f}")
     print(f"\n  Expected win rate     : {best['win_rate']*100:.1f}%")
     ann_return = (best["total_pnl_dollars"] / (best["total_trades"] * 5.0) *
                   35_040 * 5.0) if best["total_trades"] else 0
@@ -883,7 +1098,7 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
     print("  OOS EVALUATION")
     print("=" * 70)
     src = "custom" if (custom_ev is not None or custom_confidence is not None) else "MC best"
-    print(f"  Params ({src})  :  ev={params['min_ev']:.0%}  conf={params['min_confidence']}")
+    print(f"  Params ({src})  :  ev={params['min_ev']:.0%}  conf={params['min_confidence']}  kelly={params.get('kelly_cap', 0.25):.2f}")
     print(f"  Train period :  {split_cfg['train_start_date']} -> "
           f"{split_cfg['train_end_date']}  ({split_cfg['train_windows']:,} windows)")
     print(f"  OOS period   :  {split_cfg['oos_start_date']} -> "
@@ -896,11 +1111,14 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
     train_w, train_pl = _filter_to(all_windows, all_pl, "train", split_cfg)
     oos_w,   oos_pl   = _filter_to(all_windows, all_pl, "oos",   split_cfg)
 
+    kelly_cap = params.get("kelly_cap", 0.25)
+
     print(f"\n  Running in-sample backtest  ({len(train_w):,} windows) ...")
     train_r = run_backtest(
         min_ev         = params["min_ev"],
         trade_amount   = trade_amount,
         min_confidence = params["min_confidence"],
+        kelly_cap      = kelly_cap,
         watch_minutes  = custom_watch,
         verbose        = False,
         _windows       = train_w,
@@ -912,6 +1130,7 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
         min_ev         = params["min_ev"],
         trade_amount   = trade_amount,
         min_confidence = params["min_confidence"],
+        kelly_cap      = kelly_cap,
         watch_minutes  = custom_watch,
         verbose        = False,
         _windows       = oos_w,
@@ -1081,6 +1300,7 @@ def run_period_comparison(trade_amount: float = 25.0) -> None:
             r["label"] = label
             results.append(r)
             print_report(r)
+            print_reality_check(r)
 
     if not results:
         return
@@ -1256,6 +1476,7 @@ if __name__ == "__main__":
         )
         if result:
             print_report(result)
+            print_reality_check(result)
             if not args.no_db:
                 write_to_db(result, args.start_year)
                 print(f"\nResults saved to {DB_PATH} -> stress_test_results table.")

@@ -1,47 +1,47 @@
 {
-  "generated_at": "2026-04-09T04:32:40.706553+00:00",
+  "generated_at": "2026-04-13T07:17:49.600744+00:00",
   "params": {
-    "min_ev": 0.2,
-    "min_confidence": 80
+    "min_ev": 0.15,
+    "min_confidence": 72
   },
   "split": {
-    "generated_at": "2026-04-01T03:14:09.246394+00:00",
-    "start_year": 2020,
+    "generated_at": "2026-04-13T05:52:18.149531+00:00",
+    "start_year": 2017,
     "train_ratio": 0.7,
-    "total_windows": 218805,
-    "train_windows": 153163,
-    "oos_windows": 65642,
-    "train_start_ts": 1577836800,
-    "train_end_ts": 1715682600,
-    "oos_start_ts": 1715683500,
-    "oos_end_ts": 1774828800,
-    "train_start_date": "2020-01-01",
-    "train_end_date": "2024-05-14",
-    "oos_start_date": "2024-05-14",
-    "oos_end_date": "2026-03-30"
+    "total_windows": 302492,
+    "train_windows": 211744,
+    "oos_windows": 90748,
+    "train_start_ts": 1502942400,
+    "train_end_ts": 1694019600,
+    "oos_start_ts": 1694020500,
+    "oos_end_ts": 1775692800,
+    "train_start_date": "2017-08-17",
+    "train_end_date": "2023-09-06",
+    "oos_start_date": "2023-09-06",
+    "oos_end_date": "2026-04-09"
   },
   "in_sample": {
-    "period": "2020-01-01 \u2192 2024-05-14",
-    "total_trades": 84116,
-    "win_rate": 0.941,
-    "total_pnl_dollars": 147770.47,
-    "pnl_per_trade": 1.756746,
-    "sharpe_ratio": 199.505,
-    "max_drawdown_pct": 2.89,
-    "avg_confidence": 92.1,
-    "max_consec_losses": 4
+    "period": "2017-08-17 -> 2023-09-06",
+    "total_trades": 124985,
+    "win_rate": 0.8509,
+    "total_pnl_dollars": 1035250.43,
+    "pnl_per_trade": 8.282997,
+    "sharpe_ratio": 105.551,
+    "max_drawdown_pct": 52.76,
+    "avg_confidence": 82.8,
+    "max_consec_losses": 8
   },
   "oos": {
-    "period": "2024-05-14 \u2192 2026-03-30",
-    "total_trades": 34166,
-    "win_rate": 0.9607,
-    "total_pnl_dollars": 65470.3,
-    "pnl_per_trade": 1.916241,
-    "sharpe_ratio": 260.361,
-    "max_drawdown_pct": 23.21,
-    "avg_confidence": 91.8,
-    "max_consec_losses": 4
+    "period": "2023-09-06 -> 2026-04-09",
+    "total_trades": 88992,
+    "win_rate": 0.8685,
+    "total_pnl_dollars": 878001.01,
+    "pnl_per_trade": 9.866067,
+    "sharpe_ratio": 128.441,
+    "max_drawdown_pct": 60.7,
+    "avg_confidence": 81.1,
+    "max_consec_losses": 7
   },
-  "generalisation_efficiency": 1.0908,
+  "generalisation_efficiency": 1.1911,
   "verdict": "PASS"
 }

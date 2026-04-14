@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import sqlite3
+import tempfile
 import time
 import urllib.request
 import urllib.parse
@@ -118,9 +119,26 @@ def read_config() -> dict:
     return _safe_json_read("config.json", _CONFIG_DEFAULT.copy())
 
 
+def _atomic_write_json(data: dict, path: str) -> None:
+    """Atomic JSON write: write to temp file then os.replace."""
+    dir_ = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=dir_, suffix=".json.tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
 def write_config(data: dict) -> None:
-    with open("config.json", "w", encoding="utf-8") as fh:
-        json.dump(data, fh, indent=2)
+    _atomic_write_json(data, "config.json")
 
 
 def read_state() -> dict:

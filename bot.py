@@ -16,10 +16,13 @@ import logging
 import os
 import re
 import sys
+import tempfile
 import time
 from base64 import b64encode
 from collections import deque
 from datetime import datetime, timezone, timedelta
+
+import aiosqlite
 
 import aiohttp
 import websockets
@@ -55,6 +58,11 @@ COINBASE_WS = "wss://advanced-trade-ws.coinbase.com"
 API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
 MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 30   # wait 30s into each 15-min session before evaluating
+
+# Kalshi platform fee: ~7c per $1 contract, subtracted from gross EV.
+# Without this, every EV calculation was 7% optimistic — trades that looked
+# +5% edge were actually -2% after fees.
+KALSHI_FEE = 0.07
 
 
 # ── Telegram notifications (optional — set env vars to enable) ────────────────
@@ -94,6 +102,13 @@ limit_triggered: bool = False
 limit_reason: str = ""
 pre_limit_mode: str | None = None
 daily_reset_date = None
+
+# Price-validator CSV — counts rows collected and running totals for summary
+_PRICE_VAL_CSV = "price_validation_log.csv"
+_price_val_count: int = 0
+_price_val_sim_sum: float = 0.0
+_price_val_real_sum: float = 0.0
+_price_val_gap_sum: float = 0.0
 
 
 # Last evaluation info (written to state file)
@@ -143,21 +158,171 @@ _brain_cal: dict = {
     "bearish_wr":        0.5,
 }
 
+# Config cache — fallback if config.json is corrupt mid-write
+_last_good_config: dict | None = None
+
+# Consecutive-loss circuit breaker
+_consecutive_losses: int = 0
+_consecutive_loss_pause_until: float | None = None  # unix ts; None = not paused
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Atomic JSON write utility
+# ══════════════════════════════════════════════════════════════════════════════
+
+def atomic_write_json(data: dict, path: str) -> None:
+    """
+    Write JSON atomically: serialize to a sibling temp file, fsync, then
+    os.replace() which is atomic on POSIX and near-atomic on Windows (NTFS
+    guarantees no partial-read exposure because replace is a rename).
+    Cleans up the temp file on any failure so no orphaned .tmp files linger.
+    """
+    dir_ = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=dir_, suffix=".json.tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Price-validator CSV logger
+# ══════════════════════════════════════════════════════════════════════════════
+
+import csv as _csv_module  # import here to keep top-level imports clean
+
+
+def _simulated_amm_midpoint(btc_price: float, strike: float) -> tuple[float, float]:
+    """
+    Deterministic midpoint of simulate_amm_prices() — same distance bands as
+    backtest.py but without random noise, so each call is reproducible.
+    Used to record what the backtest *expects* vs what Kalshi actually quotes.
+    """
+    pct   = (btc_price - strike) / strike
+    ap    = abs(pct) * 100
+    above = pct > 0
+    spread = 4.5  # midpoint of backtest's 3.0–6.0 spread
+
+    if ap < 0.10:
+        yes_ask = 51.5 if above else 48.5
+    elif ap < 0.30:
+        yes_ask = 68.5 if above else 31.5
+    else:
+        yes_ask = 84.5 if above else 15.5
+
+    yes_ask = max(3.0, min(97.0, yes_ask))
+    no_ask  = max(3.0, min(97.0, 100.0 + spread - yes_ask))
+    return yes_ask, no_ask
+
+
+def _log_price_validation(
+    ts: str,
+    ticker: str,
+    btc_price: float,
+    strike: float,
+    sim_yes: float,
+    sim_no: float,
+    real_yes: float | None,
+    real_no: float | None,
+    mins_remaining: float = 0.0,
+) -> None:
+    """
+    Append one row to price_validation_log.csv and print a running summary
+    every 50 entries.  Logs null for real prices if the API call failed.
+
+    Columns: ts, ticker, btc_price, strike, abs_pct, mins_remaining,
+             sim_yes_ask, sim_no_ask, real_yes_ask, real_no_ask, price_gap_cents
+    """
+    global _price_val_count, _price_val_sim_sum, _price_val_real_sum, _price_val_gap_sum
+
+    gap     = (real_yes - sim_yes) if (real_yes is not None) else None
+    abs_pct = round(abs((btc_price - strike) / strike) * 100, 4) if strike else 0.0
+
+    file_exists = os.path.isfile(_PRICE_VAL_CSV)
+    try:
+        with open(_PRICE_VAL_CSV, "a", newline="", encoding="utf-8") as fh:
+            writer = _csv_module.writer(fh)
+            if not file_exists:
+                writer.writerow([
+                    "ts", "ticker", "btc_price", "strike",
+                    "abs_pct", "mins_remaining",
+                    "sim_yes_ask", "sim_no_ask",
+                    "real_yes_ask", "real_no_ask",
+                    "price_gap_cents",
+                ])
+            writer.writerow([
+                ts, ticker, round(btc_price, 2), round(strike, 2),
+                abs_pct, round(mins_remaining, 2),
+                round(sim_yes, 1), round(sim_no, 1),
+                round(real_yes, 1) if real_yes is not None else "null",
+                round(real_no,  1) if real_no  is not None else "null",
+                round(gap, 1) if gap is not None else "null",
+            ])
+    except Exception as exc:
+        log.warning(f"Price validation CSV write error: {exc}")
+        return
+
+    _price_val_count += 1
+    _price_val_sim_sum += sim_yes
+    if real_yes is not None:
+        _price_val_real_sum += real_yes
+        _price_val_gap_sum  += gap
+
+    if _price_val_count % 50 == 0:
+        n        = _price_val_count
+        avg_sim  = _price_val_sim_sum / n
+        avg_real = _price_val_real_sum / n if n > 0 else 0.0
+        avg_gap  = _price_val_gap_sum  / n if n > 0 else 0.0
+        verdict  = ("✓ within 3c" if abs(avg_gap) < 3
+                    else "⚠ 3-7c gap — edge marginal" if abs(avg_gap) < 7
+                    else "✗ >7c gap — strategy likely unprofitable")
+        log.info(
+            f"Price validation: {n} samples collected. "
+            f"Avg price gap: {avg_gap:+.1f}c. "
+            f"Simulated avg: {avg_sim:.1f}c. Real avg: {avg_real:.1f}c. "
+            f"{verdict}"
+        )
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  Config helpers
 # ══════════════════════════════════════════════════════════════════════════════
 
 def read_config() -> dict:
-    """Read and return the contents of the config file."""
-    with open(_CONFIG_FILE, "r") as fh:
-        return json.load(fh)
+    """Read and return the contents of the config file.
+    Falls back to _last_good_config if the file is transiently corrupt
+    (e.g. a partial write in progress). Raises only on startup failure
+    when no cached config is available yet.
+    """
+    global _last_good_config
+    try:
+        with open(_CONFIG_FILE, "r") as fh:
+            cfg = json.load(fh)
+        _last_good_config = cfg
+        return cfg
+    except json.JSONDecodeError as exc:
+        log.warning(f"Config JSON decode error: {exc}. Using last known good config.")
+        if _last_good_config is not None:
+            return _last_good_config
+        raise
+    except Exception as exc:
+        log.warning(f"Config read error: {exc}. Using last known good config.")
+        if _last_good_config is not None:
+            return _last_good_config
+        raise
 
 
 def write_config(data: dict) -> None:
-    """Write a dict to the config file atomically."""
-    with open(_CONFIG_FILE, "w") as fh:
-        json.dump(data, fh, indent=2)
+    """Write a dict to the config file atomically (temp+replace)."""
+    atomic_write_json(data, _CONFIG_FILE)
 
 
 def _init_config() -> None:
@@ -175,8 +340,16 @@ def _init_config() -> None:
         "trade_amount_dollars": 25,
         "mode": "paper",
         "confidence_threshold": 72,
-        "daily_loss_limit_dollars": 50000,
-        "daily_profit_target_dollars": 50000,
+        "daily_loss_limit_dollars": 50,          # 2× trade size — real guard, not $5M decoration
+        "daily_profit_target_dollars": 200,
+        "max_consecutive_losses": 5,             # pause 15 min after this many losses in a row
+        "enable_reversal_signal": False,         # disabled by default — no backtested evidence yet
+        "enable_claude_filter": False,           # disabled by default — LLM adds latency/cost, no proven edge
+        "use_fixed_sizing": False,               # when True, bypasses Kelly and uses fixed trade_amount
+        "kelly_cap": 0.25,                       # quarter-Kelly cap; Kelly fraction never exceeds this
+        "min_ev_base": 8,                        # raised from 3 to 8 after adding fee accounting
+        "kalshi_fee_per_contract_cents": 7,      # Kalshi platform fee; update if pricing changes
+        "preflight_override": False,             # set true ONLY to bypass pre-flight hard stop — not recommended
         # claude_enabled: config key unused — Claude activates automatically via ANTHROPIC_API_KEY
     }
 
@@ -316,99 +489,91 @@ def init_db() -> None:
         raise
 
 
-def _db_conn() -> sqlite3.Connection:
-    """Open a WAL-mode SQLite connection."""
-    conn = sqlite3.connect(_DB_FILE)
-    conn.execute("PRAGMA journal_mode=WAL")
-    return conn
-
-
-def db_write_trade(trade: dict) -> int | None:
+async def db_write_trade(trade: dict) -> int | None:
     """Insert a trade record. Returns the new row id."""
     try:
-        conn = _db_conn()
-        c = conn.cursor()
-        c.execute("""
-            INSERT INTO trades (
-                ts, market_id, market_title, mode, side, contracts,
-                entry_price_cents, trade_amount_dollars, confidence_score,
-                model_prob, implied_prob, btc_price_at_entry, strike,
-                seconds_left_at_entry, fill_confirmed,
-                exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                claude_confidence, claude_signals, order_id
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
-            trade.get("mode"), trade.get("side"), trade.get("contracts"),
-            trade.get("entry_price_cents"), trade.get("trade_amount_dollars"),
-            trade.get("confidence_score"), trade.get("model_prob"),
-            trade.get("implied_prob"), trade.get("btc_price_at_entry"),
-            trade.get("strike"), trade.get("seconds_left_at_entry"),
-            trade.get("fill_confirmed"),
-            trade.get("exit_price_cents"), trade.get("exit_reason"),
-            trade.get("outcome", "pending"), trade.get("pnl_dollars"),
-            trade.get("profit_percent"),
-            trade.get("claude_confidence"), trade.get("claude_signals"),
-            trade.get("order_id"),
-        ))
-        row_id = c.lastrowid
-        conn.commit()
-        conn.close()
-        return row_id
+        async with aiosqlite.connect(_DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            cur = await db.execute("""
+                INSERT INTO trades (
+                    ts, market_id, market_title, mode, side, contracts,
+                    entry_price_cents, trade_amount_dollars, confidence_score,
+                    model_prob, implied_prob, btc_price_at_entry, strike,
+                    seconds_left_at_entry, fill_confirmed,
+                    exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
+                    claude_confidence, claude_signals, order_id
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
+                trade.get("mode"), trade.get("side"), trade.get("contracts"),
+                trade.get("entry_price_cents"), trade.get("trade_amount_dollars"),
+                trade.get("confidence_score"), trade.get("model_prob"),
+                trade.get("implied_prob"), trade.get("btc_price_at_entry"),
+                trade.get("strike"), trade.get("seconds_left_at_entry"),
+                trade.get("fill_confirmed"),
+                trade.get("exit_price_cents"), trade.get("exit_reason"),
+                trade.get("outcome", "pending"), trade.get("pnl_dollars"),
+                trade.get("profit_percent"),
+                trade.get("claude_confidence"), trade.get("claude_signals"),
+                trade.get("order_id"),
+            ))
+            await db.commit()
+            return cur.lastrowid
     except Exception as exc:
         log.error(f"DB write_trade error: {exc}")
         return None
 
 
-def db_update_trade(trade_id: int, fields: dict) -> None:
+async def db_update_trade(trade_id: int, fields: dict) -> None:
     """Update named columns on an existing trade row."""
     try:
-        conn = _db_conn()
-        set_clause = ", ".join(f"{k} = ?" for k in fields)
-        conn.execute(
-            f"UPDATE trades SET {set_clause} WHERE id = ?",
-            list(fields.values()) + [trade_id],
-        )
-        conn.commit()
-        conn.close()
+        async with aiosqlite.connect(_DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            set_clause = ", ".join(f"{k} = ?" for k in fields)
+            await db.execute(
+                f"UPDATE trades SET {set_clause} WHERE id = ?",
+                list(fields.values()) + [trade_id],
+            )
+            await db.commit()
     except Exception as exc:
         log.error(f"DB update_trade error: {exc}")
 
 
-def db_write_market_log(entry: dict) -> None:
+async def db_write_market_log(entry: dict) -> None:
     """Append one row to market_log."""
     try:
-        conn = _db_conn()
-        conn.execute("""
-            INSERT INTO market_log (
-                ts, market_id, market_title, phase, seconds_left, btc_price,
-                strike, contract_price_cents, confidence_score, action,
-                skip_reason, mode
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            entry.get("ts"), entry.get("market_id"), entry.get("market_title"),
-            entry.get("phase"), entry.get("seconds_left"), entry.get("btc_price"),
-            entry.get("strike"), entry.get("contract_price_cents"),
-            entry.get("confidence_score"), entry.get("action"),
-            entry.get("skip_reason"), entry.get("mode"),
-        ))
-        conn.commit()
-        conn.close()
+        async with aiosqlite.connect(_DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("""
+                INSERT INTO market_log (
+                    ts, market_id, market_title, phase, seconds_left, btc_price,
+                    strike, contract_price_cents, confidence_score, action,
+                    skip_reason, mode
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                entry.get("ts"), entry.get("market_id"), entry.get("market_title"),
+                entry.get("phase"), entry.get("seconds_left"), entry.get("btc_price"),
+                entry.get("strike"), entry.get("contract_price_cents"),
+                entry.get("confidence_score"), entry.get("action"),
+                entry.get("skip_reason"), entry.get("mode"),
+            ))
+            await db.commit()
     except Exception as exc:
         log.error(f"DB write_market_log error: {exc}")
 
 
-def db_get_today_pnl(mode: str) -> float:
+async def db_get_today_pnl(mode: str) -> float:
     """Sum pnl_dollars for completed trades in the given mode today (UTC)."""
     try:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        conn = _db_conn()
-        row = conn.execute(
-            "SELECT COALESCE(SUM(pnl_dollars), 0) FROM trades "
-            "WHERE mode = ? AND ts LIKE ? AND outcome != 'pending'",
-            (mode, f"{today}%"),
-        ).fetchone()
-        conn.close()
+        async with aiosqlite.connect(_DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            async with db.execute(
+                "SELECT COALESCE(SUM(pnl_dollars), 0) FROM trades "
+                "WHERE mode = ? AND ts LIKE ? AND outcome != 'pending'",
+                (mode, f"{today}%"),
+            ) as cur:
+                row = await cur.fetchone()
         return float(row[0]) if row else 0.0
     except Exception as exc:
         log.error(f"DB get_today_pnl error: {exc}")
@@ -1050,20 +1215,21 @@ def contract_velocity(ticker: str, side: str) -> str:
 #  Adaptive calibration from trade history
 # ══════════════════════════════════════════════════════════════════════════════
 
-def calibrate_from_history() -> None:
+async def calibrate_from_history() -> None:
     """
     Analyse completed paper + live trades to learn what conditions win.
     Updates _adaptive weights. Runs automatically every 20 completed trades.
     """
     global _adaptive
     try:
-        conn = _db_conn()
-        rows = conn.execute("""
-            SELECT entry_price_cents, seconds_left_at_entry, outcome
-            FROM trades WHERE outcome IN ('win','loss')
-            ORDER BY ts DESC LIMIT 100
-        """).fetchall()
-        conn.close()
+        async with aiosqlite.connect(_DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            async with db.execute("""
+                SELECT entry_price_cents, seconds_left_at_entry, outcome
+                FROM trades WHERE outcome IN ('win','loss')
+                ORDER BY ts DESC LIMIT 100
+            """) as cur:
+                rows = await cur.fetchall()
 
         total = len(rows)
         if total < 10:
@@ -1104,7 +1270,7 @@ def calibrate_from_history() -> None:
         log.error(f"Calibration error: {exc}")
 
 
-def calibrate_brain() -> None:
+async def calibrate_brain() -> None:
     """
     Self-calibration for the printer brain. Runs every 5 completed trades.
 
@@ -1118,15 +1284,16 @@ def calibrate_brain() -> None:
     """
     global _brain_cal
     try:
-        conn = _db_conn()
-        rows = conn.execute("""
-            SELECT side, entry_price_cents, seconds_left_at_entry,
-                   btc_price_at_entry, strike, outcome, model_prob
-            FROM trades
-            WHERE outcome IN ('win','loss')
-            ORDER BY ts DESC LIMIT 200
-        """).fetchall()
-        conn.close()
+        async with aiosqlite.connect(_DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            async with db.execute("""
+                SELECT side, entry_price_cents, seconds_left_at_entry,
+                       btc_price_at_entry, strike, outcome, model_prob
+                FROM trades
+                WHERE outcome IN ('win','loss')
+                ORDER BY ts DESC LIMIT 200
+            """) as cur:
+                rows = await cur.fetchall()
 
         total = len(rows)
         if total < 20:
@@ -1189,13 +1356,14 @@ def calibrate_brain() -> None:
             _brain_cal["bearish_wr"] = sum(1 for r in no_rows  if r[5] == "win") / len(no_rows)
 
         # ── 5. Learn from Claude's stored decisions ───────────────────────────
-        conn2 = _db_conn()
-        claude_rows = conn2.execute("""
-            SELECT claude_confidence, outcome FROM trades
-            WHERE outcome IN ('win','loss') AND claude_confidence IS NOT NULL
-            ORDER BY ts DESC LIMIT 50
-        """).fetchall()
-        conn2.close()
+        async with aiosqlite.connect(_DB_FILE) as _db2:
+            await _db2.execute("PRAGMA journal_mode=WAL")
+            async with _db2.execute("""
+                SELECT claude_confidence, outcome FROM trades
+                WHERE outcome IN ('win','loss') AND claude_confidence IS NOT NULL
+                ORDER BY ts DESC LIMIT 50
+            """) as _cur2:
+                claude_rows = await _cur2.fetchall()
 
         if len(claude_rows) >= 5:
             # Claude's avg confidence on wins vs losses
@@ -1640,17 +1808,24 @@ def _load_bv3_corrections() -> None:
         log.info(f"BV3 corrections loaded: {len(_bv3_corrections)} buckets, {total_samples} total samples.")
     except FileNotFoundError:
         _bv3_corrections = {}
+    except (json.JSONDecodeError, KeyError, ValueError) as exc:
+        corrupt_path = f"{_BV3_CORRECTIONS_FILE}.corrupt.{int(time.time())}"
+        try:
+            os.rename(_BV3_CORRECTIONS_FILE, corrupt_path)
+            log.warning(f"BV3 corrections corrupted ({exc}). Renamed to {corrupt_path}. Starting fresh.")
+        except OSError:
+            log.warning(f"BV3 corrections corrupted ({exc}). Starting fresh.")
+        _bv3_corrections = {}
     except Exception as exc:
         log.warning(f"BV3 corrections load error: {exc}")
         _bv3_corrections = {}
 
 
 def _save_bv3_corrections() -> None:
-    """Persist live BV3 corrections to disk."""
+    """Persist live BV3 corrections to disk (atomic write)."""
     try:
         serialisable = {f"{k[0]},{k[1]}": v for k, v in _bv3_corrections.items()}
-        with open(_BV3_CORRECTIONS_FILE, "w", encoding="utf-8") as fh:
-            json.dump(serialisable, fh)
+        atomic_write_json(serialisable, _BV3_CORRECTIONS_FILE)
     except Exception as exc:
         log.warning(f"BV3 corrections save error: {exc}")
 
@@ -1694,6 +1869,7 @@ def printer_brain(
     ticker: str,
     min_ev_base: float = 3.0,
     vol_gate_thresh: float = 1.80,
+    kalshi_fee: float = 0.07,
 ) -> dict:
     """
     Printer Brain v3 — empirically calibrated from 4.5M rows BTC 1-min data.
@@ -1782,8 +1958,10 @@ def printer_brain(
 
     # ── 6. Expected value vs actual contract price ────────────────────────────
     # yes_ask / no_ask are in cents (0-100). $1 payout.
-    yes_ev = prob_yes - (yes_ask / 100)
-    no_ev  = prob_no  - (no_ask  / 100)
+    # Fee deducted here: Kalshi charges ~7c per contract, reducing net EV by 0.07.
+    # A "5% edge" trade before this fix was actually -2% after fees.
+    yes_ev = prob_yes - (yes_ask / 100) - kalshi_fee
+    no_ev  = prob_no  - (no_ask  / 100) - kalshi_fee
 
     # Directional track record: penalise if a direction has been losing badly
     if _brain_cal["bullish_wr"] < 0.35: yes_ev -= 0.04
@@ -1977,9 +2155,11 @@ def calculate_contracts(
     entry_price_cents: int,
     liquidity: int,
     win_prob: float = 0.85,
+    kelly_cap: float = 0.25,
+    use_fixed_sizing: bool = False,
 ) -> tuple[int, float]:
     """
-    Kelly Criterion position sizing.
+    Kelly Criterion position sizing with quarter-Kelly cap.
 
     Kelly fraction f* = (p*b - (1-p)) / b
       where b = (100 - price) / price  (decimal payout odds on a $1 contract)
@@ -1987,11 +2167,29 @@ def calculate_contracts(
     Normalized so that a "typical" trade (85% win, 80c) = 1.0x base bet.
     Capped at 3x, floored at 0.5x to prevent overbetting and underbetting.
 
+    WARNING: Kelly sizing assumes the probability estimates (from BV3 table) and
+    the price estimates (from simulate_amm_prices) are accurate. The quant review
+    flagged that simulated prices may be 8-15c cheaper than real Kalshi prices.
+    Until price_validation_log.csv confirms pricing accuracy over 200+ samples,
+    consider using fixed sizing (use_fixed_sizing=true in config) instead.
+
     Returns:
         (contracts, kelly_dollars_used)
     """
     if entry_price_cents <= 0:
         return 0, 0.0
+
+    if use_fixed_sizing:
+        # Fixed sizing: ignore Kelly entirely, use the configured amount directly
+        kelly_dollars = trade_amount_dollars
+        contracts = int(kelly_dollars * 100 / entry_price_cents)
+        contracts = min(contracts, liquidity)
+        contracts = max(contracts, 0)
+        log.info(
+            f"Fixed sizing: price={entry_price_cents}c "
+            f"bet=${kelly_dollars:.2f} -> {contracts} contracts"
+        )
+        return contracts, kelly_dollars
 
     # Kelly fraction
     b = (100 - entry_price_cents) / entry_price_cents   # payout odds
@@ -1999,6 +2197,10 @@ def calculate_contracts(
         kelly_f = 0.0
     else:
         kelly_f = max(0.0, (win_prob * b - (1.0 - win_prob)) / b)
+
+    # Quarter-Kelly cap: even full Kelly is too aggressive with uncertain probability estimates.
+    # Caps the raw fraction before normalization so the relative sizing still scales with edge.
+    kelly_f = min(kelly_f, kelly_cap)
 
     # Normalize to typical trade (85% win, 80c → kelly_f ≈ 0.2125)
     _typical_kelly = 0.2125
@@ -2017,7 +2219,7 @@ def calculate_contracts(
 
     log.info(
         f"Kelly sizing: win_prob={win_prob:.0%} price={entry_price_cents}c "
-        f"f*={kelly_f:.3f} mult={multiplier:.2f}x "
+        f"f*={kelly_f:.3f} (cap={kelly_cap:.2f}) mult={multiplier:.2f}x "
         f"bet=${kelly_dollars:.2f} (base=${trade_amount_dollars}) -> {contracts} contracts"
     )
     return contracts, kelly_dollars
@@ -2291,7 +2493,7 @@ async def sell_position(
 #  Daily limits
 # ══════════════════════════════════════════════════════════════════════════════
 
-def check_daily_limits(config: dict) -> tuple[bool, str]:
+async def check_daily_limits(config: dict) -> tuple[bool, str]:
     """
     Check daily loss limit and profit target for live mode.
     Switches mode to 'paper' in config.json and memory when triggered.
@@ -2304,7 +2506,7 @@ def check_daily_limits(config: dict) -> tuple[bool, str]:
     if config.get("mode") == "paper":
         return False, ""
 
-    live_pnl = db_get_today_pnl("live")
+    live_pnl = await db_get_today_pnl("live")
 
     if live_pnl < 0 and abs(live_pnl) >= config.get("daily_loss_limit_dollars", 20):
         if not limit_triggered:
@@ -2360,7 +2562,7 @@ def midnight_reset() -> None:
 #  State file
 # ══════════════════════════════════════════════════════════════════════════════
 
-def write_state_file(
+async def write_state_file(
     config: dict,
     market: dict | None,
     phase: str,
@@ -2392,8 +2594,8 @@ def write_state_file(
         "last_skip_reason": skip_reason,
         "last_reversal_reason": last_reversal_reason,
         "mode": config.get("mode", "paper"),
-        "today_live_pnl": db_get_today_pnl("live"),
-        "today_paper_pnl": db_get_today_pnl("paper"),
+        "today_live_pnl": await db_get_today_pnl("live"),
+        "today_paper_pnl": await db_get_today_pnl("paper"),
         "config": {**config,
                    "min_ev_pct": round((config.get("min_ev_base", 3.0) / 100.0 + _session_ev_adjustment()) * 100),
                    "vol_gate_thresh": config.get("vol_gate_thresh", 1.80)},
@@ -2402,8 +2604,7 @@ def write_state_file(
         "open_position": current_position,
     }
     try:
-        with open(_STATE_FILE, "w") as fh:
-            json.dump(state, fh)
+        atomic_write_json(state, _STATE_FILE)
     except Exception as exc:
         log.error(f"State file write error: {exc}")
 
@@ -2412,7 +2613,7 @@ def write_state_file(
 #  Phase handlers
 # ══════════════════════════════════════════════════════════════════════════════
 
-def _log_entry(
+async def _log_entry(
     market: dict,
     phase: str,
     secs_left: float,
@@ -2425,7 +2626,7 @@ def _log_entry(
     mode: str,
 ) -> None:
     """Write one row to market_log."""
-    db_write_market_log({
+    await db_write_market_log({
         "ts": datetime.now(timezone.utc).isoformat(),
         "market_id": market.get("ticker", ""),
         "market_title": market.get("title", ""),
@@ -2499,6 +2700,7 @@ async def handle_ready_phase(
                         c_elapsed, c_secs_left, c_ticker,
                         min_ev_base=config.get("min_ev_base", 3.0),
                         vol_gate_thresh=config.get("vol_gate_thresh", 1.80),
+                        kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
                     )
                     c_win_prob = c_brain.get("win_prob", 0.5)
                     c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
@@ -2540,13 +2742,33 @@ async def handle_ready_phase(
     yes_ask = ob["best_yes_ask"]
     no_ask  = ob["best_no_ask"]   # fetched directly from no_ask_dollars, not derived
 
+    # ── Price validation: compare simulated vs real prices ───────────────────
+    # Logs to price_validation_log.csv so we can audit whether the backtest's
+    # AMM simulation matches live Kalshi prices (reviewer flagged 8-15c gap risk).
+    try:
+        _sim_yes, _sim_no = _simulated_amm_midpoint(btc_price, strike)
+        _log_price_validation(
+            ts=datetime.now(timezone.utc).isoformat(),
+            ticker=ticker,
+            btc_price=btc_price,
+            strike=strike,
+            sim_yes=_sim_yes,
+            sim_no=_sim_no,
+            real_yes=yes_ask,
+            real_no=no_ask,
+            mins_remaining=secs_left / 60,
+        )
+    except Exception as _pv_exc:
+        log.debug(f"Price validation log error: {_pv_exc}")
+
     # Track YES price for velocity signal
     track_contract_price(ticker, yes_ask)
 
     # ── Printer Brain — primary decision engine (always runs, no API needed) ──
     brain = printer_brain(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
                           min_ev_base=config.get("min_ev_base", 3.0),
-                          vol_gate_thresh=config.get("vol_gate_thresh", 1.80))
+                          vol_gate_thresh=config.get("vol_gate_thresh", 1.80),
+                          kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100)
     side     = brain["side"]
     score    = brain["confidence"]
     do_trade = brain["action"] == "trade"
@@ -2556,12 +2778,14 @@ async def handle_ready_phase(
     # HIGH CONFIDENCE (brain win_prob >= 0.85 and action=trade) → trade immediately, skip Claude
     # HARD SKIP (brain EV < 0.02) → skip, don't waste API call
     # BORDERLINE (EV above 0.02 but below session floor, OR confidence 60-84) → ask Claude
+    # Disabled by default (enable_claude_filter=false) — adds latency/cost with no proven edge.
+    # The claude_conf >= 75 upgrade path (skip→trade) is particularly dangerous when disabled.
     _active_claude_result = None
     entry_price_cents = yes_ask if side == "yes" else no_ask
     brain_ev = brain.get("win_prob", 0.5) - (entry_price_cents / 100)
     brain_win_prob = brain.get("win_prob", 0.5)
 
-    if _claude_client is not None:
+    if _claude_client is not None and config.get("enable_claude_filter", False):
         if brain_win_prob >= 0.95 and do_trade:
             # Very high confidence — go straight through without Claude overhead
             log.info(f"{ticker}: Brain high-conf {score}, skipping Claude")
@@ -2638,8 +2862,9 @@ async def handle_ready_phase(
     # ── Reversal model — runs whenever main strategy skips ───────────────────
     # Evaluates exhaustion-reversal setups independent of the continuation model.
     # Uses 50% of configured trade amount. Never fires when main strategy trades.
+    # Disabled by default (enable_reversal_signal=false) — no backtested evidence.
     _rev = None
-    if not do_trade:
+    if not do_trade and config.get("enable_reversal_signal", False):
         _rev = _reversal_signal(
             abs_pct       = brain.get("abs_pct", abs((btc_price - strike) / strike)),
             mins_left     = secs_left / 60,
@@ -2664,8 +2889,8 @@ async def handle_ready_phase(
             rev_reason = _rev["reason"] if _rev else "reversal not evaluated"
             last_reversal_reason = rev_reason
             log.info(f"{ticker}: watching — {skip_reason_ai} | reversal: {rev_reason}")
-            _log_entry(market, "READY", secs_left, btc_price, strike,
-                       int(entry_price_cents), score, "skip", skip_reason_ai, mode)
+            await _log_entry(market, "READY", secs_left, btc_price, strike,
+                             int(entry_price_cents), score, "skip", skip_reason_ai, mode)
             last_action, last_skip_reason = "watching", skip_reason_ai
             return
     else:
@@ -2673,13 +2898,13 @@ async def handle_ready_phase(
 
     if not do_trade:
         log.info(f"{ticker}: watching — {skip_reason_ai}")
-        _log_entry(market, "READY", secs_left, btc_price, strike,
-                   int(entry_price_cents), score, "skip", skip_reason_ai, mode)
+        await _log_entry(market, "READY", secs_left, btc_price, strike,
+                         int(entry_price_cents), score, "skip", skip_reason_ai, mode)
         last_action, last_skip_reason = "watching", skip_reason_ai
         return
 
     # Daily limits — may flip mode to paper
-    limit_hit, _ = check_daily_limits(config)
+    limit_hit, _ = await check_daily_limits(config)
     if limit_hit:
         config = read_config()
         mode = config.get("mode", "paper")
@@ -2694,13 +2919,15 @@ async def handle_ready_phase(
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
     win_prob_for_kelly = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0.85)
     contracts, kelly_dollars = calculate_contracts(
-        trade_amount, int(entry_price_cents), avail_liquidity, win_prob_for_kelly
+        trade_amount, int(entry_price_cents), avail_liquidity, win_prob_for_kelly,
+        kelly_cap=config.get("kelly_cap", 0.25),
+        use_fixed_sizing=config.get("use_fixed_sizing", False),
     )
     if contracts == 0:
         reason = "trade amount too small for current contract price"
         log.info(f"{ticker}: {reason}")
-        _log_entry(market, "READY", secs_left, btc_price, strike,
-                   int(entry_price_cents), score, "skip", reason, mode)
+        await _log_entry(market, "READY", secs_left, btc_price, strike,
+                         int(entry_price_cents), score, "skip", reason, mode)
         last_action, last_skip_reason = "skip", reason
         return
 
@@ -2721,7 +2948,7 @@ async def handle_ready_phase(
 
     trade_ts = datetime.now(timezone.utc).isoformat()
 
-    _log_entry(
+    await _log_entry(
         market, "READY", secs_left, btc_price, strike, int(entry_price_cents),
         score, "trade" if fill_confirmed else "skip",
         "" if fill_confirmed else "order not filled",
@@ -2761,7 +2988,7 @@ async def handle_ready_phase(
         "claude_signals":    json.dumps(_active_claude_result["key_signals"]) if _active_claude_result else None,
         "order_id":          order_id,
     }
-    trade_id = db_write_trade(trade_data)
+    trade_id = await db_write_trade(trade_data)
 
     _entry_ts = time.time()
     _abs_pct_at_entry = abs(btc_price - strike) / strike
@@ -2884,13 +3111,33 @@ async def handle_locked_phase(
         if _d is not None and _t is not None:
             _update_bv3_correction(_d, _t, outcome == "win")
 
-        db_update_trade(pos["trade_id"], {
+        await db_update_trade(pos["trade_id"], {
             "exit_price_cents": exit_price,
             "exit_reason": "expiry",
             "outcome": outcome,
             "pnl_dollars": round(pnl, 2),
             "profit_percent": round(profit_pct, 2),
         })
+
+        # Consecutive-loss circuit breaker
+        global _consecutive_losses, _consecutive_loss_pause_until
+        if outcome == "win":
+            _consecutive_losses = 0
+        else:
+            _consecutive_losses += 1
+            max_cl = config.get("max_consecutive_losses", 5)
+            if _consecutive_losses >= max_cl:
+                _consecutive_loss_pause_until = time.time() + 15 * 60
+                log.warning(f"{_consecutive_losses} consecutive losses — pausing trading for 15 min.")
+                _resume_str = datetime.fromtimestamp(
+                    _consecutive_loss_pause_until,
+                    tz=timezone(timedelta(hours=-7))
+                ).strftime("%I:%M %p PST")
+                await send_telegram(
+                    f"⚠️ <b>{_consecutive_losses} consecutive losses</b> — pausing for 15 min.\n"
+                    f"Resumes at {_resume_str}"
+                )
+
         result_icon = "✅" if outcome == "win" else "❌"
         pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
@@ -2960,15 +3207,17 @@ async def main_loop() -> None:
 
                 # Re-calibrate every 5 completed trades
                 try:
-                    conn = _db_conn()
-                    completed = conn.execute(
-                        "SELECT COUNT(*) FROM trades WHERE outcome IN ('win','loss')"
-                    ).fetchone()[0]
-                    conn.close()
+                    async with aiosqlite.connect(_DB_FILE) as _cal_db:
+                        await _cal_db.execute("PRAGMA journal_mode=WAL")
+                        async with _cal_db.execute(
+                            "SELECT COUNT(*) FROM trades WHERE outcome IN ('win','loss')"
+                        ) as _cal_cur:
+                            _cal_row = await _cal_cur.fetchone()
+                    completed = _cal_row[0] if _cal_row else 0
                     if completed >= _adaptive["last_calibrated_count"] + 20:
-                        calibrate_from_history()
+                        await calibrate_from_history()
                     if completed >= _brain_cal["last_count"] + 5:
-                        calibrate_brain()
+                        await calibrate_brain()
                 except Exception:
                     pass
 
@@ -2981,18 +3230,26 @@ async def main_loop() -> None:
                     continue
 
                 if not config.get("bot_enabled", True):
-                    write_state_file(config, current_market, "PAUSED", 0,
-                                     get_btc_price(), last_confidence_score,
-                                     last_confidence_breakdown, last_action, last_skip_reason)
+                    await write_state_file(config, current_market, "PAUSED", 0,
+                                           get_btc_price(), last_confidence_score,
+                                           last_confidence_breakdown, last_action, last_skip_reason)
                     await asyncio.sleep(10)
                     continue
 
                 btc_price = get_btc_price()
                 if btc_price is None:
                     log.warning("Waiting for BTC price...")
-                    write_state_file(config, current_market, current_phase, 0,
-                                     None, last_confidence_score,
-                                     last_confidence_breakdown, last_action, last_skip_reason)
+                    await write_state_file(config, current_market, current_phase, 0,
+                                           None, last_confidence_score,
+                                           last_confidence_breakdown, last_action, last_skip_reason)
+                    await asyncio.sleep(10)
+                    continue
+                if btc_prices and (time.time() - btc_prices[-1][0]) > 60:
+                    age = int(time.time() - btc_prices[-1][0])
+                    log.warning(f"BTC price stale ({age}s old) — skipping cycle.")
+                    await write_state_file(config, current_market, current_phase, 0,
+                                           btc_price, last_confidence_score,
+                                           last_confidence_breakdown, "skip", f"btc_stale_{age}s")
                     await asyncio.sleep(10)
                     continue
 
@@ -3006,9 +3263,9 @@ async def main_loop() -> None:
 
                 if market is None:
                     log.warning("No active BTC markets found.")
-                    write_state_file(config, None, "DONE", 0, btc_price,
-                                     last_confidence_score, last_confidence_breakdown,
-                                     last_action, last_skip_reason)
+                    await write_state_file(config, None, "DONE", 0, btc_price,
+                                           last_confidence_score, last_confidence_breakdown,
+                                           last_action, last_skip_reason)
                     await asyncio.sleep(10)
                     continue
 
@@ -3058,11 +3315,11 @@ async def main_loop() -> None:
                         current_phase = "READY"
                     else:
                         log.info(f"{ticker}: WATCH ({elapsed:.0f}s elapsed).")
-                        _log_entry(market, "WATCH", secs_left, btc_price, strike,
-                                   None, 0, "skip", f"WATCH phase, {elapsed:.0f}s elapsed",
-                                   config.get("mode", "paper"))
-                        write_state_file(config, market, current_phase, secs_left,
-                                         btc_price, 0, {}, "watch", "")
+                        await _log_entry(market, "WATCH", secs_left, btc_price, strike,
+                                         None, 0, "skip", f"WATCH phase, {elapsed:.0f}s elapsed",
+                                         config.get("mode", "paper"))
+                        await write_state_file(config, market, current_phase, secs_left,
+                                               btc_price, 0, {}, "watch", "")
                         await asyncio.sleep(10)
                         continue
 
@@ -3074,9 +3331,9 @@ async def main_loop() -> None:
                         )
                     except Exception as exc:
                         log.error(f"LOCKED phase error: {exc}", exc_info=True)
-                    write_state_file(config, market, current_phase, secs_left, btc_price,
-                                     last_confidence_score, last_confidence_breakdown,
-                                     last_action, last_skip_reason)
+                    await write_state_file(config, market, current_phase, secs_left, btc_price,
+                                           last_confidence_score, last_confidence_breakdown,
+                                           last_action, last_skip_reason)
                     await asyncio.sleep(10)
                     continue
 
@@ -3093,14 +3350,23 @@ async def main_loop() -> None:
                         # Fall through to READY handler below
                     else:
                         log.info(f"DONE phase. {secs_left:.0f}s left — waiting for next market.")
-                        write_state_file(config, market, current_phase, secs_left, btc_price,
-                                         last_confidence_score, last_confidence_breakdown,
-                                         last_action, last_skip_reason)
+                        await write_state_file(config, market, current_phase, secs_left, btc_price,
+                                               last_confidence_score, last_confidence_breakdown,
+                                               last_action, last_skip_reason)
                         await asyncio.sleep(10)
                         continue
 
                 # ── READY ──────────────────────────────────────────────────
                 if current_phase == "READY":
+                    # Consecutive-loss pause check
+                    if _consecutive_loss_pause_until and time.time() < _consecutive_loss_pause_until:
+                        _resume_in = int(_consecutive_loss_pause_until - time.time())
+                        log.info(f"Consecutive-loss pause active — {_resume_in}s remaining. Skipping READY.")
+                        await write_state_file(config, market, current_phase, secs_left, btc_price,
+                                               last_confidence_score, last_confidence_breakdown,
+                                               "skip", f"consecutive_loss_pause ({_resume_in}s left)")
+                        await asyncio.sleep(10)
+                        continue
                     try:
                         await handle_ready_phase(
                             session, config, market, ticker,
@@ -3109,9 +3375,9 @@ async def main_loop() -> None:
                     except Exception as exc:
                         log.error(f"READY phase error: {exc}", exc_info=True)
 
-                write_state_file(config, market, current_phase, secs_left, btc_price,
-                                 last_confidence_score, last_confidence_breakdown,
-                                 last_action, last_skip_reason)
+                await write_state_file(config, market, current_phase, secs_left, btc_price,
+                                       last_confidence_score, last_confidence_breakdown,
+                                       last_action, last_skip_reason)
 
                 if current_phase == "READY":
                     await asyncio.sleep(5)
@@ -3235,6 +3501,100 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
     log.info("=== KALSHI MARKET DISCOVERY END ===")
 
 
+async def run_preflight_checks(config: dict) -> None:
+    """
+    Runs before first trade. Prints warnings and blocks live trading
+    if critical validations haven't been completed.
+
+    LIVE mode + unresolved issues  → sys.exit(1). Hard stop.
+    PAPER mode + unresolved issues → warn and continue (bot must run to collect data).
+    preflight_override: true in config.json  → skip the live-mode block (NOT RECOMMENDED).
+    """
+    issues: list[str] = []
+    W = 60
+
+    # ── Check 1: Price validation data ────────────────────────────────────────
+    if not os.path.isfile(_PRICE_VAL_CSV):
+        issues.append(
+            "NO PRICE VALIDATION DATA — price_validation_log.csv does not exist. "
+            "Run paper mode for 200+ cycles first."
+        )
+    else:
+        try:
+            with open(_PRICE_VAL_CSV, encoding="utf-8") as _f:
+                row_count = max(0, sum(1 for _ in _f) - 1)   # minus header
+        except Exception:
+            row_count = 0
+        if row_count < 200:
+            issues.append(
+                f"INSUFFICIENT PRICE VALIDATION — only {row_count}/200 samples collected. "
+                "Keep running paper mode."
+            )
+
+    # ── Check 2: Fee constant is set and > 0 ──────────────────────────────────
+    fee = config.get("kalshi_fee_per_contract_cents", 0)
+    if not (isinstance(fee, (int, float)) and fee > 0):
+        issues.append(
+            f"FEE NOT CONFIGURED — kalshi_fee_per_contract_cents={fee!r}. "
+            "Set to 7 (Kalshi charges 7c/contract)."
+        )
+
+    # ── Check 3: Daily loss limit is real ─────────────────────────────────────
+    dll = config.get("daily_loss_limit_dollars", 999999)
+    if dll > 500:
+        issues.append(
+            f"DAILY LOSS LIMIT TOO HIGH — currently ${dll}. "
+            "Set to a realistic value (e.g. $50)."
+        )
+
+    # ── Check 4: mode gate ────────────────────────────────────────────────────
+    mode      = config.get("mode", "paper")
+    is_live   = (mode == "live")
+    override  = bool(config.get("preflight_override", False))
+
+    if is_live and issues:
+        print("=" * W)
+        print("LIVE TRADING BLOCKED — PRE-FLIGHT CHECK FAILED")
+        print("=" * W)
+        for issue in issues:
+            print(f"  [FAIL] {issue}")
+        print()
+        print("Switch to paper mode or resolve these issues before trading live.")
+        print("To override (NOT RECOMMENDED): set preflight_override: true in config.json")
+        print("=" * W)
+        await send_telegram(
+            "\U0001f6a8 <b>LIVE TRADING BLOCKED — pre-flight failed</b>\n"
+            + "\n".join(f"• {i}" for i in issues)
+            + "\nResolve all issues before retrying live mode."
+        )
+        if not override:
+            sys.exit(1)
+        else:
+            log.warning("PRE-FLIGHT OVERRIDE ACTIVE — proceeding into live mode despite failures. "
+                        "This is NOT recommended.")
+            print()
+            print("  *** OVERRIDE ACTIVE — LIVE MODE STARTING ANYWAY ***")
+            print("  *** THIS IS NOT RECOMMENDED. YOU WERE WARNED.   ***")
+            print("=" * W)
+
+    elif issues:
+        # Paper mode — warn but continue; the bot must run to collect validation data.
+        print("=" * W)
+        print("PRE-FLIGHT WARNINGS (paper mode — not blocking)")
+        print("=" * W)
+        for issue in issues:
+            print(f"  [WARN] {issue}")
+        print("=" * W)
+
+    else:
+        log.info("=" * W)
+        log.info(f"  Pre-flight: PASS — {mode.upper()} mode.  "
+                 f"fee={fee}c  dll=${dll}  "
+                 f"claude={'ON' if config.get('enable_claude_filter') else 'OFF'}  "
+                 f"reversal={'ON' if config.get('enable_reversal_signal') else 'OFF'}")
+        log.info("=" * W)
+
+
 async def main() -> None:
     """Bootstrap: load credentials, init DB, start BTC feed, run main loop."""
     _init_config()
@@ -3262,6 +3622,10 @@ async def main() -> None:
     log.info(f"BTC feed ready after {waited}s. Current price: ${get_btc_price():,.2f}")
     _startup_cfg = read_config()
     await send_telegram(f"🤖 <b>Printer bot started</b>\nBTC: ${get_btc_price():,.2f}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
+
+    # Pre-flight check runs once before trading begins.
+    # LIVE mode with unresolved issues → sys.exit(1). Paper mode → warn and continue.
+    await run_preflight_checks(_startup_cfg)
 
     await main_loop()
 
