@@ -2209,7 +2209,9 @@ def calculate_contracts(
     multiplier = kelly_f / _typical_kelly if _typical_kelly > 0 else 1.0
     multiplier = max(0.5, min(3.0, multiplier))
 
-    kelly_dollars = trade_amount_dollars * multiplier
+    # Hard cap: Kelly can scale up but never beyond trade_amount_dollars.
+    # trade_amount_dollars is the maximum spend per trade, not just a base.
+    kelly_dollars = min(trade_amount_dollars, trade_amount_dollars * multiplier)
     trade_cents   = kelly_dollars * 100
     contracts = int(trade_cents / entry_price_cents)
     contracts = min(contracts, liquidity)
@@ -2699,6 +2701,12 @@ async def handle_ready_phase(
                     # Use each window's own timing — they may have different close times
                     c_secs_left = seconds_remaining(candidate)
                     c_elapsed   = seconds_elapsed(candidate)
+                    # Skip windows that are too close to expiry — same gate as primary market.
+                    # Without this, the multi-window picker can select a market with 40s left
+                    # AFTER the 90s gate already passed for the primary market.
+                    if c_secs_left < 90:
+                        log.info(f"  Window {c_ticker}: skipping — only {c_secs_left:.0f}s left")
+                        continue
                     c_ob = await fetch_orderbook(session, c_ticker, candidate)
                     if c_ob is None:
                         continue
@@ -2725,9 +2733,11 @@ async def handle_ready_phase(
                     log.warning(f"  Multi-window eval error for {candidate.get('ticker','?')}: {_exc}")
             if best_ticker != ticker:
                 log.info(f"Multi-window: switching to {best_ticker} (EV {best_ev:+.1%}) over {ticker}")
-                market  = best_market
-                ticker  = best_ticker
-                strike  = best_strike
+                market   = best_market
+                ticker   = best_ticker
+                strike   = best_strike
+                secs_left = seconds_remaining(best_market)
+                elapsed   = seconds_elapsed(best_market)
                 current_market = best_market
             ob = best_ob
         else:
