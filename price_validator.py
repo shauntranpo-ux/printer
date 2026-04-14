@@ -331,10 +331,11 @@ async def main() -> None:
                         ts = datetime.now(timezone.utc).isoformat()
                         _write_row(ts, ticker, btc, strike, sim_yes, sim_no, real_yes, real_no)
 
-                        gap_str = f"{real_yes - sim_yes:+.1f}c" if real_yes else "n/a"
+                        gap_str = f"{real_yes - sim_yes:+.1f}c" if real_yes is not None else "n/a"
+                        real_str = f"{real_yes:.1f}c" if real_yes is not None else "n/a"
                         print(
                             f"[validator] {ticker} | BTC={btc:,.0f} strike={strike:,.0f} | "
-                            f"sim_yes={sim_yes:.1f}c real_yes={real_yes}c gap={gap_str} "
+                            f"sim_yes={sim_yes:.1f}c real_yes={real_str} gap={gap_str} "
                             f"| n={_sample_count}"
                         )
 

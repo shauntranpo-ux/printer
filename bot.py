@@ -1424,17 +1424,17 @@ def _init_claude() -> None:
     log.info("Claude AI client ready (claude-haiku-4-5 — borderline filter mode).")
 
 
-def _recent_trades_for_claude() -> list:
+async def _recent_trades_for_claude() -> list:
     """Return the last 15 completed trades as plain dicts for the Claude prompt."""
     try:
-        conn = _db_conn()
-        rows = conn.execute("""
-            SELECT ts, side, entry_price_cents, seconds_left_at_entry,
-                   btc_price_at_entry, strike, outcome, pnl_dollars, confidence_score
-            FROM trades WHERE outcome IN ('win','loss')
-            ORDER BY ts DESC LIMIT 15
-        """).fetchall()
-        conn.close()
+        async with aiosqlite.connect(_DB_FILE) as conn:
+            async with conn.execute("""
+                SELECT ts, side, entry_price_cents, seconds_left_at_entry,
+                       btc_price_at_entry, strike, outcome, pnl_dollars, confidence_score
+                FROM trades WHERE outcome IN ('win','loss')
+                ORDER BY ts DESC LIMIT 15
+            """) as cursor:
+                rows = await cursor.fetchall()
         return [
             {
                 "ts": r[0], "side": r[1], "entry_cents": r[2],
@@ -1584,7 +1584,7 @@ async def claude_analysis(
 
     mom_pct, mom_label = calculate_momentum()
     pct_from_strike = (btc_price - strike) / strike * 100
-    recent_trades = _recent_trades_for_claude()
+    recent_trades = await _recent_trades_for_claude()
 
     # Real-time market context (Fear & Greed, news, social signals)
     ctx = await _fetch_market_context(session)
@@ -2786,7 +2786,8 @@ async def handle_ready_phase(
     # The claude_conf >= 75 upgrade path (skip→trade) is particularly dangerous when disabled.
     _active_claude_result = None
     entry_price_cents = yes_ask if side == "yes" else no_ask
-    brain_ev = brain.get("win_prob", 0.5) - (entry_price_cents / 100)
+    _fee = config.get("kalshi_fee_per_contract_cents", 7) / 100
+    brain_ev = brain.get("win_prob", 0.5) - (entry_price_cents / 100) - _fee
     brain_win_prob = brain.get("win_prob", 0.5)
 
     if _claude_client is not None and config.get("enable_claude_filter", False):
@@ -2840,7 +2841,7 @@ async def handle_ready_phase(
     breakdown = {
         "win_prob_raw":   round(win_p_raw * 100, 1),
         "win_prob_final": round(brain.get("win_prob", win_p_raw) * 100, 1),
-        "ev":             round((brain.get("win_prob", 0.5) - entry_price_cents / 100) * 100, 1),
+        "ev":             round((brain.get("win_prob", 0.5) - entry_price_cents / 100 - _fee) * 100, 1),
         "contract_c":     round(entry_price_cents, 1),
         "momentum":       30 if _mom_label in ("bullish", "bearish") else 0,
         "momentum_label": _mom_label,
@@ -3180,6 +3181,7 @@ async def main_loop() -> None:
     global last_confidence_score, last_confidence_breakdown
     global last_action, last_skip_reason
     global _order_attempted_tickers
+    global _consecutive_losses, _consecutive_loss_pause_until
 
     prev_ticker: str | None = None
 
