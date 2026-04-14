@@ -1724,7 +1724,7 @@ def printer_brain(
     if _rv is not None and abs_pct > 0:
         _expected_move = _rv * (mins_left ** 0.5)
         _vol_ratio     = _expected_move / abs_pct
-        if _vol_ratio >= 1.50:
+        if _vol_ratio >= 1.80:
             _vol_skip = True
 
     # ── 1. Empirical win probability from backtest table ──────────────────────
@@ -1797,10 +1797,10 @@ def printer_brain(
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
     # ── 8. EV filter ──────────────────────────────────────────────────────────
-    # Base 5% floor + session adjustment: US session (13-20 UTC) lowers bar by
-    # 2% to 3% — clearest trends, easiest holds. Asian dead hours (00-06 UTC)
-    # raise bar by 2% to 7% — choppy/rangebound conditions need stronger edge.
-    min_ev = 0.05 + _session_ev_adjustment()
+    # Base 3% floor + session adjustment: US session (13-20 UTC) lowers bar by
+    # 2% to 1% — clearest trends, most liquid. Asian dead hours (00-06 UTC)
+    # raise bar by 2% to 5% — choppy/rangebound, need stronger edge to justify.
+    min_ev = 0.03 + _session_ev_adjustment()
 
     skip_reason = ""
     if _vol_skip:
@@ -1838,7 +1838,7 @@ def printer_brain(
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
         f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
         f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal}",
-        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip ≥1.50)",
+        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip ≥1.80)",
     ]
 
     brain_log.info(
