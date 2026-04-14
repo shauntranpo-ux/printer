@@ -177,7 +177,7 @@ def _init_config() -> None:
         "confidence_threshold": 72,
         "daily_loss_limit_dollars": 50000,
         "daily_profit_target_dollars": 50000,
-        "claude_enabled": False,
+        # claude_enabled: config key unused — Claude activates automatically via ANTHROPIC_API_KEY
     }
 
     # Load existing config or start from defaults
