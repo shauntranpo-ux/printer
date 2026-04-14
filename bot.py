@@ -1692,6 +1692,8 @@ def printer_brain(
     elapsed_seconds: float,
     secs_left: float,
     ticker: str,
+    min_ev_base: float = 3.0,
+    vol_gate_thresh: float = 1.80,
 ) -> dict:
     """
     Printer Brain v3 — empirically calibrated from 4.5M rows BTC 1-min data.
@@ -1724,7 +1726,7 @@ def printer_brain(
     if _rv is not None and abs_pct > 0:
         _expected_move = _rv * (mins_left ** 0.5)
         _vol_ratio     = _expected_move / abs_pct
-        if _vol_ratio >= 1.80:
+        if _vol_ratio >= vol_gate_thresh:
             _vol_skip = True
 
     # ── 1. Empirical win probability from backtest table ──────────────────────
@@ -1800,7 +1802,7 @@ def printer_brain(
     # Base 3% floor + session adjustment: US session (13-20 UTC) lowers bar by
     # 2% to 1% — clearest trends, most liquid. Asian dead hours (00-06 UTC)
     # raise bar by 2% to 5% — choppy/rangebound, need stronger edge to justify.
-    min_ev = 0.03 + _session_ev_adjustment()
+    min_ev = (min_ev_base / 100.0) + _session_ev_adjustment()
 
     skip_reason = ""
     if _vol_skip:
@@ -1838,7 +1840,7 @@ def printer_brain(
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
         f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
         f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal}",
-        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip ≥1.80)",
+        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip >=>{vol_gate_thresh:.2f})",
     ]
 
     brain_log.info(
@@ -2392,7 +2394,9 @@ def write_state_file(
         "mode": config.get("mode", "paper"),
         "today_live_pnl": db_get_today_pnl("live"),
         "today_paper_pnl": db_get_today_pnl("paper"),
-        "config": {**config, "min_ev_pct": round((0.05 + _session_ev_adjustment()) * 100)},
+        "config": {**config,
+                   "min_ev_pct": round((config.get("min_ev_base", 3.0) / 100.0 + _session_ev_adjustment()) * 100),
+                   "vol_gate_thresh": config.get("vol_gate_thresh", 1.80)},
         "limit_triggered": limit_triggered,
         "limit_reason": limit_reason,
         "open_position": current_position,
@@ -2493,6 +2497,8 @@ async def handle_ready_phase(
                         btc_price, c_strike,
                         c_ob["best_yes_ask"], c_ob["best_no_ask"],
                         c_elapsed, c_secs_left, c_ticker,
+                        min_ev_base=config.get("min_ev_base", 3.0),
+                        vol_gate_thresh=config.get("vol_gate_thresh", 1.80),
                     )
                     c_win_prob = c_brain.get("win_prob", 0.5)
                     c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
@@ -2538,7 +2544,9 @@ async def handle_ready_phase(
     track_contract_price(ticker, yes_ask)
 
     # ── Printer Brain — primary decision engine (always runs, no API needed) ──
-    brain = printer_brain(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker)
+    brain = printer_brain(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
+                          min_ev_base=config.get("min_ev_base", 3.0),
+                          vol_gate_thresh=config.get("vol_gate_thresh", 1.80))
     side     = brain["side"]
     score    = brain["confidence"]
     do_trade = brain["action"] == "trade"

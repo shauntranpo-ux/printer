@@ -620,7 +620,7 @@ tr:last-child td { border-bottom: none; }
           </div>
           <div class="ai-gate-row">
             <div class="ai-gate-label">Vol Safe</div>
-            <div class="ai-gate-want">WANTS &lt; <span>1.20</span></div>
+            <div class="ai-gate-want">WANTS &lt; <span id="ai-vol-thresh">—</span></div>
             <div class="ai-gate-sep">&rarr;</div>
             <div class="ai-gate-see" id="ai-vol-see">—</div>
             <div class="ai-gate-badge" id="ai-vol-badge">—</div>
@@ -631,7 +631,7 @@ tr:last-child td { border-bottom: none; }
               <div class="ai-compare-header">Looking For</div>
               <div class="ai-compare-item">Conf &ge; <span id="ai-cmp-conf-thresh">—</span></div>
               <div class="ai-compare-item">EV &ge; <span id="ai-cmp-ev-thresh">+7%</span></div>
-              <div class="ai-compare-item">Vol ratio &lt; 1.20</div>
+              <div class="ai-compare-item">Vol ratio &lt; <span id="ai-cmp-vol-thresh">—</span></div>
               <div class="ai-compare-item">Time 1.5–13m left</div>
               <div class="ai-compare-item">Momentum signal</div>
             </div>
@@ -690,6 +690,16 @@ tr:last-child td { border-bottom: none; }
             <label>Daily Profit Target ($)</label>
             <input type="number" id="s-profit-target" min="1" step="1">
             <button class="s-save" onclick="saveSetting('daily_profit_target_dollars',parseFloat(document.getElementById('s-profit-target').value),this)">Save</button>
+          </div>
+          <div class="s-group">
+            <label>EV Base Floor (%)</label>
+            <input type="number" id="s-min-ev" min="0" max="20" step="0.5">
+            <button class="s-save" onclick="saveSetting('min_ev_base',parseFloat(document.getElementById('s-min-ev').value),this)">Save</button>
+          </div>
+          <div class="s-group">
+            <label>Vol Gate Threshold</label>
+            <input type="number" id="s-vol-gate" min="0.5" max="5" step="0.05">
+            <button class="s-save" onclick="saveSetting('vol_gate_thresh',parseFloat(document.getElementById('s-vol-gate').value),this)">Save</button>
           </div>
         </div>
       </div>
@@ -1060,6 +1070,8 @@ function populateSettings(cfg){
   set('s-conf',cfg.confidence_threshold);
   set('s-loss-limit',cfg.daily_loss_limit_dollars);
   set('s-profit-target',cfg.daily_profit_target_dollars);
+  set('s-min-ev',cfg.min_ev_base!=null?cfg.min_ev_base:3);
+  set('s-vol-gate',cfg.vol_gate_thresh!=null?cfg.vol_gate_thresh:1.8);
   updateBotToggleUI(cfg.bot_enabled!==false);
   updateModePillVisual(cfg.mode||'paper');
 }
@@ -1118,15 +1130,17 @@ function _setGate(seeId,badgeId,pass,seeText){
 function _setCmp(id,cls,text){const el=document.getElementById(id);if(el){el.textContent=text;el.className='ai-compare-item '+cls;}}
 function _updateAiPanel(s,bd,wp,ev,vr,confThresh){
   const sr=s.seconds_remaining,mom=(bd&&bd.momentum_label)||'neutral',vel=(bd&&bd.velocity_label)||'neutral';
-  const evMin=(s.config&&s.config.min_ev_pct)||7;
+  const evMin=(s.config&&s.config.min_ev_pct)||3;
+  const volGate=(s.config&&s.config.vol_gate_thresh)||1.80;
   ['ai-conf-thresh','ai-cmp-conf-thresh'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=confThresh+'%';});
   ['ai-ev-thresh','ai-cmp-ev-thresh'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent='+'+evMin+'%';});
+  ['ai-vol-thresh','ai-cmp-vol-thresh'].forEach(id=>{const el=document.getElementById(id);if(el)el.textContent=volGate.toFixed(2);});
   _setGate('ai-conf-see','ai-conf-badge',wp!=null&&wp>=confThresh,wp!=null?wp.toFixed(1)+'%':'—');
   _setGate('ai-ev-see','ai-ev-badge',ev!=null&&ev>=evMin,ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—');
-  _setGate('ai-vol-see','ai-vol-badge',vr!=null&&vr<1.2,vr!=null?'ratio '+vr.toFixed(2):'no data');
+  _setGate('ai-vol-see','ai-vol-badge',vr!=null&&vr<volGate,vr!=null?'ratio '+vr.toFixed(2):'no data');
   _setCmp('ai-cmp-conf',wp!=null&&wp>=confThresh?'live-pass':'live-fail',wp!=null?wp.toFixed(1)+'%'+(wp>=confThresh?'':' need +'+(confThresh-wp).toFixed(1)+'%'):'—');
   _setCmp('ai-cmp-ev',ev!=null&&ev>=evMin?'live-pass':'live-fail',ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%'+(ev>=evMin?'':' need more'):'—');
-  _setCmp('ai-cmp-vol',vr!=null&&vr<1.2?'live-pass':(vr==null?'live-ok':'live-fail'),vr!=null?'ratio '+vr.toFixed(2)+(vr<1.2?'':' too high'):'no data');
+  _setCmp('ai-cmp-vol',vr!=null&&vr<volGate?'live-pass':(vr==null?'live-ok':'live-fail'),vr!=null?'ratio '+vr.toFixed(2)+(vr<volGate?'':' too high'):'no data');
   const timeOk=sr!=null&&sr>90&&sr<13*60;
   _setCmp('ai-cmp-time',timeOk?'live-pass':(sr==null?'live-ok':'live-fail'),sr!=null?Math.floor(sr/60)+'m '+String(sr%60|0).padStart(2,'0')+'s'+(timeOk?'':sr<=90?' late':' early'):'—');
   _setCmp('ai-cmp-mom',mom!=='neutral'?'live-pass':'live-fail',(mom.toUpperCase()+(vel!=='neutral'?' / '+vel:'')||'NEUTRAL'));
@@ -1210,6 +1224,8 @@ async function pollState(){
     const wp=bd.win_prob_final,ev=bd.ev,mom=bd.momentum_label||'neutral',vel=bd.velocity_label||'neutral';
     const vr=bd.vol_ratio,dp=bd.distance_pct,sr=s.seconds_remaining;
     const confThresh=(s.config&&s.config.confidence_threshold)||72;
+    const evMin=(s.config&&s.config.min_ev_pct)||3;
+    const volGate=(s.config&&s.config.vol_gate_thresh)||1.80;
 
     // Direction box
     const dirBox=document.getElementById('direction-box');
@@ -1242,8 +1258,8 @@ async function pollState(){
       if(v){v.textContent=val;v.style.color=on?'var(--green)':'var(--muted)';}
     }
     setGate('cf-conf','cf-conf-val',wp!=null&&wp>=confThresh,wp!=null?wp.toFixed(1)+'%':'—');
-    setGate('cf-ev',  'cf-ev-val',  ev!=null&&ev>=7,         ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—');
-    setGate('cf-vol', 'cf-vol-val', vr!=null&&vr<1.2,        vr!=null?'ratio '+vr.toFixed(2):'no data');
+    setGate('cf-ev',  'cf-ev-val',  ev!=null&&ev>=evMin,     ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—');
+    setGate('cf-vol', 'cf-vol-val', vr!=null&&vr<volGate,    vr!=null?'ratio '+vr.toFixed(2):'no data');
     setSig('cf-mom', 'cf-mom-val', mom!=='neutral',  mom.toUpperCase());
     setSig('cf-vel', 'cf-vel-val', vel==='favorable',vel.toUpperCase());
     setSig('cf-dist','cf-dist-val',dp!=null&&dp>=0.10,dp!=null?dp.toFixed(3)+'%':'—');
@@ -1297,15 +1313,15 @@ async function pollState(){
         const velF=(bd.velocity_label||'neutral').toUpperCase();
         const srF=s.seconds_remaining!=null?Math.floor(s.seconds_remaining/60)+'m '+String(s.seconds_remaining%60|0).padStart(2,'0')+'s':'—';
         const side=bd.side==='yes'?'UP (YES)':bd.side==='no'?'DOWN (NO)':'—';
-        const passConf=wp!=null&&wp>=confThresh, passEv=ev!=null&&ev>=7, passVol=vr!=null&&vr<1.2;
+        const passConf=wp!=null&&wp>=confThresh, passEv=ev!=null&&ev>=evMin, passVol=vr!=null&&vr<volGate;
         const nPass=[passConf,passEv,passVol].filter(Boolean).length;
         let lines=[];
         lines.push(`Phase: ${ph} | Direction: ${side} | Action: ${action.toUpperCase()}`);
         if(skip)lines.push(`Skip reason: ${skip}`);
         lines.push(`\nSignal summary — ${nPass}/3 gates passing`);
         lines.push(`  Win probability: ${wpF} (need ≥${confThresh}%) ${passConf?'✓':'✗'}`);
-        lines.push(`  Expected value:  ${evF} (need ≥+7%) ${passEv?'✓':'✗'}`);
-        lines.push(`  Vol ratio:       ${vrF} (need <1.20) ${passVol?'✓':'✗'}`);
+        lines.push(`  Expected value:  ${evF} (need ≥+${evMin}%) ${passEv?'✓':'✗'}`);
+        lines.push(`  Vol ratio:       ${vrF} (need <${volGate.toFixed(2)}) ${passVol?'✓':'✗'}`);
         lines.push(`\nMomentum: ${momF} | Velocity: ${velF} | Time left: ${srF}`);
         if(dtxt){dtxt.textContent=lines.join('\n');dtxt.style.color='';}
         if(dsig)dsig.innerHTML='';
