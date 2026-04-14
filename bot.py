@@ -2378,7 +2378,9 @@ async def place_order(
             #   (b) partial fill — contracts_count>0 (filled + remainder canceled)
             _cc_canceled = post_order.get("contracts_count")
             if _cc_canceled:
-                _fp_canceled = post_order.get("yes_price", price_this_attempt)
+                _fp_raw = post_order.get("yes_price", price_this_attempt)
+                # Kalshi always returns yes_price. For NO buys, convert back to the NO cost.
+                _fp_canceled = _fp_raw if side == "yes" else (100 - _fp_raw)
                 log.info(f"Order {order_id} IOC partial fill: {_cc_canceled} contracts @ {_fp_canceled}c (canceled remainder)")
                 return {"fill_confirmed": True, "fill_price_cents": _fp_canceled, "order_id": order_id, "filled_contracts": _cc_canceled}
             log.info(f"Order {order_id} IOC zero-fill (canceled) — retrying")
@@ -2398,7 +2400,9 @@ async def place_order(
             log.warning(f"Order {order_id} status={post_status!r} but filled_count=0 — bumping price and retrying")
             continue
 
-        fill_price = post_order.get("yes_price", price_this_attempt)
+        _fill_yes_price = post_order.get("yes_price", price_this_attempt)
+        # Kalshi always returns yes_price. For NO buys, convert to the actual NO cost.
+        fill_price = _fill_yes_price if side == "yes" else (100 - _fill_yes_price)
         log.info(f"Order FILLED: {order_id} @ {fill_price}c x{filled_count} status={post_status!r}")
         return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
 
@@ -2708,7 +2712,8 @@ async def handle_ready_phase(
                     )
                     c_win_prob = c_brain.get("win_prob", 0.5)
                     c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
-                    c_ev       = c_win_prob - c_entry / 100
+                    _c_fee     = config.get("kalshi_fee_per_contract_cents", 7) / 100
+                    c_ev       = c_win_prob - c_entry / 100 - _c_fee
                     log.info(f"  Window {c_ticker}: ev={c_ev:+.1%} side={c_brain['side']} strike=${c_strike:,.0f}")
                     if best_ev is None or c_ev > best_ev:
                         best_ev     = c_ev
@@ -3020,7 +3025,7 @@ async def handle_ready_phase(
     dir_icon   = "⬆" if side == "yes" else "⬇"
     _win_prob_used = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0)
     _win_pct   = int(_win_prob_used * 100)
-    _ev        = round((_win_prob_used - fill_price / 100) * 100, 1)
+    _ev        = round((_win_prob_used - fill_price / 100 - _fee) * 100, 1)
     _ev_str    = f"+{_ev}%" if _ev >= 0 else f"{_ev}%"
     _payout    = round((100 - fill_price) * contracts / 100, 2)
     _cost      = round(fill_price * contracts / 100, 2)
@@ -3040,6 +3045,7 @@ async def handle_locked_phase(
     session: aiohttp.ClientSession,
     btc_price: float,
     secs_left: float,
+    config: dict,
 ) -> None:
     """
     Hold an open position to expiry — exit at settlement.
@@ -3346,7 +3352,7 @@ async def main_loop() -> None:
                 if current_phase == "LOCKED":
                     try:
                         await handle_locked_phase(
-                            session, btc_price, secs_left
+                            session, btc_price, secs_left, config
                         )
                     except Exception as exc:
                         log.error(f"LOCKED phase error: {exc}", exc_info=True)
