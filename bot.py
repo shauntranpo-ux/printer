@@ -111,6 +111,11 @@ _claude_client = None       # AsyncAnthropic instance, set in main()
 _claude_cache: dict = {}    # cache_key → {ts, result}
 CLAUDE_CACHE_TTL = 15       # seconds between Claude calls for same market+side
 
+# Real-time market context cache (Fear & Greed, news headlines, social signals)
+_market_context: dict = {"fear_greed": None, "news": [], "tweets": []}
+_market_context_ts: float = 0.0
+_MARKET_CONTEXT_TTL: int = 120   # refresh every 2 minutes
+
 # Claude's last analysis (written to state file for dashboard)
 last_claude_reasoning: str = ""
 last_claude_key_signals: list = []
@@ -1272,7 +1277,148 @@ def _recent_trades_for_claude() -> list:
         return []
 
 
+async def _fetch_market_context(session: aiohttp.ClientSession) -> dict:
+    """
+    Pull real-time BTC market sentiment from free public APIs + optional social signals.
+
+    Sources (always):
+      - alternative.me Fear & Greed Index  — 0 (extreme fear) to 100 (extreme greed)
+      - CryptoPanic BTC news               — latest 5 headlines, no auth required
+
+    Sources (optional, env-var gated):
+      - Twitter/X v2 search                — TWITTER_BEARER_TOKEN (X Basic $100/mo)
+        Monitors high-impact accounts: Trump, Elon, Saylor, POTUS, SEC, Cramer
+      - NewsAPI.org keyword search          — NEWSAPI_KEY (100 req/day free tier)
+
+    Returns cached result if < _MARKET_CONTEXT_TTL seconds old.
+    """
+    global _market_context, _market_context_ts
+
+    now = time.time()
+    if now - _market_context_ts < _MARKET_CONTEXT_TTL:
+        return _market_context
+
+    ctx: dict = {"fear_greed": None, "news": [], "tweets": []}
+    timeout = aiohttp.ClientTimeout(total=6)
+
+    # ── Fear & Greed Index ──────────────────────────────────────────────────
+    try:
+        async with session.get(
+            "https://api.alternative.me/fng/?limit=1",
+            timeout=timeout,
+        ) as resp:
+            if resp.status == 200:
+                data = await resp.json(content_type=None)
+                entry = data["data"][0]
+                ctx["fear_greed"] = {
+                    "value": int(entry["value"]),
+                    "label": entry["value_classification"],
+                }
+    except Exception as exc:
+        log.debug(f"[ctx] Fear&Greed fetch failed: {exc}")
+
+    # ── CryptoPanic BTC news ────────────────────────────────────────────────
+    try:
+        async with session.get(
+            "https://cryptopanic.com/api/free/v1/posts/?auth_token=&currencies=BTC&public=true",
+            timeout=timeout,
+        ) as resp:
+            if resp.status == 200:
+                data = await resp.json(content_type=None)
+                for post in (data.get("results") or [])[:5]:
+                    ctx["news"].append({
+                        "title": post.get("title", ""),
+                        "votes": post.get("votes", {}),
+                    })
+    except Exception as exc:
+        log.debug(f"[ctx] CryptoPanic fetch failed: {exc}")
+
+    # ── NewsAPI.org (optional) ──────────────────────────────────────────────
+    newsapi_key = os.environ.get("NEWSAPI_KEY", "")
+    if newsapi_key and len(ctx["news"]) < 5:
+        try:
+            async with session.get(
+                "https://newsapi.org/v2/everything",
+                params={
+                    "q": "bitcoin OR crypto",
+                    "sortBy": "publishedAt",
+                    "pageSize": 5,
+                    "language": "en",
+                    "apiKey": newsapi_key,
+                },
+                timeout=timeout,
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json(content_type=None)
+                    for art in (data.get("articles") or [])[:5]:
+                        ctx["news"].append({
+                            "title": art.get("title", ""),
+                            "source": art.get("source", {}).get("name", ""),
+                        })
+        except Exception as exc:
+            log.debug(f"[ctx] NewsAPI fetch failed: {exc}")
+
+    # ── Twitter / X v2 (optional) ──────────────────────────────────────────
+    twitter_token = os.environ.get("TWITTER_BEARER_TOKEN", "")
+    if twitter_token:
+        # High-impact accounts that move crypto markets
+        watch_accounts = [
+            "realDonaldTrump",   # US president — crypto/tariff policy
+            "elonmusk",          # DOGE/BTC market mover
+            "michael_saylor",    # MicroStrategy, BTC maximalist
+            "POTUS",             # Official WH account
+            "SECGov",            # Regulatory news
+            "jimcramer",         # Inverse indicator / retail sentiment
+        ]
+        query = " OR ".join(f"from:{acc}" for acc in watch_accounts)
+        query += " (bitcoin OR crypto OR btc) -is:retweet"
+        try:
+            async with session.get(
+                "https://api.twitter.com/2/tweets/search/recent",
+                headers={"Authorization": f"Bearer {twitter_token}"},
+                params={
+                    "query": query,
+                    "max_results": 10,
+                    "tweet.fields": "created_at,author_id,public_metrics",
+                    "expansions": "author_id",
+                    "user.fields": "username",
+                },
+                timeout=timeout,
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json(content_type=None)
+                    # Build username lookup from includes
+                    users = {
+                        u["id"]: u["username"]
+                        for u in (data.get("includes", {}).get("users") or [])
+                    }
+                    for tweet in (data.get("data") or []):
+                        ctx["tweets"].append({
+                            "author": users.get(tweet.get("author_id", ""), "unknown"),
+                            "text": tweet.get("text", "")[:280],
+                            "likes": tweet.get("public_metrics", {}).get("like_count", 0),
+                        })
+                elif resp.status == 429:
+                    log.debug("[ctx] Twitter rate-limited — skipping this cycle")
+                else:
+                    log.debug(f"[ctx] Twitter returned HTTP {resp.status}")
+        except Exception as exc:
+            log.debug(f"[ctx] Twitter fetch failed: {exc}")
+
+    _market_context = ctx
+    _market_context_ts = time.time()
+
+    fg = ctx["fear_greed"]
+    fg_desc = f"F&G={fg['value']}({fg['label']})" if fg else "F&G=n/a"
+    log.info(
+        f"[ctx] Market context updated — {fg_desc} "
+        f"news={len(ctx['news'])} tweets={len(ctx['tweets'])}"
+    )
+    return ctx
+
+
 async def claude_analysis(
+    session: aiohttp.ClientSession,
     btc_price: float,
     strike: float,
     yes_ask: float,
@@ -1313,11 +1459,51 @@ async def claude_analysis(
     pct_from_strike = (btc_price - strike) / strike * 100
     recent_trades = _recent_trades_for_claude()
 
+    # Real-time market context (Fear & Greed, news, social signals)
+    ctx = await _fetch_market_context(session)
+
+    # Build a compact sentiment block for the prompt
+    fg = ctx.get("fear_greed")
+    fg_line = (
+        f"Fear & Greed Index: {fg['value']}/100 — {fg['label']}"
+        if fg else "Fear & Greed Index: unavailable"
+    )
+
+    news_lines = "\n".join(
+        f"  • {n['title'][:120]}"
+        for n in ctx.get("news", [])[:5]
+    ) or "  (no recent headlines)"
+
+    tweet_lines = "\n".join(
+        f"  @{t['author']} ({t['likes']}♥): {t['text'][:140]}"
+        for t in ctx.get("tweets", [])[:6]
+    ) or "  (no recent high-impact tweets)"
+
+    has_social = bool(ctx.get("tweets"))
+    social_note = (
+        "  High-impact accounts monitored: Trump, Musk, Saylor, POTUS, SEC, Cramer."
+        if has_social else
+        "  (Twitter feed not configured — set TWITTER_BEARER_TOKEN for live social signals)"
+    )
+
+    sentiment_block = f"""\nREAL-TIME MARKET SENTIMENT:
+{fg_line}
+
+RECENT CRYPTO NEWS (last 2 min):
+{news_lines}
+
+SOCIAL SIGNALS — HIGH-IMPACT ACCOUNTS:
+{social_note}
+{tweet_lines}"""
+
     system_prompt = (
         "You are a fast quantitative filter for a Kalshi BTC binary options bot. "
         "The primary model (Brain v3) has already evaluated this trade using empirical win probabilities from 4.5M rows of BTC data. "
         "You are being consulted because the trade is BORDERLINE — the expected value is between 2-5% or confidence is 60-84. "
-        "Your job: confirm or reject. Be decisive. Only reject if you see a clear red flag (momentum reversal, vol spike, price stalling at strike). "
+        "You now have access to real-time market sentiment data including the Fear & Greed Index, "
+        "breaking crypto news, and social signals from high-impact accounts (Trump, Musk, Saylor, SEC). "
+        "Your job: confirm or reject. Be decisive. Only reject if you see a clear red flag "
+        "(momentum reversal, vol spike, price stalling at strike, or negative macro catalyst from news/social). "
         "Respond with valid JSON only — no markdown, no explanation outside the JSON."
     )
 
@@ -1338,7 +1524,7 @@ BTC PRICE MOVEMENT:
   1 min ago: ${btc_1m:,.2f}
   30 s  ago: ${btc_30s:,.2f}
   Now:       ${btc_price:,.2f}
-  3-min momentum: {mom_label} ({mom_pct*100:+.3f}%)
+  3-min momentum: {mom_label} ({mom_pct*100:+.3f}%){sentiment_block}
 
 PRINTER BRAIN STATE (your decisions will be stored and feed back into this):
   Overall win rate:     {_brain_cal['overall_wr']:.0%}
@@ -1357,6 +1543,7 @@ YOUR JOB:
 - Compare true probability (BTC distance from strike, momentum, time) vs the contract's implied probability.
 - Pick the side with the bigger edge, or skip if neither side is mispriced.
 - With {secs_left/60:.1f} min left, momentum and distance matter most.
+- Use sentiment/news/social ONLY to break ties or flag obvious macro risk; don't override strong technical signals.
 
 Respond with exactly this JSON:
 {{
@@ -2433,7 +2620,7 @@ async def handle_ready_phase(
         else:
             # Borderline — get Claude's second opinion
             claude_result = await claude_analysis(
-                btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker
+                session, btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker
             )
             if claude_result is not None:
                 _active_claude_result = claude_result
