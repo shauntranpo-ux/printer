@@ -98,6 +98,7 @@ current_market: dict | None = None
 current_phase: str = "DONE"   # WATCH | READY | LOCKED | DONE
 current_position: dict | None = None
 _order_attempted_tickers: set = set()  # tickers where an order was attempted this session
+_asset_states: dict[str, dict] = {}    # per-asset state dicts for non-BTC assets
 
 # Market cache
 _market_cache: dict | None = None
@@ -872,6 +873,65 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         f"| closes {_market_cache.get('close_time')} | ({len(pool)} window(s) total)"
     )
     return pool if return_all else _market_cache
+
+
+async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> dict | None:
+    """
+    Fetch the soonest-expiring open 15-minute market for the given non-BTC asset.
+    Uses the kalshi_series priority list from ASSET_CONFIG.
+    Returns None if no suitable market found.
+    """
+    series_list = ASSET_CONFIG.get(asset, {}).get("kalshi_series", ())
+    path = "/markets"
+    all_markets: list[dict] = []
+    seen_tickers: set[str] = set()
+    for series in series_list:
+        params = {"series_ticker": series, "status": "open", "limit": 20}
+        try:
+            async with session.get(
+                KALSHI_BASE_URL + path,
+                headers=kalshi_headers("GET", path),
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+            ) as resp:
+                if resp.status != 200:
+                    continue
+                data = await resp.json()
+            for m in data.get("markets", []):
+                t = m.get("ticker", "")
+                if t and t not in seen_tickers:
+                    seen_tickers.add(t)
+                    all_markets.append(m)
+        except Exception as exc:
+            log.warning(f"fetch_market_for_asset [{asset}] series={series}: {exc}")
+
+    if not all_markets:
+        log.debug(f"fetch_market_for_asset [{asset}]: no markets found")
+        return None
+
+    # Drop daily/range markets; keep short-duration only
+    all_markets = [m for m in all_markets
+                   if "range" not in m.get("title", "").lower()
+                   and "daily" not in m.get("title", "").lower()]
+    if not all_markets:
+        return None
+
+    # Return soonest-expiring market with > 0 seconds left, < 20 min window
+    now_utc = datetime.now(timezone.utc)
+    def secs_to_close(m: dict) -> float:
+        try:
+            return (datetime.fromisoformat(m["close_time"].replace("Z", "+00:00")) - now_utc).total_seconds()
+        except Exception:
+            return -1.0
+
+    valid = [m for m in all_markets if 0 < secs_to_close(m) < 20 * 60]
+    if not valid:
+        return None
+
+    valid.sort(key=secs_to_close)
+    chosen = valid[0]
+    log.debug(f"fetch_market_for_asset [{asset}]: {chosen.get('ticker')} ({secs_to_close(chosen):.0f}s left)")
+    return chosen
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2693,90 +2753,102 @@ async def handle_ready_phase(
     secs_left: float,
     strike: float,
     elapsed: float,
+    asset: str = "BTC",
+    state: dict | None = None,
 ) -> None:
     """
     Evaluate entry conditions for one READY-phase iteration.
     Advances to LOCKED on a successful fill, or logs the skip reason.
+
+    asset: which asset this market is for ("BTC", "ETH", etc.)
+    state: per-asset state dict (non-BTC); mutations go here instead of globals.
+           Must contain keys: "phase", "position", "order_attempted" (set).
     """
     global current_phase, current_position
     global last_confidence_score, last_confidence_breakdown
     global last_action, last_skip_reason, last_reversal_reason
 
+    _use_state = state is not None
     mode = config.get("mode", "paper")
 
     # Hard expiry gate — truly nothing to do in the last 90 seconds
     if secs_left < 90:
         log.info(f"{ticker}: < 90s remaining. Moving to DONE.")
-        current_phase = "DONE"
+        if _use_state: state["phase"] = "DONE"
+        else: current_phase = "DONE"
         return
 
-    # ── Multi-window best-pick ────────────────────────────────────────────────
+    # ── Multi-window best-pick (BTC only) ────────────────────────────────────
     # If multiple 15-min windows are open simultaneously, evaluate all of them
     # and trade the one with the highest EV. Falls back to primary market if
     # only one window is open or fetching alternatives fails.
+    # Non-BTC assets use a single market per cycle (no multi-window support).
     global current_market
-    try:
-        all_windows = await fetch_current_market(session, return_all=True)
-        if isinstance(all_windows, list) and len(all_windows) > 1:
-            log.info(f"Multi-window: {len(all_windows)} open windows — evaluating all for best EV.")
-            best_market  = market
-            best_ticker  = ticker
-            best_ev      = None
-            best_ob      = None
-            best_strike  = strike
-            for candidate in all_windows:
-                try:
-                    c_ticker   = candidate.get("ticker", "")
-                    c_strike   = parse_strike(candidate)
-                    if c_strike is None:
-                        continue
-                    # Use each window's own timing — they may have different close times
-                    c_secs_left = seconds_remaining(candidate)
-                    c_elapsed   = seconds_elapsed(candidate)
-                    # Skip windows that are too close to expiry — same gate as primary market.
-                    # Without this, the multi-window picker can select a market with 40s left
-                    # AFTER the 90s gate already passed for the primary market.
-                    if c_secs_left < 90:
-                        log.info(f"  Window {c_ticker}: skipping — only {c_secs_left:.0f}s left")
-                        continue
-                    c_ob = await fetch_orderbook(session, c_ticker, candidate)
-                    if c_ob is None:
-                        continue
-                    c_brain = printer_brain(
-                        btc_price, c_strike,
-                        c_ob["best_yes_ask"], c_ob["best_no_ask"],
-                        c_elapsed, c_secs_left, c_ticker,
-                        min_ev_base=config.get("min_ev_base", 3.0),
-                        vol_gate_thresh=config.get("vol_gate_thresh", 1.80),
-                        kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
-                    )
-                    c_win_prob = c_brain.get("win_prob", 0.5)
-                    c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
-                    _c_fee     = config.get("kalshi_fee_per_contract_cents", 7) / 100
-                    c_ev       = c_win_prob - c_entry / 100 - _c_fee
-                    log.info(f"  Window {c_ticker}: ev={c_ev:+.1%} side={c_brain['side']} strike=${c_strike:,.0f}")
-                    if best_ev is None or c_ev > best_ev:
-                        best_ev     = c_ev
-                        best_market = candidate
-                        best_ticker = c_ticker
-                        best_ob     = c_ob
-                        best_strike = c_strike
-                except Exception as _exc:
-                    log.warning(f"  Multi-window eval error for {candidate.get('ticker','?')}: {_exc}")
-            if best_ticker != ticker:
-                log.info(f"Multi-window: switching to {best_ticker} (EV {best_ev:+.1%}) over {ticker}")
-                market   = best_market
-                ticker   = best_ticker
-                strike   = best_strike
-                secs_left = seconds_remaining(best_market)
-                elapsed   = seconds_elapsed(best_market)
-                current_market = best_market
-            ob = best_ob
-        else:
-            ob = None  # fetch below
-    except Exception as _mw_exc:
-        log.warning(f"Multi-window evaluation error: {_mw_exc}")
-        ob = None
+    if asset == "BTC":
+        try:
+            all_windows = await fetch_current_market(session, return_all=True)
+            if isinstance(all_windows, list) and len(all_windows) > 1:
+                log.info(f"Multi-window: {len(all_windows)} open windows — evaluating all for best EV.")
+                best_market  = market
+                best_ticker  = ticker
+                best_ev      = None
+                best_ob      = None
+                best_strike  = strike
+                for candidate in all_windows:
+                    try:
+                        c_ticker   = candidate.get("ticker", "")
+                        c_strike   = parse_strike(candidate)
+                        if c_strike is None:
+                            continue
+                        # Use each window's own timing — they may have different close times
+                        c_secs_left = seconds_remaining(candidate)
+                        c_elapsed   = seconds_elapsed(candidate)
+                        # Skip windows that are too close to expiry — same gate as primary market.
+                        # Without this, the multi-window picker can select a market with 40s left
+                        # AFTER the 90s gate already passed for the primary market.
+                        if c_secs_left < 90:
+                            log.info(f"  Window {c_ticker}: skipping — only {c_secs_left:.0f}s left")
+                            continue
+                        c_ob = await fetch_orderbook(session, c_ticker, candidate)
+                        if c_ob is None:
+                            continue
+                        c_brain = printer_brain(
+                            btc_price, c_strike,
+                            c_ob["best_yes_ask"], c_ob["best_no_ask"],
+                            c_elapsed, c_secs_left, c_ticker,
+                            min_ev_base=config.get("min_ev_base", 3.0),
+                            vol_gate_thresh=config.get("vol_gate_thresh", 1.80),
+                            kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
+                        )
+                        c_win_prob = c_brain.get("win_prob", 0.5)
+                        c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
+                        _c_fee     = config.get("kalshi_fee_per_contract_cents", 7) / 100
+                        c_ev       = c_win_prob - c_entry / 100 - _c_fee
+                        log.info(f"  Window {c_ticker}: ev={c_ev:+.1%} side={c_brain['side']} strike=${c_strike:,.0f}")
+                        if best_ev is None or c_ev > best_ev:
+                            best_ev     = c_ev
+                            best_market = candidate
+                            best_ticker = c_ticker
+                            best_ob     = c_ob
+                            best_strike = c_strike
+                    except Exception as _exc:
+                        log.warning(f"  Multi-window eval error for {candidate.get('ticker','?')}: {_exc}")
+                if best_ticker != ticker:
+                    log.info(f"Multi-window: switching to {best_ticker} (EV {best_ev:+.1%}) over {ticker}")
+                    market   = best_market
+                    ticker   = best_ticker
+                    strike   = best_strike
+                    secs_left = seconds_remaining(best_market)
+                    elapsed   = seconds_elapsed(best_market)
+                    current_market = best_market
+                ob = best_ob
+            else:
+                ob = None  # fetch below
+        except Exception as _mw_exc:
+            log.warning(f"Multi-window evaluation error: {_mw_exc}")
+            ob = None
+    else:
+        ob = None  # non-BTC: no multi-window, orderbook fetched below
 
     # Orderbook — retry next cycle if temporarily unavailable
     if ob is None:
@@ -2875,7 +2947,7 @@ async def handle_ready_phase(
     entry_price_cents = yes_ask if side == "yes" else no_ask
 
     # Dashboard breakdown from Brain v3 components
-    win_p_raw   = _empirical_win_prob(abs((btc_price - strike) / strike), secs_left / 60)
+    win_p_raw   = _win_prob_for_asset(asset, abs((btc_price - strike) / strike), secs_left / 60)
     _mom_label  = brain.get("mom_label",  "neutral")
     _vel_signal = brain.get("vel_signal", "neutral")
     _abs_pct    = brain.get("abs_pct", abs((btc_price - strike) / strike))
@@ -2985,7 +3057,8 @@ async def handle_ready_phase(
 
     # Place order — mark ticker as attempted BEFORE placing so re-entry is blocked
     # even if the bot crashes or fill_confirmed comes back False
-    _order_attempted_tickers.add(ticker)
+    if _use_state: state["order_attempted"].add(ticker)
+    else: _order_attempted_tickers.add(ticker)
     log.info(f"{ticker}: TRADE {side} {contracts}x @ {int(entry_price_cents)}c (score={score}, mode={mode})")
     result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market)
 
@@ -3008,7 +3081,8 @@ async def handle_ready_phase(
     )
 
     if not fill_confirmed:
-        current_phase = "DONE"
+        if _use_state: state["phase"] = "DONE"
+        else: current_phase = "DONE"
         last_action, last_skip_reason = "skip", "order not filled"
         log.info(f"{ticker}: order not filled. Moving to DONE.")
         return
@@ -3039,14 +3113,15 @@ async def handle_ready_phase(
         "claude_confidence": _active_claude_result["confidence"] if _active_claude_result else None,
         "claude_signals":    json.dumps(_active_claude_result["key_signals"]) if _active_claude_result else None,
         "order_id":          order_id,
+        "asset":             asset,
     }
     trade_id = await db_write_trade(trade_data)
 
     _entry_ts = time.time()
     _abs_pct_at_entry = abs(btc_price - strike) / strike
     _mins_left_at_entry = secs_left / 60
-    _bv3_dist_idx, _bv3_time_idx = _bv3_bucket_indices(_abs_pct_at_entry, _mins_left_at_entry)
-    current_position = {
+    _bv3_dist_idx, _bv3_time_idx = _bv3_bucket_indices_for_asset(asset, _abs_pct_at_entry, _mins_left_at_entry)
+    _new_position = {
         "trade_id": trade_id,
         "ticker": ticker,
         "side": side,
@@ -3057,10 +3132,16 @@ async def handle_ready_phase(
         "entry_ts": _entry_ts,
         "market_close_time": market.get("close_time", ""),
         "order_id": order_id,
+        "asset": asset,
         "_bv3_dist_idx": _bv3_dist_idx,
         "_bv3_time_idx": _bv3_time_idx,
     }
-    current_phase = "LOCKED"
+    if _use_state:
+        state["position"] = _new_position
+        state["phase"] = "LOCKED"
+    else:
+        current_position = _new_position
+        current_phase = "LOCKED"
     last_action, last_skip_reason = "trade", ""
     log.info(f"{ticker}: LOCKED.")
     mode_icon  = "📄" if mode == "paper" else "💵"
@@ -3088,21 +3169,30 @@ async def handle_locked_phase(
     btc_price: float,
     secs_left: float,
     config: dict,
+    asset: str = "BTC",
+    state: dict | None = None,
 ) -> None:
     """
     Hold an open position to expiry — exit at settlement.
     Exit only when the market settles and fetch the official Kalshi result.
     secs_left is passed as a fallback; the position's stored close_time is
     used when available so market rollovers don't break expiry detection.
+
+    asset: which asset this position is for ("BTC", "ETH", etc.)
+    state: per-asset state dict (non-BTC); mutations go here instead of globals.
     """
     global current_phase, current_position
 
-    if current_position is None:
+    _use_state = state is not None
+    _cur_pos = state["position"] if _use_state else current_position
+
+    if _cur_pos is None:
         log.warning("LOCKED phase with no position. Moving to DONE.")
-        current_phase = "DONE"
+        if _use_state: state["phase"] = "DONE"
+        else: current_phase = "DONE"
         return
 
-    pos = current_position
+    pos = _cur_pos
     ticker = pos["ticker"]
     strike = pos["strike"]
 
@@ -3158,10 +3248,10 @@ async def handle_locked_phase(
 
         log.info(f"{ticker} expired. Outcome={outcome}, P&L=${pnl:.2f}")
 
-        # Update live BV3 correction table with actual outcome
+        # Update live BV3 correction table with actual outcome (BTC only)
         _d = pos.get("_bv3_dist_idx")
         _t = pos.get("_bv3_time_idx")
-        if _d is not None and _t is not None:
+        if _d is not None and _t is not None and pos.get("asset", "BTC") == "BTC":
             _update_bv3_correction(_d, _t, outcome == "win")
 
         await db_update_trade(pos["trade_id"], {
@@ -3205,15 +3295,170 @@ async def handle_locked_phase(
             f"BTC: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}  |  <code>{ticker}</code>"
         )
 
-        current_position = None
-        current_phase = "DONE"
+        if _use_state:
+            state["position"] = None
+            state["phase"] = "DONE"
+        else:
+            current_position = None
+            current_phase = "DONE"
         return
 
     # Still in the market — just hold and log
     log.info(
         f"[HOLDING] {ticker} | side={pos['side'].upper()} | entry={pos['entry_price_cents']}c "
-        f"| BTC=${btc_price:,.0f} | strike=${pos['strike']:,.0f} | {secs_left:.0f}s left"
+        f"| price=${btc_price:,.4g} | strike=${pos['strike']:,.4g} | {secs_left:.0f}s left"
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+#  Non-BTC asset processing
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _init_asset_state(asset: str) -> dict:
+    """Return a fresh per-asset state dict."""
+    return {
+        "phase": "DONE",
+        "position": None,
+        "order_attempted": set(),
+        "prev_ticker": None,
+        "market": None,
+    }
+
+
+async def _process_asset(
+    session: aiohttp.ClientSession,
+    config: dict,
+    asset: str,
+) -> None:
+    """
+    Run one iteration of the trading state machine for a non-BTC asset.
+    Called every cycle from _non_btc_asset_loop.
+    """
+    global _asset_states
+    if asset not in _asset_states:
+        _asset_states[asset] = _init_asset_state(asset)
+    st = _asset_states[asset]
+
+    # Price check
+    price = _am_get_price(asset)
+    if price is None:
+        log.debug(f"[{asset}] no price yet — skipping")
+        return
+    age = _am_price_age(asset)
+    if age is not None and age > 60:
+        log.warning(f"[{asset}] price stale ({age:.0f}s) — skipping")
+        return
+
+    # Market fetch
+    try:
+        market = await fetch_market_for_asset(session, asset)
+    except Exception as exc:
+        log.warning(f"[{asset}] market fetch error: {exc}")
+        return
+
+    if market is None:
+        log.debug(f"[{asset}] no active market")
+        st["phase"] = "DONE"
+        st["prev_ticker"] = None
+        return
+
+    st["market"] = market
+    ticker = market.get("ticker", "")
+    secs_left = seconds_remaining(market)
+    elapsed = seconds_elapsed(market)
+
+    # Strike
+    try:
+        strike = parse_strike(market)
+    except Exception:
+        strike = None
+    if strike is None:
+        log.warning(f"[{asset}] cannot parse strike — skipping")
+        return
+
+    # Ticker rollover detection
+    prev_ticker = st.get("prev_ticker")
+    if prev_ticker is None:
+        st["prev_ticker"] = ticker
+        if st["phase"] == "DONE":
+            st["phase"] = "WATCH"
+            log.info(f"[{asset}] First market: {ticker}. Starting WATCH.")
+    elif ticker != prev_ticker:
+        if st["phase"] == "LOCKED":
+            log.info(f"[{asset}] Market rolled to {ticker} but position still open on {prev_ticker} — staying LOCKED.")
+            ticker = prev_ticker
+            market = st.get("market") or market
+        else:
+            log.info(f"[{asset}] New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
+            st["phase"] = "WATCH"
+            st["position"] = None
+            st["order_attempted"].discard(prev_ticker)
+            st["prev_ticker"] = ticker
+
+    # WATCH
+    if st["phase"] == "WATCH":
+        if elapsed > WATCH_PHASE_SECONDS:
+            log.info(f"[{asset}] {ticker}: elapsed {elapsed:.0f}s → READY.")
+            st["phase"] = "READY"
+        else:
+            log.info(f"[{asset}] {ticker}: WATCH ({elapsed:.0f}s elapsed).")
+            return
+
+    # LOCKED
+    if st["phase"] == "LOCKED":
+        try:
+            await handle_locked_phase(session, price, secs_left, config, asset=asset, state=st)
+        except Exception as exc:
+            log.error(f"[{asset}] LOCKED phase error: {exc}", exc_info=True)
+        return
+
+    # DONE
+    if st["phase"] == "DONE":
+        if secs_left > 3 * 60 and ticker not in st["order_attempted"]:
+            log.info(f"[{asset}] DONE → READY re-entry: {ticker} has {secs_left:.0f}s left.")
+            st["phase"] = "READY"
+        else:
+            log.info(f"[{asset}] DONE. {secs_left:.0f}s left — waiting for next market.")
+            return
+
+    # READY
+    if st["phase"] == "READY":
+        # Global consecutive-loss pause applies to ALL assets
+        if _consecutive_loss_pause_until and time.time() < _consecutive_loss_pause_until:
+            _resume_in = int(_consecutive_loss_pause_until - time.time())
+            log.info(f"[{asset}] Consecutive-loss pause active — {_resume_in}s remaining. Skipping.")
+            return
+        try:
+            await handle_ready_phase(
+                session, config, market, ticker,
+                price, secs_left, strike, elapsed,
+                asset=asset, state=st,
+            )
+        except Exception as exc:
+            log.error(f"[{asset}] READY phase error: {exc}", exc_info=True)
+
+
+async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
+    """
+    Independent 10-second loop processing all non-BTC enabled assets.
+    Runs as a background asyncio task alongside main_loop (which handles BTC).
+    """
+    while True:
+        try:
+            config = read_config()
+            if not config.get("bot_enabled", True):
+                await asyncio.sleep(10)
+                continue
+            for asset in config.get("enabled_assets", ["BTC"]):
+                if asset == "BTC":
+                    continue
+                try:
+                    await _process_asset(session, config, asset)
+                except Exception as exc:
+                    log.error(f"Non-BTC asset loop error [{asset}]: {exc}", exc_info=True)
+        except Exception as exc:
+            log.error(f"Non-BTC asset loop outer error: {exc}", exc_info=True)
+        await asyncio.sleep(10)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3268,6 +3513,10 @@ async def main_loop() -> None:
     # from silently breaking API calls after many hours of uptime.
     connector = aiohttp.TCPConnector(keepalive_timeout=30, limit=10)
     async with aiohttp.ClientSession(connector=connector) as session:
+        # Non-BTC assets run in a separate background task so they aren't
+        # gated by the BTC state machine's continue/sleep cycle.
+        asyncio.create_task(_non_btc_asset_loop(session))
+
         while True:
             try:
                 midnight_reset()
