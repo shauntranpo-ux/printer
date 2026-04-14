@@ -2,7 +2,7 @@
   "bot_enabled": true,
   "mode": "paper",
   "trade_amount_dollars": 25,
-  "confidence_threshold": 55,
+  "confidence_threshold": 65,
   "daily_loss_limit_dollars": 50,
   "daily_profit_target_dollars": 200,
   "max_consecutive_losses": 5,
