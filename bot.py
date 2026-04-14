@@ -112,7 +112,7 @@ _claude_cache: dict = {}    # cache_key → {ts, result}
 CLAUDE_CACHE_TTL = 15       # seconds between Claude calls for same market+side
 
 # Real-time market context cache (Fear & Greed, news headlines, social signals)
-_market_context: dict = {"fear_greed": None, "news": [], "tweets": []}
+_market_context: dict = {"fear_greed": None, "news": []}
 _market_context_ts: float = 0.0
 _MARKET_CONTEXT_TTL: int = 120   # refresh every 2 minutes
 
@@ -1296,6 +1296,8 @@ async def _fetch_market_context(session: aiohttp.ClientSession) -> dict:
     if now - _market_context_ts < _MARKET_CONTEXT_TTL:
         return _market_context
 
+    # Single-coroutine path (main_loop is sequential) — no lock needed.
+    # If the call graph ever becomes concurrent, add an asyncio.Lock here.
     ctx: dict = {"fear_greed": None, "news": []}
     timeout = aiohttp.ClientTimeout(total=6)
 
@@ -1315,21 +1317,26 @@ async def _fetch_market_context(session: aiohttp.ClientSession) -> dict:
     except Exception as exc:
         log.debug(f"[ctx] Fear&Greed fetch failed: {exc}")
 
-    # ── CryptoPanic BTC news ────────────────────────────────────────────────
-    try:
-        async with session.get(
-            "https://cryptopanic.com/api/free/v1/posts/?auth_token=&currencies=BTC&public=true",
-            timeout=timeout,
-        ) as resp:
-            if resp.status == 200:
-                data = await resp.json(content_type=None)
-                for post in (data.get("results") or [])[:5]:
-                    ctx["news"].append({
-                        "title": post.get("title", ""),
-                        "votes": post.get("votes", {}),
-                    })
-    except Exception as exc:
-        log.debug(f"[ctx] CryptoPanic fetch failed: {exc}")
+    # ── CryptoPanic BTC news (requires free API key at cryptopanic.com) ─────
+    cryptopanic_key = os.environ.get("CRYPTOPANIC_KEY", "")
+    if cryptopanic_key:
+        try:
+            async with session.get(
+                "https://cryptopanic.com/api/free/v1/posts/",
+                params={"auth_token": cryptopanic_key, "currencies": "BTC", "public": "true"},
+                timeout=timeout,
+            ) as resp:
+                if resp.status == 200:
+                    data = await resp.json(content_type=None)
+                    for post in (data.get("results") or [])[:5]:
+                        ctx["news"].append({
+                            "title": post.get("title", ""),
+                            "votes": post.get("votes", {}),
+                        })
+                else:
+                    log.debug(f"[ctx] CryptoPanic returned HTTP {resp.status}")
+        except Exception as exc:
+            log.debug(f"[ctx] CryptoPanic fetch failed: {exc}")
 
     # ── NewsAPI.org (optional) ──────────────────────────────────────────────
     newsapi_key = os.environ.get("NEWSAPI_KEY", "")
@@ -1919,10 +1926,13 @@ def _reversal_signal(
     # Velocity deceleration boost: price movement slowing = reversal more likely
     vel_boost = 0.04 if vel_signal == "unfavorable" else 0.0
 
-    # High-vol penalty: unpredictable in wild markets
+    # High-vol penalty: unpredictable in wild markets.
+    # Threshold 1.00 aligns with the main strategy vol gate (skip ≥1.50) —
+    # reversal setups are inherently riskier, so penalty starts earlier,
+    # but below 1.00 (main gate considers safe) we apply no penalty.
     vol_penalty = 0.0
-    if vol_ratio is not None and vol_ratio > 0.50:
-        vol_penalty = min(0.10, (vol_ratio - 0.50) * 0.20)
+    if vol_ratio is not None and vol_ratio > 1.00:
+        vol_penalty = min(0.10, (vol_ratio - 1.00) * 0.20)
 
     rev_prob = max(0.05, min(0.45, rev_prob + exhaust_boost + vel_boost - vol_penalty))
 
@@ -2382,7 +2392,7 @@ def write_state_file(
         "mode": config.get("mode", "paper"),
         "today_live_pnl": db_get_today_pnl("live"),
         "today_paper_pnl": db_get_today_pnl("paper"),
-        "config": {**config, "min_ev_pct": 7},
+        "config": {**config, "min_ev_pct": round((0.05 + _session_ev_adjustment()) * 100)},
         "limit_triggered": limit_triggered,
         "limit_reason": limit_reason,
         "open_position": current_position,
@@ -2537,7 +2547,7 @@ async def handle_ready_phase(
     # ── Claude — blend with brain, don't replace it ──────────────────────────
     # HIGH CONFIDENCE (brain win_prob >= 0.85 and action=trade) → trade immediately, skip Claude
     # HARD SKIP (brain EV < 0.02) → skip, don't waste API call
-    # BORDERLINE (EV between 0.02-0.05, OR confidence 60-84) → ask Claude
+    # BORDERLINE (EV above 0.02 but below session floor, OR confidence 60-84) → ask Claude
     _active_claude_result = None
     entry_price_cents = yes_ask if side == "yes" else no_ask
     brain_ev = brain.get("win_prob", 0.5) - (entry_price_cents / 100)
