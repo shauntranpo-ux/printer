@@ -2554,8 +2554,8 @@ async def handle_ready_phase(
     brain_win_prob = brain.get("win_prob", 0.5)
 
     if _claude_client is not None:
-        if brain_win_prob >= 0.85 and do_trade:
-            # High confidence — go straight through
+        if brain_win_prob >= 0.95 and do_trade:
+            # Very high confidence — go straight through without Claude overhead
             log.info(f"{ticker}: Brain high-conf {score}, skipping Claude")
         elif brain_ev < 0.02:
             # Hard skip — no edge worth evaluating
