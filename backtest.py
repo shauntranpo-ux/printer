@@ -201,6 +201,7 @@ def brain_decide(
     min_ev: float = 0.15,
     bullish_wr: float = 0.5,
     bearish_wr: float = 0.5,
+    fee: float = 0.07,
 ) -> dict:
     pct_above = (btc_price - strike) / strike
     abs_pct   = abs(pct_above)
@@ -222,10 +223,8 @@ def brain_decide(
     prob_yes = win_prob if above else (1.0 - win_prob)
     prob_no  = 1.0 - prob_yes
 
-    # Kalshi platform fee: ~7c per $1 contract (matches bot.py KALSHI_FEE constant)
-    KALSHI_FEE = 0.07
-    yes_ev = prob_yes - (yes_ask / 100) - KALSHI_FEE
-    no_ev  = prob_no  - (no_ask  / 100) - KALSHI_FEE
+    yes_ev = prob_yes - (yes_ask / 100) - fee
+    no_ev  = prob_no  - (no_ask  / 100) - fee
 
     if bullish_wr < 0.35: yes_ev -= 0.04
     if bearish_wr < 0.35: no_ev  -= 0.04
@@ -475,7 +474,7 @@ def run_backtest(
 
             # Brain decision
             brain = brain_decide(btc, strike, yes_ask, no_ask, mins_left,
-                                  mom, min_ev=min_ev)
+                                  mom, min_ev=min_ev, fee=KALSHI_FEE_CENTS / 100.0)
 
             if brain["action"] != "trade":
                 continue
@@ -896,13 +895,18 @@ def run_sweep(start_year: int, trade_amount: float) -> None:
     print(f"{'min_ev':>8}  {'trades':>8}  {'win_rate':>9}  {'pnl':>8}  "
           f"{'sharpe':>7}  {'max_dd':>7}  {'cons_loss':>9}")
     print("-" * 80)
-    for r in sorted(results, key=lambda x: -x["sharpe_ratio"]):
+    sorted_results = sorted(results, key=lambda x: -x["sharpe_ratio"])
+    for r in sorted_results:
         print(f"  {r['min_ev']:>5.0%}  {r['total_trades']:>8,}  "
               f"{r['win_rate']*100:>8.1f}%  "
               f"${r['total_pnl_dollars']:>7.2f}  "
               f"{r['sharpe_ratio']:>7.3f}  "
               f"{r['max_drawdown_percent']:>6.1f}%  "
               f"{r['max_consecutive_losses']:>9}")
+    # Show reality check for best result so sweep output includes all warnings
+    if sorted_results:
+        print(f"\n  REALITY CHECK for best sweep result (min_ev={sorted_results[0]['min_ev']:.0%}):")
+        print_reality_check(sorted_results[0])
 
 
 # -----------------------------------------------------------------------------

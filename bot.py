@@ -104,8 +104,9 @@ pre_limit_mode: str | None = None
 daily_reset_date = None
 
 # Price-validator CSV — counts rows collected and running totals for summary
-_PRICE_VAL_CSV = "price_validation_log.csv"
+_PRICE_VAL_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_validation_log.csv")
 _price_val_count: int = 0
+_price_val_gap_n: int = 0      # rows where real_yes is not None (valid gap count)
 _price_val_sim_sum: float = 0.0
 _price_val_real_sum: float = 0.0
 _price_val_gap_sum: float = 0.0
@@ -241,7 +242,7 @@ def _log_price_validation(
     Columns: ts, ticker, btc_price, strike, abs_pct, mins_remaining,
              sim_yes_ask, sim_no_ask, real_yes_ask, real_no_ask, price_gap_cents
     """
-    global _price_val_count, _price_val_sim_sum, _price_val_real_sum, _price_val_gap_sum
+    global _price_val_count, _price_val_gap_n, _price_val_sim_sum, _price_val_real_sum, _price_val_gap_sum
 
     gap     = (real_yes - sim_yes) if (real_yes is not None) else None
     abs_pct = round(abs((btc_price - strike) / strike) * 100, 4) if strike else 0.0
@@ -275,12 +276,13 @@ def _log_price_validation(
     if real_yes is not None:
         _price_val_real_sum += real_yes
         _price_val_gap_sum  += gap
+        _price_val_gap_n    += 1
 
     if _price_val_count % 50 == 0:
         n        = _price_val_count
         avg_sim  = _price_val_sim_sum / n
-        avg_real = _price_val_real_sum / n if n > 0 else 0.0
-        avg_gap  = _price_val_gap_sum  / n if n > 0 else 0.0
+        avg_real = _price_val_real_sum / _price_val_gap_n if _price_val_gap_n > 0 else 0.0
+        avg_gap  = _price_val_gap_sum  / _price_val_gap_n if _price_val_gap_n > 0 else 0.0
         verdict  = ("✓ within 3c" if abs(avg_gap) < 3
                     else "⚠ 3-7c gap — edge marginal" if abs(avg_gap) < 7
                     else "✗ >7c gap — strategy likely unprofitable")
@@ -2602,6 +2604,8 @@ async def write_state_file(
         "limit_triggered": limit_triggered,
         "limit_reason": limit_reason,
         "open_position": current_position,
+        "consecutive_losses": _consecutive_losses,
+        "consecutive_loss_pause_until": _consecutive_loss_pause_until,
     }
     try:
         atomic_write_json(state, _STATE_FILE)
@@ -3179,7 +3183,7 @@ async def main_loop() -> None:
 
     prev_ticker: str | None = None
 
-    # ── Recover open position from state file after a crash/restart ──────────
+    # ── Recover open position and consecutive-loss state after a crash/restart ─
     try:
         with open(_STATE_FILE, "r") as _sf:
             _saved = json.load(_sf)
@@ -3194,6 +3198,19 @@ async def main_loop() -> None:
                 f"side={_saved_pos.get('side')} "
                 f"ticker={_saved_pos.get('ticker')}"
             )
+        # Restore consecutive-loss counter so the pause survives a restart.
+        saved_cl = _saved.get("consecutive_losses", 0)
+        saved_pause = _saved.get("consecutive_loss_pause_until")
+        if isinstance(saved_cl, int) and saved_cl > 0:
+            _consecutive_losses = saved_cl
+            if saved_pause and time.time() < saved_pause:
+                _consecutive_loss_pause_until = saved_pause
+                log.warning(
+                    f"Restored consecutive-loss state: count={saved_cl}, "
+                    f"pause until {datetime.fromtimestamp(saved_pause, tz=timezone.utc).isoformat()}"
+                )
+            else:
+                _consecutive_loss_pause_until = None
     except Exception:
         pass  # fresh start, no state to recover
 
@@ -3568,7 +3585,7 @@ async def run_preflight_checks(config: dict) -> None:
             + "\nResolve all issues before retrying live mode."
         )
         if not override:
-            sys.exit(1)
+            sys.exit(2)
         else:
             log.warning("PRE-FLIGHT OVERRIDE ACTIVE — proceeding into live mode despite failures. "
                         "This is NOT recommended.")

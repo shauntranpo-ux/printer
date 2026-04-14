@@ -149,6 +149,22 @@ def main():
                 code        = proc.returncode
                 since_crash = now - entry["last_crash"]
 
+                # Exit code 2 = pre-flight check failed (intentional clean stop).
+                # Do NOT restart and do NOT count as a crash — needs human action.
+                if code == 2:
+                    msg = (f"PRE-FLIGHT FAILED: '{entry['name']}' refused to start (code=2). "
+                           f"Resolve pre-flight issues (price validation, fee config, "
+                           f"daily limits) then restart manually.")
+                    print(f"[runner] {msg}")
+                    _send_telegram_sync(
+                        f"\U0001f6a8 <b>PRE-FLIGHT FAILED — {entry['name']}</b>\n"
+                        f"Bot refused to start due to unresolved pre-flight checks.\n"
+                        f"Resolve issues in config.json / price_validation_log.csv, "
+                        f"then restart manually: <code>python runner.py</code>"
+                    )
+                    entry["halted"] = True
+                    continue
+
                 if entry["last_crash"] == 0.0:
                     print(f"[runner] '{entry['name']}' exited (code={code}). "
                           f"Waiting {RESTART_BACKOFF}s before restart ...")

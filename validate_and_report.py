@@ -301,7 +301,7 @@ def check_7_verdict(mean_gap: float, avg_real_ev: float, n: int, fee: float):
     else:
         sim_verdict = "WRONG"
         print(f"     Avg gap = {mean_gap:+.2f}c > 7c.")
-        print("     Simulator is fundamentally wrong. The fee alone is {fee:.0f}c — this gap")
+        print(f"     Simulator is fundamentally wrong. The fee alone is {fee:.0f}c — this gap")
         print("     exceeds it. Strategy has NEGATIVE expected value after fees.")
         print("     Do not trade real money.")
     print()
