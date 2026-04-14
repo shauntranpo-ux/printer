@@ -35,6 +35,28 @@ DB_PATH   = os.path.join(_BASE_DIR, "kalshi_bot.db")
 _SPLIT_CFG_PATH   = os.path.join(_BASE_DIR, "data", "split_config.json")
 _RESULTS_DIR      = os.path.join(_BASE_DIR, "results")
 OOS_REPORT_PATH   = os.path.join(_RESULTS_DIR, "oos_report.json")
+_DATA_DIR  = os.path.join(_BASE_DIR, "data")
+_BV3_DIR   = os.path.join(_BASE_DIR, "bv3_tables")
+
+# Strike increment per asset (matches bot.py / generate_bv3_table.py)
+STRIKE_INCREMENTS = {
+    "BTC":  1000.0,
+    "ETH":    25.0,
+    "SOL":     1.0,
+    "XRP":     0.01,
+    "DOGE":    0.001,
+}
+ALL_ASSETS = list(STRIKE_INCREMENTS.keys())
+
+
+def _get_csv_path(asset: str) -> str:
+    """Return path to 1-minute CSV for an asset (standard location first, BTC legacy fallback)."""
+    standard = os.path.join(_DATA_DIR, f"{asset}_1m.csv")
+    if os.path.exists(standard):
+        return standard
+    if asset == "BTC" and os.path.exists(CSV_PATH):
+        return CSV_PATH
+    return standard  # caller will error clearly if missing
 
 
 # -----------------------------------------------------------------------------
@@ -106,8 +128,9 @@ def _load_best_params() -> dict:
     return {"min_ev": 0.30, "min_confidence": 80}
 
 # -----------------------------------------------------------------------------
-# Empirical win-probability table - identical to bot.py _BV3_TABLE
-# Rows = distance bucket, Cols = minutes remaining (1-min to 13-min)
+# Empirical win-probability tables — loaded from bv3_tables/*.json
+# Pre-2023 tables are used to avoid data leakage in backtesting.
+# Falls back to the hardcoded BTC table when no JSON file is present.
 # -----------------------------------------------------------------------------
 _BV3_TABLE = [
     # 1min   2min   3min   4min   5min   6min   7min   8min   9min  10min  11min  12min  13min
@@ -124,24 +147,54 @@ _BV3_TABLE = [
 ]
 _BV3_DIST_BOUNDS = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.0075, 0.010, 0.0125]
 
+# Per-asset BV3 cache populated on first use: {asset: (table, dist_bounds)}
+_bv3_by_asset: dict[str, tuple] = {}
 
-def _empirical_win_prob(abs_pct: float, mins_left: float) -> float:
-    bidx = len(_BV3_DIST_BOUNDS)
-    for i, bound in enumerate(_BV3_DIST_BOUNDS):
+
+def _load_bv3_for_asset(asset: str) -> tuple[list, list]:
+    """
+    Load pre-2023 BV3 probability table for an asset from bv3_tables/.
+    Uses pre-2023 data to avoid training-set leakage in backtesting.
+    Falls back to the hardcoded BTC table.
+    """
+    path = os.path.join(_BV3_DIR, f"{asset}_bv3_pre2023.json")
+    if os.path.exists(path):
+        try:
+            with open(path) as fh:
+                data = json.load(fh)
+            print(f"  [BV3] {asset}: loaded pre-2023 table from {os.path.basename(path)} "
+                  f"({data.get('metadata', {}).get('total_windows', '?'):,} windows)")
+            return data["table"], data["dist_bounds"]
+        except Exception as exc:
+            print(f"  [BV3] {asset}: failed to load {path}: {exc} — using BTC fallback")
+    else:
+        if asset != "BTC":
+            print(f"  [BV3] {asset}: no pre-2023 table at {path} — using BTC fallback")
+    return _BV3_TABLE, _BV3_DIST_BOUNDS
+
+
+def _empirical_win_prob(abs_pct: float, mins_left: float, asset: str = "BTC") -> float:
+    """Look up empirical win probability from the per-asset pre-2023 BV3 table."""
+    if asset not in _bv3_by_asset:
+        _bv3_by_asset[asset] = _load_bv3_for_asset(asset)
+    table, dist_bounds = _bv3_by_asset[asset]
+    bidx = len(dist_bounds)
+    for i, bound in enumerate(dist_bounds):
         if abs_pct < bound:
             bidx = i
             break
-    bidx = min(bidx, len(_BV3_TABLE) - 1)
-    row  = _BV3_TABLE[bidx]
+    bidx = min(bidx, len(table) - 1)
+    row  = table[bidx]
     if mins_left < 1.0:
         return min(0.997, row[0] + 0.005)
-    if mins_left >= 13.0:
-        return row[12]
+    n_cols = len(row)
+    if mins_left >= n_cols:
+        return row[-1]
     t_low  = int(mins_left) - 1
     t_high = t_low + 1
     frac   = mins_left - int(mins_left)
-    if t_high > 12:
-        return row[12]
+    if t_high >= n_cols:
+        return row[-1]
     return row[t_low] + (row[t_high] - row[t_low]) * frac
 
 
@@ -202,12 +255,13 @@ def brain_decide(
     bullish_wr: float = 0.5,
     bearish_wr: float = 0.5,
     fee: float = 0.07,
+    asset: str = "BTC",
 ) -> dict:
     pct_above = (btc_price - strike) / strike
     abs_pct   = abs(pct_above)
     above     = pct_above > 0
 
-    win_prob_raw = _empirical_win_prob(abs_pct, mins_left)
+    win_prob_raw = _empirical_win_prob(abs_pct, mins_left, asset=asset)
 
     if mom_label == "bullish":
         mom_adj = +0.05 if above else -0.05
@@ -261,9 +315,14 @@ def compute_momentum(recent_closes: list) -> str:
 # Main backtest
 # -----------------------------------------------------------------------------
 
-def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True, mode: str = "train"):
+def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True,
+              mode: str = "train", asset: str = "BTC"):
     """
-    Load and preprocess the CSV once.  Returns (windows, price_lookup).
+    Load and preprocess the 1-minute CSV for the given asset. Returns (windows, price_lookup).
+
+    Handles two CSV formats:
+      Legacy (BTC only): "time" column with Unix seconds integers.
+      Standard:          "open_time" column with ISO-8601 strings.
 
     mode
     ----
@@ -273,22 +332,49 @@ def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True
     'oos'    - only the 30% OOS holdout (use only via --oos-eval).
     'full'   - all windows, no split applied (internal use).
     """
+    csv_path = _get_csv_path(asset)
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(
+            f"[{asset}] CSV not found: {csv_path}\n"
+            f"  Run: python download_data.py --asset {asset}"
+        )
+
     if verbose:
-        print(f"\nLoading {CSV_PATH}...")
+        print(f"\nLoading [{asset}] {csv_path}...")
     t0 = time.time()
-    df = pd.read_csv(
-        CSV_PATH,
-        dtype={"time": "float64", "open": "float64", "high": "float64",
-               "low": "float64", "close": "float64", "volume": "float64"},
-        engine="c",
-    )
-    df.rename(columns={"time": "Timestamp", "open": "Open", "high": "High",
-                        "low": "Low", "close": "Close", "volume": "Volume"}, inplace=True)
-    df["ts"] = df["Timestamp"].astype("int64")
+
+    # Detect format from column names via first read
+    _cols = pd.read_csv(csv_path, nrows=0).columns.tolist()
+    _has_legacy = "time" in _cols and "open_time" not in _cols
+
+    if _has_legacy:
+        # Legacy BTC CSV: "time" (Unix seconds), all numeric
+        df = pd.read_csv(
+            csv_path,
+            dtype={"time": "float64", "open": "float64", "high": "float64",
+                   "low": "float64", "close": "float64", "volume": "float64"},
+            engine="c",
+        )
+        df.rename(columns={"time": "Timestamp", "open": "Open", "high": "High",
+                            "low": "Low", "close": "Close", "volume": "Volume"}, inplace=True)
+        df["ts"] = df["Timestamp"].astype("int64")
+    else:
+        # Standard CSV: "open_time" (ISO string), lowercase column names
+        df = pd.read_csv(
+            csv_path,
+            dtype={"open": "float64", "high": "float64",
+                   "low": "float64", "close": "float64", "volume": "float64"},
+            engine="c",
+        )
+        df.rename(columns={"open_time": "Timestamp", "open": "Open", "high": "High",
+                            "low": "Low", "close": "Close", "volume": "Volume"}, inplace=True)
+        # Parse ISO timestamps → Unix seconds
+        df["ts"] = pd.to_datetime(df["Timestamp"], utc=True).astype("int64") // 10**9
+
     df = df.dropna(subset=["Open", "Close"])
     df = df[df["Close"] > 0]
     if verbose:
-        print(f"  Loaded {len(df):,} rows in {time.time()-t0:.1f}s")
+        print(f"  [{asset}] Loaded {len(df):,} rows in {time.time()-t0:.1f}s")
 
     df["year"] = pd.to_datetime(df["ts"], unit="s").dt.year
     df = df[(df["year"] >= start_year) & (df["year"] <= end_year)].copy()
@@ -370,6 +456,7 @@ def run_backtest(
     min_confidence: int = 65,
     vol_threshold: float = 1.50,   # skip if expected_move / abs_pct >= this
     kelly_cap: float    = 0.25,    # quarter-Kelly cap; matches bot.py default
+    asset: str          = "BTC",   # which asset to backtest
     # Pre-loaded data (skips CSV load when provided)
     _windows=None,
     _price_lookup=None,
@@ -378,9 +465,13 @@ def run_backtest(
 ) -> dict:
     rng = random.Random(seed)
 
+    # Pre-warm the BV3 table for this asset (prints load message once)
+    if asset not in _bv3_by_asset:
+        _bv3_by_asset[asset] = _load_bv3_for_asset(asset)
+
     # -- Load data (or use pre-loaded) -----------------------------------------
     if _windows is None or _price_lookup is None:
-        windows, price_lookup = load_data(start_year, end_year=end_year, verbose=verbose)
+        windows, price_lookup = load_data(start_year, end_year=end_year, verbose=verbose, asset=asset)
     else:
         windows      = _windows
         price_lookup = _price_lookup
@@ -474,7 +565,8 @@ def run_backtest(
 
             # Brain decision
             brain = brain_decide(btc, strike, yes_ask, no_ask, mins_left,
-                                  mom, min_ev=min_ev, fee=KALSHI_FEE_CENTS / 100.0)
+                                  mom, min_ev=min_ev, fee=KALSHI_FEE_CENTS / 100.0,
+                                  asset=asset)
 
             if brain["action"] != "trade":
                 continue
@@ -635,6 +727,7 @@ def run_backtest(
 
     result = {
         "start_year":             start_year,
+        "asset":                  asset,
         "min_ev":                 min_ev,
         "trade_amount_dollars":   trade_amount,
         "total_windows":          total_windows,
@@ -710,8 +803,13 @@ def print_report(r: dict) -> None:
     print(f"  BACKTEST RESULTS  -  {r['start_year']}+  |  min_ev={r['min_ev']:.0%}")
     print("=" * W)
     print(f"  Fee model         : {r.get('fee_model', '$0.07/contract included')}")
-    print(f"  ⚠  WARNING: BV3 table built on 2017-2026 data — OOS period NOT clean.")
-    print(f"     See BV3_DATA_LEAKAGE_WARNING.md for details.")
+    _asset_r = r.get("asset", "BTC")
+    _pre23_path = os.path.join(_BV3_DIR, f"{_asset_r}_bv3_pre2023.json")
+    if os.path.exists(_pre23_path):
+        print(f"  ✓  BV3 table: pre-2023 data only — honest out-of-sample baseline.")
+    else:
+        print(f"  ⚠  WARNING: BV3 table built on 2017-2026 data — OOS period NOT clean.")
+        print(f"     Run: python generate_bv3_table.py --asset {_asset_r}")
     print("-" * W)
     print(f"  Windows simulated : {r['total_windows']:>10,}")
     print(f"  Trades placed     : {r['total_trades']:>10,}  "
@@ -819,7 +917,12 @@ def print_reality_check(r: dict) -> None:
     print(f"Total PnL (with fees):        ${pnl:.2f}")
     print(f"Total PnL (no fees):          ${pnl_nf:.2f}  \u2190 old backtest reported this")
     print()
-    print(f"BV3 data leakage:             \u26a0\ufe0f YES \u2014 OOS metrics unreliable")
+    _asset_rc = r.get("asset", "BTC")
+    _pre23_path_rc = os.path.join(_BV3_DIR, f"{_asset_rc}_bv3_pre2023.json")
+    if os.path.exists(_pre23_path_rc):
+        print(f"BV3 data leakage:             NO  — pre-2023 table used (honest baseline)")
+    else:
+        print(f"BV3 data leakage:             YES — OOS metrics unreliable (generate pre-2023 table)")
     if price_validated:
         print(f"Price model validated:         \u2705 YES \u2014 {pv_samples} samples in price_validation_log.csv")
     else:
@@ -1412,6 +1515,10 @@ if __name__ == "__main__":
                         help="Max slippage in bps for stress test (default: 20)")
     parser.add_argument("--st-latency-ms",  type=int,   default=0,
                         help="Latency in ms for miss model (default: 0)")
+    parser.add_argument("--asset",          nargs="+",  default=["BTC"],
+                        metavar="ASSET",
+                        help="Asset(s) to backtest: BTC ETH SOL XRP DOGE, or ALL "
+                             "(default: BTC). Multiple assets print a combined summary.")
     args = parser.parse_args()
 
     if args.periods:
@@ -1470,17 +1577,64 @@ if __name__ == "__main__":
     elif args.sweep:
         run_sweep(args.start_year, args.amount)
     else:
-        result = run_backtest(
-            start_year     = args.start_year,
-            end_year       = args.end_year,
-            min_ev         = args.ev,
-            trade_amount   = args.amount,
-            min_confidence = args.confidence,
-            watch_minutes  = args.watch,
-        )
-        if result:
-            print_report(result)
-            print_reality_check(result)
-            if not args.no_db:
-                write_to_db(result, args.start_year)
-                print(f"\nResults saved to {DB_PATH} -> stress_test_results table.")
+        # Resolve asset list — "ALL" expands to every supported asset
+        _raw_assets = args.asset
+        if len(_raw_assets) == 1 and _raw_assets[0].upper() == "ALL":
+            requested_assets = ALL_ASSETS
+        else:
+            requested_assets = [a.upper() for a in _raw_assets]
+            for _a in requested_assets:
+                if _a not in STRIKE_INCREMENTS:
+                    print(f"Unknown asset '{_a}'. Choices: {', '.join(ALL_ASSETS)} or ALL")
+                    sys.exit(1)
+
+        all_results: list[dict] = []
+        for _asset in requested_assets:
+            print(f"\n{'='*70}")
+            print(f"  BACKTEST: {_asset}  (pre-2023 BV3 table, no data leakage)")
+            print(f"{'='*70}")
+            _r = run_backtest(
+                start_year     = args.start_year,
+                end_year       = args.end_year,
+                min_ev         = args.ev,
+                trade_amount   = args.amount,
+                min_confidence = args.confidence,
+                watch_minutes  = args.watch,
+                asset          = _asset,
+            )
+            if _r:
+                print_report(_r)
+                print_reality_check(_r)
+                all_results.append(_r)
+                if not args.no_db:
+                    write_to_db(_r, args.start_year)
+                    print(f"\nResults saved to {DB_PATH} -> stress_test_results table.")
+
+        # Combined summary when multiple assets were run
+        if len(all_results) > 1:
+            print(f"\n{'='*70}")
+            print("  COMBINED REALITY CHECK — ALL ASSETS")
+            print(f"{'='*70}")
+            W = 70
+            print(f"  {'Asset':<8}  {'Trades':>7}  {'Win%':>6}  {'P&L':>10}  {'Sharpe':>8}  {'MaxDD%':>7}")
+            print(f"  {'-'*8}  {'-'*7}  {'-'*6}  {'-'*10}  {'-'*8}  {'-'*7}")
+            combined_pnl = 0.0
+            combined_trades = 0
+            combined_wins = 0
+            for _r in all_results:
+                _a     = _r.get("asset", "?")
+                _n     = _r.get("total_trades", 0)
+                _wr    = _r.get("win_rate", 0.0) * 100
+                _pnl   = _r.get("total_pnl_dollars", 0.0)
+                _sh    = _r.get("sharpe_daily", 0.0)
+                _dd    = _r.get("max_drawdown_percent", 0.0)
+                combined_pnl    += _pnl
+                combined_trades += _n
+                combined_wins   += _r.get("wins", 0)
+                print(f"  {_a:<8}  {_n:>7,}  {_wr:>5.1f}%  ${_pnl:>9,.2f}  {_sh:>8.3f}  {_dd:>6.1f}%")
+            print(f"  {'-'*8}  {'-'*7}  {'-'*6}  {'-'*10}  {'-'*8}  {'-'*7}")
+            _cwr = combined_wins / combined_trades * 100 if combined_trades else 0
+            print(f"  {'TOTAL':<8}  {combined_trades:>7,}  {_cwr:>5.1f}%  ${combined_pnl:>9,.2f}")
+            print()
+            print("NOTE: Uses pre-2023 BV3 tables for all assets — honest out-of-sample baseline.")
+            print(f"{'='*70}")
