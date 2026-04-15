@@ -81,13 +81,13 @@ def load_week_analyses(week_label: str) -> list:
     try:
         year_s, week_s = week_label.split("-W")
         year, week = int(year_s), int(week_s)
+        # fromisocalendar is correct for ISO 8601; strptime %W/%w is the non-ISO
+        # "week of year" and gives wrong dates near year boundaries.
+        # fromisocalendar also raises ValueError for invalid weeks (e.g. 2025-W53).
+        monday = datetime.fromisocalendar(year, week, 1)
     except (ValueError, AttributeError):
         print(f"ERROR: Invalid week format '{week_label}'. Use YYYY-WNN (e.g. 2025-W15).")
         sys.exit(1)
-
-    # ISO week Monday (fromisocalendar is correct for ISO 8601 weeks;
-    # strptime %W/%w is the non-ISO "week of year" and gives wrong dates near year boundaries)
-    monday = datetime.fromisocalendar(year, week, 1)
 
     results = []
     for i in range(7):
@@ -426,6 +426,8 @@ Output:
         )
         raw    = response.content[0].text
         report = _parse_claude_json(raw)
+        # Pin to actual count — don't let the model hallucinate this
+        report["days_analyzed"] = len(analyses)
     except json.JSONDecodeError as exc:
         print(f"WARNING: Claude returned non-JSON: {exc}")
         report = {
