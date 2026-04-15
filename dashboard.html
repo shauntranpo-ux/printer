@@ -796,8 +796,9 @@ function startCountdown(secs){
   countdownInterval=setInterval(()=>{if(countdownSecs>0)countdownSecs--;renderCountdown();},1000);
 }
 function renderCountdown(){
+  const el=document.getElementById('countdown'); if(!el)return;
   const m=Math.floor(countdownSecs/60),s=countdownSecs%60;
-  document.getElementById('countdown').textContent=`${m}:${String(s).padStart(2,'0')}`;
+  el.textContent=`${m}:${String(s).padStart(2,'0')}`;
 }
 
 // ── Mode ──
@@ -1436,8 +1437,8 @@ async function pollTrades(){
       const w=s.filter(x=>x.outcome==='win').length,n=s.length;
       if(!n)return '';return `${n} · ${Math.round(w/n*100)}%`;
     }
-    const lcEl=document.getElementById('live-trade-count'),pcEl2=document.getElementById('paper-trade-count');
-    if(lcEl)lcEl.textContent=ats(liveTradesData,'live');
+    const lChartEl=document.getElementById('live-trade-count'),pcEl2=document.getElementById('paper-trade-count');
+    if(lChartEl)lChartEl.textContent=ats(liveTradesData,'live');
     if(pcEl2)pcEl2.textContent=ats(paperTradesData,'paper');
 
     updateChartsAndPnl();
