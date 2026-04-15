@@ -1,0 +1,63 @@
+{
+  "date": "2026-04-15",
+  "overall_grade": "C",
+  "overall_assessment": "Mixed session. ETH and XRP showed positive edge but BTC/SOL underperformed. Confidence threshold increase to 85 is correct direction.",
+  "per_asset_analysis": {
+    "BTC": {
+      "grade": "D",
+      "pnl_dollars": -18.5,
+      "recommendation": "Monitor \u2014 high variance, consider reducing exposure"
+    },
+    "ETH": {
+      "grade": "B",
+      "pnl_dollars": 12.3,
+      "recommendation": "Keep \u2014 consistent edge above threshold"
+    },
+    "SOL": {
+      "grade": "C",
+      "pnl_dollars": -3.2,
+      "recommendation": "Monitor \u2014 marginal performance"
+    },
+    "XRP": {
+      "grade": "B",
+      "pnl_dollars": 8.9,
+      "recommendation": "Keep \u2014 strong YES-side signal"
+    },
+    "DOGE": {
+      "grade": "C",
+      "pnl_dollars": 1.1,
+      "recommendation": "Keep \u2014 neutral, limited data"
+    }
+  },
+  "worst_performers": [
+    "BTC",
+    "SOL"
+  ],
+  "parameter_suggestions": [
+    {
+      "parameter": "confidence_threshold",
+      "current_value": 85,
+      "suggested_value": 87,
+      "reasoning": "85 still catching some marginal trades in 85-86 band with negative EV",
+      "confidence": "medium"
+    },
+    {
+      "parameter": "max_entry_price_cents",
+      "current_value": 82,
+      "suggested_value": 78,
+      "reasoning": "Entries above 78c have poor reward-to-risk in current vol regime",
+      "confidence": "low"
+    }
+  ],
+  "patterns_detected": [
+    "YES bias outperforming NO",
+    "ETH/XRP correlated wins",
+    "BTC underperforming post-12pm PDT"
+  ],
+  "risk_warnings": [
+    "BTC losing streak: 4 consecutive losses today",
+    "Daily loss limit 60% consumed"
+  ],
+  "tomorrow_strategy": "Keep confidence at 85+. Focus YES-side on ETH and XRP. Reduce BTC sizing or skip if early losses. Watch for afternoon BTC vol collapse.",
+  "exists": true
+}

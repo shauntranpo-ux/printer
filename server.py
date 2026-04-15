@@ -9,6 +9,7 @@ Start via runner.py, not directly.
 """
 
 import csv
+import glob
 import io
 import json
 import logging
@@ -18,6 +19,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import urllib.request
 import urllib.parse
@@ -665,9 +667,17 @@ def api_market_pulse():
                 if _rows:
                     _gaps = [float(r["price_gap_cents"]) for r in _rows
                              if r.get("price_gap_cents") not in ("", None)]
+                    avg_gap = round(sum(_gaps) / len(_gaps), 2) if _gaps else 0
+                    if avg_gap < 3:
+                        verdict = "VALIDATED"
+                    elif avg_gap <= 5:
+                        verdict = "MARGINAL"
+                    else:
+                        verdict = "UNRELIABLE"
                     result["price_validation"] = {
                         "count": len(_rows),
-                        "avg_gap": round(sum(_gaps) / len(_gaps), 2) if _gaps else 0,
+                        "avg_gap": avg_gap,
+                        "verdict": verdict,
                     }
         except Exception:
             pass
@@ -760,11 +770,144 @@ def health():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+#  AI Analysis endpoints
+# ══════════════════════════════════════════════════════════════════════════════
+
+_analysis_running = False
+_analysis_lock    = threading.Lock()
+
+
+def _latest_analysis_file() -> str | None:
+    files = sorted(glob.glob("daily_analysis/*.json"))
+    return files[-1] if files else None
+
+
+def _latest_weekly_file() -> str | None:
+    files = sorted(glob.glob("weekly_reports/*.json"))
+    return files[-1] if files else None
+
+
+@app.route("/api/analysis")
+def api_analysis():
+    """Return the latest daily_analysis JSON, or {exists:false} if none."""
+    try:
+        path = _latest_analysis_file()
+        if not path:
+            return jsonify({"exists": False})
+        data = json.loads(open(path, encoding="utf-8").read())
+        data["exists"]   = True
+        data["filename"] = os.path.basename(path)
+        return jsonify(data)
+    except Exception as exc:
+        log.error(f"api_analysis error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/analysis/run", methods=["POST"])
+def api_analysis_run():
+    """Run claude_analyzer.py as a blocking subprocess. Returns when done (~10–30 s)."""
+    global _analysis_running
+    with _analysis_lock:
+        if _analysis_running:
+            return jsonify({"ok": False, "msg": "Analysis already running"}), 409
+        _analysis_running = True
+    try:
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            return jsonify({"ok": False, "msg": "ANTHROPIC_API_KEY not set"}), 400
+        base = os.path.dirname(os.path.abspath(__file__))
+        result = subprocess.run(
+            [sys.executable, os.path.join(base, "claude_analyzer.py")],
+            capture_output=True, text=True, timeout=180, cwd=base,
+        )
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or "Analyzer failed")[-600:]
+            return jsonify({"ok": False, "msg": err})
+        path = _latest_analysis_file()
+        analysis = json.loads(open(path, encoding="utf-8").read()) if path else None
+        if analysis:
+            analysis["exists"] = True
+        return jsonify({"ok": True, "analysis": analysis})
+    except subprocess.TimeoutExpired:
+        return jsonify({"ok": False, "msg": "Analyzer timed out after 180 s"}), 500
+    except Exception as exc:
+        log.error(f"api_analysis_run error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        with _analysis_lock:
+            _analysis_running = False
+
+
+@app.route("/api/analysis/status")
+def api_analysis_status():
+    """Return whether the analyzer is currently running."""
+    return jsonify({"running": _analysis_running})
+
+
+@app.route("/api/weekly")
+def api_weekly():
+    """Return the latest weekly_reports JSON, or {exists:false} if none."""
+    try:
+        path = _latest_weekly_file()
+        if not path:
+            return jsonify({"exists": False})
+        data = json.loads(open(path, encoding="utf-8").read())
+        data["exists"]   = True
+        data["filename"] = os.path.basename(path)
+        return jsonify(data)
+    except Exception as exc:
+        log.error(f"api_weekly error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+def _auto_analysis_thread():
+    """Background daemon: once per day, if 10+ trades and no analysis file, run the analyzer."""
+    import time as _time
+    _last_auto_date = None
+    while True:
+        try:
+            _time.sleep(300)  # check every 5 min
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            if _last_auto_date == today:
+                continue
+            analysis_path = f"daily_analysis/{today}.json"
+            if os.path.exists(analysis_path):
+                _last_auto_date = today
+                continue
+            if not os.environ.get("ANTHROPIC_API_KEY"):
+                continue
+            # Count today's trades
+            try:
+                conn = get_db()
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM trades WHERE outcome IN ('win','loss') "
+                    "AND ts >= ?", (today,)
+                ).fetchone()
+                conn.close()
+                trade_count = row[0] if row else 0
+            except Exception:
+                trade_count = 0
+            if trade_count < 10:
+                continue
+            log.info(f"Auto-analysis: {trade_count} trades today, no analysis file — running analyzer")
+            _last_auto_date = today
+            base = os.path.dirname(os.path.abspath(__file__))
+            subprocess.run(
+                [sys.executable, os.path.join(base, "claude_analyzer.py")],
+                capture_output=True, text=True, timeout=180, cwd=base,
+            )
+        except Exception as exc:
+            log.warning(f"Auto-analysis thread error: {exc}")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 #  Entry point
 # ══════════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+    _t = threading.Thread(target=_auto_analysis_thread, daemon=True, name="auto-analysis")
+    _t.start()
 
     port = int(os.environ.get("PORT", 5000))
     log.info(f"Starting Flask on 0.0.0.0:{port}")

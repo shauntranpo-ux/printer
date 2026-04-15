@@ -355,6 +355,57 @@ tr:last-child td { border-bottom: none; }
   .mid-row  { grid-template-columns: 1fr; }
   #perf-bar { flex-wrap: wrap; }
 }
+
+/* ── AI ANALYSIS PANEL ── */
+#ai-analysis-panel { margin-bottom: 12px; }
+.aap-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+.aap-title { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; }
+.aap-run-btn { font-size:10px; padding:3px 12px; background:var(--green); color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:6px; }
+.aap-run-btn:disabled { opacity:0.55; cursor:not-allowed; }
+.aap-run-btn .spin { display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.4); border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.aap-no-data { color:var(--muted); font-size:12px; padding:8px 0; }
+.aap-grade-row { display:flex; align-items:center; gap:14px; margin-bottom:10px; }
+.aap-grade-letter { font-size:36px; font-weight:800; width:52px; height:52px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.aap-grade-A { background:#d4edda; color:#1a6630; }
+.aap-grade-B { background:#d1ecf1; color:#0c5460; }
+.aap-grade-C { background:#fff3cd; color:#856404; }
+.aap-grade-D { background:#ffe0b2; color:#7b3f00; }
+.aap-grade-F { background:#f8d7da; color:#842029; }
+.aap-assessment { font-size:12px; color:#ddd; line-height:1.5; }
+.aap-section-title { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin:12px 0 6px; }
+.aap-assets { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; }
+.aap-asset-card { background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:6px; padding:8px 10px; }
+.aap-asset-name { font-size:11px; font-weight:700; color:#eee; margin-bottom:4px; }
+.aap-asset-grade { font-size:10px; font-weight:600; }
+.aap-asset-pnl { font-size:11px; margin:2px 0; }
+.aap-asset-pnl.pos { color:var(--green); }
+.aap-asset-pnl.neg { color:var(--red); }
+.aap-asset-rec { font-size:10px; font-weight:600; padding:1px 6px; border-radius:3px; display:inline-block; margin-top:3px; }
+.aap-rec-keep { background:#1a6630; color:#d4edda; }
+.aap-rec-monitor { background:#856404; color:#fff3cd; }
+.aap-rec-disable { background:#842029; color:#f8d7da; }
+.aap-suggestions { display:flex; flex-direction:column; gap:6px; }
+.aap-suggestion { background:rgba(255,255,255,0.04); border-left:3px solid var(--green); border-radius:0 4px 4px 0; padding:6px 10px; }
+.aap-conf-badge { font-size:9px; font-weight:700; padding:1px 5px; border-radius:3px; text-transform:uppercase; margin-right:6px; }
+.aap-conf-high { background:#1a6630; color:#d4edda; }
+.aap-conf-medium { background:#856404; color:#fff3cd; }
+.aap-conf-low { background:rgba(255,255,255,0.1); color:var(--muted); }
+.aap-sugg-text { font-size:11px; color:#eee; font-weight:600; }
+.aap-sugg-reason { font-size:10px; color:var(--muted); margin-top:2px; }
+.aap-patterns { display:flex; flex-wrap:wrap; gap:5px; }
+.aap-pattern-item { font-size:10px; background:rgba(255,255,255,0.06); border:1px solid var(--border); border-radius:4px; padding:2px 8px; color:#ccc; }
+.aap-risk-banner { background:rgba(220,53,69,0.1); border:1px solid rgba(220,53,69,0.3); border-radius:6px; padding:8px 12px; margin-bottom:6px; }
+.aap-risk-title { font-size:10px; font-weight:700; color:var(--red); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px; }
+.aap-risk-item { font-size:11px; color:#f1aeb5; margin:2px 0; }
+.aap-tomorrow { background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:6px; padding:10px 12px; }
+.aap-tomorrow-label { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:4px; }
+.aap-tomorrow-text { font-size:12px; color:#ddd; line-height:1.5; }
+.aap-weekly { background:rgba(255,255,255,0.04); border:1px solid var(--border); border-radius:6px; padding:10px 12px; margin-top:8px; }
+.aap-weekly-summary { font-size:12px; color:#ddd; }
+.aap-weekly-expand { font-size:10px; color:var(--green); cursor:pointer; text-decoration:underline; margin-top:4px; display:inline-block; }
+.aap-weekly-detail { display:none; margin-top:8px; }
+.aap-weekly-detail-row { display:flex; justify-content:space-between; font-size:11px; color:#ccc; padding:2px 0; border-bottom:1px solid rgba(255,255,255,0.05); }
 </style>
 </head>
 <body>
@@ -509,6 +560,17 @@ tr:last-child td { border-bottom: none; }
         </div>
 
       </div><!-- /mid-row -->
+
+      <!-- ROW 3b: AI Analysis Panel -->
+      <div class="card" id="ai-analysis-panel">
+        <div class="aap-header">
+          <div class="aap-title">AI Analysis</div>
+          <button class="aap-run-btn" id="aap-run-btn" onclick="runAnalysis()">
+            <span id="aap-run-icon">&#9654;</span> Run AI Analysis
+          </button>
+        </div>
+        <div id="aap-content"><div class="aap-no-data">No analysis yet — click Run AI Analysis or wait for auto-run.</div></div>
+      </div>
 
       <!-- ROW 4: Market pulse -->
       <div class="card" id="market-pulse">
@@ -1315,7 +1377,9 @@ async function pollMarketPulse(){
     const pvEl=document.getElementById('pulse-pv');
     if(pvEl&&data.price_validation){
       const pv=data.price_validation;
-      pvEl.innerHTML=`Samples: <b>${pv.count||0}</b> · Avg gap: <b>${pv.avg_gap!=null?pv.avg_gap+'¢':'—'}</b>`;
+      const vdict=pv.verdict||'';
+      const vcls=vdict==='VALIDATED'?'color:var(--green)':vdict==='MARGINAL'?'color:var(--amber)':vdict==='UNRELIABLE'?'color:var(--red)':'color:var(--muted)';
+      pvEl.innerHTML=`Samples: <b>${pv.count||0}</b> · Avg gap: <b>${pv.avg_gap!=null?pv.avg_gap+'¢':'—'}</b>${vdict?` · <b style="${vcls}">${escHtml(vdict)}</b>`:''}`;
     }
   }catch(e){console.error('Market pulse poll error:',e);}
 }
@@ -1462,8 +1526,98 @@ async function pollTrades(){
 
 function exportCSV(){window.location.href='/api/export/trades';}
 
+// ── AI Analysis ──
+function renderAnalysis(data){
+  const el=document.getElementById('aap-content'); if(!el)return;
+  if(!data||!data.exists){el.innerHTML='<div class="aap-no-data">No analysis yet — click Run AI Analysis or wait for auto-run.</div>';return;}
+  const a=data; const g=a.overall_grade||'?';
+  const gradeCls='aap-grade-'+(('ABCDF'.includes(g))?g:'C');
+  let html=`<div class="aap-grade-row"><div class="aap-grade-letter ${gradeCls}">${escHtml(g)}</div><div class="aap-assessment">${escHtml(a.overall_assessment||'')}</div></div>`;
+  // Risk warnings
+  if(a.risk_warnings&&a.risk_warnings.length){
+    html+=`<div class="aap-risk-banner"><div class="aap-risk-title">⚠ Risk Warnings</div>${a.risk_warnings.map(w=>`<div class="aap-risk-item">• ${escHtml(w)}</div>`).join('')}</div>`;
+  }
+  // Per-asset
+  if(a.per_asset_analysis&&Object.keys(a.per_asset_analysis).length){
+    html+='<div class="aap-section-title">Per-Asset</div><div class="aap-assets">';
+    for(const [sym,info] of Object.entries(a.per_asset_analysis)){
+      const pnl=info.pnl_dollars!=null?info.pnl_dollars:null;
+      const pnlCls=pnl!=null?(pnl>=0?'pos':'neg'):'';
+      const pnlStr=pnl!=null?fmtPnl(pnl):'—';
+      const rec=(info.recommendation||'').toLowerCase();
+      const recCls=rec.includes('keep')||rec.includes('continu')?'aap-rec-keep':rec.includes('monitor')||rec.includes('reduce')||rec.includes('cautious')?'aap-rec-monitor':'aap-rec-disable';
+      html+=`<div class="aap-asset-card"><div class="aap-asset-name">${escHtml(sym)}</div><div class="aap-asset-grade">Grade: <b>${escHtml(info.grade||'?')}</b></div><div class="aap-asset-pnl ${pnlCls}">${pnlStr}</div><span class="aap-asset-rec ${recCls}">${escHtml(info.recommendation||'—')}</span></div>`;
+    }
+    html+='</div>';
+  }
+  // Suggestions
+  if(a.parameter_suggestions&&a.parameter_suggestions.length){
+    html+='<div class="aap-section-title">Suggestions</div><div class="aap-suggestions">';
+    for(const s of a.parameter_suggestions){
+      const conf=(s.confidence||'medium').toLowerCase();
+      const confCls=conf==='high'?'aap-conf-high':conf==='medium'?'aap-conf-medium':'aap-conf-low';
+      html+=`<div class="aap-suggestion"><span class="aap-conf-badge ${confCls}">${escHtml(conf)}</span><span class="aap-sugg-text">${escHtml(s.parameter||'')} → ${escHtml(String(s.suggested_value||''))}</span><div class="aap-sugg-reason">${escHtml(s.reasoning||'')}</div></div>`;
+    }
+    html+='</div>';
+  }
+  // Patterns
+  if(a.patterns_detected&&a.patterns_detected.length){
+    html+='<div class="aap-section-title">Patterns</div><div class="aap-patterns">';
+    html+=a.patterns_detected.map(p=>`<div class="aap-pattern-item">${escHtml(p)}</div>`).join('');
+    html+='</div>';
+  }
+  // Tomorrow strategy
+  if(a.tomorrow_strategy){
+    html+=`<div class="aap-section-title">Tomorrow's Strategy</div><div class="aap-tomorrow"><div class="aap-tomorrow-text">${escHtml(a.tomorrow_strategy)}</div></div>`;
+  }
+  el.innerHTML=html;
+}
+
+async function pollAnalysis(){
+  try{
+    const r=await fetch('/api/analysis'); if(!r.ok)return;
+    const data=await r.json();
+    renderAnalysis(data);
+  }catch(e){console.error('Analysis poll error:',e);}
+}
+
+async function pollWeekly(){
+  try{
+    const r=await fetch('/api/weekly'); if(!r.ok)return;
+    const data=await r.json();
+    if(!data||!data.exists)return;
+    const el=document.getElementById('aap-content');
+    if(!el)return;
+    // Append weekly block if analysis content is present
+    const existing=el.querySelector('.aap-weekly');
+    const w=data;
+    const weeklyHtml=`<div class="aap-section-title">Weekly Report</div><div class="aap-weekly"><div class="aap-weekly-summary">${escHtml(w.summary||'No summary available.')}</div><span class="aap-weekly-expand" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='block'?'none':'block'">[expand]</span><div class="aap-weekly-detail">${(w.asset_breakdown||[]).map(row=>`<div class="aap-weekly-detail-row"><span>${escHtml(row.asset||'')}</span><span>${row.win_rate!=null?row.win_rate.toFixed(0)+'% WR':''} ${row.pnl_dollars!=null?fmtPnl(row.pnl_dollars):''}</span></div>`).join('')}</div></div>`;
+    if(existing){existing.outerHTML=weeklyHtml;}
+    else{el.insertAdjacentHTML('beforeend',weeklyHtml);}
+  }catch(e){console.error('Weekly poll error:',e);}
+}
+
+async function runAnalysis(){
+  const btn=document.getElementById('aap-run-btn');
+  const icon=document.getElementById('aap-run-icon');
+  if(btn)btn.disabled=true;
+  if(icon)icon.outerHTML='<span id="aap-run-icon" class="spin"></span>';
+  try{
+    const r=await fetch('/api/analysis/run',{method:'POST'});
+    const data=await r.json();
+    if(r.ok&&data){renderAnalysis({...data,exists:true});}
+    else{const el=document.getElementById('aap-content');if(el)el.innerHTML=`<div class="aap-no-data" style="color:var(--red)">${escHtml(data&&data.error?data.error:'Run failed.')}</div>`;}
+  }catch(e){const el=document.getElementById('aap-content');if(el)el.innerHTML=`<div class="aap-no-data" style="color:var(--red)">Error: ${escHtml(e.message)}</div>`;}
+  finally{
+    const btnF=document.getElementById('aap-run-btn');
+    if(btnF)btnF.disabled=false;
+    const iconEl=document.getElementById('aap-run-icon');
+    if(iconEl)iconEl.outerHTML='<span id="aap-run-icon">&#9654;</span>';
+  }
+}
+
 // ── Start ──
-async function pollAll(){await Promise.all([pollState(),pollTrades(),pollMarketState(),pollMarketPulse(),pollPnl()]);}
+async function pollAll(){await Promise.all([pollState(),pollTrades(),pollMarketState(),pollMarketPulse(),pollPnl(),pollAnalysis(),pollWeekly()]);}
 // Render OFFLINE cards immediately so the grid has height before first API poll
 renderMarketGrid({},null);
 pollAll(); pollBotStatus();
