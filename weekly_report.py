@@ -29,8 +29,49 @@ except ImportError:
 
 DAILY_DIR  = Path("daily_analysis")
 WEEKLY_DIR = Path("weekly_reports")
-MODEL      = "claude-sonnet-4-20250514"
+MODEL      = "claude-sonnet-4-6"
 ASSETS     = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
+
+# Static system prompt — cached across weekly runs (cache_control: ephemeral)
+WEEKLY_SYSTEM_PROMPT = """\
+You are a quantitative trading analyst reviewing a full week of trading for a Kalshi \
+15-minute binary options bot that trades BTC, ETH, SOL, XRP, and DOGE.
+
+Respond ONLY in this exact JSON format:
+
+{
+  "week": "<ISO week label from the data>",
+  "days_analyzed": 0,
+  "overall_grade": "A/B/C/D/F",
+  "overall_assessment": "2-3 sentence summary of the week",
+  "weekly_pnl_per_asset": {
+    "BTC":  {"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"},
+    "ETH":  {"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"},
+    "SOL":  {"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"},
+    "XRP":  {"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"},
+    "DOGE": {"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"}
+  },
+  "win_rate_trend": "IMPROVING/STABLE/DECLINING",
+  "win_rate_trend_detail": "specific numbers from the daily data, e.g. Mon 58% → Fri 71%",
+  "edge_decay_assessment": "NONE/MILD/MODERATE/SEVERE — include PnL/trade numbers",
+  "high_confidence_changes": [
+    {
+      "field": "config field",
+      "asset": "ALL or specific asset",
+      "current_value": 0,
+      "suggested_value": 0,
+      "reason": "suggested N times this week, pattern: ...",
+      "times_suggested": 0
+    }
+  ],
+  "patterns_across_week": [
+    "pattern with specific numbers, e.g. XRP loses 80% of trades when entry > 70c"
+  ],
+  "next_week_strategy": "2-3 sentences on what to change or maintain next week"
+}
+
+Be specific. Use actual numbers from the daily data. Respond with ONLY the JSON. \
+No preamble. No markdown fences."""
 
 
 # ── Data loading ───────────────────────────────────────────────────────────────
@@ -44,8 +85,9 @@ def load_week_analyses(week_label: str) -> list:
         print(f"ERROR: Invalid week format '{week_label}'. Use YYYY-WNN (e.g. 2025-W15).")
         sys.exit(1)
 
-    # ISO week Monday
-    monday = datetime.strptime(f"{year}-W{week:02d}-1", "%Y-W%W-%w")
+    # ISO week Monday (fromisocalendar is correct for ISO 8601 weeks;
+    # strptime %W/%w is the non-ISO "week of year" and gives wrong dates near year boundaries)
+    monday = datetime.fromisocalendar(year, week, 1)
 
     results = []
     for i in range(7):
@@ -121,9 +163,22 @@ def aggregate_weekly(analyses: list) -> dict:
     }
 
 
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _parse_claude_json(raw: str) -> dict:
+    """Extract JSON from Claude's response, stripping markdown fences if present."""
+    text = raw.strip()
+    if text.startswith("```"):
+        parts = text.split("```")
+        text = parts[1] if len(parts) > 1 else text
+        if text.startswith("json"):
+            text = text[4:]
+    return json.loads(text.strip())
+
+
 # ── Prompt builder ─────────────────────────────────────────────────────────────
 
-def build_weekly_prompt(week_label: str, analyses: list, agg: dict) -> str:
+def build_weekly_user_message(week_label: str, analyses: list, agg: dict) -> str:
     n = len(analyses)
 
     # Day trend table
@@ -197,9 +252,7 @@ def build_weekly_prompt(week_label: str, analyses: list, agg: dict) -> str:
         indent=2,
     )
 
-    return f"""You are a quantitative trading analyst reviewing a full week of trading for a Kalshi 15-minute binary options bot that trades BTC, ETH, SOL, XRP, and DOGE.
-
-WEEK: {week_label}
+    return f"""WEEK: {week_label}
 DAYS WITH ANALYSIS DATA: {n}/7
 
 WEEKLY TOTALS:
@@ -221,42 +274,7 @@ REPEATED PARAMETER SUGGESTIONS (confidence = high if suggested 3+ days):
 {rep_str}
 
 ALL DAILY SUMMARIES:
-{daily_summary_compact}
-
-Provide your weekly analysis in this EXACT JSON format:
-
-{{
-  "week": "{week_label}",
-  "days_analyzed": {n},
-  "overall_grade": "A/B/C/D/F",
-  "overall_assessment": "2-3 sentence summary of the week",
-  "weekly_pnl_per_asset": {{
-    "BTC":  {{"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"}},
-    "ETH":  {{"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"}},
-    "SOL":  {{"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"}},
-    "XRP":  {{"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"}},
-    "DOGE": {{"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"}}
-  }},
-  "win_rate_trend": "IMPROVING/STABLE/DECLINING",
-  "win_rate_trend_detail": "specific numbers from the daily data, e.g. Mon 58% → Fri 71%",
-  "edge_decay_assessment": "NONE/MILD/MODERATE/SEVERE — include PnL/trade numbers",
-  "high_confidence_changes": [
-    {{
-      "field": "config field",
-      "asset": "ALL or specific asset",
-      "current_value": 0,
-      "suggested_value": 0,
-      "reason": "suggested N times this week, pattern: ...",
-      "times_suggested": 0
-    }}
-  ],
-  "patterns_across_week": [
-    "pattern with specific numbers, e.g. XRP loses 80% of trades when entry > 70c"
-  ],
-  "next_week_strategy": "2-3 sentences on what to change or maintain next week"
-}}
-
-Be specific. Use actual numbers from the daily data. Respond with ONLY the JSON. No preamble. No markdown fences."""
+{daily_summary_compact}"""
 
 
 # ── Console output ─────────────────────────────────────────────────────────────
@@ -390,25 +408,24 @@ Output:
     )
     print(f"Sending to Claude ({MODEL})...")
 
-    prompt  = build_weekly_prompt(week_label, analyses, agg)
-    client  = anthropic.Anthropic(api_key=api_key)
-    report  = None
-    raw     = ""
+    user_message = build_weekly_user_message(week_label, analyses, agg)
+    client       = anthropic.Anthropic(api_key=api_key)
+    report       = None
+    raw          = ""
 
     try:
         response = client.messages.create(
             model=MODEL,
             max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}],
+            system=[{
+                "type": "text",
+                "text": WEEKLY_SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"},
+            }],
+            messages=[{"role": "user", "content": user_message}],
         )
-        raw = response.content[0].text
-        text = raw.strip()
-        if text.startswith("```"):
-            parts = text.split("```")
-            text = parts[1] if len(parts) > 1 else text
-            if text.startswith("json"):
-                text = text[4:]
-        report = json.loads(text.strip())
+        raw    = response.content[0].text
+        report = _parse_claude_json(raw)
     except json.JSONDecodeError as exc:
         print(f"WARNING: Claude returned non-JSON: {exc}")
         report = {

@@ -39,7 +39,7 @@ PRICE_VAL_CSV  = "price_validation_log.csv"
 DAILY_DIR      = Path("daily_analysis")
 SUGGESTED_FILE = Path("suggested_config_changes.json")
 
-MODEL      = "claude-sonnet-4-20250514"
+MODEL      = "claude-sonnet-4-6"
 KALSHI_FEE = 0.07  # per contract, probability units
 
 DISTANCE_BUCKETS = [
@@ -56,6 +56,52 @@ TIME_BUCKETS = [
     (5,   10,  "5-10 min"),
     (10, 999,  ">10 min"),
 ]
+
+# Static system prompt — cached across daily runs (cache_control: ephemeral)
+SYSTEM_PROMPT = """\
+You are a quantitative trading analyst reviewing trading sessions for a Kalshi \
+15-minute binary options bot that trades BTC, ETH, SOL, XRP, and DOGE.
+
+Respond ONLY in this exact JSON format:
+
+{
+  "date": "<YYYY-MM-DD from the session data>",
+  "overall_grade": "A/B/C/D/F",
+  "overall_assessment": "2-3 sentence summary of the day",
+  "per_asset_analysis": {
+    "BTC":  {"grade": "A-F", "assessment": "1-2 sentences", "keep_trading": true, "reason": "why"},
+    "ETH":  {"grade": "A-F", "assessment": "1-2 sentences", "keep_trading": true, "reason": "why"},
+    "SOL":  {"grade": "A-F", "assessment": "1-2 sentences", "keep_trading": true, "reason": "why"},
+    "XRP":  {"grade": "A-F", "assessment": "1-2 sentences", "keep_trading": true, "reason": "why"},
+    "DOGE": {"grade": "A-F", "assessment": "1-2 sentences", "keep_trading": true, "reason": "why"}
+  },
+  "worst_performers": [
+    {"description": "what went wrong", "category": "distance_bucket/time_bucket/asset", "suggestion": "specific fix"}
+  ],
+  "parameter_suggestions": [
+    {
+      "field": "config field name",
+      "asset": "ALL or specific asset",
+      "current_value": 0,
+      "suggested_value": 0,
+      "reason": "why, with numbers from today's data",
+      "confidence": "high/medium/low",
+      "data_points": 0
+    }
+  ],
+  "patterns_detected": [
+    "Pattern 1: losses cluster in first 3 minutes — e.g. 8/10 losses when time_remaining < 2min"
+  ],
+  "risk_warnings": [
+    "concern about drawdown, overexposure, deteriorating edge, etc."
+  ],
+  "tomorrow_strategy": "1-2 sentences on what to do differently tomorrow based on today's data"
+}
+
+Be specific. Use actual numbers from the data. Do not give generic advice. Every \
+suggestion must reference specific data points. If there are fewer than 10 trades, \
+flag every suggestion as low-confidence. Respond with ONLY the JSON. No preamble. \
+No markdown fences."""
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -228,7 +274,7 @@ def _parse_claude_json(raw: str) -> dict:
 
 # ── Prompt builder ─────────────────────────────────────────────────────────────
 
-def build_prompt(date_str: str, trades: list, config: dict, price_val: dict) -> str:
+def build_user_message(date_str: str, trades: list, config: dict, price_val: dict) -> str:
     wins   = [t for t in trades if t["outcome"] == "win"]
     losses = [t for t in trades if t["outcome"] == "loss"]
     total  = len(trades)
@@ -311,11 +357,7 @@ def build_prompt(date_str: str, trades: list, config: dict, price_val: dict) -> 
             f"and recommend collecting more data before applying parameter changes."
         )
 
-    return f"""You are a quantitative trading analyst reviewing today's trading session for a Kalshi 15-minute binary options bot that trades BTC, ETH, SOL, XRP, and DOGE.
-
-Here is today's complete session data:
-
-SESSION SUMMARY:
+    return f"""SESSION SUMMARY:
 - Date: {date_str}
 - Total trades: {total} | Wins: {len(wins)} | Losses: {len(losses)} | Win rate: {win_rate:.1f}%
 - Net PnL (estimated after fees): ${net_pnl:.2f}
@@ -345,45 +387,7 @@ PRICE VALIDATION (real Kalshi prices vs. simulated AMM prices):
 {pv_text}
 
 CURRENT CONFIG:
-{json.dumps(config_summary, indent=2)}
-
-Based on this data, provide your analysis in this EXACT JSON format:
-
-{{
-  "date": "{date_str}",
-  "overall_grade": "A/B/C/D/F",
-  "overall_assessment": "2-3 sentence summary of the day",
-  "per_asset_analysis": {{
-    "BTC":  {{"grade": "A-F", "assessment": "1-2 sentences", "keep_trading": true, "reason": "why"}},
-    "ETH":  {{"grade": "A-F", "assessment": "1-2 sentences", "keep_trading": true, "reason": "why"}},
-    "SOL":  {{"grade": "A-F", "assessment": "1-2 sentences", "keep_trading": true, "reason": "why"}},
-    "XRP":  {{"grade": "A-F", "assessment": "1-2 sentences", "keep_trading": true, "reason": "why"}},
-    "DOGE": {{"grade": "A-F", "assessment": "1-2 sentences", "keep_trading": true, "reason": "why"}}
-  }},
-  "worst_performers": [
-    {{"description": "what went wrong", "category": "distance_bucket/time_bucket/asset", "suggestion": "specific fix"}}
-  ],
-  "parameter_suggestions": [
-    {{
-      "field": "config field name",
-      "asset": "ALL or specific asset",
-      "current_value": 0,
-      "suggested_value": 0,
-      "reason": "why, with numbers from today's data",
-      "confidence": "high/medium/low",
-      "data_points": 0
-    }}
-  ],
-  "patterns_detected": [
-    "Pattern 1: losses cluster in first 3 minutes — e.g. 8/10 losses when time_remaining < 2min"
-  ],
-  "risk_warnings": [
-    "concern about drawdown, overexposure, deteriorating edge, etc."
-  ],
-  "tomorrow_strategy": "1-2 sentences on what to do differently tomorrow based on today's data"
-}}
-
-Be specific. Use actual numbers from the data. Do not give generic advice. Every suggestion must reference specific data points. If there are fewer than 10 trades, flag every suggestion as low-confidence. Respond with ONLY the JSON. No preamble. No markdown fences."""
+{json.dumps(config_summary, indent=2)}"""
 
 
 # ── Console output ─────────────────────────────────────────────────────────────
@@ -517,7 +521,7 @@ Output files:
         print("Price validation: no data for today.")
 
     print(f"Sending to Claude ({MODEL})...")
-    prompt = build_prompt(date_str, trades, config, price_val)
+    user_message = build_user_message(date_str, trades, config, price_val)
 
     client   = anthropic.Anthropic(api_key=api_key)
     analysis = None
@@ -527,7 +531,12 @@ Output files:
         response = client.messages.create(
             model=MODEL,
             max_tokens=4000,
-            messages=[{"role": "user", "content": prompt}],
+            system=[{
+                "type": "text",
+                "text": SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"},
+            }],
+            messages=[{"role": "user", "content": user_message}],
         )
         raw      = response.content[0].text
         analysis = _parse_claude_json(raw)
