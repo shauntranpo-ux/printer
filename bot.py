@@ -510,6 +510,37 @@ def init_db() -> None:
         raise
 
 
+def test_db_write() -> None:
+    """
+    Smoke-test the DB pipeline at startup: write a sentinel row, read it back,
+    delete it.  Halts the bot (exit code 2) on any failure so runner.py won't
+    silently loop on a broken DB.
+    """
+    try:
+        conn = sqlite3.connect(_DB_FILE)
+        conn.execute("PRAGMA journal_mode=WAL")
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO trades (ts, market_id, mode, outcome) VALUES (?, ?, ?, ?)",
+            ("_selftest_", "_selftest_", "_selftest_", "_selftest_"),
+        )
+        conn.commit()
+        test_id = cur.lastrowid
+        cur.execute("SELECT id FROM trades WHERE id = ?", (test_id,))
+        row = cur.fetchone()
+        if not row or row[0] != test_id:
+            raise RuntimeError(f"read-back mismatch: expected {test_id}, got {row}")
+        cur.execute("DELETE FROM trades WHERE id = ?", (test_id,))
+        conn.commit()
+        conn.close()
+        log.info(f"DB self-test PASSED  path={os.path.abspath(_DB_FILE)}")
+    except Exception as exc:
+        log.error(f"DB self-test FAILED: {exc}")
+        log.error(f"DB path: {os.path.abspath(_DB_FILE)}")
+        log.error("Cannot write trades — halting to prevent silent data loss.")
+        sys.exit(2)
+
+
 async def db_write_trade(trade: dict) -> int | None:
     """Insert a trade record. Returns the new row id."""
     try:
@@ -3981,6 +4012,7 @@ async def main() -> None:
     _init_config()
     load_credentials()
     init_db()
+    test_db_write()
     _load_bv3_corrections()
     _init_claude()
 
