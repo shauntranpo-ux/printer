@@ -1448,6 +1448,8 @@ function exportCSV(){window.location.href='/api/export/trades';}
 
 // ── Start ──
 async function pollAll(){await Promise.all([pollState(),pollTrades(),pollMarketState(),pollMarketPulse(),pollPnl()]);}
+// Render OFFLINE cards immediately so the grid has height before first API poll
+renderMarketGrid({},null);
 pollAll(); pollBotStatus();
 setInterval(pollAll,10000); setInterval(pollBotStatus,10000);
 window.addEventListener('resize',()=>{

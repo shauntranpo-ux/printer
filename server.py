@@ -624,7 +624,10 @@ def api_market_state():
         return jsonify({"assets": result, "ts": state.get("ts"), "bot_enabled": cfg.get("bot_enabled", False)})
     except Exception as exc:
         log.error(f"api_market_state error: {exc}", exc_info=True)
-        return jsonify({"assets": {}, "ts": None, "bot_enabled": False})
+        # Return OFFLINE placeholder for all known assets so the JS grid always renders
+        _default_assets = {a: {"phase": "OFFLINE", "price": None, "daily": {"wins": 0, "losses": 0, "pnl": 0.0}}
+                           for a in ["BTC", "ETH", "SOL", "XRP", "DOGE"]}
+        return jsonify({"assets": _default_assets, "ts": None, "bot_enabled": False})
 
 
 @app.route("/api/market-pulse")
