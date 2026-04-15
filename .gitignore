@@ -7,3 +7,5 @@ brain.log
 __pycache__/
 *.pyc
 config.json
+data/BTC_1m.csv
+data/*.csv
