@@ -95,6 +95,28 @@ body {
 #bot-toggle.off { border-color: rgba(231,76,60,0.5); color: var(--red); background: var(--red-l); }
 #bot-toggle.off:hover { background: rgba(231,76,60,0.2); }
 
+/* ── Multi-asset markets strip ── */
+#markets-strip { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+.asset-card {
+  flex:1; min-width:130px; background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:3px;
+}
+.asset-card-head { display:flex; align-items:center; justify-content:space-between; }
+.asset-name { font-size:11px; font-weight:700; letter-spacing:0.06em; color:var(--text); }
+.asset-phase {
+  font-size:9px; font-weight:700; letter-spacing:0.05em; padding:1px 6px;
+  border-radius:10px; text-transform:uppercase;
+}
+.asset-phase.WATCH  { background:rgba(243,156,18,0.12); color:#f39c12; border:1px solid rgba(243,156,18,0.3); }
+.asset-phase.READY  { background:rgba(52,152,219,0.1);  color:#3498db; border:1px solid rgba(52,152,219,0.3); }
+.asset-phase.LOCKED { background:rgba(39,174,96,0.1);   color:var(--green-d); border:1px solid rgba(39,174,96,0.25); }
+.asset-phase.DONE   { background:var(--surface2); color:var(--muted); border:1px solid var(--border); }
+.asset-phase.PAUSED { background:rgba(243,156,18,0.12); color:#f39c12; border:1px solid rgba(243,156,18,0.3); }
+.asset-phase.OFFLINE{ background:var(--surface2); color:var(--muted); border:1px solid var(--border); }
+.asset-price { font-size:13px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; }
+.asset-ticker { font-size:9px; color:var(--muted); font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.asset-timer { font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums; }
+
 .mode-pill {
   font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
   padding: 4px 11px; border-radius: 20px; cursor: pointer; font-family: inherit; transition: all 0.15s;
@@ -563,6 +585,9 @@ tr:last-child td { border-bottom: none; }
         </div>
 
       </div><!-- /mid-row -->
+
+      <!-- MULTI-ASSET MARKETS STRIP -->
+      <div id="markets-strip"></div>
 
       <!-- CLAUDE BRAIN BOX -->
       <div id="dash-claude" class="card" style="display:none;padding:14px 18px;margin-bottom:12px;">
@@ -1074,6 +1099,52 @@ async function saveSetting(key,value,btn){
   }catch(e){if(btn){btn.textContent='ERR';setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},2000);}console.error(e);}
 }
 
+// ── Multi-asset markets strip ──
+const _ASSET_ORDER = ['BTC','ETH','SOL','XRP','DOGE'];
+const _ASSET_LABEL = {BTC:'₿ BTC',ETH:'Ξ ETH',SOL:'◎ SOL',XRP:'✦ XRP',DOGE:'Ð DOGE'};
+function _fmtPrice(asset,price){
+  if(price==null)return '—';
+  if(asset==='BTC')return '$'+Math.round(price).toLocaleString();
+  if(asset==='ETH')return '$'+price.toLocaleString('en-US',{maximumFractionDigits:0});
+  if(price>=100)return '$'+price.toLocaleString('en-US',{maximumFractionDigits:0});
+  if(price>=1)return '$'+price.toFixed(2);
+  return '$'+price.toFixed(4);
+}
+function _fmtSecs(s){
+  if(!s||s<=0)return '—';
+  const m=Math.floor(s/60),ss=String(Math.floor(s%60)).padStart(2,'0');
+  return m+'m '+ss+'s';
+}
+function _shortTicker(t){
+  if(!t)return 'no market';
+  // show the date/time part only, e.g. KXBTC15M-26APR150200-00 → APR15 02:00
+  const m=t.match(/(\d{2}[A-Z]{3}\d{2})(\d{2})(\d{2})/);
+  if(m)return m[1]+' '+m[2]+':'+m[3];
+  return t.length>18?t.slice(-18):t;
+}
+function renderMarketsStrip(assets){
+  const el=document.getElementById('markets-strip');
+  if(!el)return;
+  if(!assets||!Object.keys(assets).length){el.innerHTML='';return;}
+  const keys=_ASSET_ORDER.filter(k=>assets[k]);
+  if(!keys.length){el.innerHTML='';return;}
+  el.innerHTML=keys.map(k=>{
+    const a=assets[k];
+    const phase=a.phase||'OFFLINE';
+    const stale=a.price_age!=null&&a.price_age>60;
+    const phaseLabel=stale&&phase!=='OFFLINE'?'STALE':phase;
+    return `<div class="asset-card">
+      <div class="asset-card-head">
+        <span class="asset-name">${_ASSET_LABEL[k]||k}</span>
+        <span class="asset-phase ${phaseLabel}">${phaseLabel}</span>
+      </div>
+      <div class="asset-price">${_fmtPrice(k,a.price)}</div>
+      <div class="asset-ticker" title="${a.ticker||''}">${_shortTicker(a.ticker)}${a.market_title?'<br><span style="opacity:.65">'+escHtml(a.market_title.replace('price up in next 15 mins?','↕ 15m').replace('Price up','↑').replace('Price down','↓'))+'</span>':''}</div>
+      <div class="asset-timer">${a.secs_left>0?'⏱ '+_fmtSecs(a.secs_left):''}</div>
+    </div>`;
+  }).join('');
+}
+
 // ── Helpers ──
 function todayWinRate(trades,mode){
   const today=new Date().toISOString().slice(0,10);
@@ -1342,6 +1413,9 @@ async function pollState(){
     }else alertEl.classList.remove('visible');
 
     if(s.config){if(!settingsPopulated){populateSettings(s.config);settingsPopulated=true;}updateBotToggleUI(s.config.bot_enabled!==false);}
+
+    // Multi-asset markets strip
+    renderMarketsStrip(s.assets||null);
   }catch(e){console.error('State poll error:',e);}
 }
 

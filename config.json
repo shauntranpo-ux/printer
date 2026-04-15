@@ -1,5 +1,5 @@
 {
-  "bot_enabled": true,
+  "bot_enabled": false,
   "mode": "paper",
   "trade_amount_dollars": 25,
   "confidence_threshold": 65,

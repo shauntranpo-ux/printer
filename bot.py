@@ -2776,6 +2776,32 @@ async def write_state_file(
         "consecutive_losses": _consecutive_losses,
         "consecutive_loss_pause_until": _consecutive_loss_pause_until,
     }
+
+    # Per-asset snapshot for multi-asset dashboard display
+    assets_snap: dict = {}
+    # BTC — built from the arguments passed to this function
+    assets_snap["BTC"] = {
+        "price":        btc_price,
+        "phase":        phase,
+        "ticker":       market.get("ticker", "") if market else "",
+        "market_title": market.get("title",  "") if market else "",
+        "secs_left":    secs_left,
+        "price_age":    _am_price_age("BTC"),
+    }
+    # Non-BTC assets — pulled from the in-memory _asset_states dict
+    for _a, _st in _asset_states.items():
+        _m  = _st.get("market")
+        _sl = seconds_remaining(_m) if _m else 0
+        assets_snap[_a] = {
+            "price":        _am_get_price(_a),
+            "phase":        _st.get("phase", "DONE"),
+            "ticker":       _m.get("ticker", "") if _m else "",
+            "market_title": _m.get("title",  "") if _m else "",
+            "secs_left":    _sl,
+            "price_age":    _am_price_age(_a),
+        }
+    state["assets"] = assets_snap
+
     try:
         atomic_write_json(state, _STATE_FILE)
     except Exception as exc:
@@ -3541,7 +3567,7 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
     while True:
         try:
             config = read_config()
-            if not config.get("bot_enabled", True):
+            if not config.get("bot_enabled", False):
                 await asyncio.sleep(10)
                 continue
             for asset in config.get("enabled_assets", ["BTC"]):
@@ -3640,7 +3666,7 @@ async def main_loop() -> None:
                     await asyncio.sleep(10)
                     continue
 
-                if not config.get("bot_enabled", True):
+                if not config.get("bot_enabled", False):
                     await write_state_file(config, current_market, "PAUSED", 0,
                                            get_btc_price(), last_confidence_score,
                                            last_confidence_breakdown, last_action, last_skip_reason)
