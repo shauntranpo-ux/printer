@@ -384,7 +384,17 @@ def _init_config() -> None:
     else:
         cfg = defaults.copy()
 
-    # Railway env var overrides — set once, persist forever
+    # Persistent bot_enabled from Railway volume — survives redeploys
+    # (written by server.py whenever the dashboard toggle changes)
+    _data_dir = os.path.dirname(os.path.abspath(_DB_FILE))
+    _be_state = os.path.join(_data_dir, "bot_enabled.state")
+    if os.path.exists(_be_state):
+        try:
+            cfg["bot_enabled"] = open(_be_state).read().strip() == "1"
+        except Exception:
+            pass
+
+    # Railway env var overrides — highest priority, set once, persist forever
     if "BOT_MODE" in os.environ:
         cfg["mode"] = os.environ["BOT_MODE"].strip().lower()
     if "BOT_ENABLED" in os.environ:

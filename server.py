@@ -366,6 +366,18 @@ def api_config():
     except Exception as exc:
         log.error(f"Config write failed: {exc}")
         return jsonify({"error": f"Could not save config: {exc}"}), 500
+
+    # Persist bot_enabled to Railway volume so it survives redeploys
+    if "bot_enabled" in data:
+        _vol_db = os.environ.get("BOT_DB_FILE", "")
+        if _vol_db:
+            try:
+                _vol_dir = os.path.dirname(os.path.abspath(_vol_db))
+                with open(os.path.join(_vol_dir, "bot_enabled.state"), "w") as _sf:
+                    _sf.write("1" if config["bot_enabled"] else "0")
+            except Exception as _pe:
+                log.warning(f"Could not persist bot_enabled to volume: {_pe}")
+
     log.info(f"Config updated: {data}")
 
     now_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
