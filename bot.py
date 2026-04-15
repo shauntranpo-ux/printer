@@ -2934,6 +2934,7 @@ async def handle_ready_phase(
                             max_entry_price_cents=config.get("max_entry_price_cents", 100.0),
                             min_reward_cents=config.get("min_reward_cents", 0.0),
                             max_risk_reward_ratio=config.get("max_risk_reward_ratio", 999.0),
+                            asset=asset,
                         )
                         c_win_prob = c_brain.get("win_prob", 0.5)
                         c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
@@ -3009,7 +3010,8 @@ async def handle_ready_phase(
                           kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
                           max_entry_price_cents=config.get("max_entry_price_cents", 100.0),
                           min_reward_cents=config.get("min_reward_cents", 0.0),
-                          max_risk_reward_ratio=config.get("max_risk_reward_ratio", 999.0))
+                          max_risk_reward_ratio=config.get("max_risk_reward_ratio", 999.0),
+                          asset=asset)
     side     = brain["side"]
     score    = brain["confidence"]
     do_trade = brain["action"] == "trade"
@@ -3517,13 +3519,18 @@ async def _process_asset(
         return
 
     if market is None:
-        # If a position is open, still run locked-phase handler so it can settle.
+        # If a position is open with a stored close time, still run locked-phase handler
+        # so it can settle. Repeated warnings each cycle are expected until close_time elapses.
         if st["phase"] == "LOCKED" and st.get("position") is not None:
-            log.warning(f"[{asset}] no active market — still processing open LOCKED position.")
-            try:
-                await handle_locked_phase(session, price, 0, config, asset=asset, state=st)
-            except Exception as exc:
-                log.error(f"[{asset}] LOCKED phase error (no market): {exc}", exc_info=True)
+            _close_time = st["position"].get("market_close_time", "")
+            if not _close_time:
+                log.error(f"[{asset}] LOCKED position missing market_close_time — cannot safely settle without market. Skipping.")
+            else:
+                log.warning(f"[{asset}] no active market — still processing open LOCKED position.")
+                try:
+                    await handle_locked_phase(session, price, 0, config, asset=asset, state=st)
+                except Exception as exc:
+                    log.error(f"[{asset}] LOCKED phase error (no market): {exc}", exc_info=True)
         else:
             log.debug(f"[{asset}] no active market")
             st["phase"] = "DONE"
@@ -3747,14 +3754,20 @@ async def main_loop() -> None:
                     continue
 
                 if market is None:
-                    # If we have an open position, still run the locked-phase handler
-                    # so the trade can settle even when no new market is visible.
+                    # If we have an open position with a stored close time, still run the
+                    # locked-phase handler so the trade can settle even when no new market
+                    # is visible. Repeated warnings each cycle until close_time elapses
+                    # are expected — not errors.
                     if current_phase == "LOCKED" and current_position is not None:
-                        log.warning("No active BTC markets — still processing open LOCKED position.")
-                        try:
-                            await handle_locked_phase(session, btc_price, 0, config)
-                        except Exception as exc:
-                            log.error(f"LOCKED phase error (no market): {exc}", exc_info=True)
+                        _close_time = current_position.get("market_close_time", "")
+                        if not _close_time:
+                            log.error("LOCKED position missing market_close_time — cannot safely settle without market. Skipping.")
+                        else:
+                            log.warning("No active BTC markets — still processing open LOCKED position.")
+                            try:
+                                await handle_locked_phase(session, btc_price, 0, config)
+                            except Exception as exc:
+                                log.error(f"LOCKED phase error (no market): {exc}", exc_info=True)
                         await write_state_file(config, None, current_phase, 0, btc_price,
                                                last_confidence_score, last_confidence_breakdown,
                                                last_action, last_skip_reason)
