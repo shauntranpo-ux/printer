@@ -13,7 +13,10 @@ import io
 import json
 import logging
 import os
+import signal
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
@@ -68,6 +71,9 @@ if not os.path.exists("config.json"):
         logging.warning(f"Could not create default config.json: {_cfg_err}")
 
 app = Flask(__name__)
+
+# ── Bot subprocess tracking ──
+_bot_process: subprocess.Popen | None = None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -458,6 +464,179 @@ def api_config_get():
 
 
 
+
+
+@app.route("/api/pnl")
+def api_pnl():
+    """
+    Return PnL summary:
+      - today: today's PnL broken down by asset and mode
+      - alltime: all-time totals
+      - win_rate: overall win rate (resolved trades only)
+    """
+    try:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        conn = get_db()
+        rows = conn.execute(
+            "SELECT * FROM trades ORDER BY ts DESC LIMIT 2000"
+        ).fetchall()
+        conn.close()
+
+        all_trades = [dict(r) for r in rows]
+
+        def _pnl(trades):
+            resolved = [t for t in trades if t.get("outcome") not in ("pending", None) and t.get("pnl_dollars") is not None]
+            total = round(sum(t["pnl_dollars"] for t in resolved), 2)
+            wins  = sum(1 for t in resolved if t.get("outcome") == "win")
+            count = len(resolved)
+            win_rate = round(wins / count * 100, 1) if count else 0.0
+            return {"pnl": total, "trades": count, "wins": wins, "win_rate": win_rate}
+
+        today_trades = [t for t in all_trades if (t.get("ts") or "").startswith(today)]
+
+        # Per-asset today
+        cfg = read_config()
+        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        today_by_asset = {}
+        for asset in enabled_assets:
+            a_trades = [t for t in today_trades if t.get("asset") == asset]
+            today_by_asset[asset] = _pnl(a_trades)
+
+        # Per-mode today
+        today_live  = _pnl([t for t in today_trades if t.get("mode") == "live"])
+        today_paper = _pnl([t for t in today_trades if t.get("mode") == "paper"])
+
+        # All-time
+        alltime_live  = _pnl([t for t in all_trades if t.get("mode") == "live"])
+        alltime_paper = _pnl([t for t in all_trades if t.get("mode") == "paper"])
+
+        return jsonify({
+            "today": {
+                "live":    today_live,
+                "paper":   today_paper,
+                "by_asset": today_by_asset,
+                "date":    today,
+            },
+            "alltime": {
+                "live":  alltime_live,
+                "paper": alltime_paper,
+            },
+        })
+    except Exception as exc:
+        log.error(f"api_pnl error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/markets")
+def api_markets():
+    """
+    Return per-asset market state.
+    Reads bot_state.json's 'assets' key if present.
+    Falls back to enabled_assets from config with OFFLINE status.
+    """
+    try:
+        state = read_state()
+        cfg   = read_config()
+        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+
+        assets = state.get("assets", {})
+
+        # Ensure all enabled assets are represented (fill with OFFLINE if missing)
+        result = {}
+        for asset in enabled_assets:
+            if asset in assets:
+                result[asset] = assets[asset]
+            else:
+                result[asset] = {
+                    "phase":     "OFFLINE",
+                    "price":     None,
+                    "ticker":    None,
+                    "market_title": None,
+                    "secs_left": 0,
+                    "price_age": None,
+                }
+
+        return jsonify(result)
+    except Exception as exc:
+        log.error(f"api_markets error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/bot/start", methods=["POST"])
+def api_bot_start():
+    """
+    Start bot.py as a subprocess.
+    Returns the PID of the new process.
+    Uses 'py -3' on Windows, 'python3' elsewhere.
+    """
+    global _bot_process
+    try:
+        # Clean up finished process if any
+        if _bot_process is not None:
+            ret = _bot_process.poll()
+            if ret is None:
+                return jsonify({"error": "Bot is already running", "pid": _bot_process.pid}), 409
+            else:
+                _bot_process = None
+
+        bot_script = os.path.join(_BASE_DIR, "bot.py")
+        if not os.path.exists(bot_script):
+            return jsonify({"error": f"bot.py not found at {bot_script}"}), 404
+
+        python_cmd = "py" if sys.platform == "win32" else "python3"
+        args = [python_cmd, "-3", bot_script] if sys.platform == "win32" else [python_cmd, bot_script]
+
+        _bot_process = subprocess.Popen(
+            args,
+            cwd=_BASE_DIR,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0,
+        )
+
+        log.info(f"Bot started with PID {_bot_process.pid}")
+        return jsonify({"ok": True, "pid": _bot_process.pid})
+    except Exception as exc:
+        log.error(f"api_bot_start error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/bot/stop", methods=["POST"])
+def api_bot_stop():
+    """
+    Stop the bot subprocess started by /api/bot/start.
+    Sends SIGTERM (or CTRL_BREAK on Windows), then waits up to 5 seconds.
+    """
+    global _bot_process
+    try:
+        if _bot_process is None:
+            return jsonify({"ok": True, "msg": "No bot process tracked (already stopped)"})
+
+        pid = _bot_process.pid
+        ret = _bot_process.poll()
+        if ret is not None:
+            _bot_process = None
+            return jsonify({"ok": True, "msg": f"Bot process {pid} had already exited (code {ret})"})
+
+        try:
+            if sys.platform == "win32":
+                _bot_process.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                _bot_process.terminate()
+            _bot_process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            log.warning(f"Bot process {pid} did not stop in 5s — killing")
+            _bot_process.kill()
+            _bot_process.wait(timeout=3)
+        except Exception as kill_exc:
+            log.warning(f"Error stopping bot: {kill_exc}")
+
+        _bot_process = None
+        log.info(f"Bot process {pid} stopped")
+        return jsonify({"ok": True, "msg": f"Bot process {pid} stopped"})
+    except Exception as exc:
+        log.error(f"api_bot_stop error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
 
 
 @app.route("/health")

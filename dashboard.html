@@ -439,6 +439,7 @@ tr:last-child td { border-bottom: none; }
         <div id="bot-status-dot"></div>
         <span id="bot-status-label">OFFLINE</span>
       </div>
+      <button id="bot-process-toggle" onclick="toggleBotProcess()" style="font-size:10px;font-weight:700;letter-spacing:0.05em;padding:4px 11px;border-radius:20px;cursor:pointer;font-family:inherit;transition:all 0.15s;border:1px solid rgba(39,174,96,0.5);background:rgba(39,174,96,0.13);color:var(--green);">START BOT</button>
       <button id="bot-toggle" onclick="toggleBot()">BOT OFF</button>
       <button class="mode-pill paper" id="mode-pill" onclick="toggleMode()">PAPER</button>
       <div id="clock">—</div>
@@ -1207,11 +1208,20 @@ function _updateAiPanel(s,bd,wp,ev,vr,confThresh){
 
 // ── Bot toggle ──
 let _botEnabled=false;
+let _botRunning=false;
 function updateBotToggleUI(enabled){
   _botEnabled=enabled;
   const btn=document.getElementById('bot-toggle');
+  if(!btn)return;
   if(enabled){btn.textContent='BOT ON';btn.className='on';}
   else{btn.textContent='BOT OFF';btn.className='off';}
+}
+function updateBotRunningUI(running){
+  _botRunning=running;
+  const btn=document.getElementById('bot-process-toggle');
+  if(!btn)return;
+  if(running){btn.textContent='STOP BOT';btn.className='off';}
+  else{btn.textContent='START BOT';btn.className='on';}
 }
 function _showSaveErr(btn){
   const o=btn.textContent,oc=btn.style.color;btn.textContent='SAVE ERR';btn.style.color='#e74c3c';
@@ -1226,6 +1236,24 @@ async function toggleBot(){
     if(cfg.bot_enabled===newState)updateBotToggleUI(newState);else _showSaveErr(btn);
   }catch(e){console.error(e);_showSaveErr(btn);}
 }
+async function toggleBotProcess(){
+  const btn=document.getElementById('bot-process-toggle');
+  if(!btn)return;
+  const orig=btn.textContent;
+  btn.textContent='...';btn.disabled=true;
+  try{
+    if(_botRunning){
+      const r=await fetch('/api/bot/stop',{method:'POST'});
+      if(r.ok){showToast('Bot stopped');updateBotRunningUI(false);}
+      else{const j=await r.json();showToast(j.error||'Stop failed','error');}
+    }else{
+      const r=await fetch('/api/bot/start',{method:'POST'});
+      if(r.ok){const j=await r.json();showToast('Bot started (PID '+j.pid+')');updateBotRunningUI(true);}
+      else{const j=await r.json();showToast(j.error||'Start failed','error');}
+    }
+  }catch(e){console.error(e);showToast('Network error','error');}
+  finally{btn.disabled=false;}
+}
 
 // ── Bot alive ──
 async function pollBotStatus(){
@@ -1239,10 +1267,47 @@ async function pollBotStatus(){
     label.textContent=alive?(paused?'PAUSED':'RUNNING'):'OFFLINE';
     const sbBot=document.getElementById('sb-bot');
     if(sbBot){sbBot.textContent=alive?(paused?'PAUSED':'RUNNING'):'OFFLINE';sbBot.className='sb-stat-val '+(alive&&!paused?'green':paused?'amber':'');}
+    // Also update bot running state from subprocess check
+    updateBotRunningUI(_botRunning);
   }catch(e){
     const d=document.getElementById('bot-status-dot'),l=document.getElementById('bot-status-label');
     if(d)d.className='dead';if(l)l.textContent='OFFLINE';
   }
+}
+
+// ── Markets (per-asset) ──
+async function pollMarkets(){
+  try{
+    const r=await fetch('/api/markets'); if(!r.ok){console.warn('Markets fetch failed',r.status);return;}
+    const assets=await r.json();
+    if(assets&&typeof assets==='object'&&!assets.error){
+      renderMarketsStrip(assets);
+    }
+  }catch(e){console.error('Markets poll error:',e);}
+}
+
+// ── PnL from server ──
+async function pollPnl(){
+  try{
+    const r=await fetch('/api/pnl'); if(!r.ok)return;
+    const data=await r.json();
+    if(!data||data.error)return;
+    const today=data.today||{};
+    const alltime=data.alltime||{};
+    const tl=today.live||{}, tp=today.paper||{};
+    const al=alltime.live||{}, ap=alltime.paper||{};
+    // Update sub-stats with server-side PnL
+    const tlEl=document.getElementById('today-live-pnl');if(tlEl)tlEl.textContent=fmtPnl(tl.pnl||0);
+    const tpEl=document.getElementById('today-paper-pnl');if(tpEl)tpEl.textContent=fmtPnl(tp.pnl||0);
+    // Win rate badge from alltime
+    const wrBadge=document.getElementById('wr-badge');
+    if(wrBadge&&al.trades>0){
+      const wr=al.win_rate;
+      const cls=wr>=75?'green':wr>=60?'amber':'red';
+      wrBadge.textContent=wr.toFixed(0)+'% WR ('+al.trades+')';
+      wrBadge.className='badge '+cls;
+    }
+  }catch(e){console.error('PnL poll error:',e);}
 }
 
 // ── Main poll ──
@@ -1414,8 +1479,9 @@ async function pollState(){
 
     if(s.config){if(!settingsPopulated){populateSettings(s.config);settingsPopulated=true;}updateBotToggleUI(s.config.bot_enabled!==false);}
 
-    // Multi-asset markets strip
-    renderMarketsStrip(s.assets||null);
+    // Multi-asset markets strip — only update from state if assets key present
+    // (primary update is from pollMarkets() -> /api/markets)
+    if(s.assets&&Object.keys(s.assets).length){renderMarketsStrip(s.assets);}
   }catch(e){console.error('State poll error:',e);}
 }
 
@@ -1458,9 +1524,9 @@ async function pollTrades(){
 function exportCSV(){window.location.href='/api/export/trades';}
 
 // ── Start ──
-async function pollAll(){await Promise.all([pollState(),pollTrades()]);}
+async function pollAll(){await Promise.all([pollState(),pollTrades(),pollMarkets(),pollPnl()]);}
 pollAll(); pollBotStatus();
-setInterval(pollAll,3000); setInterval(pollBotStatus,15000);
+setInterval(pollAll,10000); setInterval(pollBotStatus,10000);
 window.addEventListener('resize',()=>{
   drawChart('live-chart',liveChartCurrent);
   drawChart('paper-chart',paperChartCurrent);
