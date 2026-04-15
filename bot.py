@@ -133,6 +133,8 @@ last_confidence_breakdown: dict = {}
 last_action: str = ""
 last_skip_reason: str = ""
 last_reversal_reason: str = ""   # most recent reversal signal evaluation (pass/fail)
+# Per-asset eval snapshots for dashboard market cards (keyed by asset ticker)
+_asset_eval: dict = {}
 
 # Contract price history — tracks YES ask over time per ticker for velocity signal
 _contract_price_history: dict = {}   # ticker → deque[(ts, price)]
@@ -2790,7 +2792,10 @@ async def write_state_file(
 
     # Per-asset snapshot for multi-asset dashboard display
     assets_snap: dict = {}
-    # BTC — built from the arguments passed to this function
+    # BTC — built from the arguments passed to this function + last eval snapshot
+    _btc_ev = _asset_eval.get("BTC", {})
+    # If BTC is LOCKED (position open), override status so dashboard shows TRADING
+    _btc_status = "TRADING" if phase == "LOCKED" else _btc_ev.get("status")
     assets_snap["BTC"] = {
         "price":        btc_price,
         "phase":        phase,
@@ -2798,18 +2803,39 @@ async def write_state_file(
         "market_title": market.get("title",  "") if market else "",
         "secs_left":    secs_left,
         "price_age":    _am_price_age("BTC"),
+        "strike":       _btc_ev.get("strike"),
+        "distance_pct": _btc_ev.get("distance_pct"),
+        "direction":    _btc_ev.get("direction"),
+        "yes_ask":      _btc_ev.get("yes_ask"),
+        "no_ask":       _btc_ev.get("no_ask"),
+        "ev":           _btc_ev.get("ev"),
+        "win_prob":     _btc_ev.get("win_prob"),
+        "status":       _btc_status,
+        "skip_reason":  _btc_ev.get("skip_reason"),
     }
     # Non-BTC assets — pulled from the in-memory _asset_states dict
     for _a, _st in _asset_states.items():
         _m  = _st.get("market")
         _sl = seconds_remaining(_m) if _m else 0
+        _ev = _st.get("eval", {})
+        _a_phase = _st.get("phase", "DONE")
+        _a_status = "TRADING" if _a_phase == "LOCKED" else _ev.get("status")
         assets_snap[_a] = {
             "price":        _am_get_price(_a),
-            "phase":        _st.get("phase", "DONE"),
+            "phase":        _a_phase,
             "ticker":       _m.get("ticker", "") if _m else "",
             "market_title": _m.get("title",  "") if _m else "",
             "secs_left":    _sl,
             "price_age":    _am_price_age(_a),
+            "strike":       _ev.get("strike"),
+            "distance_pct": _ev.get("distance_pct"),
+            "direction":    _ev.get("direction"),
+            "yes_ask":      _ev.get("yes_ask"),
+            "no_ask":       _ev.get("no_ask"),
+            "ev":           _ev.get("ev"),
+            "win_prob":     _ev.get("win_prob"),
+            "status":       _a_status,
+            "skip_reason":  _ev.get("skip_reason"),
         }
     state["assets"] = assets_snap
 
@@ -3041,6 +3067,19 @@ async def handle_ready_phase(
     brain_ev = brain.get("win_prob", 0.5) - (entry_price_cents / 100) - _fee
     brain_win_prob = brain.get("win_prob", 0.5)
 
+    # Dashboard eval snapshot — updated at every exit point below
+    _eval_snap = {
+        "strike":       strike,
+        "distance_pct": round(abs(btc_price - strike) / strike * 100, 3) if strike else None,
+        "direction":    "UP" if side == "yes" else "DOWN",
+        "yes_ask":      yes_ask,
+        "no_ask":       no_ask,
+        "ev":           round(brain_ev * 100, 1),
+        "win_prob":     round(brain_win_prob * 100, 1),
+        "status":       "WATCHING",
+        "skip_reason":  "",
+    }
+
     if _claude_client is not None and config.get("enable_claude_filter", False):
         if brain_win_prob >= 0.95 and do_trade:
             # Very high confidence — go straight through without Claude overhead
@@ -3147,6 +3186,9 @@ async def handle_ready_phase(
             log.info(f"{ticker}: watching — {skip_reason_ai} | reversal: {rev_reason}")
             await _log_entry(market, "READY", secs_left, btc_price, strike,
                              int(entry_price_cents), score, "skip", skip_reason_ai, mode)
+            _eval_snap.update({"status": "SKIPPED", "skip_reason": skip_reason_ai})
+            if _use_state: state["eval"] = dict(_eval_snap)
+            else: _asset_eval[asset] = dict(_eval_snap)
             last_action, last_skip_reason = "watching", skip_reason_ai
             return
     else:
@@ -3156,6 +3198,9 @@ async def handle_ready_phase(
         log.info(f"{ticker}: watching — {skip_reason_ai}")
         await _log_entry(market, "READY", secs_left, btc_price, strike,
                          int(entry_price_cents), score, "skip", skip_reason_ai, mode)
+        _eval_snap.update({"status": "SKIPPED", "skip_reason": skip_reason_ai})
+        if _use_state: state["eval"] = dict(_eval_snap)
+        else: _asset_eval[asset] = dict(_eval_snap)
         last_action, last_skip_reason = "watching", skip_reason_ai
         return
 
@@ -3184,6 +3229,9 @@ async def handle_ready_phase(
         log.info(f"{ticker}: {reason}")
         await _log_entry(market, "READY", secs_left, btc_price, strike,
                          int(entry_price_cents), score, "skip", reason, mode)
+        _eval_snap.update({"status": "SKIPPED", "skip_reason": reason})
+        if _use_state: state["eval"] = dict(_eval_snap)
+        else: _asset_eval[asset] = dict(_eval_snap)
         last_action, last_skip_reason = "skip", reason
         return
 
@@ -3215,6 +3263,9 @@ async def handle_ready_phase(
     if not fill_confirmed:
         if _use_state: state["phase"] = "DONE"
         else: current_phase = "DONE"
+        _eval_snap.update({"status": "SKIPPED", "skip_reason": "order not filled"})
+        if _use_state: state["eval"] = dict(_eval_snap)
+        else: _asset_eval[asset] = dict(_eval_snap)
         last_action, last_skip_reason = "skip", "order not filled"
         log.info(f"{ticker}: order not filled. Moving to DONE.")
         return
@@ -3274,6 +3325,9 @@ async def handle_ready_phase(
     else:
         current_position = _new_position
         current_phase = "LOCKED"
+    _eval_snap.update({"status": "TRADING", "skip_reason": ""})
+    if _use_state: state["eval"] = dict(_eval_snap)
+    else: _asset_eval[asset] = dict(_eval_snap)
     last_action, last_skip_reason = "trade", ""
     log.info(f"{ticker}: LOCKED.")
     mode_icon  = "📄" if mode == "paper" else "💵"

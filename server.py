@@ -581,6 +581,97 @@ def api_markets():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/market-state")
+def api_market_state():
+    """
+    Rich per-asset state for dashboard market cards.
+    Includes eval metrics (ev, win_prob, direction, yes/no ask, etc.)
+    and today's per-asset PnL from the DB.
+    """
+    try:
+        state = read_state()
+        cfg   = read_config()
+        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        assets = state.get("assets", {})
+
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        daily: dict = {}
+        try:
+            conn = get_db()
+            rows = conn.execute(
+                "SELECT asset, outcome, pnl_dollars FROM trades WHERE ts LIKE ?",
+                (today + "%",)
+            ).fetchall()
+            conn.close()
+            for row in rows:
+                a = row["asset"] or "BTC"
+                if a not in daily:
+                    daily[a] = {"wins": 0, "losses": 0, "pnl": 0.0}
+                if row["outcome"] == "win":
+                    daily[a]["wins"] += 1
+                elif row["outcome"] == "loss":
+                    daily[a]["losses"] += 1
+                if row["pnl_dollars"] is not None:
+                    daily[a]["pnl"] = round(daily[a]["pnl"] + row["pnl_dollars"], 2)
+        except Exception:
+            pass
+
+        result = {}
+        for asset in enabled_assets:
+            a_state = assets.get(asset, {"phase": "OFFLINE", "price": None})
+            result[asset] = {**a_state, "daily": daily.get(asset, {"wins": 0, "losses": 0, "pnl": 0.0})}
+
+        return jsonify({"assets": result, "ts": state.get("ts"), "bot_enabled": cfg.get("bot_enabled", False)})
+    except Exception as exc:
+        log.error(f"api_market_state error: {exc}", exc_info=True)
+        return jsonify({"assets": {}, "ts": None, "bot_enabled": False})
+
+
+@app.route("/api/market-pulse")
+def api_market_pulse():
+    """Skip counter, last 5 resolved trades, price validation stats."""
+    try:
+        state  = read_state()
+        result = {
+            "last_action":      state.get("last_action", ""),
+            "last_skip_reason": state.get("last_skip_reason", ""),
+            "consecutive_losses": state.get("consecutive_losses", 0),
+            "recent_trades":    [],
+            "price_validation": None,
+            "ts":               state.get("ts"),
+        }
+        try:
+            conn = get_db()
+            rows = conn.execute(
+                "SELECT ts, asset, side, pnl_dollars, outcome, entry_price_cents "
+                "FROM trades WHERE outcome IN ('win','loss') ORDER BY ts DESC LIMIT 5"
+            ).fetchall()
+            conn.close()
+            result["recent_trades"] = [dict(r) for r in rows]
+        except Exception:
+            pass
+        try:
+            pv_path = "price_validation_log.csv"
+            if os.path.exists(pv_path):
+                import csv as _csv
+                with open(pv_path) as _f:
+                    _rdr = _csv.DictReader(_f)
+                    _rows = list(_rdr)
+                if _rows:
+                    _gaps = [float(r["price_gap_cents"]) for r in _rows
+                             if r.get("price_gap_cents") not in ("", None)]
+                    result["price_validation"] = {
+                        "count": len(_rows),
+                        "avg_gap": round(sum(_gaps) / len(_gaps), 2) if _gaps else 0,
+                    }
+        except Exception:
+            pass
+        return jsonify(result)
+    except Exception as exc:
+        log.error(f"api_market_pulse error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/bot/start", methods=["POST"])
 def api_bot_start():
     """
