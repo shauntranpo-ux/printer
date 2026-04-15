@@ -1,7 +1,7 @@
 {
   "bot_enabled": false,
   "mode": "paper",
-  "trade_amount_dollars": 25,
+  "trade_amount_dollars": 7,
   "confidence_threshold": 65,
   "daily_loss_limit_dollars": 50,
   "daily_profit_target_dollars": 200,

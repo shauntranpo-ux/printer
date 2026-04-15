@@ -1067,10 +1067,10 @@ function _shortTicker(t){
 function renderMarketGrid(assets, dailyData){
   const grid=document.getElementById('market-grid');
   if(!grid)return;
-  const keys=_ASSET_ORDER.filter(k=>assets&&assets[k]);
-  if(!keys.length){grid.innerHTML='';return;}
+  // Always render all 5 asset cards — show OFFLINE if data is missing
+  const keys=_ASSET_ORDER;
   grid.innerHTML=keys.map(k=>{
-    const a=assets[k];
+    const a=(assets&&assets[k])||{phase:'OFFLINE',price:null};
     const daily=(dailyData&&dailyData[k])||{};
     const dir=a.direction;
     const status=a.status||'OFFLINE';
@@ -1241,15 +1241,30 @@ async function pollBotStatus(){
 // ── Market state (new endpoint with eval data) ──
 async function pollMarketState(){
   try{
-    const r=await fetch('/api/market-state'); if(!r.ok)return;
-    const data=await r.json();
-    if(!data||data.error)return;
-    const assets=data.assets||{};
-    const dailyData={};
-    for(const [k,v] of Object.entries(assets)) dailyData[k]=v.daily||{};
-    renderMarketGrid(assets,dailyData);
-    if(data.bot_enabled!=null) updateBotToggleUI(data.bot_enabled);
-  }catch(e){console.error('Market state poll error:',e);}
+    const r=await fetch('/api/market-state');
+    if(r.ok){
+      const data=await r.json();
+      if(data&&!data.error&&data.assets&&Object.keys(data.assets).length){
+        const dailyData={};
+        for(const [k,v] of Object.entries(data.assets)) dailyData[k]=v.daily||{};
+        renderMarketGrid(data.assets,dailyData);
+        if(data.bot_enabled!=null) updateBotToggleUI(data.bot_enabled);
+        return;
+      }
+    }
+    // Fallback to /api/markets if new endpoint unavailable or empty
+    const r2=await fetch('/api/markets');
+    if(r2.ok){
+      const assets=await r2.json();
+      if(assets&&!assets.error) renderMarketGrid(assets,null);
+      else renderMarketGrid({},null);
+    }else{
+      renderMarketGrid({},null);
+    }
+  }catch(e){
+    renderMarketGrid({},null);
+    console.error('Market state poll error:',e);
+  }
 }
 
 // ── Market pulse ──
