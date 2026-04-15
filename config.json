@@ -24,5 +24,12 @@
     "SOL",
     "XRP",
     "DOGE"
-  ]
+  ],
+  "asset_overrides": {
+    "BTC":  {},
+    "ETH":  {},
+    "SOL":  {},
+    "XRP":  {},
+    "DOGE": {}
+  }
 }

@@ -347,6 +347,14 @@ def write_config(data: dict) -> None:
     atomic_write_json(data, _CONFIG_FILE)
 
 
+def get_asset_config(config: dict, asset: str, field: str, default=None):
+    """Get config value — asset override if present, else global value, else default."""
+    overrides = config.get("asset_overrides", {}).get(asset, {})
+    if field in overrides:
+        return overrides[field]
+    return config.get(field, default)
+
+
 def _init_config() -> None:
     """
     Create config.json on startup if missing, and apply Railway env var overrides.
@@ -2928,12 +2936,12 @@ async def handle_ready_phase(
                             btc_price, c_strike,
                             c_ob["best_yes_ask"], c_ob["best_no_ask"],
                             c_elapsed, c_secs_left, c_ticker,
-                            min_ev_base=config.get("min_ev_base", 3.0),
-                            vol_gate_thresh=config.get("vol_gate_thresh", 1.80),
+                            min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
+                            vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
                             kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
-                            max_entry_price_cents=config.get("max_entry_price_cents", 100.0),
-                            min_reward_cents=config.get("min_reward_cents", 0.0),
-                            max_risk_reward_ratio=config.get("max_risk_reward_ratio", 999.0),
+                            max_entry_price_cents=get_asset_config(config, asset, "max_entry_price_cents", 100.0),
+                            min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
+                            max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                             asset=asset,
                         )
                         c_win_prob = c_brain.get("win_prob", 0.5)
@@ -3005,12 +3013,12 @@ async def handle_ready_phase(
 
     # ── Printer Brain — primary decision engine (always runs, no API needed) ──
     brain = printer_brain(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
-                          min_ev_base=config.get("min_ev_base", 3.0),
-                          vol_gate_thresh=config.get("vol_gate_thresh", 1.80),
+                          min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
+                          vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
                           kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
-                          max_entry_price_cents=config.get("max_entry_price_cents", 100.0),
-                          min_reward_cents=config.get("min_reward_cents", 0.0),
-                          max_risk_reward_ratio=config.get("max_risk_reward_ratio", 999.0),
+                          max_entry_price_cents=get_asset_config(config, asset, "max_entry_price_cents", 100.0),
+                          min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
+                          max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                           asset=asset)
     side     = brain["side"]
     score    = brain["confidence"]
@@ -3022,7 +3030,7 @@ async def handle_ready_phase(
     if brain.get("price_filter_skip"):
         _consecutive_price_skips += 1
         if _consecutive_price_skips == 20:
-            _max_ep = config.get("max_entry_price_cents", 82)
+            _max_ep = get_asset_config(config, asset, "max_entry_price_cents", 82)
             log.warning(
                 f"Price filter: {_consecutive_price_skips} consecutive skips — "
                 f"all entry prices > {_max_ep}c"
@@ -3196,7 +3204,7 @@ async def handle_ready_phase(
     win_prob_for_kelly = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0.85)
     contracts, kelly_dollars = calculate_contracts(
         trade_amount, int(entry_price_cents), avail_liquidity, win_prob_for_kelly,
-        kelly_cap=config.get("kelly_cap", 0.25),
+        kelly_cap=get_asset_config(config, asset, "kelly_cap", 0.25),
         use_fixed_sizing=config.get("use_fixed_sizing", False),
     )
     if contracts == 0:
