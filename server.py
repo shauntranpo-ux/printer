@@ -348,6 +348,8 @@ def api_config():
         "confidence_threshold":        lambda v: isinstance(v, (int, float)) and 50 <= v <= 100,
         "bot_enabled":                 lambda v: isinstance(v, bool),
         "claude_enabled":              lambda v: isinstance(v, bool),
+        "min_ev_base":                 lambda v: isinstance(v, (int, float)) and 0 <= v <= 20,
+        "vol_gate_thresh":             lambda v: isinstance(v, (int, float)) and 0.5 <= v <= 10,
     }
 
     for key, value in data.items():
@@ -646,7 +648,7 @@ def api_market_pulse():
         try:
             conn = get_db()
             rows = conn.execute(
-                "SELECT ts, asset, side, pnl_dollars, outcome, entry_price_cents "
+                "SELECT ts, asset, side, pnl_dollars, outcome, entry_price_cents, mode "
                 "FROM trades WHERE outcome IN ('win','loss') ORDER BY ts DESC LIMIT 5"
             ).fetchall()
             conn.close()

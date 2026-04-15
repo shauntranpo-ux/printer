@@ -200,14 +200,14 @@ canvas.equity-chart { display: block; width: 100%; height: 80px; }
 .cf-val  { font-size: 11px; font-weight: 600; color: var(--text); }
 .cf-section-lbl { font-size: 9px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; padding: 4px 0 2px; }
 
-/* ── TRADE ALERT ── */
-#trade-alert { display: none; border-radius: 6px; padding: 8px 14px; margin-bottom: 10px; border: 1px solid var(--amber); background: var(--amber-l); }
-#trade-alert.visible { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.alert-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--amber); animation: blink 1s step-start infinite; flex-shrink: 0; }
-.alert-label  { font-size: 9px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
-.alert-main   { font-size: 13px; font-weight: 700; color: var(--amber); }
-.alert-detail { font-size: 11px; color: var(--text2); }
-.alert-sl     { font-size: 11px; color: var(--red); }
+/* ── OPEN POSITION BOX (inside market card) ── */
+.mc-pos-box { margin-top:6px; padding:7px 9px; border-radius:6px; background:rgba(0,0,0,0.04); border:1px solid rgba(0,0,0,0.08); display:flex; flex-direction:column; gap:3px; }
+.mc-pos-label { font-size:9px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:2px; }
+.mc-pos-row { display:flex; justify-content:space-between; font-size:10px; color:var(--text2); line-height:1.5; }
+.mc-pos-row b { color:var(--text); font-weight:600; }
+.mc-pos-pnl { font-size:11px; font-weight:700; margin-top:2px; }
+.mc-pos-pnl.pos { color:var(--green); }
+.mc-pos-pnl.neg { color:var(--red); }
 
 #limit-badge { display: none; background: var(--red-l); border: 1px solid rgba(231,76,60,0.3); color: var(--red); font-size: 11px; padding: 5px 12px; border-radius: 6px; margin-bottom: 10px; }
 #limit-badge.visible { display: inline-block; }
@@ -418,16 +418,6 @@ tr:last-child td { border-bottom: none; }
   <!-- SCROLLABLE MAIN -->
   <div id="main">
 
-    <!-- TRADE ALERT -->
-    <div id="trade-alert">
-      <div class="alert-dot"></div>
-      <div>
-        <div class="alert-label">Position Open</div>
-        <div class="alert-main" id="alert-main">—</div>
-        <div class="alert-detail" id="alert-detail">—</div>
-        <div class="alert-sl" id="alert-sl">—</div>
-      </div>
-    </div>
     <div id="limit-badge"></div>
 
     <!-- DASHBOARD PANEL -->
@@ -747,6 +737,7 @@ let liveChartTarget={pts:[],pendingStart:0}, paperChartTarget={pts:[],pendingSta
 let liveChartCurrent={pts:[],pendingStart:0}, paperChartCurrent={pts:[],pendingStart:0};
 let chartAnimFrame=null, settingsPopulated=false, settingsOpen=false, _resetMode=null;
 let _activeChartTab='live', _gaugeScore=0, _chartView='today';
+let _openPosition=null; // set by pollState; read by renderMarketGrid
 
 // ── Tab navigation ──
 function switchMainTab(t) {
@@ -1091,7 +1082,46 @@ function renderMarketGrid(assets, dailyData){
     const skipReason=a.skip_reason||'';
     const secs=a.secs_left||0;
     const ev=a.ev,wp=a.win_prob,yask=a.yes_ask,nask=a.no_ask,dist=a.distance_pct,strike=a.strike;
-    return `<div class="market-card${effectiveStatus==='OFFLINE'?' mc-offline':''}">
+
+    // Open position: match by asset field on the global position, or fall back to LOCKED phase
+    const posForCard=(_openPosition&&_openPosition.asset===k)?_openPosition:null;
+    const hasPosition=effectiveStatus==='TRADING';
+
+    // Glow border: green if position exists (binary options settle at expiry — we can't compute
+    // live P&L without current bid, so we always use green while holding)
+    let cardStyle='';
+    if(hasPosition){
+      cardStyle='border:2px solid #22c55e;box-shadow:0 0 14px rgba(34,197,94,0.35);';
+    }
+
+    // Position info box HTML
+    let posBoxHtml='';
+    if(hasPosition){
+      if(posForCard){
+        const posSide=posForCard.side==='yes'?'YES':'NO';
+        const posDir=posForCard.side==='yes'?'▲ UP':'▼ DOWN';
+        const entryC=posForCard.entry_price_cents||0;
+        const contracts=posForCard.contracts||0;
+        const risk=(entryC*contracts/100).toFixed(2);
+        const maxPayout=((100-entryC)*contracts/100).toFixed(2);
+        const modeTag=(posForCard.mode||'paper').toUpperCase();
+        posBoxHtml=`<div class="mc-pos-box">
+          <div class="mc-pos-label">Open Position</div>
+          <div class="mc-pos-row"><span>${posDir} (${posSide}) @ ${entryC}¢</span><span style="color:var(--muted)">${modeTag}</span></div>
+          <div class="mc-pos-row"><span>${contracts} contracts</span><span>Risk $${risk}</span></div>
+          <div class="mc-pos-row"><span>Max payout</span><span><b>$${maxPayout}</b></span></div>
+          <div class="mc-pos-row" style="color:var(--muted);font-size:9px;margin-top:1px;">Holding to expiry</div>
+        </div>`;
+      }else{
+        // Non-BTC position: we know there's a trade but don't have detail in state
+        posBoxHtml=`<div class="mc-pos-box">
+          <div class="mc-pos-label">Open Position</div>
+          <div class="mc-pos-row" style="color:var(--muted);font-size:9px;">Holding to expiry</div>
+        </div>`;
+      }
+    }
+
+    return `<div class="market-card${effectiveStatus==='OFFLINE'?' mc-offline':''}" style="${cardStyle}">
       <div class="mc-head">
         <span class="mc-name">${_ASSET_LABEL[k]||k}</span>
         <span class="mc-price">${_fmtPrice(k,a.price)}</span>
@@ -1114,6 +1144,7 @@ function renderMarketGrid(assets, dailyData){
         <span><span class="dg">${wins}W</span> / <span class="dr">${losses}L</span></span>
         <span class="${pnl>=0?'dg':'dr'}">${pnlStr}</span>
       </div>
+      ${posBoxHtml}
     </div>`;
   }).join('');
 }
@@ -1206,15 +1237,7 @@ async function toggleBot(){
     if(!r.ok){_showSaveErr(btn);return;}
     const cfg=await(await fetch('/api/config')).json();
     if(cfg.bot_enabled===newState)updateBotToggleUI(newState);else{_showSaveErr(btn);return;}
-    // 2. Start or stop the subprocess
-    if(newState){
-      const sr=await fetch('/api/bot/start',{method:'POST'}).catch(()=>null);
-      if(sr&&sr.ok){const j=await sr.json();showToast('Bot started (PID '+j.pid+')');}
-      else showToast('Config saved — bot process start failed','error');
-    }else{
-      await fetch('/api/bot/stop',{method:'POST'}).catch(()=>null);
-      showToast('Bot stopped');
-    }
+    showToast(newState ? 'Bot enabled' : 'Bot stopped');
   }catch(e){console.error(e);_showSaveErr(btn);}
   finally{btn.disabled=false;}
 }
@@ -1293,7 +1316,7 @@ async function pollMarketPulse(){
     const pvEl=document.getElementById('pulse-pv');
     if(pvEl&&data.price_validation){
       const pv=data.price_validation;
-      pvEl.innerHTML=`Pass: <b>${pv.pass_count||0}</b> / Fail: <b>${pv.fail_count||0}</b><br>Last: ${escHtml(pv.last_status||'—')}`;
+      pvEl.innerHTML=`Samples: <b>${pv.count||0}</b> · Avg gap: <b>${pv.avg_gap!=null?pv.avg_gap+'¢':'—'}</b>`;
     }
   }catch(e){console.error('Market pulse poll error:',e);}
 }
@@ -1393,15 +1416,8 @@ async function pollState(){
     if(s.limit_triggered&&s.limit_reason){limitBadge.textContent='Warning: '+s.limit_reason+' — switched to paper mode';limitBadge.classList.add('visible');}
     else limitBadge.classList.remove('visible');
 
-    // Trade alert
-    const alertEl=document.getElementById('trade-alert');
-    if(s.phase==='LOCKED'){
-      const pos=s.open_position||null,mode=(s.config&&s.config.mode)?s.config.mode.toUpperCase():'';
-      document.getElementById('alert-main').textContent=`${mode} · ${pos?(pos.side==='yes'?'UP':'DOWN'):'—'} · ${pos?pos.contracts+' contracts':'—'} · ${pos?'@ '+pos.entry_price_cents+'c':'—'}`;
-      document.getElementById('alert-detail').textContent=`Market: ${s.market_ticker||'—'}  |  Conf: ${s.confidence_score||'—'}`;
-      document.getElementById('alert-sl').textContent='Holding to expiry';
-      alertEl.classList.add('visible');
-    }else alertEl.classList.remove('visible');
+    // Store open position for market card glow + details
+    _openPosition=s.open_position||null;
 
     if(s.config){if(!settingsPopulated){populateSettings(s.config);settingsPopulated=true;}updateBotToggleUI(s.config.bot_enabled!==false);}
   }catch(e){console.error('State poll error:',e);}
