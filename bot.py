@@ -3044,11 +3044,6 @@ async def handle_ready_phase(
         _consecutive_price_skips += 1
         if _consecutive_price_skips == 20:
             _max_ep = config.get("max_entry_price_cents", 82)
-            asyncio.create_task(send_telegram(
-                f"⏸️ <b>[{asset}] 20 consecutive price-filter skips</b>\n"
-                f"All entry prices above {_max_ep}c — no edge at current market prices.\n"
-                f"Ticker: {ticker} | Entry: {yes_ask if side == 'yes' else no_ask:.0f}c"
-            ))
             log.warning(
                 f"Price filter: {_consecutive_price_skips} consecutive skips — "
                 f"all entry prices > {_max_ep}c"
@@ -3544,9 +3539,17 @@ async def _process_asset(
         return
 
     if market is None:
-        log.debug(f"[{asset}] no active market")
-        st["phase"] = "DONE"
-        st["prev_ticker"] = None
+        # If a position is open, still run locked-phase handler so it can settle.
+        if st["phase"] == "LOCKED" and st.get("position") is not None:
+            log.warning(f"[{asset}] no active market — still processing open LOCKED position.")
+            try:
+                await handle_locked_phase(session, price, 0, config, asset=asset, state=st)
+            except Exception as exc:
+                log.error(f"[{asset}] LOCKED phase error (no market): {exc}", exc_info=True)
+        else:
+            log.debug(f"[{asset}] no active market")
+            st["phase"] = "DONE"
+            st["prev_ticker"] = None
         return
 
     st["market"] = market
@@ -3766,10 +3769,22 @@ async def main_loop() -> None:
                     continue
 
                 if market is None:
-                    log.warning("No active BTC markets found.")
-                    await write_state_file(config, None, "DONE", 0, btc_price,
-                                           last_confidence_score, last_confidence_breakdown,
-                                           last_action, last_skip_reason)
+                    # If we have an open position, still run the locked-phase handler
+                    # so the trade can settle even when no new market is visible.
+                    if current_phase == "LOCKED" and current_position is not None:
+                        log.warning("No active BTC markets — still processing open LOCKED position.")
+                        try:
+                            await handle_locked_phase(session, btc_price, 0, config)
+                        except Exception as exc:
+                            log.error(f"LOCKED phase error (no market): {exc}", exc_info=True)
+                        await write_state_file(config, None, current_phase, 0, btc_price,
+                                               last_confidence_score, last_confidence_breakdown,
+                                               last_action, last_skip_reason)
+                    else:
+                        log.warning("No active BTC markets found.")
+                        await write_state_file(config, None, "DONE", 0, btc_price,
+                                               last_confidence_score, last_confidence_breakdown,
+                                               last_action, last_skip_reason)
                     await asyncio.sleep(10)
                     continue
 
