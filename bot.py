@@ -2427,6 +2427,7 @@ async def place_order(
     entry_price_cents: int,
     mode: str,
     market: dict | None = None,
+    asset: str = "BTC",
 ) -> dict:
     """
     Place a fill-or-kill limit order on Kalshi.
@@ -2532,7 +2533,7 @@ async def place_order(
                 # bumping the price on the next attempt may find liquidity.
                 log.error(f"Non-retryable error ({err_code}). Stopping order attempts.")
                 await send_telegram(
-                    f"🚫 <b>ORDER FAILED</b>  —  {err_code}\n"
+                    f"🚫 <b>[{asset}] ORDER FAILED</b>  —  {err_code}\n"
                     f"{side.upper()}  {contracts}x @ {price_this_attempt}¢  |  <code>{ticker}</code>"
                 )
                 break
@@ -2612,7 +2613,7 @@ async def place_order(
 
     log.error(f"Order not filled after {_max_retries} attempts for {ticker} {side}@{entry_price_cents}c")
     await send_telegram(
-        f"⚠️ <b>ORDER NOT FILLED</b>  —  no liquidity\n"
+        f"⚠️ <b>[{asset}] ORDER NOT FILLED</b>  —  no liquidity\n"
         f"{side.upper()}  {contracts}x @ {entry_price_cents}¢  |  <code>{ticker}</code>"
     )
     return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
@@ -3044,7 +3045,7 @@ async def handle_ready_phase(
         if _consecutive_price_skips == 20:
             _max_ep = config.get("max_entry_price_cents", 82)
             asyncio.create_task(send_telegram(
-                f"⚠️ <b>Price filter: 20 consecutive skips</b>\n"
+                f"⏸️ <b>[{asset}] 20 consecutive price-filter skips</b>\n"
                 f"All entry prices above {_max_ep}c — no edge at current market prices.\n"
                 f"Ticker: {ticker} | Entry: {yes_ask if side == 'yes' else no_ask:.0f}c"
             ))
@@ -3240,7 +3241,7 @@ async def handle_ready_phase(
     if _use_state: state["order_attempted"].add(ticker)
     else: _order_attempted_tickers.add(ticker)
     log.info(f"{ticker}: TRADE {side} {contracts}x @ {int(entry_price_cents)}c (score={score}, mode={mode})")
-    result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market)
+    result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market, asset=asset)
 
     fill_confirmed = result["fill_confirmed"]
     _fp = result.get("fill_price_cents")
@@ -3341,11 +3342,11 @@ async def handle_ready_phase(
     _time_str  = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
     _strat_tag = "🔄 REVERSAL TRADE" if _is_reversal else "TRADE ENTERED"
     await send_telegram(
-        f"{mode_icon} <b>{_strat_tag}</b>  —  {_time_str}\n"
+        f"{mode_icon} <b>[{asset}] {_strat_tag}</b>  —  {_time_str}\n"
         f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
-        f"Strike: ${strike:,.0f}  |  BTC: ${btc_price:,.0f}\n"
+        f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
         f"Time left: {int(secs_left // 60)}m {int(secs_left % 60)}s  |  <code>{ticker}</code>"
     )
 
@@ -3463,7 +3464,7 @@ async def handle_locked_phase(
                     tz=timezone(timedelta(hours=-7))
                 ).strftime("%I:%M %p PST")
                 await send_telegram(
-                    f"⚠️ <b>{_consecutive_losses} consecutive losses</b> — pausing for 15 min.\n"
+                    f"⚠️ <b>{_consecutive_losses} consecutive losses (last: {asset})</b> — pausing for 15 min.\n"
                     f"Resumes at {_resume_str}"
                 )
 
@@ -3475,10 +3476,10 @@ async def handle_locked_phase(
         _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
         _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
         await send_telegram(
-            f"{result_icon} <b>{'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"{result_icon} <b>[{asset}] {'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
             f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
             f"Entry: {pos['entry_price_cents']}¢  →  Expiry: {exit_price}¢\n"
-            f"BTC: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}  |  <code>{ticker}</code>"
+            f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}  |  <code>{ticker}</code>"
         )
 
         if _use_state:
