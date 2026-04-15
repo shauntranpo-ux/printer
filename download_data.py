@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 download_data.py — Resumable Binance 1-minute klines downloader.
 
@@ -21,7 +22,8 @@ from datetime import datetime, timezone
 
 import requests
 
-BASE_URL = "https://api.binance.com/api/v3/klines"
+BASE_URL = "https://api.binance.us/api/v3/klines"   # .us avoids geo-block; falls back to .com below
+BASE_URL_FALLBACK = "https://api.binance.com/api/v3/klines"
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 # Binance trading pair symbols
@@ -71,16 +73,25 @@ def get_last_ts(path: str) -> int | None:
 
 
 def fetch_klines(symbol: str, start_ms: int, limit: int = 1000) -> list:
-    """Fetch up to `limit` 1-minute klines from Binance starting at start_ms."""
+    """Fetch up to `limit` 1-minute klines. Tries Binance.US first, then Binance.com."""
     params = {
         "symbol":    symbol,
         "interval":  "1m",
         "limit":     limit,
         "startTime": start_ms,
     }
-    resp = requests.get(BASE_URL, params=params, timeout=30)
-    resp.raise_for_status()
-    return resp.json()
+    for url in (BASE_URL, BASE_URL_FALLBACK):
+        try:
+            resp = requests.get(url, params=params, timeout=30)
+            if resp.status_code == 451:
+                continue   # geo-blocked — try next URL
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.HTTPError as e:
+            if "451" in str(e):
+                continue
+            raise
+    raise RuntimeError(f"Both Binance endpoints blocked for {symbol}")
 
 
 def ms_to_iso(ms: int) -> str:

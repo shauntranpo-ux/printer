@@ -17,5 +17,6 @@
   "vol_gate_thresh": 2.2,
   "max_entry_price_cents": 82,
   "min_reward_cents": 15,
-  "max_risk_reward_ratio": 4.0
+  "max_risk_reward_ratio": 4.0,
+  "enabled_assets": ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 }

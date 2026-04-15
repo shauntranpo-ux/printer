@@ -374,7 +374,8 @@ def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True
         )
         df.rename(columns={"time": "Timestamp", "open": "Open", "high": "High",
                             "low": "Low", "close": "Close", "volume": "Volume"}, inplace=True)
-        df["ts"] = df["Timestamp"].astype("int64")
+        df["ts"] = df["Timestamp"].astype("int64")   # already Unix seconds
+        df["_dt"] = pd.to_datetime(df["ts"], unit="s", utc=True)
     else:
         # Standard CSV: "open_time" (ISO string), lowercase column names
         df = pd.read_csv(
@@ -385,15 +386,19 @@ def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True
         )
         df.rename(columns={"open_time": "Timestamp", "open": "Open", "high": "High",
                             "low": "Low", "close": "Close", "volume": "Volume"}, inplace=True)
-        # Parse ISO timestamps → Unix seconds
-        df["ts"] = pd.to_datetime(df["Timestamp"], utc=True).astype("int64") // 10**9
+        # Parse ISO timestamps → UTC datetime, then Unix seconds
+        df["_dt"] = pd.to_datetime(df["Timestamp"], utc=True)
+        # Use total_seconds() — avoids pandas version differences with astype("int64")
+        _epoch = pd.Timestamp("1970-01-01", tz="UTC")
+        df["ts"] = (df["_dt"] - _epoch).dt.total_seconds().astype("int64")
 
     df = df.dropna(subset=["Open", "Close"])
     df = df[df["Close"] > 0]
     if verbose:
         print(f"  [{asset}] Loaded {len(df):,} rows in {time.time()-t0:.1f}s")
 
-    df["year"] = pd.to_datetime(df["ts"], unit="s").dt.year
+    # Use the parsed datetime column for year filtering (avoids unit confusion)
+    df["year"] = df["_dt"].dt.year
     df = df[(df["year"] >= start_year) & (df["year"] <= end_year)].copy()
     if verbose:
         yr_range = f"{start_year}-{end_year}" if end_year < 9999 else f"{start_year}+"
@@ -413,8 +418,8 @@ def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True
         df.groupby("window_start")
         .apply(lambda g: g.loc[g["minute_in_window"].idxmax(), "Close"],
                include_groups=False)
-        .rename("final_close")
     )
+    finals.name = "final_close"
     windows = strikes.to_frame().join(finals).dropna()
     windows = windows[(windows["strike"] > 0) & (windows["final_close"] > 0)]
 
