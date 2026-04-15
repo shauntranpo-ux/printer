@@ -256,6 +256,9 @@ def brain_decide(
     bearish_wr: float = 0.5,
     fee: float = 0.07,
     asset: str = "BTC",
+    max_entry_price_cents: float = 100.0,
+    min_reward_cents: float = 0.0,
+    max_risk_reward_ratio: float = 999.0,
 ) -> dict:
     pct_above = (btc_price - strike) / strike
     abs_pct   = abs(pct_above)
@@ -288,7 +291,21 @@ def brain_decide(
     else:
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
-    action     = "trade" if best_ev >= min_ev else "skip"
+    # Entry price hard filters (mirrors bot.py printer_brain logic)
+    price_filter_skip = False
+    if entry_c > max_entry_price_cents:
+        price_filter_skip = True
+    else:
+        _reward_c = 100 - entry_c
+        if _reward_c < min_reward_cents:
+            price_filter_skip = True
+        elif _reward_c > 0 and (entry_c / _reward_c) > max_risk_reward_ratio:
+            price_filter_skip = True
+
+    if price_filter_skip:
+        action = "skip"
+    else:
+        action = "trade" if best_ev >= min_ev else "skip"
     confidence = min(99, max(0, int(true_p * 100)))
 
     return {
@@ -457,6 +474,9 @@ def run_backtest(
     vol_threshold: float = 1.50,   # skip if expected_move / abs_pct >= this
     kelly_cap: float    = 0.25,    # quarter-Kelly cap; matches bot.py default
     asset: str          = "BTC",   # which asset to backtest
+    max_entry_price_cents: float = 100.0,
+    min_reward_cents: float = 0.0,
+    max_risk_reward_ratio: float = 999.0,
     # Pre-loaded data (skips CSV load when provided)
     _windows=None,
     _price_lookup=None,
@@ -566,7 +586,10 @@ def run_backtest(
             # Brain decision
             brain = brain_decide(btc, strike, yes_ask, no_ask, mins_left,
                                   mom, min_ev=min_ev, fee=KALSHI_FEE_CENTS / 100.0,
-                                  asset=asset)
+                                  asset=asset,
+                                  max_entry_price_cents=max_entry_price_cents,
+                                  min_reward_cents=min_reward_cents,
+                                  max_risk_reward_ratio=max_risk_reward_ratio)
 
             if brain["action"] != "trade":
                 continue
@@ -1519,6 +1542,16 @@ if __name__ == "__main__":
                         metavar="ASSET",
                         help="Asset(s) to backtest: BTC ETH SOL XRP DOGE, or ALL "
                              "(default: BTC). Multiple assets print a combined summary.")
+    parser.add_argument("--max-entry-price", type=float, default=100.0,
+                        dest="max_entry_price",
+                        help="Max entry price in cents (default: 100 = no filter). "
+                             "E.g. --max-entry-price 82 to skip entries above 82c.")
+    parser.add_argument("--min-reward",      type=float, default=0.0,
+                        dest="min_reward",
+                        help="Min reward in cents (100 - entry_c). Default: 0 = no filter.")
+    parser.add_argument("--max-rr",          type=float, default=999.0,
+                        dest="max_rr",
+                        help="Max risk:reward ratio (entry / reward). Default: 999 = no filter.")
     args = parser.parse_args()
 
     if args.periods:
@@ -1594,13 +1627,16 @@ if __name__ == "__main__":
             print(f"  BACKTEST: {_asset}  (pre-2023 BV3 table, no data leakage)")
             print(f"{'='*70}")
             _r = run_backtest(
-                start_year     = args.start_year,
-                end_year       = args.end_year,
-                min_ev         = args.ev,
-                trade_amount   = args.amount,
-                min_confidence = args.confidence,
-                watch_minutes  = args.watch,
-                asset          = _asset,
+                start_year            = args.start_year,
+                end_year              = args.end_year,
+                min_ev                = args.ev,
+                trade_amount          = args.amount,
+                min_confidence        = args.confidence,
+                watch_minutes         = args.watch,
+                asset                 = _asset,
+                max_entry_price_cents = args.max_entry_price,
+                min_reward_cents      = args.min_reward,
+                max_risk_reward_ratio = args.max_rr,
             )
             if _r:
                 print_report(_r)

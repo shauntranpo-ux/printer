@@ -180,6 +180,9 @@ _last_good_config: dict | None = None
 _consecutive_losses: int = 0
 _consecutive_loss_pause_until: float | None = None  # unix ts; None = not paused
 
+# Consecutive price-filter skip counter (triggers Telegram warning at 20)
+_consecutive_price_skips: int = 0
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  Atomic JSON write utility
@@ -1964,6 +1967,9 @@ def printer_brain(
     vol_gate_thresh: float = 1.80,
     kalshi_fee: float = 0.07,
     asset: str = "BTC",
+    max_entry_price_cents: float = 100.0,
+    min_reward_cents: float = 0.0,
+    max_risk_reward_ratio: float = 999.0,
 ) -> dict:
     """
     Printer Brain v3 — empirically calibrated from 4.5M rows BTC 1-min data.
@@ -2070,24 +2076,57 @@ def printer_brain(
     else:
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
+    # ── 7b. Entry price hard filters ─────────────────────────────────────────
+    # Prevent pathological trades: max_entry_price_cents=82 means we never risk
+    # $0.83 to make $0.10. min_reward_cents=15 ensures minimum upside. These are
+    # applied BEFORE EV so bad-price opportunities are rejected immediately.
+    _price_filter_skip = False
+    _price_filter_reason = ""
+    if entry_c > max_entry_price_cents:
+        _price_filter_skip = True
+        _price_filter_reason = (
+            f"entry {entry_c:.0f}c > max_entry_price {max_entry_price_cents:.0f}c"
+        )
+    else:
+        _reward_c = 100 - entry_c
+        if _reward_c < min_reward_cents:
+            _price_filter_skip = True
+            _price_filter_reason = (
+                f"reward {_reward_c:.0f}c < min_reward {min_reward_cents:.0f}c"
+            )
+        elif _reward_c > 0:
+            _rr = entry_c / _reward_c
+            if _rr > max_risk_reward_ratio:
+                _price_filter_skip = True
+                _price_filter_reason = (
+                    f"risk:reward {_rr:.1f}:1 > max {max_risk_reward_ratio:.1f}:1"
+                )
+
+    if _price_filter_skip:
+        brain_log.info(
+            f"SKIP {side.upper():3} PRICE_FILTER | {ticker} | {_price_filter_reason} | "
+            f"entry={entry_c:.0f}c reward={100-entry_c:.0f}c"
+        )
+
     # ── 8. EV filter ──────────────────────────────────────────────────────────
     # Base 3% floor + session adjustment: US session (13-20 UTC) lowers bar by
     # 2% to 1% — clearest trends, most liquid. Asian dead hours (00-06 UTC)
     # raise bar by 2% to 5% — choppy/rangebound, need stronger edge to justify.
     min_ev = (min_ev_base / 100.0) + _session_ev_adjustment()
 
-    skip_reason = ""
-    if _vol_skip:
-        _ratio_str = f"{_vol_ratio:.2f}" if _vol_ratio is not None else "?"
-        skip_reason = (
-            f"vol too high: expected move covers {_ratio_str}x the strike distance "
-            f"(dist={abs_pct*100:.2f}% | {mins_left:.1f} min left)"
-        )
-    elif best_ev < min_ev:
-        skip_reason = (
-            f"EV {best_ev:+.1%} below {min_ev:.0%} minimum | "
-            f"{side.upper()} at {entry_c:.0f}c, win prob {true_p:.1%}"
-        )
+    skip_reason = _price_filter_reason if _price_filter_skip else ""
+    if not _price_filter_skip:
+        if _vol_skip:
+            _ratio_str = f"{_vol_ratio:.2f}" if _vol_ratio is not None else "?"
+            skip_reason = (
+                f"vol too high: expected move covers {_ratio_str}x the strike distance "
+                f"(dist={abs_pct*100:.2f}% | {mins_left:.1f} min left)"
+            )
+        elif best_ev < min_ev:
+            skip_reason = (
+                f"EV {best_ev:+.1%} below {min_ev:.0%} minimum | "
+                f"{side.upper()} at {entry_c:.0f}c, win prob {true_p:.1%}"
+            )
 
     action = "skip" if skip_reason else "trade"
 
@@ -2128,7 +2167,8 @@ def printer_brain(
             "mom_label": mom_label, "mom_pct": float(mom_pct),
             "vel_signal": vel_signal,
             "mins_left": mins_left, "abs_pct": abs_pct, "above": above,
-            "_rv": _rv, "_vol_ratio": _vol_ratio}
+            "_rv": _rv, "_vol_ratio": _vol_ratio,
+            "price_filter_skip": _price_filter_skip}
 
 
 
@@ -2819,6 +2859,9 @@ async def handle_ready_phase(
                             min_ev_base=config.get("min_ev_base", 3.0),
                             vol_gate_thresh=config.get("vol_gate_thresh", 1.80),
                             kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
+                            max_entry_price_cents=config.get("max_entry_price_cents", 100.0),
+                            min_reward_cents=config.get("min_reward_cents", 0.0),
+                            max_risk_reward_ratio=config.get("max_risk_reward_ratio", 999.0),
                         )
                         c_win_prob = c_brain.get("win_prob", 0.5)
                         c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
@@ -2891,11 +2934,32 @@ async def handle_ready_phase(
     brain = printer_brain(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
                           min_ev_base=config.get("min_ev_base", 3.0),
                           vol_gate_thresh=config.get("vol_gate_thresh", 1.80),
-                          kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100)
+                          kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
+                          max_entry_price_cents=config.get("max_entry_price_cents", 100.0),
+                          min_reward_cents=config.get("min_reward_cents", 0.0),
+                          max_risk_reward_ratio=config.get("max_risk_reward_ratio", 999.0))
     side     = brain["side"]
     score    = brain["confidence"]
     do_trade = brain["action"] == "trade"
     skip_reason_ai = brain["reasoning"]
+
+    # ── Consecutive price-filter skip tracking ────────────────────────────────
+    global _consecutive_price_skips
+    if brain.get("price_filter_skip"):
+        _consecutive_price_skips += 1
+        if _consecutive_price_skips == 20:
+            _max_ep = config.get("max_entry_price_cents", 82)
+            asyncio.create_task(send_telegram(
+                f"⚠️ <b>Price filter: 20 consecutive skips</b>\n"
+                f"All entry prices above {_max_ep}c — no edge at current market prices.\n"
+                f"Ticker: {ticker} | Entry: {yes_ask if side == 'yes' else no_ask:.0f}c"
+            ))
+            log.warning(
+                f"Price filter: {_consecutive_price_skips} consecutive skips — "
+                f"all entry prices > {_max_ep}c"
+            )
+    else:
+        _consecutive_price_skips = 0
 
     # ── Claude — blend with brain, don't replace it ──────────────────────────
     # HIGH CONFIDENCE (brain win_prob >= 0.85 and action=trade) → trade immediately, skip Claude
