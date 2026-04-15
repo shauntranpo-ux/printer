@@ -66,7 +66,6 @@ brain_log.addHandler(_brain_fh)
 # ─────────────────────────── constants ────────────────────────────────────────
 KALSHI_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 KALSHI_PATH_PREFIX = "/trade-api/v2"  # included in signature but not in the path arg
-COINBASE_WS = "wss://advanced-trade-ws.coinbase.com"
 API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
 MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 30   # wait 30s into each 15-min session before evaluating
@@ -740,37 +739,6 @@ def kalshi_headers(method: str, path: str) -> dict:
 #  BTC price feed
 # ══════════════════════════════════════════════════════════════════════════════
 
-async def btc_feed_task() -> None:
-    """
-    Connect to the Coinbase Advanced Trade WebSocket and maintain a rolling
-    deque of the last 500 (timestamp, price) tuples for BTC-USD.
-    Reconnects automatically on any error.
-    """
-    while True:
-        try:
-            async with websockets.connect(COINBASE_WS) as ws:
-                await ws.send(json.dumps({
-                    "type": "subscribe",
-                    "channel": "ticker",
-                    "product_ids": ["BTC-USD"],
-                }))
-                log.info("Connected to Coinbase BTC feed.")
-                async for raw in ws:
-                    try:
-                        data = json.loads(raw)
-                        for event in data.get("events", []):
-                            for ticker in event.get("tickers", []):
-                                price = float(ticker["price"])
-                                now_ts = time.time()
-                                if not btc_prices or (now_ts - btc_prices[-1][0]) >= 5.0:
-                                    btc_prices.append((now_ts, price))
-                    except Exception as parse_exc:
-                        log.debug(f"BTC feed parse error: {parse_exc}")
-        except Exception as exc:
-            log.error(f"BTC feed disconnected: {exc}. Reconnecting in 3s...")
-            await asyncio.sleep(3)
-
-
 def get_btc_price() -> float | None:
     """Return the most recent BTC price, or None if no data received yet."""
     return _am_get_price("BTC")
@@ -1231,19 +1199,23 @@ def btc_position(btc_price: float, strike: float) -> str:
 #  Momentum
 # ══════════════════════════════════════════════════════════════════════════════
 
-def calculate_momentum() -> tuple[float, str]:
+def calculate_momentum(prices=None) -> tuple[float, str]:
     """
-    Calculate BTC price momentum over the last 180 seconds.
+    Calculate price momentum over the last 180 seconds.
+
+    Args:
+        prices: deque of (timestamp, price) tuples. Defaults to global btc_prices.
 
     Returns:
         (pct_change, label) where label is 'bullish', 'bearish', or 'neutral'.
     """
-    if not btc_prices:
+    prices = prices or btc_prices
+    if not prices:
         return 0.0, "neutral"
 
     cutoff = time.time() - 180
     oldest = None
-    for ts, price in btc_prices:
+    for ts, price in prices:
         if ts >= cutoff:
             oldest = price
             break
@@ -1251,7 +1223,7 @@ def calculate_momentum() -> tuple[float, str]:
     if oldest is None:
         return 0.0, "neutral"
 
-    current = btc_prices[-1][1]
+    current = prices[-1][1]
     pct = (current - oldest) / oldest
 
     if pct > 0.005:
@@ -1261,15 +1233,19 @@ def calculate_momentum() -> tuple[float, str]:
     return pct, "neutral"
 
 
-def btc_realized_vol() -> float | None:
+def btc_realized_vol(prices=None) -> float | None:
     """
-    Realized BTC volatility: std dev of 1-minute percentage returns over the
+    Realized volatility: std dev of 1-minute percentage returns over the
     last 10 minutes. Returns None if fewer than 4 samples are available.
 
-    Used to gate entries — if BTC is moving fast enough to plausibly cross the
-    strike before expiry, the empirical win-prob table understates the risk.
+    Args:
+        prices: deque of (timestamp, price) tuples. Defaults to global btc_prices.
+
+    Used to gate entries — if the asset is moving fast enough to plausibly cross
+    the strike before expiry, the empirical win-prob table understates the risk.
     """
-    if len(btc_prices) < 2:
+    prices = prices or btc_prices
+    if len(prices) < 2:
         return None
     now = time.time()
     samples: list[float] = []
@@ -1277,7 +1253,7 @@ def btc_realized_vol() -> float | None:
         target = now - minutes_ago * 60
         best_price: float | None = None
         best_delta = float("inf")
-        for ts, price in btc_prices:
+        for ts, price in prices:
             delta = abs(ts - target)
             if delta < best_delta and delta < 45:
                 best_delta = delta
@@ -2029,7 +2005,8 @@ def printer_brain(
       EV = P(win) - contract_cost
       e.g. 90% win rate, contract at 80c → EV = +10c per $1 payout
     """
-    mom_pct, mom_label = calculate_momentum()
+    _asset_prices = asset_manager._prices.get(asset, btc_prices)
+    mom_pct, mom_label = calculate_momentum(prices=_asset_prices)
     vel_signal = contract_velocity(ticker, "yes")
     mins_left = secs_left / 60
     pct_above = (btc_price - strike) / strike   # + = BTC above strike
@@ -2040,7 +2017,7 @@ def printer_brain(
     # Brownian motion: expected BTC move before expiry ≈ vol * sqrt(mins_left).
     # If that expected move ≥ 90% of the distance to strike, the distance is
     # not large enough relative to current volatility — skip the trade.
-    _rv        = btc_realized_vol()
+    _rv        = btc_realized_vol(prices=_asset_prices)
     _vol_skip  = False
     _vol_ratio = None
     if _rv is not None and abs_pct > 0:
@@ -3424,11 +3401,12 @@ async def handle_locked_phase(
 
         log.info(f"{ticker}: result={market_result!r} → {outcome}")
         exit_price = 100 if outcome == "win" else 0
-        pnl = (exit_price - pos["entry_price_cents"]) * pos["contracts"] / 100
+        fee = pos["contracts"] * config.get("kalshi_fee_per_contract_cents", 7) / 100
+        pnl = (exit_price - pos["entry_price_cents"]) * pos["contracts"] / 100 - fee
         profit_pct = (exit_price - pos["entry_price_cents"]) / pos["entry_price_cents"] * 100 \
                      if pos["entry_price_cents"] else 0
 
-        log.info(f"{ticker} expired. Outcome={outcome}, P&L=${pnl:.2f}")
+        log.info(f"{ticker} expired. Outcome={outcome}, P&L=${pnl:.2f} (fee=${fee:.2f})")
 
         # Update live BV3 correction table with actual outcome (BTC only)
         _d = pos.get("_bv3_dist_idx")

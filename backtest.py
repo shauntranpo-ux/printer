@@ -286,7 +286,7 @@ def brain_decide(
     if bullish_wr < 0.35: yes_ev -= 0.04
     if bearish_wr < 0.35: no_ev  -= 0.04
 
-    if yes_ev >= no_ev:
+    if above:
         side, best_ev, entry_c, true_p = "yes", yes_ev, yes_ask, prob_yes
     else:
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
