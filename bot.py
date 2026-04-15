@@ -3161,14 +3161,22 @@ async def handle_ready_phase(
             vol_ratio     = brain.get("_vol_ratio"),
         )
         if _rev and _rev["signal"]:
-            log.info(f"{ticker}: {_rev['reason']}")
-            side              = _rev["side"]
-            entry_price_cents = _rev["ask"]
-            score             = int(_rev["prob"] * 100)
-            do_trade          = True
-            skip_reason_ai    = ""
-            _is_reversal      = True
-            last_reversal_reason = _rev["reason"]
+            # Re-check allowed_sides — reversal may pick a side the gate blocked above
+            _rev_side = _rev["side"]
+            if _allowed_sides is not None and _rev_side not in _allowed_sides:
+                _rev = None  # treat as no signal
+                rev_reason = f"reversal side={_rev_side} not in allowed_sides={_allowed_sides}"
+                last_reversal_reason = rev_reason
+                log.info(f"{ticker}: reversal blocked — {rev_reason}")
+            else:
+                log.info(f"{ticker}: {_rev['reason']}")
+                side              = _rev_side
+                entry_price_cents = _rev["ask"]
+                score             = int(_rev["prob"] * 100)
+                do_trade          = True
+                skip_reason_ai    = ""
+                _is_reversal      = True
+                last_reversal_reason = _rev["reason"]
         else:
             rev_reason = _rev["reason"] if _rev else "reversal not evaluated"
             last_reversal_reason = rev_reason
