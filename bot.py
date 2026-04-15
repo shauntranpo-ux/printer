@@ -3025,6 +3025,12 @@ async def handle_ready_phase(
     do_trade = brain["action"] == "trade"
     skip_reason_ai = brain["reasoning"]
 
+    # ── allowed_sides gate — disable NO side when model is uncalibrated ──────
+    _allowed_sides = config.get("allowed_sides")
+    if do_trade and _allowed_sides is not None and side not in _allowed_sides:
+        skip_reason_ai = f"side={side} not in allowed_sides={_allowed_sides}"
+        do_trade = False
+
     # ── Consecutive price-filter skip tracking ────────────────────────────────
     global _consecutive_price_skips
     if brain.get("price_filter_skip"):
