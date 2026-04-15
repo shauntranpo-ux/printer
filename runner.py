@@ -79,7 +79,11 @@ def _load_strategies(path: str) -> list[dict]:
 def _build_env(strategy: dict) -> dict:
     env = os.environ.copy()
     env["BOT_CONFIG_FILE"] = strategy["config_file"]
-    env["BOT_DB_FILE"]     = strategy["db_file"]
+    # Preserve Railway BOT_DB_FILE env var when db_file is relative
+    # (Railway mounts the DB volume and sets BOT_DB_FILE to the absolute path)
+    db_file = strategy["db_file"]
+    if "BOT_DB_FILE" not in os.environ or os.path.isabs(db_file):
+        env["BOT_DB_FILE"] = db_file
     env["BOT_STATE_FILE"]  = strategy["state_file"]
     return env
 

@@ -523,6 +523,13 @@ def api_pnl():
             },
         })
     except Exception as exc:
+        if "no such table" in str(exc).lower():
+            empty = {"pnl": 0.0, "trades": 0, "wins": 0, "win_rate": 0.0}
+            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            return jsonify({
+                "today":   {"live": empty, "paper": empty, "by_asset": {}, "date": today},
+                "alltime": {"live": empty, "paper": empty},
+            })
         log.error(f"api_pnl error: {exc}", exc_info=True)
         return jsonify({"error": str(exc)}), 500
 

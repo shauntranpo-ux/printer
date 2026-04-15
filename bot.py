@@ -38,6 +38,7 @@ from asset_manager import (
     get_price           as _am_get_price,
     price_age_seconds   as _am_price_age,
     binance_feed_task,
+    coinbase_price_task,
 )
 
 try:
@@ -4053,16 +4054,20 @@ async def main() -> None:
     _startup_config = read_config()
     _enabled = _startup_config.get("enabled_assets", ["BTC"])
     asyncio.create_task(binance_feed_task(_enabled))
+    asyncio.create_task(coinbase_price_task(_enabled))
 
-    # Wait for the first BTC price
+    # Wait for the first BTC price (timeout after 120s so Railway doesn't hang)
     log.info(f"Waiting for price feeds ({_enabled})...")
     waited = 0
-    while get_btc_price() is None:
+    while get_btc_price() is None and waited < 120:
         await asyncio.sleep(1)
         waited += 1
         if waited % 30 == 0:
             log.warning(f"Still waiting for BTC price feed ({waited}s elapsed)...")
-    log.info(f"Price feed ready after {waited}s. BTC: ${get_btc_price():,.2f}")
+    if get_btc_price() is None:
+        log.warning("Price feed not available after 120s — continuing anyway; prices will populate shortly.")
+    else:
+        log.info(f"Price feed ready after {waited}s. BTC: ${get_btc_price():,.2f}")
     _startup_cfg = read_config()
     await send_telegram(f"🤖 <b>Printer bot started</b>\nBTC: ${get_btc_price():,.2f}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
 

@@ -439,7 +439,6 @@ tr:last-child td { border-bottom: none; }
         <div id="bot-status-dot"></div>
         <span id="bot-status-label">OFFLINE</span>
       </div>
-      <button id="bot-process-toggle" onclick="toggleBotProcess()" style="font-size:10px;font-weight:700;letter-spacing:0.05em;padding:4px 11px;border-radius:20px;cursor:pointer;font-family:inherit;transition:all 0.15s;border:1px solid rgba(39,174,96,0.5);background:rgba(39,174,96,0.13);color:var(--green);">START BOT</button>
       <button id="bot-toggle" onclick="toggleBot()">BOT OFF</button>
       <button class="mode-pill paper" id="mode-pill" onclick="toggleMode()">PAPER</button>
       <div id="clock">—</div>
@@ -1218,10 +1217,6 @@ function updateBotToggleUI(enabled){
 }
 function updateBotRunningUI(running){
   _botRunning=running;
-  const btn=document.getElementById('bot-process-toggle');
-  if(!btn)return;
-  if(running){btn.textContent='STOP BOT';btn.className='off';}
-  else{btn.textContent='START BOT';btn.className='on';}
 }
 function _showSaveErr(btn){
   const o=btn.textContent,oc=btn.style.color;btn.textContent='SAVE ERR';btn.style.color='#e74c3c';
@@ -1229,29 +1224,23 @@ function _showSaveErr(btn){
 }
 async function toggleBot(){
   const newState=!_botEnabled,btn=document.getElementById('bot-toggle');
+  btn.disabled=true;
   try{
+    // 1. Update config flag
     const r=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({bot_enabled:newState})});
     if(!r.ok){_showSaveErr(btn);return;}
     const cfg=await(await fetch('/api/config')).json();
-    if(cfg.bot_enabled===newState)updateBotToggleUI(newState);else _showSaveErr(btn);
-  }catch(e){console.error(e);_showSaveErr(btn);}
-}
-async function toggleBotProcess(){
-  const btn=document.getElementById('bot-process-toggle');
-  if(!btn)return;
-  const orig=btn.textContent;
-  btn.textContent='...';btn.disabled=true;
-  try{
-    if(_botRunning){
-      const r=await fetch('/api/bot/stop',{method:'POST'});
-      if(r.ok){showToast('Bot stopped');updateBotRunningUI(false);}
-      else{const j=await r.json();showToast(j.error||'Stop failed','error');}
+    if(cfg.bot_enabled===newState)updateBotToggleUI(newState);else{_showSaveErr(btn);return;}
+    // 2. Start or stop the subprocess
+    if(newState){
+      const sr=await fetch('/api/bot/start',{method:'POST'}).catch(()=>null);
+      if(sr&&sr.ok){const j=await sr.json();showToast('Bot started (PID '+j.pid+')');}
+      else showToast('Config saved — bot process start failed','error');
     }else{
-      const r=await fetch('/api/bot/start',{method:'POST'});
-      if(r.ok){const j=await r.json();showToast('Bot started (PID '+j.pid+')');updateBotRunningUI(true);}
-      else{const j=await r.json();showToast(j.error||'Start failed','error');}
+      await fetch('/api/bot/stop',{method:'POST'}).catch(()=>null);
+      showToast('Bot stopped');
     }
-  }catch(e){console.error(e);showToast('Network error','error');}
+  }catch(e){console.error(e);_showSaveErr(btn);}
   finally{btn.disabled=false;}
 }
 

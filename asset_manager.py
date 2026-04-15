@@ -216,6 +216,62 @@ def price_age_seconds(asset: str) -> float | None:
     return time.time() - dq[-1][0]
 
 
+# Coinbase public REST URL for spot prices — no auth, works globally
+_COINBASE_SPOT_URL = "https://api.coinbase.com/v2/prices/{asset}-USD/spot"
+
+# Consecutive Binance-451 counter — switch to Coinbase fallback after this many
+_binance_451_streak: int = 0
+_BINANCE_451_THRESHOLD = 5   # switch after 5 consecutive 451s
+
+
+async def coinbase_price_task(enabled_assets: list[str]) -> None:
+    """
+    Fallback REST-polling price feed using Coinbase public spot API.
+    Runs in parallel with binance_feed_task.  Only writes a price when
+    the asset has no Binance tick in the last 5 seconds, so Binance data
+    takes priority when it is working.
+    """
+    import aiohttp as _aiohttp
+
+    valid_assets = [a for a in enabled_assets if a in ASSET_CONFIG]
+    if not valid_assets:
+        return
+
+    log.info(f"Coinbase fallback feed starting for {valid_assets}")
+    while True:
+        try:
+            async with _aiohttp.ClientSession() as session:
+                while True:
+                    for asset in valid_assets:
+                        try:
+                            age = price_age_seconds(asset)
+                            # Only fill in when Binance has been silent ≥5s
+                            if age is not None and age < 5:
+                                continue
+                            url = _COINBASE_SPOT_URL.format(asset=asset)
+                            async with session.get(
+                                url, timeout=_aiohttp.ClientTimeout(total=5)
+                            ) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                                    price = float(data["data"]["amount"])
+                                    now_ts = time.time()
+                                    dq = _prices[asset]
+                                    if not dq or (now_ts - dq[-1][0]) >= 1.0:
+                                        dq.append((now_ts, price))
+                                        if age is None or age > 10:
+                                            log.info(
+                                                f"Coinbase fallback [{asset}] "
+                                                f"${price:,.2f}"
+                                            )
+                        except Exception as _e:
+                            log.debug(f"Coinbase fallback [{asset}] error: {_e}")
+                    await asyncio.sleep(2)
+        except Exception as exc:
+            log.warning(f"Coinbase fallback session error: {exc}. Retrying in 5s...")
+            await asyncio.sleep(5)
+
+
 async def binance_feed_task(enabled_assets: list[str]) -> None:
     """
     Maintain real-time price feeds for all enabled assets via Binance combined
@@ -223,7 +279,12 @@ async def binance_feed_task(enabled_assets: list[str]) -> None:
 
     Uses a single combined connection for efficiency:
       wss://stream.binance.com:9443/stream?streams=btcusdt@aggTrade/ethusdt@aggTrade/...
+
+    On environments where Binance is geo-blocked (HTTP 451), the coinbase_price_task
+    coroutine provides prices as a fallback — start both tasks in parallel.
     """
+    global _binance_451_streak
+
     # Build stream list
     valid_assets = [a for a in enabled_assets if a in ASSET_CONFIG]
     if not valid_assets:
@@ -247,6 +308,7 @@ async def binance_feed_task(enabled_assets: list[str]) -> None:
             async with websockets.connect(
                 url, ping_interval=20, ping_timeout=10, open_timeout=15
             ) as ws:
+                _binance_451_streak = 0
                 log.info(f"Binance feed connected for {valid_assets}")
                 async for raw in ws:
                     try:
@@ -264,5 +326,18 @@ async def binance_feed_task(enabled_assets: list[str]) -> None:
                     except Exception as parse_exc:
                         log.debug(f"Binance feed parse error: {parse_exc}")
         except Exception as exc:
-            log.error(f"Binance feed disconnected ({exc}). Reconnecting in 3s...")
-            await asyncio.sleep(3)
+            err_str = str(exc)
+            if "451" in err_str:
+                _binance_451_streak += 1
+                if _binance_451_streak == 1:
+                    log.warning(
+                        "Binance feed geo-blocked (HTTP 451). "
+                        "coinbase_price_task will supply prices — trading continues."
+                    )
+                elif _binance_451_streak % 20 == 0:
+                    log.debug(f"Binance 451 streak: {_binance_451_streak}")
+                await asyncio.sleep(10)   # back off longer on geo-block
+            else:
+                log.error(f"Binance feed disconnected ({exc}). Reconnecting in 3s...")
+                _binance_451_streak = 0
+                await asyncio.sleep(3)
