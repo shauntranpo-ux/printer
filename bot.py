@@ -4141,20 +4141,23 @@ async def main() -> None:
     asyncio.create_task(binance_feed_task(_enabled))
     asyncio.create_task(coinbase_price_task(_enabled))
 
-    # Wait for the first BTC price (timeout after 120s so Railway doesn't hang)
+    # Wait for the first price from any enabled asset (timeout after 120s so Railway doesn't hang)
+    _first_asset = _enabled[0] if _enabled else "BTC"
     log.info(f"Waiting for price feeds ({_enabled})...")
     waited = 0
-    while get_btc_price() is None and waited < 120:
+    while _am_get_price(_first_asset) is None and waited < 120:
         await asyncio.sleep(1)
         waited += 1
         if waited % 30 == 0:
-            log.warning(f"Still waiting for BTC price feed ({waited}s elapsed)...")
-    if get_btc_price() is None:
+            log.warning(f"Still waiting for {_first_asset} price feed ({waited}s elapsed)...")
+    _first_price = _am_get_price(_first_asset)
+    if _first_price is None:
         log.warning("Price feed not available after 120s — continuing anyway; prices will populate shortly.")
     else:
-        log.info(f"Price feed ready after {waited}s. BTC: ${get_btc_price():,.2f}")
+        log.info(f"Price feed ready after {waited}s. {_first_asset}: ${_first_price:,.2f}")
     _startup_cfg = read_config()
-    await send_telegram(f"🤖 <b>Printer bot started</b>\nBTC: ${get_btc_price():,.2f}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
+    _btc_display = f"${get_btc_price():,.2f}" if get_btc_price() is not None else f"{_first_asset}: ${_first_price:,.2f}" if _first_price else "price N/A"
+    await send_telegram(f"🤖 <b>Printer bot started</b>\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
 
     # Pre-flight check runs once before trading begins.
     # LIVE mode with unresolved issues → sys.exit(1). Paper mode → warn and continue.
