@@ -20,12 +20,16 @@
   "max_risk_reward_ratio": 4.0,
   "allowed_sides": ["yes"],
   "enabled_assets": [
+    "BTC",
     "ETH",
+    "SOL",
     "XRP",
     "DOGE"
   ],
   "asset_overrides": {
+    "BTC":  {},
     "ETH":  {},
+    "SOL":  {},
     "XRP":  {},
     "DOGE": {}
   }
