@@ -96,15 +96,18 @@ body {
 #bot-toggle.off:hover { background: rgba(231,76,60,0.2); }
 
 /* ── Multi-asset markets strip ── */
-#markets-strip { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+#markets-card { margin-bottom:12px; }
+#markets-card-head { display:flex; align-items:center; justify-content:space-between; padding:10px 14px 8px; border-bottom:1px solid var(--border); }
+#markets-card-title { font-size:10px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; }
+#markets-strip { display:flex; gap:10px; flex-wrap:wrap; padding:12px 14px; }
 .asset-card {
-  flex:1; min-width:130px; background:var(--surface); border:1px solid var(--border);
-  border-radius:10px; padding:10px 12px; display:flex; flex-direction:column; gap:3px;
+  flex:1; min-width:160px; background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:6px;
 }
 .asset-card-head { display:flex; align-items:center; justify-content:space-between; }
-.asset-name { font-size:11px; font-weight:700; letter-spacing:0.06em; color:var(--text); }
+.asset-name { font-size:13px; font-weight:700; letter-spacing:0.06em; color:var(--text); }
 .asset-phase {
-  font-size:9px; font-weight:700; letter-spacing:0.05em; padding:1px 6px;
+  font-size:9px; font-weight:700; letter-spacing:0.05em; padding:2px 7px;
   border-radius:10px; text-transform:uppercase;
 }
 .asset-phase.WATCH  { background:rgba(243,156,18,0.12); color:#f39c12; border:1px solid rgba(243,156,18,0.3); }
@@ -113,9 +116,9 @@ body {
 .asset-phase.DONE   { background:var(--surface2); color:var(--muted); border:1px solid var(--border); }
 .asset-phase.PAUSED { background:rgba(243,156,18,0.12); color:#f39c12; border:1px solid rgba(243,156,18,0.3); }
 .asset-phase.OFFLINE{ background:var(--surface2); color:var(--muted); border:1px solid var(--border); }
-.asset-price { font-size:13px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; }
-.asset-ticker { font-size:9px; color:var(--muted); font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.asset-timer { font-size:10px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.asset-price { font-size:20px; font-weight:700; color:var(--text); font-variant-numeric:tabular-nums; line-height:1.2; }
+.asset-ticker { font-size:10px; color:var(--muted); font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.asset-timer { font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
 
 .mode-pill {
   font-size: 10px; font-weight: 700; letter-spacing: 0.05em;
@@ -537,6 +540,14 @@ tr:last-child td { border-bottom: none; }
 
       </div><!-- /top-row -->
 
+      <!-- MULTI-ASSET MARKETS -->
+      <div id="markets-card" class="card">
+        <div id="markets-card-head">
+          <span id="markets-card-title">Markets</span>
+        </div>
+        <div id="markets-strip"></div>
+      </div>
+
       <!-- ROW 2: Chart + Brain Signals -->
       <div class="mid-row">
 
@@ -585,9 +596,6 @@ tr:last-child td { border-bottom: none; }
         </div>
 
       </div><!-- /mid-row -->
-
-      <!-- MULTI-ASSET MARKETS STRIP -->
-      <div id="markets-strip"></div>
 
       <!-- CLAUDE BRAIN BOX -->
       <div id="dash-claude" class="card" style="display:none;padding:14px 18px;margin-bottom:12px;">
