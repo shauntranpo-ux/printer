@@ -3641,6 +3641,14 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
         try:
             config = read_config()
             if not config.get("bot_enabled", False):
+                # Populate PAUSED state so dashboard shows prices instead of OFFLINE
+                for _pa in config.get("enabled_assets", ["BTC"]):
+                    if _pa == "BTC":
+                        continue
+                    if _pa not in _asset_states:
+                        _asset_states[_pa] = {"phase": "PAUSED", "market": None, "eval": {}}
+                    else:
+                        _asset_states[_pa]["phase"] = "PAUSED"
                 await asyncio.sleep(10)
                 continue
             for asset in config.get("enabled_assets", ["BTC"]):

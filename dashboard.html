@@ -526,12 +526,12 @@ tr:last-child td { border-bottom: none; }
               </div>
             </div>
             <div class="chart-tabs">
-              <button class="chart-tab active" id="ctab-live"  onclick="setChartTab('live')">Live <span id="live-trade-count" style="font-weight:400;opacity:0.7;"></span></button>
-              <button class="chart-tab"         id="ctab-paper" onclick="setChartTab('paper')">Paper <span id="paper-trade-count" style="font-weight:400;opacity:0.7;"></span></button>
+              <button class="chart-tab"         id="ctab-live"  onclick="setChartTab('live')">Live <span id="live-trade-count" style="font-weight:400;opacity:0.7;"></span></button>
+              <button class="chart-tab active" id="ctab-paper" onclick="setChartTab('paper')">Paper <span id="paper-trade-count" style="font-weight:400;opacity:0.7;"></span></button>
             </div>
           </div>
-          <canvas class="equity-chart" id="live-chart"></canvas>
-          <canvas class="equity-chart" id="paper-chart" style="display:none;"></canvas>
+          <canvas class="equity-chart" id="live-chart" style="display:none;"></canvas>
+          <canvas class="equity-chart" id="paper-chart"></canvas>
         </div>
 
         <!-- BRAIN SIGNALS -->
@@ -797,7 +797,7 @@ let countdownSecs=0, countdownInterval=null;
 let liveChartTarget={pts:[],pendingStart:0}, paperChartTarget={pts:[],pendingStart:0};
 let liveChartCurrent={pts:[],pendingStart:0}, paperChartCurrent={pts:[],pendingStart:0};
 let chartAnimFrame=null, settingsPopulated=false, settingsOpen=false, _resetMode=null;
-let _activeChartTab='live', _gaugeScore=0, _chartView='today';
+let _activeChartTab='paper', _gaugeScore=0, _chartView='today';
 let _openPosition=null; // set by pollState; read by renderMarketGrid
 
 // ── Tab navigation ──
@@ -1512,7 +1512,7 @@ async function pollTrades(){
     }
     const alc=allCount(liveTradesData,'live'),apc=allCount(paperTradesData,'paper');
     const alWr=allWr(liveTradesData,'live'),apWr=allWr(paperTradesData,'paper');
-    const todayN=lc||pc||0, allN=alc||apc||0;
+    const todayN=lc||pc||0, allN=alc+apc;
     const pbTrades=document.getElementById('pb-trades');
     if(pbTrades)pbTrades.innerHTML=`<span style="opacity:0.65;font-size:10px">Today</span> ${todayN}<br><span style="opacity:0.65;font-size:10px">All-time</span> ${allN}`;
 
