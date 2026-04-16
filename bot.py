@@ -657,24 +657,33 @@ async def db_get_today_pnl(mode: str) -> float:
 # ══════════════════════════════════════════════════════════════════════════════
 
 async def send_telegram(text: str) -> None:
-    """Send a Telegram notification. Silent no-op if env vars are not set."""
+    """Send a Telegram notification with up to 3 retries on failure."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return  # silently skip — Telegram is optional
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    try:
-        async with aiohttp.ClientSession() as tg:
-            async with tg.post(
-                url,
-                json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
-                timeout=aiohttp.ClientTimeout(total=5),
-            ) as resp:
-                body = await resp.text()
-                if resp.status != 200:
-                    log.warning(f"Telegram notify failed: HTTP {resp.status} — {body}")
-                else:
-                    log.info(f"Telegram notification sent OK")
-    except Exception as exc:
-        log.warning(f"Telegram notify error: {exc}")
+    for attempt in range(1, 4):
+        try:
+            log.info(f"Telegram: sending (attempt {attempt}/3)…")
+            async with aiohttp.ClientSession() as tg:
+                async with tg.post(
+                    url,
+                    json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
+                    timeout=aiohttp.ClientTimeout(total=8),
+                ) as resp:
+                    body = await resp.text()
+                    if resp.status == 200:
+                        log.info("Telegram: sent OK")
+                        return
+                    elif resp.status == 429:
+                        log.warning(f"Telegram: rate-limited (429) — attempt {attempt}/3, retrying…")
+                    else:
+                        log.warning(f"Telegram: HTTP {resp.status} — {body}")
+                        return  # non-retryable HTTP error
+        except Exception as exc:
+            log.warning(f"Telegram: error on attempt {attempt}/3 — {exc}")
+        if attempt < 3:
+            await asyncio.sleep(2)
+    log.error("Telegram: failed after 3 attempts — notification dropped")
 
 
 def load_credentials() -> None:
@@ -4121,6 +4130,27 @@ async def main() -> None:
     load_credentials()
     init_db()
     test_db_write()
+
+    # Clean up zombie "pending" trades from prior crashed sessions.
+    # Any trade still pending after 30+ minutes never settled — mark it as expired.
+    try:
+        conn = get_db()
+        cleaned = conn.execute(
+            """UPDATE trades
+               SET outcome         = 'expired_untracked',
+                   exit_price_cents = 0,
+                   pnl_dollars      = -(COALESCE(entry_price_cents,0) * COALESCE(contracts,1) / 100.0),
+                   fill_confirmed   = 0
+               WHERE outcome IN ('pending', '', NULL)
+                 AND ts < datetime('now', '-30 minutes')"""
+        ).rowcount
+        conn.commit()
+        conn.close()
+        if cleaned:
+            log.warning(f"Startup cleanup: marked {cleaned} zombie pending trade(s) as expired_untracked")
+    except Exception as _e:
+        log.warning(f"Startup zombie-trade cleanup failed (non-fatal): {_e}")
+
     _load_bv3_corrections()
     _init_claude()
 

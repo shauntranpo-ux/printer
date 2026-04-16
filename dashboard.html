@@ -484,12 +484,12 @@ tr:last-child td { border-bottom: none; }
           <div class="pf-val" id="pb-paper-pnl">—</div>
         </div>
         <div class="pf-stat">
-          <div class="pf-lbl">Win Rate</div>
+          <div class="pf-lbl">Win Rate (All-Time)</div>
           <div class="pf-val" id="pb-wr">—</div>
         </div>
         <div class="pf-stat">
-          <div class="pf-lbl">Trades Today</div>
-          <div class="pf-val" id="pb-trades">—</div>
+          <div class="pf-lbl">Trades</div>
+          <div class="pf-val" id="pb-trades" style="font-size:11px;line-height:1.5;">—</div>
         </div>
         <div class="pf-stat">
           <div class="pf-lbl">Brain WR</div>
@@ -1400,8 +1400,10 @@ async function pollPnl(){
     const pbP=document.getElementById('pb-paper-pnl');
     if(pbP){const v=tp.pnl||0;pbP.textContent=fmtPnl(v);pbP.className='pf-val '+(v>0?'green':v<0?'red':'');}
     // Win rate
+    const ap=data.alltime&&data.alltime.paper||{};
+    const best=al.trades>0?al:ap.trades>0?ap:{};
     const pbWr=document.getElementById('pb-wr');
-    if(pbWr&&al.trades>0){const wr=al.win_rate;pbWr.textContent=wr.toFixed(0)+'% ('+al.trades+')';pbWr.className='pf-val '+(wr>=75?'green':wr>=60?'':'red');}
+    if(pbWr&&best.trades>0){const wr=best.win_rate;pbWr.textContent=wr.toFixed(0)+'% ('+best.trades+')';pbWr.className='pf-val '+(wr>=75?'green':wr>=60?'':'red');}
   }catch(e){console.error('PnL poll error:',e);}
 }
 
@@ -1496,20 +1498,33 @@ async function pollTrades(){
     renderTradeTable('live-trades',liveTradesData);
     renderTradeTable('paper-trades',paperTradesData);
 
-    const lwr=todayWinRate(liveTradesData,'live'),pwr=todayWinRate(paperTradesData,'paper');
-    const lwrEl=document.getElementById('live-wr');if(lwrEl)lwrEl.textContent=lwr;
-    const pwrEl=document.getElementById('paper-wr');if(pwrEl)pwrEl.textContent=pwr;
+    const today=new Date().toISOString().slice(0,10);
     const lc=todayCount(liveTradesData,'live'),pc=todayCount(paperTradesData,'paper');
     const lcEl=document.getElementById('live-count');if(lcEl)lcEl.textContent=lc;
     const pcEl=document.getElementById('paper-count');if(pcEl)pcEl.textContent=pc;
 
-    // Perf bar — trades today
-    const pbTrades=document.getElementById('pb-trades');if(pbTrades)pbTrades.textContent=lc||pc||0;
+    // All-time counts from loaded data
+    function allCount(trades,mode){return trades.filter(x=>x.mode===mode).length;}
+    function allWr(trades,mode){
+      const s=trades.filter(x=>x.mode===mode&&x.outcome!=='pending'&&x.pnl_dollars!=null);
+      const w=s.filter(x=>x.outcome==='win').length,n=s.length;
+      return n?Math.round(w/n*100):null;
+    }
+    const alc=allCount(liveTradesData,'live'),apc=allCount(paperTradesData,'paper');
+    const alWr=allWr(liveTradesData,'live'),apWr=allWr(paperTradesData,'paper');
+    const todayN=lc||pc||0, allN=alc||apc||0;
+    const pbTrades=document.getElementById('pb-trades');
+    if(pbTrades)pbTrades.innerHTML=`<span style="opacity:0.65;font-size:10px">Today</span> ${todayN}<br><span style="opacity:0.65;font-size:10px">All-time</span> ${allN}`;
 
-    // sb stats
+    // All-time WR in trades panel header
+    const lwrEl=document.getElementById('live-wr');
+    if(lwrEl){const wr=alWr!=null?alWr:apWr!=null?apWr:null;lwrEl.textContent=wr!=null?`${wr}% WR all-time`:'—';}
+    const pwrEl=document.getElementById('paper-wr');if(pwrEl)pwrEl.textContent=apWr!=null?`${apWr}% WR`:'—';
+
+    // sb stats — today for sidebar badges
     const sbLc=document.getElementById('sb-live-count');if(sbLc)sbLc.textContent=lc;
     const sbPc=document.getElementById('sb-paper-count');if(sbPc)sbPc.textContent=pc;
-    const sbWr=document.getElementById('sb-wr');if(sbWr)sbWr.textContent=lwr!=='—'?lwr:pwr;
+    const sbWr=document.getElementById('sb-wr');if(sbWr)sbWr.textContent=alWr!=null?`${alWr}%`:apWr!=null?`${apWr}%`:'—';
 
     function ats(trades,mode){
       const s=trades.filter(x=>x.mode===mode&&x.outcome!=='pending');
