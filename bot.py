@@ -2778,7 +2778,7 @@ async def write_state_file(
     # BTC — built from the arguments passed to this function + last eval snapshot
     _btc_ev = _asset_eval.get("BTC", {})
     # If BTC is LOCKED (position open), override status so dashboard shows TRADING
-    _btc_status = "TRADING" if phase == "LOCKED" else _btc_ev.get("status")
+    _btc_status = "TRADING" if phase == "LOCKED" else (_btc_ev.get("status") or phase)
     assets_snap["BTC"] = {
         "price":        btc_price,
         "phase":        phase,
@@ -2802,7 +2802,7 @@ async def write_state_file(
         _sl = seconds_remaining(_m) if _m else 0
         _ev = _st.get("eval", {})
         _a_phase = _st.get("phase", "DONE")
-        _a_status = "TRADING" if _a_phase == "LOCKED" else _ev.get("status")
+        _a_status = "TRADING" if _a_phase == "LOCKED" else (_ev.get("status") or _a_phase)
         assets_snap[_a] = {
             "price":        _am_get_price(_a),
             "phase":        _a_phase,
