@@ -1968,11 +1968,7 @@ def _update_bv3_correction(dist_idx: int, time_idx: int, won: bool) -> None:
 
 
 def _session_ev_adjustment() -> float:
-    """
-    Fixed -0.02 adjustment at all hours — lowers effective EV floor from 8% to 6%
-    across all sessions (previously only applied during US session 13-20 UTC).
-    """
-    return -0.02
+    return 0.0
 
 
 def printer_brain(
