@@ -1969,18 +1969,10 @@ def _update_bv3_correction(dist_idx: int, time_idx: int, won: bool) -> None:
 
 def _session_ev_adjustment() -> float:
     """
-    Return a small EV threshold delta based on UTC hour of day.
-
-    US session (13-20 UTC): lower threshold by 0.02 — clearest trends, easiest holds.
-    Asian dead hours (00-06 UTC): raise threshold by 0.02 — choppy/rangebound.
-    All other hours: neutral.
+    Fixed -0.02 adjustment at all hours — lowers effective EV floor from 8% to 6%
+    across all sessions (previously only applied during US session 13-20 UTC).
     """
-    hour = datetime.now(timezone.utc).hour
-    if 13 <= hour < 20:
-        return -0.02
-    if 0 <= hour < 6:
-        return +0.02
-    return 0.0
+    return -0.02
 
 
 def printer_brain(
