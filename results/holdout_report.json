@@ -1,0 +1,91 @@
+{
+  "generated_at": "2026-04-18T11:25:46.727659+00:00",
+  "config": {
+    "train_window_days": 180,
+    "holdout_start": "2025-10-01",
+    "holdout_end": "2026-04-18T11:25:46.725514+00:00",
+    "seed": 42
+  },
+  "per_asset": {
+    "BTC": {
+      "metrics": {
+        "total_trades": 6,
+        "total_windows_available": 255332,
+        "trade_rate": 2.3498817226199616e-05,
+        "wins": 4,
+        "win_rate": 0.6666666666666666,
+        "total_pnl_dollars": -1.27,
+        "avg_pnl_per_trade": -0.211,
+        "brier_score": 0.3745,
+        "trade_level_sharpe": -0.0577,
+        "max_drawdown_dollars": 5.0
+      },
+      "train_trades": 4,
+      "calibrated": false
+    },
+    "ETH": {
+      "metrics": {
+        "total_trades": 0,
+        "total_windows_available": 263562,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "train_trades": 0,
+      "calibrated": false
+    },
+    "SOL": {
+      "metrics": {
+        "total_trades": 0,
+        "total_windows_available": 263386,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "train_trades": 0,
+      "calibrated": false
+    },
+    "XRP": {
+      "metrics": {
+        "total_trades": 2,
+        "total_windows_available": 263491,
+        "trade_rate": 7.59039208170298e-06,
+        "wins": 2,
+        "win_rate": 1.0,
+        "total_pnl_dollars": 1.8,
+        "avg_pnl_per_trade": 0.8982,
+        "brier_score": 0.8722,
+        "trade_level_sharpe": 4.4211,
+        "max_drawdown_dollars": 0.0
+      },
+      "train_trades": 0,
+      "calibrated": false
+    },
+    "DOGE": {
+      "metrics": {
+        "total_trades": 0,
+        "total_windows_available": 256324,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "train_trades": 0,
+      "calibrated": false
+    }
+  }
+}

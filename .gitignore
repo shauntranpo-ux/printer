@@ -51,6 +51,10 @@ bot_state.json
 bot_state_*.json
 config.json
 
+# Backtest outputs — large files, not committed
+results/*.parquet
+data/historical/*.parquet
+
 # OS
 .DS_Store
 Thumbs.db

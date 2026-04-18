@@ -1,0 +1,426 @@
+{
+  "generated_at": "2026-04-18T10:56:47.408428+00:00",
+  "config": {
+    "start": "2024-03-01",
+    "end": "2024-09-01",
+    "seed": 42
+  },
+  "per_asset": {
+    "BTC": {
+      "baseline": {
+        "total_trades": 4,
+        "total_windows_available": 4,
+        "trade_rate": 1.0,
+        "wins": 2,
+        "win_rate": 0.5,
+        "total_pnl_dollars": -2.45,
+        "avg_pnl_per_trade": -0.6117,
+        "brier_score": 0.3603,
+        "trade_level_sharpe": -0.123,
+        "max_drawdown_dollars": 6.67
+      },
+      "ablations": {
+        "regime_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": -2.45,
+          "delta_win_rate": 0.5
+        },
+        "momentum_bias": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": -2.45,
+          "delta_win_rate": 0.5
+        },
+        "velocity_adj": {
+          "ablated_metrics": {
+            "total_trades": 4,
+            "total_windows_available": 4,
+            "trade_rate": 1.0,
+            "wins": 2,
+            "win_rate": 0.5,
+            "total_pnl_dollars": -2.45,
+            "avg_pnl_per_trade": -0.6117,
+            "brier_score": 0.3603,
+            "trade_level_sharpe": -0.123,
+            "max_drawdown_dollars": 6.67
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "bv3_blend": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": -2.45,
+          "delta_win_rate": 0.5
+        }
+      }
+    },
+    "DOGE": {
+      "baseline": {
+        "total_trades": 0,
+        "total_windows_available": 1,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "ablations": {
+        "beta_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "momentum_bias": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "velocity_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        }
+      }
+    },
+    "ETH": {
+      "baseline": {
+        "total_trades": 0,
+        "total_windows_available": 1,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "ablations": {
+        "beta_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "regime_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "ratio_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "velocity_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        }
+      }
+    },
+    "SOL": {
+      "baseline": {
+        "total_trades": 0,
+        "total_windows_available": 1,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "ablations": {
+        "beta_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "momentum_bias": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "regime_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "velocity_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "exhaustion": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        }
+      }
+    },
+    "XRP": {
+      "baseline": {
+        "total_trades": 1,
+        "total_windows_available": 1,
+        "trade_rate": 1.0,
+        "wins": 1,
+        "win_rate": 1.0,
+        "total_pnl_dollars": 1.53,
+        "avg_pnl_per_trade": 1.533,
+        "brier_score": 0.7062,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "ablations": {
+        "beta_adj_cap": {
+          "ablated_metrics": {
+            "total_trades": 1,
+            "total_windows_available": 1,
+            "trade_rate": 1.0,
+            "wins": 1,
+            "win_rate": 1.0,
+            "total_pnl_dollars": 1.53,
+            "avg_pnl_per_trade": 1.533,
+            "brier_score": 0.7062,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "regime_adj": {
+          "ablated_metrics": {
+            "total_trades": 0,
+            "total_windows_available": 1,
+            "trade_rate": 0.0,
+            "wins": 0,
+            "win_rate": 0.0,
+            "total_pnl_dollars": 0.0,
+            "avg_pnl_per_trade": 0.0,
+            "brier_score": 0.0,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 1.53,
+          "delta_win_rate": 1.0
+        },
+        "news_mode": {
+          "ablated_metrics": {
+            "total_trades": 1,
+            "total_windows_available": 1,
+            "trade_rate": 1.0,
+            "wins": 1,
+            "win_rate": 1.0,
+            "total_pnl_dollars": 1.53,
+            "avg_pnl_per_trade": 1.533,
+            "brier_score": 0.7062,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "ratio_adj": {
+          "ablated_metrics": {
+            "total_trades": 1,
+            "total_windows_available": 1,
+            "trade_rate": 1.0,
+            "wins": 1,
+            "win_rate": 1.0,
+            "total_pnl_dollars": 1.53,
+            "avg_pnl_per_trade": 1.533,
+            "brier_score": 0.7062,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        },
+        "velocity_adj": {
+          "ablated_metrics": {
+            "total_trades": 1,
+            "total_windows_available": 1,
+            "trade_rate": 1.0,
+            "wins": 1,
+            "win_rate": 1.0,
+            "total_pnl_dollars": 1.53,
+            "avg_pnl_per_trade": 1.533,
+            "brier_score": 0.7062,
+            "trade_level_sharpe": 0.0,
+            "max_drawdown_dollars": 0.0
+          },
+          "delta_pnl": 0.0,
+          "delta_win_rate": 0.0
+        }
+      }
+    }
+  }
+}

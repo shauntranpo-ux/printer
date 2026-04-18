@@ -1,0 +1,315 @@
+{
+  "generated_at": "2026-04-18T10:56:49.419185+00:00",
+  "per_regime": {
+    "covid_2020": {
+      "BTC": {
+        "total_trades": 4,
+        "total_windows_available": 41636,
+        "trade_rate": 9.607070804111827e-05,
+        "wins": 2,
+        "win_rate": 0.5,
+        "total_pnl_dollars": -2.78,
+        "avg_pnl_per_trade": -0.6945,
+        "brier_score": 0.3637,
+        "trade_level_sharpe": -0.1422,
+        "max_drawdown_dollars": 9.82
+      },
+      "ETH": {
+        "total_trades": 0,
+        "total_windows_available": 41187,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "SOL": {
+        "total_trades": 0,
+        "total_windows_available": 1,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "XRP": {
+        "total_trades": 0,
+        "total_windows_available": 39745,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "DOGE": {
+        "total_trades": 0,
+        "total_windows_available": 24968,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      }
+    },
+    "crash_2021": {
+      "BTC": {
+        "total_trades": 21,
+        "total_windows_available": 56420,
+        "trade_rate": 0.00037220843672456576,
+        "wins": 13,
+        "win_rate": 0.6190476190476191,
+        "total_pnl_dollars": -5.68,
+        "avg_pnl_per_trade": -0.2705,
+        "brier_score": 0.3164,
+        "trade_level_sharpe": -0.0721,
+        "max_drawdown_dollars": 15.79
+      },
+      "ETH": {
+        "total_trades": 0,
+        "total_windows_available": 55970,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "SOL": {
+        "total_trades": 0,
+        "total_windows_available": 55970,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "XRP": {
+        "total_trades": 0,
+        "total_windows_available": 1,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "DOGE": {
+        "total_trades": 0,
+        "total_windows_available": 55970,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      }
+    },
+    "ftx_2022": {
+      "BTC": {
+        "total_trades": 1,
+        "total_windows_available": 32228,
+        "trade_rate": 3.1028918952463693e-05,
+        "wins": 1,
+        "win_rate": 1.0,
+        "total_pnl_dollars": 3.96,
+        "avg_pnl_per_trade": 3.9566,
+        "brier_score": 0.1121,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "ETH": {
+        "total_trades": 0,
+        "total_windows_available": 32228,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "SOL": {
+        "total_trades": 0,
+        "total_windows_available": 32228,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "XRP": {
+        "total_trades": 0,
+        "total_windows_available": 1,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "DOGE": {
+        "total_trades": 0,
+        "total_windows_available": 32228,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      }
+    },
+    "etf_2024": {
+      "BTC": {
+        "total_trades": 3,
+        "total_windows_available": 87332,
+        "trade_rate": 3.435166949113727e-05,
+        "wins": 2,
+        "win_rate": 0.6666666666666666,
+        "total_pnl_dollars": 2.58,
+        "avg_pnl_per_trade": 0.8616,
+        "brier_score": 0.2736,
+        "trade_level_sharpe": 0.1726,
+        "max_drawdown_dollars": 4.71
+      },
+      "ETH": {
+        "total_trades": 0,
+        "total_windows_available": 87332,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "SOL": {
+        "total_trades": 0,
+        "total_windows_available": 87332,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "XRP": {
+        "total_trades": 0,
+        "total_windows_available": 87285,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "DOGE": {
+        "total_trades": 0,
+        "total_windows_available": 87197,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      }
+    },
+    "chop_2026": {
+      "BTC": {
+        "total_trades": 4,
+        "total_windows_available": 90020,
+        "trade_rate": 4.4434570095534326e-05,
+        "wins": 3,
+        "win_rate": 0.75,
+        "total_pnl_dollars": 1.48,
+        "avg_pnl_per_trade": 0.3702,
+        "brier_score": 0.484,
+        "trade_level_sharpe": 0.1032,
+        "max_drawdown_dollars": 4.94
+      },
+      "ETH": {
+        "total_trades": 0,
+        "total_windows_available": 98084,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "SOL": {
+        "total_trades": 0,
+        "total_windows_available": 98028,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "XRP": {
+        "total_trades": 0,
+        "total_windows_available": 98062,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      },
+      "DOGE": {
+        "total_trades": 0,
+        "total_windows_available": 94559,
+        "trade_rate": 0.0,
+        "wins": 0,
+        "win_rate": 0.0,
+        "total_pnl_dollars": 0.0,
+        "avg_pnl_per_trade": 0.0,
+        "brier_score": 0.0,
+        "trade_level_sharpe": 0.0,
+        "max_drawdown_dollars": 0.0
+      }
+    }
+  }
+}
