@@ -1,0 +1,23 @@
+{
+  "_schema": {
+    "version": 1,
+    "description": "XRP-specific events that trigger trading skip windows.",
+    "fields": {
+      "date": "ISO 8601 UTC datetime of the scheduled event",
+      "reason": "Human-readable label for logging",
+      "severity": "high | medium | low (affects skip window size)"
+    },
+    "skip_windows_minutes": {
+      "high": 30,
+      "medium": 15,
+      "low": 5
+    }
+  },
+  "events": [
+    {
+      "date": "2026-01-15T14:30:00+00:00",
+      "reason": "Example: SEC v Ripple docket update (delete or replace)",
+      "severity": "high"
+    }
+  ]
+}

@@ -33,6 +33,7 @@ brain.log
 data/*
 !data/.gitkeep
 !data/betas.json
+!data/xrp_events.json
 !data/historical/
 data/historical/*
 !data/historical/.gitkeep

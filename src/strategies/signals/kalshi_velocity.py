@@ -61,3 +61,37 @@ def velocity_adjustment_for_side(
     if velocity == "falling":
         return +magnitude if side == "no" else -magnitude
     return 0.0
+
+
+def extreme_velocity_event(
+    kalshi_price_history: list,
+    lookback_samples: int = 30,
+    extreme_threshold_pct: float = 0.05,
+) -> tuple[bool, str]:
+    """
+    Proxy for volume-spike detection when real volume data is unavailable.
+
+    When the Kalshi YES contract has moved more than extreme_threshold_pct
+    over the recent lookback, treat it as an informed-flow event similar
+    to a news-driven volume spike.
+
+    Returns:
+        (is_extreme, direction) — direction is "up", "down", or "none"
+    """
+    if len(kalshi_price_history) < max(10, lookback_samples // 3):
+        return False, "none"
+
+    recent = list(kalshi_price_history)[-lookback_samples:]
+    first = recent[0][1]
+    last = recent[-1][1]
+
+    if first <= 0:
+        return False, "none"
+
+    delta = (last - first) / first
+
+    if delta > extreme_threshold_pct:
+        return True, "up"
+    if delta < -extreme_threshold_pct:
+        return True, "down"
+    return False, "none"

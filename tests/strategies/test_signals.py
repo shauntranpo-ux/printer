@@ -244,3 +244,154 @@ def test_exhaustion_inactive_on_small_move():
     )
     assert adj == 0.0
     assert sig["exhaustion_active"] is False
+
+
+# ── Correlation monitor ───────────────────────────────────────────────────
+
+from strategies.signals.correlation_monitor import (
+    rolling_correlation, btc_signal_weight_from_correlation
+)
+
+
+def test_correlation_perfect_positive():
+    asset_prices = [(i * 60, 100.0 + i * 0.1) for i in range(60)]
+    btc_prices = [(i * 60, 50000.0 + i * 10) for i in range(60)]
+    corr = rolling_correlation(asset_prices, btc_prices, lookback_minutes=60)
+    assert corr is not None
+    assert corr > 0.95
+
+
+def test_correlation_zero_when_one_constant():
+    asset_prices = [(i * 60, 100.0) for i in range(60)]
+    btc_prices = [(i * 60, 50000.0 + i * 10) for i in range(60)]
+    corr = rolling_correlation(asset_prices, btc_prices)
+    assert corr is None
+
+
+def test_correlation_insufficient_data():
+    asset_prices = [(0, 100.0), (60, 101.0)]
+    btc_prices = [(0, 50000.0), (60, 50100.0)]
+    assert rolling_correlation(asset_prices, btc_prices) is None
+
+
+def test_btc_weight_ramps_from_zero_to_max():
+    assert btc_signal_weight_from_correlation(0.0, max_weight=0.30) == 0.0
+    assert btc_signal_weight_from_correlation(0.3, max_weight=0.30) == 0.0
+    w_05 = btc_signal_weight_from_correlation(0.5, max_weight=0.30)
+    w_07 = btc_signal_weight_from_correlation(0.7, max_weight=0.30)
+    assert 0 < w_05 < w_07
+    assert w_07 == 0.30
+
+
+def test_btc_weight_none_returns_middle():
+    w = btc_signal_weight_from_correlation(None, max_weight=0.30)
+    assert w == 0.15
+
+
+# ── Volume spike + extreme velocity ───────────────────────────────────────
+
+from strategies.signals.volume_spike import detect_volume_spike
+from strategies.signals.kalshi_velocity import extreme_velocity_event
+
+
+def test_volume_spike_inactive_on_calm_data():
+    hist = [(i * 60, 100.0, 1000.0) for i in range(90)]
+    is_spike, direction, ret = detect_volume_spike(hist, lookback_minutes=60)
+    assert is_spike is False
+
+
+def test_volume_spike_insufficient_data():
+    hist = [(0, 100.0, 1000.0)]
+    is_spike, direction, ret = detect_volume_spike(hist, lookback_minutes=60)
+    assert is_spike is False
+
+
+def test_extreme_velocity_detects_up():
+    hist = [(i, 50 + i) for i in range(40)]
+    is_extreme, direction = extreme_velocity_event(hist, lookback_samples=30)
+    assert is_extreme is True
+    assert direction == "up"
+
+
+def test_extreme_velocity_detects_down():
+    hist = [(i, 90 - i) for i in range(40)]
+    is_extreme, direction = extreme_velocity_event(hist, lookback_samples=30)
+    assert is_extreme is True
+    assert direction == "down"
+
+
+def test_extreme_velocity_inactive_on_small_move():
+    hist = [(i, 60.0 + (i % 2) * 0.1) for i in range(40)]
+    is_extreme, direction = extreme_velocity_event(hist, lookback_samples=30)
+    assert is_extreme is False
+
+
+# ── Event calendar ────────────────────────────────────────────────────────
+
+from strategies.signals.event_calendar import EventCalendar
+import json
+from pathlib import Path
+
+
+def test_event_calendar_empty_returns_inactive(tmp_path):
+    p = tmp_path / "events.json"
+    p.write_text(json.dumps({"events": []}))
+    cal = EventCalendar(path=p)
+    active, reason = cal.is_event_active()
+    assert active is False
+
+
+def test_event_calendar_active_within_window(tmp_path):
+    import time
+    now = time.time()
+    p = tmp_path / "events.json"
+    p.write_text(json.dumps({
+        "events": [
+            {
+                "date": __import__("datetime").datetime.fromtimestamp(
+                    now - 300, tz=__import__("datetime").timezone.utc
+                ).isoformat(),
+                "reason": "test_event",
+                "severity": "high",
+            }
+        ]
+    }))
+    cal = EventCalendar(path=p)
+    active, reason = cal.is_event_active(now=now)
+    assert active is True
+    assert "test_event" in reason
+
+
+def test_event_calendar_outside_window(tmp_path):
+    import time
+    now = time.time()
+    p = tmp_path / "events.json"
+    p.write_text(json.dumps({
+        "events": [
+            {
+                "date": __import__("datetime").datetime.fromtimestamp(
+                    now - 7200, tz=__import__("datetime").timezone.utc
+                ).isoformat(),
+                "reason": "old_event",
+                "severity": "low",
+            }
+        ]
+    }))
+    cal = EventCalendar(path=p)
+    active, reason = cal.is_event_active(now=now)
+    assert active is False
+
+
+def test_event_calendar_missing_file_ok(tmp_path):
+    p = tmp_path / "does_not_exist.json"
+    cal = EventCalendar(path=p)
+    active, reason = cal.is_event_active()
+    assert active is False
+
+
+def test_event_calendar_corrupt_file_ok(tmp_path):
+    p = tmp_path / "events.json"
+    p.write_text("this is not json at all {{{")
+    cal = EventCalendar(path=p)
+    active, reason = cal.is_event_active()
+    assert active is False

@@ -2030,6 +2030,13 @@ def _get_or_make_strategy(asset: str, config):
                 min_ev=min_ev,
                 stake_dollars=stake,
             )
+        elif asset == "XRP":
+            from strategies.xrp_strategy import XRPStrategy
+            strat = XRPStrategy(
+                skip_config=skip_cfg,
+                min_ev=min_ev,
+                stake_dollars=stake,
+            )
         else:
             return None  # other assets not yet implemented
 

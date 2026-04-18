@@ -36,7 +36,7 @@
     "SOL": {
       "min_ev_base": 9
     },
-    "XRP": {},
+    "XRP": {"min_ev_base": 9, "max_spread_cents": 3},
     "DOGE": {}
   },
   "use_new_strategies": {
@@ -44,7 +44,7 @@
     "BTC_continuation_only": false,
     "ETH": true,
     "SOL": true,
-    "XRP": false,
+    "XRP": true,
     "DOGE": false
   },
   "max_spread_cents": 3.0,
