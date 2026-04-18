@@ -1,5 +1,6 @@
 import time
 import json
+import random
 from pathlib import Path
 from unittest.mock import patch
 
@@ -36,19 +37,11 @@ def _xrp_features(above_strike: bool = True):
         ts = now - (60 - i) * 60
         f.prices_60m.append((ts, current - 0.01 + i * 0.0002))
         f.prices_1m.append((ts, current - 0.01 + i * 0.0002))
+        f.btc_prices_60m.append((ts, 100000.0 + i * 2.0))
     for i in range(40):
         ts = now - (40 - i) * 10
         f.kalshi_price_history.append((ts, 62.0))
     return f
-
-
-def _populate_btc_globals():
-    import bot
-    bot.btc_prices.clear()
-    now = time.time()
-    for i in range(60):
-        ts = now - (60 - i) * 60
-        bot.btc_prices.append((ts, 100000.0 + i * 2.0))
 
 
 def _empty_calendar(tmp_path):
@@ -58,7 +51,6 @@ def _empty_calendar(tmp_path):
 
 
 def test_xrp_decides_trade_or_skip(tmp_path):
-    _populate_btc_globals()
     strat = XRPStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.05,
@@ -70,7 +62,6 @@ def test_xrp_decides_trade_or_skip(tmp_path):
 
 
 def test_xrp_event_calendar_hard_skip(tmp_path):
-    _populate_btc_globals()
     now = time.time()
     p = tmp_path / "events.json"
     from datetime import datetime, timezone
@@ -96,7 +87,6 @@ def test_xrp_event_calendar_hard_skip(tmp_path):
 
 
 def test_xrp_news_mode_detected(tmp_path):
-    _populate_btc_globals()
     strat = XRPStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.01,
@@ -116,13 +106,7 @@ def test_xrp_news_mode_detected(tmp_path):
 
 
 def test_xrp_decoupled_mode_zero_btc_weight(tmp_path):
-    import bot
-    bot.btc_prices.clear()
     now = time.time()
-    for i in range(60):
-        ts = now - (60 - i) * 60
-        bot.btc_prices.append((ts, 100000.0 + i * 5.0))
-
     strat = XRPStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.01,
@@ -130,7 +114,7 @@ def test_xrp_decoupled_mode_zero_btc_weight(tmp_path):
         event_calendar=_empty_calendar(tmp_path),
     )
     f = _xrp_features(above_strike=True)
-    import random
+    # BTC prices correlated with XRP (both trending); XRP randomly walks
     random.seed(42)
     f.prices_60m.clear()
     current = 2.50
@@ -138,6 +122,7 @@ def test_xrp_decoupled_mode_zero_btc_weight(tmp_path):
         ts = now - (60 - i) * 60
         current += random.gauss(0, 0.001)
         f.prices_60m.append((ts, current))
+        # Keep btc_prices_60m from default _xrp_features (trending BTC)
     f.current_price = current
 
     d = strat.decide(f)
@@ -147,7 +132,6 @@ def test_xrp_decoupled_mode_zero_btc_weight(tmp_path):
 
 
 def test_xrp_signals_populated(tmp_path):
-    _populate_btc_globals()
     strat = XRPStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.05,
@@ -163,7 +147,6 @@ def test_xrp_signals_populated(tmp_path):
 
 
 def test_xrp_clamps_p_yes(tmp_path):
-    _populate_btc_globals()
     strat = XRPStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.01,

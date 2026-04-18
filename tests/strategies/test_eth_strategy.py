@@ -33,24 +33,15 @@ def _eth_features(above_strike: bool = True):
         ts = now - (60 - i) * 60
         f.prices_60m.append((ts, current - 5 + i * 0.1))
         f.prices_1m.append((ts, current - 5 + i * 0.1))
+        f.btc_prices_60m.append((ts, 100000.0 + i * 2.0))
     for i in range(40):
         ts = now - (40 - i) * 10
         f.kalshi_price_history.append((ts, 60.0))
     return f
 
 
-def _populate_bot_btc_globals():
-    import bot
-    bot.btc_prices.clear()
-    now = time.time()
-    for i in range(60):
-        ts = now - (60 - i) * 60
-        bot.btc_prices.append((ts, 100000.0 + i * 2.0))
-
-
 def test_eth_strategy_decides_trade_or_skip():
     """Smoke test: decide() returns a valid Decision."""
-    _populate_bot_btc_globals()
     strat = ETHStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.05,
@@ -62,7 +53,6 @@ def test_eth_strategy_decides_trade_or_skip():
 
 
 def test_eth_contributing_signals_populated():
-    _populate_bot_btc_globals()
     strat = ETHStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.05,
@@ -78,7 +68,6 @@ def test_eth_contributing_signals_populated():
 
 def test_eth_bidirectional_mode_may_choose_either_side():
     """ETH uses BaseStrategy.decide() — bidirectional by default."""
-    _populate_bot_btc_globals()
     strat = ETHStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.01,
@@ -90,7 +79,6 @@ def test_eth_bidirectional_mode_may_choose_either_side():
 
 def test_eth_clamps_final_p_yes_in_range():
     """Even with extreme features, p_yes stays in [0.05, 0.95]."""
-    _populate_bot_btc_globals()
     strat = ETHStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.01,
@@ -106,7 +94,6 @@ def test_eth_clamps_final_p_yes_in_range():
 
 
 def test_eth_cold_start_skip():
-    _populate_bot_btc_globals()
     strat = ETHStrategy(
         skip_config=SkipConfig(cold_start_samples=200),  # impossibly high
         min_ev=0.05,

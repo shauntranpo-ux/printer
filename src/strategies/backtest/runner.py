@@ -17,6 +17,8 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Iterable, Optional
 
+import numpy as np
+
 from strategies.backtest.window_generator import BacktestEvent
 from strategies.base import BaseStrategy
 from strategies.features import MarketFeatures
@@ -46,7 +48,10 @@ class BacktestTrade:
     signals_dump: dict
 
 
-def event_to_features(event: BacktestEvent) -> MarketFeatures:
+def event_to_features(
+    event: BacktestEvent,
+    btc_prices_history: Optional[list] = None,
+) -> MarketFeatures:
     """Convert a backtest event into a MarketFeatures instance."""
     prices_1m: deque = deque(maxlen=60)
     prices_5m: deque = deque(maxlen=300)
@@ -58,6 +63,13 @@ def event_to_features(event: BacktestEvent) -> MarketFeatures:
             prices_5m.append((ts, p))
         if ts >= event.eval_ts - 60:
             prices_1m.append((ts, p))
+
+    btc_60m: deque = deque(maxlen=3600)
+    if btc_prices_history:
+        cutoff = event.eval_ts - 3600
+        for ts, p in btc_prices_history:
+            if cutoff <= ts <= event.eval_ts:
+                btc_60m.append((ts, p))
 
     # Synthesize flat Kalshi history so velocity signal doesn't fire artificially.
     # Velocity contribution is analyzed via ablation in Task 10.6.
@@ -84,6 +96,7 @@ def event_to_features(event: BacktestEvent) -> MarketFeatures:
         prices_1m=prices_1m,
         prices_5m=prices_5m,
         prices_60m=prices_60m,
+        btc_prices_60m=btc_60m,
         kalshi_price_history=kalshi_history,
         realized_vol_1min=event.realized_vol_1min,
     )
@@ -117,14 +130,24 @@ def run_backtest(
     stake_dollars: float = 5.0,
     maker_mode: bool = False,
     one_trade_per_window: bool = True,
-    btc_price_lookup=None,
+    btc_prices_df=None,
 ) -> list:
     """
-    Run strategy against a stream of events and return a list of
-    BacktestTrade records.
+    Run strategy against a stream of events and return a list of BacktestTrade records.
+
+    btc_prices_df: optional pandas DataFrame with columns ['open_time_ts', 'close']
+                   covering the full backtest period. Used to inject BTC history into
+                   features.btc_prices_60m for non-BTC strategies.
     """
     trades = []
     traded_windows: set = set()
+
+    btc_history: Optional[list] = None
+    if btc_prices_df is not None:
+        btc_history = list(
+            zip(btc_prices_df["timestamp"].values, btc_prices_df["close"].values)
+        )
+        btc_arr = np.array([ts for ts, _ in btc_history])
 
     for event in events:
         if one_trade_per_window:
@@ -132,24 +155,15 @@ def run_backtest(
             if window_key in traded_windows:
                 continue
 
-        features = event_to_features(event)
+        if btc_history is not None:
+            cutoff = event.eval_ts - 3600
+            lo = int(np.searchsorted(btc_arr, cutoff))
+            hi = int(np.searchsorted(btc_arr, event.eval_ts, side="right"))
+            slice_history = btc_history[lo:hi]
+        else:
+            slice_history = event.price_history if event.asset == "BTC" else []
 
-        if btc_price_lookup is not None and event.asset != "BTC":
-            btc_p = btc_price_lookup(event.eval_ts)
-            if btc_p is not None:
-                features.btc_price = btc_p
-
-        # Populate bot.btc_prices for non-BTC strategies that read it.
-        # Non-BTC assets gracefully degrade (zero beta contribution)
-        # since we only have the asset's own price history here.
-        try:
-            import bot
-            bot.btc_prices.clear()
-            if event.asset == "BTC":
-                for ts, p in event.price_history:
-                    bot.btc_prices.append((ts, p))
-        except Exception:
-            pass
+        features = event_to_features(event, btc_prices_history=slice_history)
 
         decision = strategy.decide(features)
         if decision.action == "skip":

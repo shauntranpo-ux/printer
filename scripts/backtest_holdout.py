@@ -33,10 +33,14 @@ def main():
     args = parser.parse_args()
 
     from scripts.backtest_walk_forward import (
-        make_strategy, load_prices, slice_events,
+        make_strategy, load_prices, load_btc_prices, slice_events,
         fit_calibration_from_trades, compute_metrics
     )
     from strategies.backtest.runner import run_backtest
+
+    btc_df = load_btc_prices()
+    if btc_df is None:
+        print("WARNING: BTC price history not found — non-BTC strategies will lack BTC context signals")
 
     holdout_start = datetime.fromisoformat(args.holdout_start).replace(tzinfo=timezone.utc)
     if args.holdout_end:
@@ -67,7 +71,7 @@ def main():
             train_events = slice_events(
                 asset, df, train_start.timestamp(), train_end.timestamp(), args.seed
             )
-            train_trades = run_backtest(strat_train, train_events, stake_dollars=5.0)
+            train_trades = run_backtest(strat_train, train_events, stake_dollars=5.0, btc_prices_df=btc_df)
             print(f"  train trades: {len(train_trades)}")
             cal = fit_calibration_from_trades(asset, train_trades)
 
@@ -78,7 +82,7 @@ def main():
             holdout_events = slice_events(
                 asset, df, holdout_start.timestamp(), holdout_end.timestamp(), args.seed + 1
             )
-            holdout_trades = run_backtest(strat_holdout, holdout_events, stake_dollars=5.0)
+            holdout_trades = run_backtest(strat_holdout, holdout_events, stake_dollars=5.0, btc_prices_df=btc_df)
             m = compute_metrics(holdout_trades, total_windows=max(1, len(holdout_events)))
             results["per_asset"][asset] = {
                 "metrics":      m,

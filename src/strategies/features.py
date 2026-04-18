@@ -39,6 +39,9 @@ class MarketFeatures:
     prices_5m: deque = field(default_factory=lambda: deque(maxlen=300))
     prices_60m: deque = field(default_factory=lambda: deque(maxlen=3600))
 
+    # BTC price history — injected for non-BTC strategies so they never read bot globals
+    btc_prices_60m: deque = field(default_factory=lambda: deque(maxlen=3600))
+
     # Contract velocity tracking
     kalshi_price_history: deque = field(default_factory=lambda: deque(maxlen=60))
 

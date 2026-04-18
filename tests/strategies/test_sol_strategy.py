@@ -38,24 +38,15 @@ def _sol_features(above_strike: bool = True):
         ts = now - (60 - i) * 60
         f.prices_60m.append((ts, current - 1 + i * 0.02))
         f.prices_1m.append((ts, current - 1 + i * 0.02))
+        f.btc_prices_60m.append((ts, 100000.0 + i * 2.0))
     for i in range(40):
         ts = now - (40 - i) * 10
         f.kalshi_price_history.append((ts, 60.0))
     return f
 
 
-def _populate_btc_globals():
-    import bot
-    bot.btc_prices.clear()
-    now = time.time()
-    for i in range(60):
-        ts = now - (60 - i) * 60
-        bot.btc_prices.append((ts, 100000.0 + i * 2.0))
-
-
 @patch("strategies.sol_strategy.check_solana_health", return_value=(True, "ok"))
 def test_sol_decides_trade_or_skip_when_healthy(mock_health):
-    _populate_btc_globals()
     strat = SOLStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.05,
@@ -68,7 +59,6 @@ def test_sol_decides_trade_or_skip_when_healthy(mock_health):
 @patch("strategies.sol_strategy.check_solana_health",
        return_value=(False, "rpc_timeout"))
 def test_sol_skips_when_network_unhealthy(mock_health):
-    _populate_btc_globals()
     strat = SOLStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.05,
@@ -81,7 +71,6 @@ def test_sol_skips_when_network_unhealthy(mock_health):
 
 @patch("strategies.sol_strategy.check_solana_health", return_value=(True, "ok"))
 def test_sol_signals_include_momentum_bias(mock_health):
-    _populate_btc_globals()
     strat = SOLStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.05,
@@ -95,7 +84,6 @@ def test_sol_signals_include_momentum_bias(mock_health):
 
 @patch("strategies.sol_strategy.check_solana_health", return_value=(True, "ok"))
 def test_sol_exhaustion_activates_in_final_window(mock_health):
-    _populate_btc_globals()
     strat = SOLStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.05,
@@ -115,7 +103,6 @@ def test_sol_exhaustion_activates_in_final_window(mock_health):
 
 @patch("strategies.sol_strategy.check_solana_health", return_value=(True, "ok"))
 def test_sol_clamps_p_yes(mock_health):
-    _populate_btc_globals()
     strat = SOLStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.01,

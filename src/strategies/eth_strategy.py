@@ -18,7 +18,6 @@ EV, and bidirectional side selection.
 
 from __future__ import annotations
 import math
-import time
 from typing import Optional
 
 from strategies.base import BaseStrategy
@@ -31,6 +30,7 @@ from strategies.signals.variance_ratio import variance_ratio, variance_ratio_to_
 from strategies.signals.ratio_divergence import ratio_z_score
 from strategies.signals.kalshi_velocity import contract_velocity
 from strategies.signals.beta_cache import load_beta
+from strategies.signals.btc_context import three_min_return
 
 
 BETA_ADJ_MAX   = 0.10   # max contribution from BTC-beta signal
@@ -69,7 +69,7 @@ class ETHStrategy(BaseStrategy):
         above = features.current_price > features.strike
 
         # ── Component 1: concurrent BTC beta ────────────────────────────
-        btc_3m = self._btc_three_min_return_from_globals(features.btc_price)
+        btc_3m = three_min_return(features.btc_prices_60m)
 
         beta_adj = 0.0
         if btc_3m is not None:
@@ -100,10 +100,9 @@ class ETHStrategy(BaseStrategy):
         p_yes += regime_adj
 
         # ── Component 3: ETH/BTC ratio divergence ───────────────────────
-        btc_prices_60m = self._btc_prices_60m_from_globals()
         z = ratio_z_score(
             list(features.prices_60m),
-            btc_prices_60m,
+            list(features.btc_prices_60m),
             lookback_minutes=240,
         )
 
@@ -137,32 +136,3 @@ class ETHStrategy(BaseStrategy):
         signals["baseline_p_above"] = baseline_p_above
         return p_yes, signals
 
-    def _btc_three_min_return_from_globals(self, current_btc_price: float) -> Optional[float]:
-        """Read BTC 3-min return from bot module's running price deque."""
-        try:
-            import bot
-            prices = list(bot.btc_prices)
-            if not prices:
-                return None
-            now = time.time()
-            cutoff = now - 180
-            oldest = None
-            for ts, p in prices:
-                if ts >= cutoff:
-                    oldest = p
-                    break
-            if oldest is None or oldest <= 0:
-                return None
-            return (current_btc_price - oldest) / oldest
-        except Exception:
-            return None
-
-    def _btc_prices_60m_from_globals(self) -> list:
-        """Read BTC 60-min price history from bot module globals."""
-        try:
-            import bot
-            now = time.time()
-            cutoff = now - 3600
-            return [(ts, p) for ts, p in bot.btc_prices if ts >= cutoff]
-        except Exception:
-            return []

@@ -41,9 +41,11 @@ def main():
     args = parser.parse_args()
 
     from scripts.backtest_walk_forward import (
-        make_strategy, load_prices, slice_events, compute_metrics
+        make_strategy, load_prices, load_btc_prices, slice_events, compute_metrics
     )
     from strategies.backtest.runner import run_backtest
+
+    btc_df = load_btc_prices()
 
     results = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -65,7 +67,7 @@ def main():
                 events = slice_events(asset, df,
                                       start.timestamp(), end.timestamp(), args.seed)
                 strat = make_strategy(asset, calibrator=None)
-                trades = run_backtest(strat, events, stake_dollars=5.0)
+                trades = run_backtest(strat, events, stake_dollars=5.0, btc_prices_df=btc_df)
                 m = compute_metrics(trades, total_windows=max(1, len(events)))
                 regime_results[asset] = m
                 print(f"  {asset}: trades={m['total_trades']:4d}  win={m['win_rate']:.3f}  "

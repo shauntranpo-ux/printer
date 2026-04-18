@@ -212,3 +212,58 @@ def test_compute_metrics_empty():
     assert m["total_trades"] == 0
     assert m["win_rate"] == 0.0
     assert m["trade_rate"] == 0.0
+
+
+def test_btc_prices_60m_injected_into_features():
+    """btc_prices_history passed to event_to_features populates btc_prices_60m."""
+    from collections import deque
+    from strategies.backtest.runner import event_to_features
+    from strategies.backtest.window_generator import BacktestEvent
+    from strategies.backtest.kalshi_amm import SimulatedOrderbook
+
+    now = time.time()
+    event = BacktestEvent(
+        asset="ETH",
+        eval_ts=now,
+        window_start_ts=now - 600,
+        window_close_ts=now + 300,
+        seconds_left=300.0,
+        elapsed_seconds=600.0,
+        current_price=3000.0,
+        strike=3000.0,
+        close_price=3010.0,
+        price_history=[(now - i * 60, 3000.0) for i in range(60, 0, -1)],
+        orderbook=SimulatedOrderbook(yes_ask=52.0, yes_bid=50.0, no_ask=51.0, no_bid=49.0),
+        realized_vol_1min=0.001,
+    )
+    btc_history = [(now - i * 60, 95000.0 + i) for i in range(61, 0, -1)]
+
+    features = event_to_features(event, btc_prices_history=btc_history)
+    assert len(features.btc_prices_60m) > 0, "btc_prices_60m should be populated"
+    assert all(ts <= now for ts, _ in features.btc_prices_60m)
+    assert all(ts >= now - 3600 for ts, _ in features.btc_prices_60m)
+
+
+def test_btc_prices_60m_empty_when_no_history():
+    """event_to_features with no btc_prices_history leaves btc_prices_60m empty."""
+    from strategies.backtest.runner import event_to_features
+    from strategies.backtest.window_generator import BacktestEvent
+    from strategies.backtest.kalshi_amm import SimulatedOrderbook
+
+    now = time.time()
+    event = BacktestEvent(
+        asset="ETH",
+        eval_ts=now,
+        window_start_ts=now - 600,
+        window_close_ts=now + 300,
+        seconds_left=300.0,
+        elapsed_seconds=600.0,
+        current_price=3000.0,
+        strike=3000.0,
+        close_price=3010.0,
+        price_history=[(now - i * 60, 3000.0) for i in range(60, 0, -1)],
+        orderbook=SimulatedOrderbook(yes_ask=52.0, yes_bid=50.0, no_ask=51.0, no_bid=49.0),
+        realized_vol_1min=0.001,
+    )
+    features = event_to_features(event)
+    assert len(features.btc_prices_60m) == 0

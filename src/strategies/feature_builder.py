@@ -29,6 +29,7 @@ def build_features_from_bot_state(
     no_bid: float,
     prices_deque,
     contract_history=None,
+    btc_prices_deque=None,
 ) -> MarketFeatures:
     """
     Construct a MarketFeatures from whatever state the bot has available.
@@ -42,6 +43,12 @@ def build_features_from_bot_state(
     rv = _realized_vol_1min(prices_deque)
 
     now = time.time()
+    btc_60m = deque(maxlen=3600)
+    if btc_prices_deque is not None:
+        cutoff = now - 3600
+        for ts, p in btc_prices_deque:
+            if ts >= cutoff:
+                btc_60m.append((ts, p))
     prices_1m = deque(
         [(ts, p) for ts, p in prices_deque if ts >= now - 60],
         maxlen=60,
@@ -78,6 +85,7 @@ def build_features_from_bot_state(
         prices_1m=prices_1m,
         prices_5m=prices_5m,
         prices_60m=prices_60m,
+        btc_prices_60m=btc_60m,
         kalshi_price_history=kalshi_hist,
         realized_vol_1min=rv,
     )

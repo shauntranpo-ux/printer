@@ -51,12 +51,13 @@ ABLATION_TARGETS = [
 
 
 def _run_slice(asset: str, start: datetime, end: datetime, seed: int) -> list:
-    from scripts.backtest_walk_forward import make_strategy, load_prices, slice_events
+    from scripts.backtest_walk_forward import make_strategy, load_prices, load_btc_prices, slice_events
     from strategies.backtest.runner import run_backtest
     df = load_prices(asset)
+    btc_df = load_btc_prices()
     events = slice_events(asset, df, start.timestamp(), end.timestamp(), seed)
     strat = make_strategy(asset, calibrator=None)
-    return run_backtest(strat, events, stake_dollars=5.0)
+    return run_backtest(strat, events, stake_dollars=5.0, btc_prices_df=btc_df)
 
 
 def ablate_and_run(asset: str, module_path: str, const_name: str,

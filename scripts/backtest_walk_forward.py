@@ -168,6 +168,19 @@ def compute_metrics(trades: list, total_windows: int) -> dict:
     }
 
 
+def load_btc_prices() -> pd.DataFrame:
+    extended = Path("data/historical") / "BTC_1m_extended.parquet"
+    legacy = Path("data/historical") / "BTC_1m_2026.parquet"
+    path = extended if extended.exists() else legacy
+    if not path.exists():
+        return None
+    df = pd.read_parquet(path)
+    if "open_time" in df.columns and "timestamp" not in df.columns:
+        df["timestamp"] = df["open_time"].values.astype("datetime64[s]").astype("int64").astype("float64")
+    df = df.sort_values("timestamp").reset_index(drop=True)
+    return df[["timestamp", "close"]]
+
+
 def walk_forward_one_asset(
     asset: str,
     train_days: int,
@@ -176,6 +189,7 @@ def walk_forward_one_asset(
     start: datetime,
     end: datetime,
     seed: int,
+    btc_df: pd.DataFrame = None,
 ) -> dict:
     from strategies.backtest.runner import run_backtest
 
@@ -208,7 +222,7 @@ def walk_forward_one_asset(
 
         strat_for_train = make_strategy(asset, calibrator=None)
         train_events = slice_events(asset, df, train_start, train_end, seed)
-        train_trades = run_backtest(strat_for_train, train_events, stake_dollars=5.0)
+        train_trades = run_backtest(strat_for_train, train_events, stake_dollars=5.0, btc_prices_df=btc_df)
         print(f"    train: {len(train_trades)} trades")
 
         cal = fit_calibration_from_trades(asset, train_trades)
@@ -217,7 +231,7 @@ def walk_forward_one_asset(
 
         strat_for_test = make_strategy(asset, calibrator=cal)
         test_events = slice_events(asset, df, test_start, test_end, seed + 1)
-        test_trades = run_backtest(strat_for_test, test_events, stake_dollars=5.0)
+        test_trades = run_backtest(strat_for_test, test_events, stake_dollars=5.0, btc_prices_df=btc_df)
         print(f"    test:  {len(test_trades)} trades")
 
         n_windows = len({t.window_start_ts for t in test_trades}) or max(1, int(test_sec / 900))
@@ -275,6 +289,10 @@ def main():
         "per_asset": {},
     }
 
+    btc_df = load_btc_prices()
+    if btc_df is None:
+        print("WARNING: BTC price history not found — non-BTC strategies will lack BTC context signals")
+
     for asset in args.assets:
         try:
             report = walk_forward_one_asset(
@@ -285,6 +303,7 @@ def main():
                 start=start,
                 end=end,
                 seed=args.seed,
+                btc_df=btc_df,
             )
             trades_df = pd.DataFrame(report.pop("test_trades"))
             if len(trades_df) > 0:

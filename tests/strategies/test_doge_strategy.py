@@ -8,7 +8,12 @@ from strategies.features import MarketFeatures
 from strategies.skip_layer import SkipConfig
 
 
-def _doge_features(above_strike: bool = True):
+def _btc_prices(n=90, base=100000.0, step=2.0):
+    now = time.time()
+    return [(now - (n - i) * 60, base + i * step) for i in range(n)]
+
+
+def _doge_features(above_strike: bool = True, btc_flat: bool = False):
     now = time.time()
     current = 0.1050 if above_strike else 0.0950
     strike = 0.1000
@@ -36,20 +41,13 @@ def _doge_features(above_strike: bool = True):
     for i in range(40):
         ts = now - (40 - i) * 10
         f.kalshi_price_history.append((ts, 58.0))
+    btc_step = 0.0 if btc_flat else 2.0
+    for ts, p in _btc_prices(step=btc_step):
+        f.btc_prices_60m.append((ts, p))
     return f
 
 
-def _populate_btc_correlated():
-    import bot
-    bot.btc_prices.clear()
-    now = time.time()
-    for i in range(90):
-        ts = now - (90 - i) * 60
-        bot.btc_prices.append((ts, 100000.0 + i * 2.0))
-
-
 def test_doge_decides_trade_or_skip():
-    _populate_btc_correlated()
     strat = DOGEStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.10,
@@ -60,19 +58,13 @@ def test_doge_decides_trade_or_skip():
 
 
 def test_doge_idiosyncratic_mode_forces_skip():
-    import bot
-    bot.btc_prices.clear()
     now = time.time()
-    for i in range(90):
-        ts = now - (90 - i) * 60
-        bot.btc_prices.append((ts, 100000.0))  # flat BTC
-
     strat = DOGEStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.10,
         stake_dollars=5.0,
     )
-    f = _doge_features(above_strike=True)
+    f = _doge_features(above_strike=True, btc_flat=True)
     f.prices_60m.clear()
     doge = 0.10
     for i in range(90):
@@ -91,7 +83,6 @@ def test_doge_idiosyncratic_mode_forces_skip():
 
 @patch("strategies.doge_strategy.current_session", return_value="weekend")
 def test_doge_weekend_raises_min_ev(mock_session):
-    _populate_btc_correlated()
     strat = DOGEStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.10,
@@ -104,7 +95,6 @@ def test_doge_weekend_raises_min_ev(mock_session):
 
 @patch("strategies.doge_strategy.current_session", return_value="normal")
 def test_doge_normal_session_standard_min_ev(mock_session):
-    _populate_btc_correlated()
     strat = DOGEStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.10,
@@ -116,7 +106,6 @@ def test_doge_normal_session_standard_min_ev(mock_session):
 
 
 def test_doge_signals_populated():
-    _populate_btc_correlated()
     strat = DOGEStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.10,
@@ -130,7 +119,6 @@ def test_doge_signals_populated():
 
 
 def test_doge_clamps_p_yes():
-    _populate_btc_correlated()
     strat = DOGEStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.01,

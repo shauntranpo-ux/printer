@@ -2115,6 +2115,7 @@ def printer_brain_routed(
             no_bid=max(0.0, no_ask - 1.0),
             prices_deque=prices_deque,
             contract_history=None,
+            btc_prices_deque=btc_prices,
         )
     except Exception as exc:
         log.warning(f"{asset} feature_builder failed, falling back to legacy: {exc}")

@@ -1,6 +1,6 @@
 import pytest
 
-from strategies.calibration import AssetCalibrator, MIN_SAMPLES_FOR_FIT
+from strategies.calibration import AssetCalibrator, MIN_SAMPLES_FOR_ISOTONIC, MIN_SAMPLES_FOR_PLATT
 import strategies.calibration as calib_module
 
 
@@ -13,8 +13,8 @@ def test_identity_before_fit():
 def test_refit_below_threshold_no_op(tmp_path, monkeypatch):
     monkeypatch.setattr(calib_module, "CALIBRATION_DIR", tmp_path)
     c = AssetCalibrator("TEST")
-    c.refit([0.5] * 10, [1] * 10)  # only 10 samples, below 50
-    assert c.model is None
+    c.refit([0.5] * 10, [1] * 10)  # only 10 samples, below MIN_SAMPLES_FOR_PLATT
+    assert c._method is None
 
 
 def test_refit_correcting_overconfident_model(tmp_path, monkeypatch):
@@ -24,7 +24,7 @@ def test_refit_correcting_overconfident_model(tmp_path, monkeypatch):
     raw = [0.9] * 100
     outcomes = [1] * 60 + [0] * 40
     c.refit(raw, outcomes)
-    # After calibration, 0.9 raw should map to ~0.6
+    # After isotonic calibration, 0.9 raw should map to ~0.6
     calibrated = c.calibrate(0.9)
     assert 0.55 <= calibrated <= 0.65
 

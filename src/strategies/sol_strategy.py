@@ -13,7 +13,6 @@ BaseStrategy handles calibration, EV, and bidirectional side selection.
 
 from __future__ import annotations
 import math
-import time
 from typing import Optional
 
 from strategies.base import BaseStrategy
@@ -27,6 +26,7 @@ from strategies.signals.solana_health import check_solana_health
 from strategies.signals.exhaustion_fade import exhaustion_fade_adjustment
 from strategies.signals.kalshi_velocity import contract_velocity
 from strategies.signals.beta_cache import load_beta
+from strategies.signals.btc_context import three_min_return
 
 
 BETA_ADJ_MAX   = 0.12   # larger than ETH's (SOL moves harder)
@@ -148,7 +148,7 @@ class SOLStrategy(BaseStrategy):
         above = features.current_price > features.strike
 
         # ── Component 1: BTC beta signal ────────────────────────────────
-        btc_3m = self._btc_three_min_return_from_globals()
+        btc_3m = three_min_return(features.btc_prices_60m)
 
         beta_adj = 0.0
         if btc_3m is not None:
@@ -210,23 +210,3 @@ class SOLStrategy(BaseStrategy):
         signals["final_p_yes"] = p_yes
         return p_yes, signals
 
-    def _btc_three_min_return_from_globals(self) -> Optional[float]:
-        """Read BTC 3-min return from bot module's running price deque."""
-        try:
-            import bot
-            prices = list(bot.btc_prices)
-            if not prices:
-                return None
-            now = time.time()
-            cutoff = now - 180
-            oldest = None
-            for ts, p in prices:
-                if ts >= cutoff:
-                    oldest = p
-                    break
-            if oldest is None or oldest <= 0:
-                return None
-            current = prices[-1][1]
-            return (current - oldest) / oldest
-        except Exception:
-            return None
