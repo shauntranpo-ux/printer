@@ -55,6 +55,12 @@ def refit_all_betas(data_dir: str = "data/historical") -> dict:
     Refit betas for all non-BTC assets from historical parquet files.
     Returns the dict that was saved.
 
+    Note on data/split_config.json: betas intentionally use the most recent
+    data (data/historical/*_1m_2026.parquet), NOT the pre-2024 training set.
+    Betas are correlation estimates — they should reflect the current market
+    regime. The split config applies to BV3 win-rate tables (where leakage
+    is a model-validity concern), not to rolling correlation parameters.
+
     Usage:
         python -c "from strategies.signals.beta_cache import refit_all_betas; refit_all_betas()"
     """

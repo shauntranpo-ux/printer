@@ -41,10 +41,28 @@ This means the BV3 table has already "seen" the OOS period:
 Until this is done, **treat all reported OOS metrics as optimistic upper bounds**,
 not reliable performance forecasts.
 
-## Current status
+## Current status — RESOLVED (2026-04-18, Section 8)
 
-BV3 regeneration from pre-OOS data has **not yet been performed**.
-The derivation code is not currently in this repository.
+BV3 tables have been **regenerated with a clean train/test split**.
 
-All OOS metrics in `results/oos_report.json` and `results/wfv_report.json`
-should be read with this caveat in mind.
+- **Train boundary**: 2023-12-31 (inclusive)
+- **Test set**: 2024-01-01 onwards (not used in table construction)
+- **Config**: `data/split_config.json`
+- **Generator**: `scripts/regen_bv3_clean.py`
+- **Legacy contaminated tables**: backed up to `bv3_tables/legacy/`
+
+### Near-strike impact at expiry (dist=0.02%, t=3min)
+
+| Asset | Old (contaminated) | New (clean) | Delta   |
+|-------|--------------------|-------------|---------|
+| BTC   | 0.6811             | 0.6329      | −0.048  |
+| ETH   | 0.7255             | 0.6755      | −0.050  |
+| SOL   | 0.7477             | 0.6392      | −0.109  |
+| XRP   | 0.7970             | 0.8473      | +0.050  |
+| DOGE  | 0.7617             | 0.6872      | −0.075  |
+
+The leakage was **real and material**: SOL and DOGE near-strike probabilities
+were overstated by 7–11pp. The clean tables are now live in `bv3_tables/*_bv3_full.json`.
+
+All previously reported OOS metrics against 2024+ data should be treated as
+optimistic upper bounds. Re-run any OOS evaluation to get unbiased estimates.

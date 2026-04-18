@@ -1,16 +1,5 @@
 {
-  "generated_at": "2026-04-13T05:52:18.149531+00:00",
-  "start_year": 2017,
-  "train_ratio": 0.7,
-  "total_windows": 302492,
-  "train_windows": 211744,
-  "oos_windows": 90748,
-  "train_start_ts": 1502942400,
-  "train_end_ts": 1694019600,
-  "oos_start_ts": 1694020500,
-  "oos_end_ts": 1775692800,
-  "train_start_date": "2017-08-17",
-  "train_end_date": "2023-09-06",
-  "oos_start_date": "2023-09-06",
-  "oos_end_date": "2026-04-09"
+  "train_end": "2023-12-31",
+  "_note": "BV3 tables are trained on data through this date (inclusive). Data from 2024-01-01 onwards is the out-of-sample test set.",
+  "generated_by": "Section 8 — regen_bv3_clean.py"
 }
