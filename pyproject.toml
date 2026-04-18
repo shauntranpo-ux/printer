@@ -37,6 +37,7 @@ dev = [
     "types-PyYAML>=6.0.12",
     "respx>=0.23.1",
     "pandas-stubs>=3.0.0.260204",
+    "pyarrow>=23.0.1",
 ]
 
 [tool.ruff]

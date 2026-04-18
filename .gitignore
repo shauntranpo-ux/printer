@@ -29,9 +29,12 @@ logs/
 *.log
 brain.log
 
-# Data — ignore contents but track the directory via .gitkeep
+# Data — ignore contents but track directories via .gitkeep
 data/*
 !data/.gitkeep
+!data/historical/
+data/historical/*
+!data/historical/.gitkeep
 
 # Tool caches
 .ruff_cache/
