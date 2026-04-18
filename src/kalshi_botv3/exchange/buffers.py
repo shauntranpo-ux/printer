@@ -95,6 +95,9 @@ class Aggregator:
     def __contains__(self, market: object) -> bool:
         return market in self.buffers
 
+    def get(self, market: str, default: MarketBuffer | None = None) -> MarketBuffer | None:
+        return self.buffers.get(market, default)
+
     @property
     def markets(self) -> list[str]:
         return list(self.buffers.keys())
