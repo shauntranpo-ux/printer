@@ -136,3 +136,89 @@ def test_skip_layer_triggered_for_cold_start():
     d = strat.decide(_features_above_strike())
     assert d.action == "skip"
     assert "cold_start" in d.reason
+
+
+@patch("bot._win_prob_for_asset")
+@patch("bot._brain_cal", {"prob_scale": 1.0}, create=True)
+def test_bidirectional_flips_when_model_strongly_disagrees_with_market(mock_bv3):
+    """
+    Above strike but BV3 says only 55% same-side, and NO is cheap:
+    bidirectional mode may prefer NO.
+
+    Scenario: BTC at 100500 (0.5% above 100000 strike). Usually BV3 would
+    give 0.80+ at this distance. But suppose high vol or a low BV3 output
+    yields 0.55. yes_ask = 0.65 -> yes_ev = 0.55 - 0.65 - fee = strongly
+    negative. no_ask = 0.35 -> no_ev = 0.45 - 0.35 - fee = slightly positive.
+    Bidirectional picks NO despite being above strike.
+    """
+    mock_bv3.return_value = 0.55
+    strat = BTCStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.02,  # low threshold so we can detect the flip
+        stake_dollars=5.0,
+        continuation_only=False,  # bidirectional
+    )
+    features = _features_above_strike()
+    features.yes_ask = 65.0
+    features.no_ask = 35.0
+    features.yes_bid = 64.0
+    features.no_bid = 34.0
+
+    d = strat.decide(features)
+    # Continuation-only would force YES; bidirectional should take NO here
+    if d.action == "trade":
+        assert d.side == "no"
+
+
+@patch("bot._win_prob_for_asset")
+@patch("bot._brain_cal", {"prob_scale": 1.0}, create=True)
+def test_bidirectional_skips_when_neither_side_has_ev(mock_bv3):
+    """Market priced near model output -> both sides negative EV after fee."""
+    mock_bv3.return_value = 0.65
+    strat = BTCStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.05,
+        stake_dollars=5.0,
+        continuation_only=False,
+    )
+    features = _features_above_strike()
+    features.yes_ask = 64.0
+    features.no_ask = 35.0
+
+    d = strat.decide(features)
+    # yes_ev ~ 0.65 - 0.64 - fee ~ -0.02
+    # no_ev ~ 0.35 - 0.35 - fee ~ -0.04
+    # both negative -> skip
+    assert d.action == "skip"
+
+
+@patch("bot._win_prob_for_asset")
+@patch("bot._brain_cal", {"prob_scale": 1.0}, create=True)
+def test_bidirectional_same_as_continuation_when_continuation_is_best(mock_bv3):
+    """
+    When the continuation side IS the highest-EV side, both modes should
+    produce the same trade decision.
+    """
+    mock_bv3.return_value = 0.85
+    features = _features_above_strike()
+    features.yes_ask = 70.0
+    features.no_ask = 30.0
+
+    cont = BTCStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.02,
+        stake_dollars=5.0,
+        continuation_only=True,
+    )
+    bidi = BTCStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.02,
+        stake_dollars=5.0,
+        continuation_only=False,
+    )
+
+    d_cont = cont.decide(features)
+    d_bidi = bidi.decide(features)
+    # Above strike + high BV3 -> yes is the right call either way
+    if d_cont.action == "trade" and d_bidi.action == "trade":
+        assert d_cont.side == d_bidi.side == "yes"

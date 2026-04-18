@@ -2089,7 +2089,19 @@ def printer_brain_routed(
 
     decision = strat.decide(features)
 
+    # Log when the new strategy's side disagrees with naive continuation.
+    # Useful for monitoring Section 3's bidirectional behavior.
     above = btc_price > strike
+    naive_continuation_side = "yes" if above else "no"
+    if decision.side is not None and decision.side != naive_continuation_side:
+        brain_log.info(
+            f"ROUTER_FLIPPED {ticker} | BTC at {btc_price:.2f} vs strike {strike:.2f} "
+            f"(above={above}) | new_side={decision.side} (not {naive_continuation_side}) | "
+            f"yes_ev={decision.contributing_signals.get('yes_ev', float('nan')):.3f} "
+            f"no_ev={decision.contributing_signals.get('no_ev', float('nan')):.3f} | "
+            f"mode={decision.contributing_signals.get('decision_mode', '?')}"
+        )
+
     abs_pct = abs(btc_price - strike) / strike
     true_p = decision.p_model if decision.side == "yes" else (1.0 - decision.p_model)
     return {

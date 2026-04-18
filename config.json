@@ -34,8 +34,8 @@
     "DOGE": {}
   },
   "use_new_strategies": {
-    "BTC": false,
-    "BTC_continuation_only": true,
+    "BTC": true,
+    "BTC_continuation_only": false,
     "ETH": false,
     "SOL": false,
     "XRP": false,

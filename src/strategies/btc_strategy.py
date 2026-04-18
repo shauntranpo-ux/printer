@@ -188,7 +188,10 @@ class BTCStrategy(BaseStrategy):
         bidirectional EV-based side selection.
         """
         if not self.continuation_only:
-            return super().decide(features, macro_event_active)
+            decision = super().decide(features, macro_event_active)
+            # Tag the decision with mode so logs/dashboard can distinguish
+            decision.contributing_signals["decision_mode"] = "bidirectional"
+            return decision
 
         # Continuation-only path (legacy behavior): still run the skip layer
         skip_reason = check_skip(features, self.skip_config, macro_event_active)
@@ -237,6 +240,7 @@ class BTCStrategy(BaseStrategy):
                     "forced_side": forced_side,
                     "forced_ev": forced_ev,
                     "continuation_only": True,
+                    "decision_mode": "continuation_only",
                 },
                 expected_value=forced_ev,
             )
@@ -256,6 +260,7 @@ class BTCStrategy(BaseStrategy):
                 "forced_side": forced_side,
                 "forced_ev": forced_ev,
                 "continuation_only": True,
+                "decision_mode": "continuation_only",
             },
             expected_value=forced_ev,
         )
