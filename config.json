@@ -1,5 +1,5 @@
 {
-  "bot_enabled": true,
+  "bot_enabled": false,
   "mode": "paper",
   "trade_amount_dollars": 5,
   "confidence_threshold": 75,
@@ -29,15 +29,23 @@
     "DOGE"
   ],
   "asset_overrides": {
-    "BTC": {"min_ev_base": 8},
+    "BTC": {
+      "min_ev_base": 3
+    },
     "ETH": {
-      "min_ev_base": 8
+      "min_ev_base": 3
     },
     "SOL": {
-      "min_ev_base": 9
+      "min_ev_base": 4
     },
-    "XRP": {"min_ev_base": 9, "max_spread_cents": 3},
-    "DOGE": {"min_ev_base": 10, "max_spread_cents": 3}
+    "XRP": {
+      "min_ev_base": 4,
+      "max_spread_cents": 3
+    },
+    "DOGE": {
+      "min_ev_base": 5,
+      "max_spread_cents": 3
+    }
   },
   "use_new_strategies": {
     "BTC": true,
