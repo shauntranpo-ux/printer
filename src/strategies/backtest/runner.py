@@ -221,4 +221,13 @@ def run_backtest(
             signals_dump=dict(decision.contributing_signals),
         ))
 
+    if one_trade_per_window and len(trades) > 0:
+        window_keys = [(t.asset, t.window_start_ts) for t in trades]
+        if len(window_keys) != len(set(window_keys)):
+            dup_count = len(window_keys) - len(set(window_keys))
+            raise AssertionError(
+                f"one_trade_per_window=True but found {dup_count} "
+                f"duplicate window entries in trades list. Dedup logic "
+                f"broken in run_backtest."
+            )
     return trades
