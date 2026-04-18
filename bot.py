@@ -1980,6 +1980,140 @@ def _session_ev_adjustment() -> float:
     return 0.0
 
 
+# ── Feature-flagged routing to new-foundation strategies (refactor) ──────
+# Routes BTC through src/strategies/ pipeline when config
+# use_new_strategies.BTC is True. Default: False (legacy path unchanged).
+# Both paths produce identical decisions when continuation_only=True and
+# calibrator is identity — confirmed by section2_ab_harness.py.
+
+_BTC_STRATEGY_SINGLETON = None  # lazy init so we don't pay the cost if flag is off
+
+
+def _get_or_make_btc_strategy(config):
+    """Lazily construct BTCStrategy. Returns None if anything goes wrong."""
+    global _BTC_STRATEGY_SINGLETON
+    if _BTC_STRATEGY_SINGLETON is not None:
+        return _BTC_STRATEGY_SINGLETON
+    try:
+        from strategies.btc_strategy import BTCStrategy
+        from strategies.skip_layer import SkipConfig
+
+        skip_cfg = SkipConfig(
+            max_spread_cents=float(config.get("max_spread_cents", 3.0)),
+            min_seconds_left=float(config.get("min_seconds_left", 30.0)),
+            cold_start_samples=int(config.get("cold_start_samples", 60)),
+        )
+        continuation_only = bool(
+            config.get("use_new_strategies", {}).get("BTC_continuation_only", True)
+        )
+        _BTC_STRATEGY_SINGLETON = BTCStrategy(
+            skip_config=skip_cfg,
+            min_ev=float(config.get("min_ev_base", 8)) / 100.0,
+            stake_dollars=float(config.get("trade_amount_dollars", 5)),
+            continuation_only=continuation_only,
+        )
+        return _BTC_STRATEGY_SINGLETON
+    except Exception as exc:
+        log.warning(f"BTCStrategy init failed, falling back to legacy: {exc}")
+        return None
+
+
+def printer_brain_routed(
+    btc_price, strike, yes_ask, no_ask,
+    elapsed_seconds, secs_left, ticker,
+    min_ev_base=3.0, vol_gate_thresh=1.80, kalshi_fee=0.07,
+    asset="BTC", max_entry_price_cents=100.0,
+    min_reward_cents=0.0, max_risk_reward_ratio=999.0,
+):
+    """
+    Routes to legacy printer_brain OR new BTCStrategy based on config flag.
+
+    When config.use_new_strategies.BTC is True AND asset == "BTC",
+    dispatch to new strategy. Otherwise use legacy printer_brain.
+
+    Returns the SAME dict shape as printer_brain.
+    """
+    config = read_config()
+    flag_on = bool(config.get("use_new_strategies", {}).get("BTC", False))
+    if asset != "BTC" or not flag_on:
+        return printer_brain(
+            btc_price, strike, yes_ask, no_ask,
+            elapsed_seconds, secs_left, ticker,
+            min_ev_base=min_ev_base, vol_gate_thresh=vol_gate_thresh,
+            kalshi_fee=kalshi_fee, asset=asset,
+            max_entry_price_cents=max_entry_price_cents,
+            min_reward_cents=min_reward_cents,
+            max_risk_reward_ratio=max_risk_reward_ratio,
+        )
+
+    strat = _get_or_make_btc_strategy(config)
+    if strat is None:
+        return printer_brain(
+            btc_price, strike, yes_ask, no_ask,
+            elapsed_seconds, secs_left, ticker,
+            min_ev_base=min_ev_base, vol_gate_thresh=vol_gate_thresh,
+            kalshi_fee=kalshi_fee, asset=asset,
+            max_entry_price_cents=max_entry_price_cents,
+            min_reward_cents=min_reward_cents,
+            max_risk_reward_ratio=max_risk_reward_ratio,
+        )
+
+    from strategies.feature_builder import build_features_from_bot_state
+    try:
+        features = build_features_from_bot_state(
+            asset="BTC",
+            ticker=ticker,
+            current_price=btc_price,
+            strike=strike,
+            btc_price=btc_price,
+            seconds_left=secs_left,
+            elapsed_seconds=elapsed_seconds,
+            yes_ask=yes_ask,
+            no_ask=no_ask,
+            yes_bid=max(0.0, yes_ask - 1.0),
+            no_bid=max(0.0, no_ask - 1.0),
+            prices_deque=btc_prices,
+            contract_history=None,
+        )
+    except Exception as exc:
+        log.warning(f"feature_builder failed, falling back to legacy: {exc}")
+        return printer_brain(
+            btc_price, strike, yes_ask, no_ask,
+            elapsed_seconds, secs_left, ticker,
+            min_ev_base=min_ev_base, vol_gate_thresh=vol_gate_thresh,
+            kalshi_fee=kalshi_fee, asset=asset,
+            max_entry_price_cents=max_entry_price_cents,
+            min_reward_cents=min_reward_cents,
+            max_risk_reward_ratio=max_risk_reward_ratio,
+        )
+
+    decision = strat.decide(features)
+
+    above = btc_price > strike
+    abs_pct = abs(btc_price - strike) / strike
+    true_p = decision.p_model if decision.side == "yes" else (1.0 - decision.p_model)
+    return {
+        "action": decision.action,
+        "side": decision.side if decision.side else ("yes" if above else "no"),
+        "confidence": int(round(true_p * 100)),
+        "reasoning": decision.reason,
+        "key_signals": [f"{k}: {v}" for k, v in decision.contributing_signals.items()],
+        "win_prob": float(decision.p_model),
+        "mom_label": decision.contributing_signals.get("mom_label", "neutral"),
+        "mom_pct": float(decision.contributing_signals.get("mom_adj", 0.0)),
+        "vel_signal": decision.contributing_signals.get("vel_signal", "neutral"),
+        "mins_left": secs_left / 60.0,
+        "abs_pct": abs_pct,
+        "above": above,
+        "_rv": features.realized_vol_1min,
+        "_vol_ratio": None,
+        "price_filter_skip": False,
+    }
+
+
+# ── End feature-flagged routing ──────────────────────────────────────────
+
+
 def printer_brain(
     btc_price: float,
     strike: float,
@@ -2929,7 +3063,7 @@ async def handle_ready_phase(
                         c_ob = await fetch_orderbook(session, c_ticker, candidate)
                         if c_ob is None:
                             continue
-                        c_brain = printer_brain(
+                        c_brain = printer_brain_routed(
                             btc_price, c_strike,
                             c_ob["best_yes_ask"], c_ob["best_no_ask"],
                             c_elapsed, c_secs_left, c_ticker,
@@ -3009,7 +3143,7 @@ async def handle_ready_phase(
     track_contract_price(ticker, yes_ask)
 
     # ── Printer Brain — primary decision engine (always runs, no API needed) ──
-    brain = printer_brain(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
+    brain = printer_brain_routed(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
                           min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
                           vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
                           kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
