@@ -36,6 +36,7 @@ dev = [
     "pre-commit>=3.8.0",
     "types-PyYAML>=6.0.12",
     "respx>=0.23.1",
+    "pandas-stubs>=3.0.0.260204",
 ]
 
 [tool.ruff]
