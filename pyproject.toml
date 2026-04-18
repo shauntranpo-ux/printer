@@ -54,6 +54,7 @@ extend-exclude = [
     "validate_and_report.py",
     "weekly_report.py",
     "backtesting/",
+    "alembic/versions/",
 ]
 
 [tool.ruff.lint]
