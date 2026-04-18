@@ -131,3 +131,116 @@ def test_ratio_z_score_insufficient_data_returns_none():
     eth = [(0, 2000.0)]
     btc = [(0, 50000.0)]
     assert ratio_z_score(eth, btc) is None
+
+
+# ── Solana health check ───────────────────────────────────────────────────
+
+import time as _time
+from unittest.mock import patch, MagicMock
+from strategies.signals.solana_health import check_solana_health
+import strategies.signals.solana_health as sh_module
+
+
+def _reset_solana_cache():
+    sh_module._cache.update({"ts": 0.0, "healthy": False, "reason": "reset"})
+
+
+def test_solana_health_happy_path():
+    _reset_solana_cache()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"result": "ok"}
+    with patch("strategies.signals.solana_health.httpx.post",
+               return_value=mock_resp):
+        is_healthy, reason = check_solana_health(force=True)
+        assert is_healthy is True
+        assert reason == "ok"
+
+
+def test_solana_health_degraded():
+    _reset_solana_cache()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"result": "behind"}
+    with patch("strategies.signals.solana_health.httpx.post",
+               return_value=mock_resp):
+        is_healthy, reason = check_solana_health(force=True)
+        assert is_healthy is False
+        assert "unhealthy" in reason
+
+
+def test_solana_health_timeout_fails_safe():
+    _reset_solana_cache()
+    import httpx as rq
+    with patch("strategies.signals.solana_health.httpx.post",
+               side_effect=rq.TimeoutException("timeout")):
+        is_healthy, reason = check_solana_health(force=True)
+        assert is_healthy is False
+        assert reason == "rpc_timeout"
+
+
+def test_solana_health_http_error_fails_safe():
+    _reset_solana_cache()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 503
+    with patch("strategies.signals.solana_health.httpx.post",
+               return_value=mock_resp):
+        is_healthy, reason = check_solana_health(force=True)
+        assert is_healthy is False
+
+
+def test_solana_health_caches_within_ttl():
+    _reset_solana_cache()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {"result": "ok"}
+    with patch("strategies.signals.solana_health.httpx.post",
+               return_value=mock_resp) as mock_post:
+        check_solana_health(force=True)
+        assert mock_post.call_count == 1
+        check_solana_health(force=False)
+        assert mock_post.call_count == 1
+
+
+# ── Exhaustion fade ───────────────────────────────────────────────────────
+
+from strategies.signals.exhaustion_fade import exhaustion_fade_adjustment
+
+
+def test_exhaustion_inactive_outside_final_window():
+    now = _time.time()
+    prices = [(now - 59, 100.0), (now, 102.0)]
+    adj, sig = exhaustion_fade_adjustment(
+        prices, realized_vol_1min=0.01, seconds_left=500
+    )
+    assert adj == 0.0
+    assert sig["exhaustion_active"] is False
+
+
+def test_exhaustion_active_on_extreme_up_move():
+    now = _time.time()
+    prices = [(now - 59, 100.0), (now, 103.0)]  # +3% vs 1% vol = 3 sigma
+    adj, sig = exhaustion_fade_adjustment(
+        prices, realized_vol_1min=0.01, seconds_left=60
+    )
+    assert adj < 0  # fade the up move
+    assert sig["exhaustion_active"] is True
+
+
+def test_exhaustion_active_on_extreme_down_move():
+    now = _time.time()
+    prices = [(now - 59, 100.0), (now, 97.0)]  # -3% vs 1% vol = 3 sigma
+    adj, sig = exhaustion_fade_adjustment(
+        prices, realized_vol_1min=0.01, seconds_left=60
+    )
+    assert adj > 0  # rebound expectation
+
+
+def test_exhaustion_inactive_on_small_move():
+    now = _time.time()
+    prices = [(now - 59, 100.0), (now, 100.5)]  # +0.5% vs 1% vol = 0.5 sigma
+    adj, sig = exhaustion_fade_adjustment(
+        prices, realized_vol_1min=0.01, seconds_left=60
+    )
+    assert adj == 0.0
+    assert sig["exhaustion_active"] is False

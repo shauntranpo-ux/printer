@@ -61,3 +61,22 @@ def check_skip(
         return f"realized_vol too low: {features.realized_vol_1min:.4f}/min"
 
     return None
+
+
+def check_skip_with_asset_hook(
+    features: "MarketFeatures",
+    cfg: "SkipConfig",
+    macro_event_active: bool = False,
+    asset_hook_result: "Optional[tuple[bool, str]]" = None,
+) -> "Optional[str]":
+    """
+    Same as check_skip but respects an optional asset-specific health hook.
+
+    asset_hook_result: (is_healthy, reason)
+        If is_healthy is False, returns the reason immediately (fail-safe).
+    """
+    if asset_hook_result is not None:
+        is_healthy, reason = asset_hook_result
+        if not is_healthy:
+            return f"asset_hook: {reason}"
+    return check_skip(features, cfg, macro_event_active)

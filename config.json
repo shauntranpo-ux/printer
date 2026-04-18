@@ -29,17 +29,21 @@
     "DOGE"
   ],
   "asset_overrides": {
-    "BTC":  {},
-    "ETH":  {"min_ev_base": 8},
-    "SOL":  {},
-    "XRP":  {},
+    "BTC": {},
+    "ETH": {
+      "min_ev_base": 8
+    },
+    "SOL": {
+      "min_ev_base": 9
+    },
+    "XRP": {},
     "DOGE": {}
   },
   "use_new_strategies": {
     "BTC": true,
     "BTC_continuation_only": false,
     "ETH": true,
-    "SOL": false,
+    "SOL": true,
     "XRP": false,
     "DOGE": false
   },
