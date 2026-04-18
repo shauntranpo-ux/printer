@@ -1,11 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+
+# Distribution
+dist/
+build/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files
 .env
+.env.*
+
+# Database
+*.db
+*.db-journal
+
+# Logs
+logs/
+*.log
+brain.log
+
+# Data
+data/
+
+# Tool caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Secrets
 *.pem
-kalshi_bot.db
+
+# Bot state
 bot_state.json
 bot_state_*.json
-brain.log
-__pycache__/
-*.pyc
 config.json
-data/BTC_1m.csv
-data/*.csv
+
+# OS
+.DS_Store
+Thumbs.db
