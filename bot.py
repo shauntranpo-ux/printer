@@ -1981,21 +1981,18 @@ def _session_ev_adjustment() -> float:
 
 
 # ── Feature-flagged routing to new-foundation strategies (refactor) ──────
-# Routes BTC through src/strategies/ pipeline when config
-# use_new_strategies.BTC is True. Default: False (legacy path unchanged).
-# Both paths produce identical decisions when continuation_only=True and
-# calibrator is identity — confirmed by section2_ab_harness.py.
+# Routes any asset through strategies/ pipeline when config
+# use_new_strategies.<ASSET> is True. Default: False (legacy path unchanged).
+# BTC parity confirmed by section2_ab_harness.py.
 
-_BTC_STRATEGY_SINGLETON = None  # lazy init so we don't pay the cost if flag is off
+_STRATEGY_SINGLETONS: dict = {}  # keyed by asset name, lazy init
 
 
-def _get_or_make_btc_strategy(config):
-    """Lazily construct BTCStrategy. Returns None if anything goes wrong."""
-    global _BTC_STRATEGY_SINGLETON
-    if _BTC_STRATEGY_SINGLETON is not None:
-        return _BTC_STRATEGY_SINGLETON
+def _get_or_make_strategy(asset: str, config):
+    """Lazily construct per-asset strategy singleton. Returns None on failure."""
+    if asset in _STRATEGY_SINGLETONS:
+        return _STRATEGY_SINGLETONS[asset]
     try:
-        from strategies.btc_strategy import BTCStrategy
         from strategies.skip_layer import SkipConfig
 
         skip_cfg = SkipConfig(
@@ -2003,18 +2000,36 @@ def _get_or_make_btc_strategy(config):
             min_seconds_left=float(config.get("min_seconds_left", 30.0)),
             cold_start_samples=int(config.get("cold_start_samples", 60)),
         )
-        continuation_only = bool(
-            config.get("use_new_strategies", {}).get("BTC_continuation_only", True)
-        )
-        _BTC_STRATEGY_SINGLETON = BTCStrategy(
-            skip_config=skip_cfg,
-            min_ev=float(config.get("min_ev_base", 8)) / 100.0,
-            stake_dollars=float(config.get("trade_amount_dollars", 5)),
-            continuation_only=continuation_only,
-        )
-        return _BTC_STRATEGY_SINGLETON
+        overrides = config.get("asset_overrides", {}).get(asset, {})
+        min_ev = float(overrides.get("min_ev_base",
+                                     config.get("min_ev_base", 8))) / 100.0
+        stake = float(config.get("trade_amount_dollars", 5))
+
+        if asset == "BTC":
+            from strategies.btc_strategy import BTCStrategy
+            continuation_only = bool(
+                config.get("use_new_strategies", {}).get("BTC_continuation_only", True)
+            )
+            strat = BTCStrategy(
+                skip_config=skip_cfg,
+                min_ev=min_ev,
+                stake_dollars=stake,
+                continuation_only=continuation_only,
+            )
+        elif asset == "ETH":
+            from strategies.eth_strategy import ETHStrategy
+            strat = ETHStrategy(
+                skip_config=skip_cfg,
+                min_ev=min_ev,
+                stake_dollars=stake,
+            )
+        else:
+            return None  # other assets not yet implemented
+
+        _STRATEGY_SINGLETONS[asset] = strat
+        return strat
     except Exception as exc:
-        log.warning(f"BTCStrategy init failed, falling back to legacy: {exc}")
+        log.warning(f"{asset} strategy init failed, falling back to legacy: {exc}")
         return None
 
 
@@ -2026,16 +2041,14 @@ def printer_brain_routed(
     min_reward_cents=0.0, max_risk_reward_ratio=999.0,
 ):
     """
-    Routes to legacy printer_brain OR new BTCStrategy based on config flag.
+    Routes to legacy printer_brain OR new strategy based on per-asset config flag.
 
-    When config.use_new_strategies.BTC is True AND asset == "BTC",
-    dispatch to new strategy. Otherwise use legacy printer_brain.
-
-    Returns the SAME dict shape as printer_brain.
+    When config.use_new_strategies.<asset> is True, dispatch to new strategy
+    pipeline. Otherwise use legacy printer_brain. Returns the same dict shape.
     """
     config = read_config()
-    flag_on = bool(config.get("use_new_strategies", {}).get("BTC", False))
-    if asset != "BTC" or not flag_on:
+    flag_on = bool(config.get("use_new_strategies", {}).get(asset, False))
+    if not flag_on:
         return printer_brain(
             btc_price, strike, yes_ask, no_ask,
             elapsed_seconds, secs_left, ticker,
@@ -2046,7 +2059,7 @@ def printer_brain_routed(
             max_risk_reward_ratio=max_risk_reward_ratio,
         )
 
-    strat = _get_or_make_btc_strategy(config)
+    strat = _get_or_make_strategy(asset, config)
     if strat is None:
         return printer_brain(
             btc_price, strike, yes_ask, no_ask,
@@ -2060,10 +2073,17 @@ def printer_brain_routed(
 
     from strategies.feature_builder import build_features_from_bot_state
     try:
+        if asset == "BTC":
+            prices_deque = btc_prices
+            current_price = btc_price
+        else:
+            prices_deque = asset_manager._prices.get(asset) or btc_prices
+            current_price = prices_deque[-1][1] if prices_deque else btc_price
+
         features = build_features_from_bot_state(
-            asset="BTC",
+            asset=asset,
             ticker=ticker,
-            current_price=btc_price,
+            current_price=current_price,
             strike=strike,
             btc_price=btc_price,
             seconds_left=secs_left,
@@ -2072,11 +2092,11 @@ def printer_brain_routed(
             no_ask=no_ask,
             yes_bid=max(0.0, yes_ask - 1.0),
             no_bid=max(0.0, no_ask - 1.0),
-            prices_deque=btc_prices,
+            prices_deque=prices_deque,
             contract_history=None,
         )
     except Exception as exc:
-        log.warning(f"feature_builder failed, falling back to legacy: {exc}")
+        log.warning(f"{asset} feature_builder failed, falling back to legacy: {exc}")
         return printer_brain(
             btc_price, strike, yes_ask, no_ask,
             elapsed_seconds, secs_left, ticker,
@@ -2089,31 +2109,35 @@ def printer_brain_routed(
 
     decision = strat.decide(features)
 
-    # Log when the new strategy's side disagrees with naive continuation.
-    # Useful for monitoring Section 3's bidirectional behavior.
-    above = btc_price > strike
-    naive_continuation_side = "yes" if above else "no"
-    if decision.side is not None and decision.side != naive_continuation_side:
+    above = current_price > strike
+    naive = "yes" if above else "no"
+    if decision.side is not None and decision.side != naive:
         brain_log.info(
-            f"ROUTER_FLIPPED {ticker} | BTC at {btc_price:.2f} vs strike {strike:.2f} "
-            f"(above={above}) | new_side={decision.side} (not {naive_continuation_side}) | "
-            f"yes_ev={decision.contributing_signals.get('yes_ev', float('nan')):.3f} "
-            f"no_ev={decision.contributing_signals.get('no_ev', float('nan')):.3f} | "
+            f"ROUTER_FLIPPED {asset} {ticker} | px={current_price:.4f} "
+            f"strike={strike:.4f} naive={naive} picked={decision.side} | "
+            f"yes_ev={decision.contributing_signals.get('yes_ev', float('nan')):+.3f} "
+            f"no_ev={decision.contributing_signals.get('no_ev', float('nan')):+.3f} | "
             f"mode={decision.contributing_signals.get('decision_mode', '?')}"
         )
 
-    abs_pct = abs(btc_price - strike) / strike
+    abs_pct = abs(current_price - strike) / strike
     true_p = decision.p_model if decision.side == "yes" else (1.0 - decision.p_model)
     return {
         "action": decision.action,
-        "side": decision.side if decision.side else ("yes" if above else "no"),
+        "side": decision.side if decision.side else naive,
         "confidence": int(round(true_p * 100)),
         "reasoning": decision.reason,
         "key_signals": [f"{k}: {v}" for k, v in decision.contributing_signals.items()],
         "win_prob": float(decision.p_model),
-        "mom_label": decision.contributing_signals.get("mom_label", "neutral"),
-        "mom_pct": float(decision.contributing_signals.get("mom_adj", 0.0)),
-        "vel_signal": decision.contributing_signals.get("vel_signal", "neutral"),
+        "mom_label": decision.contributing_signals.get(
+            "regime", decision.contributing_signals.get("mom_label", "neutral")
+        ),
+        "mom_pct": float(decision.contributing_signals.get(
+            "regime_adj", decision.contributing_signals.get("mom_adj", 0.0)
+        )),
+        "vel_signal": decision.contributing_signals.get(
+            "velocity", decision.contributing_signals.get("vel_signal", "neutral")
+        ),
         "mins_left": secs_left / 60.0,
         "abs_pct": abs_pct,
         "above": above,

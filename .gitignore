@@ -32,6 +32,7 @@ brain.log
 # Data — ignore contents but track directories via .gitkeep
 data/*
 !data/.gitkeep
+!data/betas.json
 !data/historical/
 data/historical/*
 !data/historical/.gitkeep

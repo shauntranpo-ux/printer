@@ -1,5 +1,5 @@
 {
-  "bot_enabled": false,
+  "bot_enabled": true,
   "mode": "paper",
   "trade_amount_dollars": 5,
   "confidence_threshold": 75,
@@ -14,11 +14,13 @@
   "_note_min_ev_base": "in percent, e.g. 8 = 0.08 minimum EV threshold",
   "kalshi_fee_per_contract_cents": 7,
   "preflight_override": false,
-  "vol_gate_thresh": 1.80,
+  "vol_gate_thresh": 1.8,
   "max_entry_price_cents": 80,
   "min_reward_cents": 15,
   "max_risk_reward_ratio": 4.0,
-  "allowed_sides": ["yes"],
+  "allowed_sides": [
+    "yes"
+  ],
   "enabled_assets": [
     "BTC",
     "ETH",
@@ -28,7 +30,7 @@
   ],
   "asset_overrides": {
     "BTC":  {},
-    "ETH":  {},
+    "ETH":  {"min_ev_base": 8},
     "SOL":  {},
     "XRP":  {},
     "DOGE": {}
@@ -36,7 +38,7 @@
   "use_new_strategies": {
     "BTC": true,
     "BTC_continuation_only": false,
-    "ETH": false,
+    "ETH": true,
     "SOL": false,
     "XRP": false,
     "DOGE": false

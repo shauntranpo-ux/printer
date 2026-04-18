@@ -1,0 +1,30 @@
+{
+  "BTC": {
+    "beta": 1.0,
+    "computed_at": 1776504875.360364
+  },
+  "ETH": {
+    "beta": 0.565491258148283,
+    "computed_at": 1776504875.5217414,
+    "source": "refit",
+    "sample_size": 154080
+  },
+  "SOL": {
+    "beta": 0.45510176757687815,
+    "computed_at": 1776504875.680734,
+    "source": "refit",
+    "sample_size": 154080
+  },
+  "XRP": {
+    "beta": 0.404312441613942,
+    "computed_at": 1776504875.840321,
+    "source": "refit",
+    "sample_size": 154080
+  },
+  "DOGE": {
+    "beta": 0.3412919366106331,
+    "computed_at": 1776504876.00182,
+    "source": "refit",
+    "sample_size": 154080
+  }
+}
