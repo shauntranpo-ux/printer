@@ -481,3 +481,34 @@ def test_idiosyncratic_divergent_move_flagged():
     is_idio, sig = detect_idiosyncratic_mode(doge_prices, btc_prices, beta=1.3)
     assert is_idio is True
     assert sig["divergence_sigma"] > 2.5
+
+
+# ── BV3 lookup ────────────────────────────────────────────────────────────
+
+from unittest.mock import patch as _patch
+from strategies.signals.bv3_lookup import bv3_p_yes
+
+
+@_patch("bot._win_prob_for_asset")
+def test_bv3_p_yes_above_strike_uses_same_side(mock_bv3):
+    mock_bv3.return_value = 0.80
+    p = bv3_p_yes("BTC", 100500.0, 100000.0, 600.0)
+    assert p == 0.80
+
+
+@_patch("bot._win_prob_for_asset")
+def test_bv3_p_yes_below_strike_flips(mock_bv3):
+    mock_bv3.return_value = 0.80
+    p = bv3_p_yes("BTC", 99500.0, 100000.0, 600.0)
+    assert abs(p - 0.20) < 1e-9
+
+
+@_patch("bot._win_prob_for_asset", return_value=None)
+def test_bv3_p_yes_returns_none_when_lookup_fails(mock_bv3):
+    p = bv3_p_yes("BTC", 100500.0, 100000.0, 600.0)
+    assert p is None
+
+
+def test_bv3_p_yes_invalid_strike_returns_none():
+    p = bv3_p_yes("BTC", 100500.0, 0.0, 600.0)
+    assert p is None

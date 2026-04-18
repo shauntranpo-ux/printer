@@ -1,23 +1,27 @@
 """
-BTCStrategy — current BTC logic re-homed on the BaseStrategy foundation.
+BTCStrategy — evidence-based strategy for BTC 15-min binaries.
 
-Behavior-preserving canary for the refactor. Outputs must match legacy
-printer_brain() for BTC to within floating-point noise when given the same
-inputs. Any deviation indicates a bug in the foundation or the port.
+Evidence base:
+- Wen, Bouri, Xu & Zhao 2022 (NAJEF): intraday momentum-reversal on BTC
+  high-frequency data, 2013-2020. Variance-ratio test confirmed.
+- Grobys & Sapkota 2021 (IRFA): large-cap cryptos (BTC firmly) exhibit
+  momentum rather than reversion in cross-section.
+- Cont, Kukanov, Stoikov and successors: order-flow imbalance predictive
+  at short horizons. Kalshi contract velocity is a proxy.
 
-Key differences vs ETH/SOL/XRP/DOGE strategies (added in later sections):
-- Uses BV3 table for raw win probability, not Brownian-bridge baseline
-- Applies legacy momentum adjustment (+/-5%) not variance-ratio
-- Applies legacy velocity adjustment (+/-1%)
-- Continuation-side-only by default (bidirectional enabled in Section 3
-  via config flag)
+Components:
+1. Brownian-bridge baseline (primary anchor — physics-based fair value)
+2. Variance-ratio regime detector on BTC 1-min returns
+3. Momentum-biased prior (large-cap default, small magnitude)
+4. Kalshi contract velocity
+5. BV3 lookup as secondary signal blended at 20% weight
 
-Imports from bot.py are read-only — we use the existing BV3 loader rather
-than duplicating it.
+Rollback path: set use_new_strategies.BTC_continuation_only=true in
+config.json to revert to the legacy BV3+momentum+velocity path from
+Sections 2-3. No code change required.
 """
 
 from __future__ import annotations
-
 from typing import Optional
 
 from strategies.base import BaseStrategy
@@ -26,14 +30,22 @@ from strategies.skip_layer import SkipConfig, check_skip
 from strategies.calibration import AssetCalibrator
 from strategies.ev import compute_bidirectional_ev
 
+from strategies.signals.rolling_beta import log_returns_from_prices
+from strategies.signals.variance_ratio import variance_ratio, variance_ratio_to_regime
+from strategies.signals.kalshi_velocity import contract_velocity
+from strategies.signals.bv3_lookup import bv3_p_yes
+
+
+MOMENTUM_BIAS    = 0.02
+REGIME_ADJ       = 0.03
+VELOCITY_ADJ     = 0.02
+BV3_BLEND_WEIGHT = 0.20
+
 
 class BTCStrategy(BaseStrategy):
     """
-    Legacy BTC behavior on new foundation.
-
-    Uses the BV3 empirical table for raw win prob; applies legacy momentum
-    and velocity adjustments. Final decision routed through BaseStrategy's
-    pipeline (skip layer, calibration, EV, side selection).
+    Evidence-based BTC strategy. When continuation_only=True, falls back
+    to pure BV3 + legacy momentum/velocity as a rollback path.
     """
 
     def __init__(
@@ -43,7 +55,7 @@ class BTCStrategy(BaseStrategy):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
-        continuation_only: bool = True,  # Section 3 will allow False
+        continuation_only: bool = False,
     ):
         super().__init__(
             asset="BTC",
@@ -55,29 +67,133 @@ class BTCStrategy(BaseStrategy):
         )
         self.continuation_only = continuation_only
 
+    def decide(
+        self,
+        features: MarketFeatures,
+        macro_event_active: bool = False,
+    ) -> Decision:
+        if self.continuation_only:
+            return self._decide_legacy_fallback(features, macro_event_active)
+        return super().decide(features, macro_event_active)
+
     def compute_raw_p_model(
         self,
         features: MarketFeatures,
-        baseline_p_above: float,  # unused for BTC (legacy uses BV3)
+        baseline_p_above: float,
     ) -> tuple[float, dict]:
         """
-        Replicate the legacy printer_brain() probability computation.
+        Evidence-based probability model for BTC.
 
-        Returns (p_yes, signals_dict) where p_yes is P(YES wins at close).
+        Layers adjustments onto the Brownian-bridge baseline using
+        variance-ratio regime, momentum bias, Kalshi velocity, and BV3
+        as a 20% secondary blend.
         """
-        # Import locally to avoid circular import with bot.py
-        import bot
+        signals: dict = {}
+        p_yes = baseline_p_above
+        above = features.current_price > features.strike
+
+        # ── Component 1: variance-ratio regime detector ─────────────────
+        btc_returns = log_returns_from_prices(list(features.prices_60m))
+        vr = variance_ratio(btc_returns, q=5)
+        regime = variance_ratio_to_regime(vr)
+        regime_adj = 0.0
+        if regime == "momentum":
+            regime_adj = +REGIME_ADJ if above else -REGIME_ADJ
+        elif regime == "reversion":
+            regime_adj = -REGIME_ADJ if above else +REGIME_ADJ
+        signals["variance_ratio"] = vr
+        signals["regime"] = regime
+        signals["regime_adj"] = regime_adj
+        p_yes += regime_adj
+
+        # ── Component 2: momentum-biased prior ──────────────────────────
+        momentum_bias = +MOMENTUM_BIAS if above else -MOMENTUM_BIAS
+        signals["momentum_bias"] = momentum_bias
+        p_yes += momentum_bias
+
+        # ── Component 3: Kalshi contract velocity ───────────────────────
+        velocity = contract_velocity(
+            list(features.kalshi_price_history),
+            lookback_samples=30,
+            threshold_pct=0.02,
+        )
+        velocity_adj = 0.0
+        if velocity == "rising":
+            velocity_adj = +VELOCITY_ADJ
+        elif velocity == "falling":
+            velocity_adj = -VELOCITY_ADJ
+        signals["velocity"] = velocity
+        signals["velocity_adj"] = velocity_adj
+        p_yes += velocity_adj
+
+        # ── Component 4: BV3 blend (secondary, 20% weight) ──────────────
+        bv3 = bv3_p_yes(
+            "BTC",
+            features.current_price,
+            features.strike,
+            features.seconds_left,
+        )
+        signals["bv3_p_yes"] = bv3
+        signals["p_yes_before_bv3_blend"] = p_yes
+
+        if bv3 is not None:
+            p_yes = (1.0 - BV3_BLEND_WEIGHT) * p_yes + BV3_BLEND_WEIGHT * bv3
+            signals["bv3_blend_weight"] = BV3_BLEND_WEIGHT
+        else:
+            signals["bv3_blend_weight"] = 0.0
+
+        p_yes = max(0.05, min(0.95, p_yes))
+
+        signals["final_p_yes"] = p_yes
+        signals["baseline_p_above"] = baseline_p_above
+        signals["decision_mode"] = "evidence_based"
+        return p_yes, signals
+
+    def _decide_legacy_fallback(
+        self,
+        features: MarketFeatures,
+        macro_event_active: bool = False,
+    ) -> Decision:
+        """
+        Legacy rollback path — pure BV3 + legacy momentum/velocity,
+        continuation-side-only. Preserved from Sections 2-3 as an escape
+        hatch if the evidence-based logic underperforms.
+        """
+        skip_reason = check_skip(features, self.skip_config, macro_event_active)
+        if skip_reason:
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=0.5,
+                reason=f"skip_layer: {skip_reason}",
+                contributing_signals={"decision_mode": "continuation_only"},
+            )
+
+        try:
+            import bot
+        except ImportError:
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=0.5,
+                reason="legacy_fallback: bot module not importable",
+                contributing_signals={"decision_mode": "continuation_only"},
+            )
 
         abs_pct = abs(features.current_price - features.strike) / features.strike
         above = features.current_price > features.strike
         mins_left = features.seconds_left / 60.0
 
-        # Step 1: BV3 raw probability (same-side probability)
         raw_same_side = bot._win_prob_for_asset("BTC", abs_pct, mins_left)
+        if raw_same_side is None:
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=0.5,
+                reason="legacy_fallback: bv3_lookup_failed",
+                contributing_signals={"decision_mode": "continuation_only"},
+            )
 
-        # Step 2: legacy momentum adjustment
-        # Use features.prices_1m (new foundation) instead of legacy
-        # btc_prices (module global) so this is deterministic for tests.
         mom_pct, mom_label = self._legacy_momentum(features)
         if mom_label == "bullish":
             mom_adj = +0.05 if above else -0.05
@@ -86,22 +202,29 @@ class BTCStrategy(BaseStrategy):
         else:
             mom_adj = 0.0
 
-        # Step 3: legacy velocity adjustment (1% nudge based on contract
-        # price trajectory)
         vel_signal = self._legacy_velocity(features)
         vel_adj = (
             +0.01 if vel_signal == "favorable"
             else (-0.01 if vel_signal == "unfavorable" else 0.0)
         )
 
-        # Step 4: combined same-side prob + legacy calibration scale
         cal_scale = getattr(bot, "_brain_cal", {}).get("prob_scale", 1.0)
         combined = raw_same_side + mom_adj + vel_adj
         combined = 0.50 + (combined - 0.50) * cal_scale
         combined = max(0.10, min(0.997, combined))
 
-        # Step 5: convert same-side prob to YES-side prob
         p_yes = combined if above else (1.0 - combined)
+        calibrated_p_yes = self.calibrator.calibrate(p_yes)
+        forced_side = "yes" if above else "no"
+
+        ev_result = compute_bidirectional_ev(
+            p_model=calibrated_p_yes,
+            yes_ask_cents=features.yes_ask,
+            no_ask_cents=features.no_ask,
+            stake_dollars=self.stake_dollars,
+            maker=self.maker,
+        )
+        forced_ev = ev_result.yes_ev if forced_side == "yes" else ev_result.no_ev
 
         signals = {
             "bv3_raw_same_side": raw_same_side,
@@ -114,15 +237,42 @@ class BTCStrategy(BaseStrategy):
             "vel_adj": vel_adj,
             "cal_scale": cal_scale,
             "combined_same_side_prob": combined,
+            "raw_p_yes": p_yes,
+            "calibrated_p_yes": calibrated_p_yes,
+            "forced_side": forced_side,
+            "forced_ev": forced_ev,
+            "yes_ev": ev_result.yes_ev,
+            "no_ev": ev_result.no_ev,
+            "decision_mode": "continuation_only",
         }
-        return p_yes, signals
+
+        if forced_ev < self.min_ev:
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=calibrated_p_yes,
+                reason=(
+                    f"continuation-only {forced_side} EV {forced_ev:+.3f} "
+                    f"below min_ev {self.min_ev:+.3f}"
+                ),
+                contributing_signals=signals,
+                expected_value=forced_ev,
+            )
+
+        return Decision(
+            action="trade",
+            side=forced_side,
+            p_model=calibrated_p_yes,
+            reason=(
+                f"continuation-only {forced_side} EV={forced_ev:+.3f} "
+                f"(p_yes={calibrated_p_yes:.3f}, above={above})"
+            ),
+            contributing_signals=signals,
+            expected_value=forced_ev,
+        )
 
     def _legacy_momentum(self, features: MarketFeatures) -> tuple[float, str]:
-        """
-        Port of bot.calculate_momentum() using features.prices_1m.
-
-        Threshold: +/- 0.005 (0.5%) over 180 seconds.
-        """
+        """Port of bot.calculate_momentum() — threshold ±0.5% over 180s."""
         prices = features.prices_1m
         if not prices:
             return 0.0, "neutral"
@@ -148,13 +298,8 @@ class BTCStrategy(BaseStrategy):
 
     def _legacy_velocity(self, features: MarketFeatures) -> str:
         """
-        Port of bot.contract_velocity() reading from features.kalshi_price_history.
-
-        Returns "favorable", "unfavorable", or "neutral".
-
-        Legacy logic: compare the current Kalshi YES price to a recent
-        reference to infer direction. Uses last 30 samples.
-        Threshold: 5% change (same as contract_velocity's 0.05).
+        Port of legacy bot.contract_velocity() — threshold ±5% over full history.
+        Preserved verbatim for A/B harness parity with legacy printer_brain().
         """
         hist = features.kalshi_price_history
         if len(hist) < 3:
@@ -168,99 +313,8 @@ class BTCStrategy(BaseStrategy):
             return "neutral"
 
         delta = (last_price - first_price) / first_price
-        # YES buys: falling price = favorable
         if delta < -0.05:
             return "favorable"
         if delta > 0.05:
             return "unfavorable"
         return "neutral"
-
-    def decide(
-        self,
-        features: MarketFeatures,
-        macro_event_active: bool = False,
-    ) -> Decision:
-        """
-        Override BaseStrategy.decide() to implement continuation-only mode
-        when self.continuation_only is True (default for Section 2).
-
-        When continuation_only=False (Section 3), defer to BaseStrategy's
-        bidirectional EV-based side selection.
-        """
-        if not self.continuation_only:
-            decision = super().decide(features, macro_event_active)
-            # Tag the decision with mode so logs/dashboard can distinguish
-            decision.contributing_signals["decision_mode"] = "bidirectional"
-            return decision
-
-        # Continuation-only path (legacy behavior): still run the skip layer
-        skip_reason = check_skip(features, self.skip_config, macro_event_active)
-        if skip_reason:
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=0.5,
-                reason=f"skip_layer: {skip_reason}",
-            )
-
-        # Compute raw p_yes (baseline is unused for BTC)
-        raw_p_yes, signals = self.compute_raw_p_model(features, baseline_p_above=0.5)
-
-        # Calibrate
-        calibrated_p_yes = self.calibrator.calibrate(raw_p_yes)
-
-        # Continuation side: if above strike → YES, else → NO
-        above = features.current_price > features.strike
-        forced_side = "yes" if above else "no"
-
-        # Compute EV for both sides (we only use the forced side's EV)
-        ev_result = compute_bidirectional_ev(
-            p_model=calibrated_p_yes,
-            yes_ask_cents=features.yes_ask,
-            no_ask_cents=features.no_ask,
-            stake_dollars=self.stake_dollars,
-            maker=self.maker,
-        )
-
-        forced_ev = ev_result.yes_ev if forced_side == "yes" else ev_result.no_ev
-
-        if forced_ev < self.min_ev:
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=calibrated_p_yes,
-                reason=(
-                    f"continuation-only {forced_side} EV {forced_ev:+.3f} "
-                    f"below min_ev {self.min_ev:+.3f}"
-                ),
-                contributing_signals={
-                    **signals,
-                    "raw_p_yes": raw_p_yes,
-                    "calibrated_p_yes": calibrated_p_yes,
-                    "forced_side": forced_side,
-                    "forced_ev": forced_ev,
-                    "continuation_only": True,
-                    "decision_mode": "continuation_only",
-                },
-                expected_value=forced_ev,
-            )
-
-        return Decision(
-            action="trade",
-            side=forced_side,
-            p_model=calibrated_p_yes,
-            reason=(
-                f"continuation-only {forced_side} EV={forced_ev:+.3f} "
-                f"(p_yes={calibrated_p_yes:.3f}, above={above})"
-            ),
-            contributing_signals={
-                **signals,
-                "raw_p_yes": raw_p_yes,
-                "calibrated_p_yes": calibrated_p_yes,
-                "forced_side": forced_side,
-                "forced_ev": forced_ev,
-                "continuation_only": True,
-                "decision_mode": "continuation_only",
-            },
-            expected_value=forced_ev,
-        )

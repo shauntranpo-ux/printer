@@ -29,7 +29,7 @@
     "DOGE"
   ],
   "asset_overrides": {
-    "BTC": {},
+    "BTC": {"min_ev_base": 8},
     "ETH": {
       "min_ev_base": 8
     },

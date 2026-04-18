@@ -2008,7 +2008,7 @@ def _get_or_make_strategy(asset: str, config):
         if asset == "BTC":
             from strategies.btc_strategy import BTCStrategy
             continuation_only = bool(
-                config.get("use_new_strategies", {}).get("BTC_continuation_only", True)
+                config.get("use_new_strategies", {}).get("BTC_continuation_only", False)
             )
             strat = BTCStrategy(
                 skip_config=skip_cfg,
