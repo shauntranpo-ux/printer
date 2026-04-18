@@ -395,3 +395,89 @@ def test_event_calendar_corrupt_file_ok(tmp_path):
     cal = EventCalendar(path=p)
     active, reason = cal.is_event_active()
     assert active is False
+
+
+# ── Session awareness ─────────────────────────────────────────────────────
+
+from strategies.signals.session_awareness import (
+    current_session, session_min_ev_multiplier
+)
+from datetime import datetime, timezone as _tz
+
+
+def test_session_weekend_detected():
+    sat = datetime(2026, 4, 11, 12, 0, 0, tzinfo=_tz.utc).timestamp()
+    assert current_session(sat) == "weekend"
+    sun = datetime(2026, 4, 12, 20, 0, 0, tzinfo=_tz.utc).timestamp()
+    assert current_session(sun) == "weekend"
+
+
+def test_session_us_afternoon_detected():
+    ts = datetime(2026, 4, 14, 19, 0, 0, tzinfo=_tz.utc).timestamp()
+    assert current_session(ts) == "us_afternoon"
+
+
+def test_session_normal_detected():
+    ts = datetime(2026, 4, 15, 9, 0, 0, tzinfo=_tz.utc).timestamp()
+    assert current_session(ts) == "normal"
+
+
+def test_session_multipliers():
+    assert session_min_ev_multiplier("normal") == 1.0
+    assert session_min_ev_multiplier("weekend") == 1.25
+    assert session_min_ev_multiplier("us_afternoon") == 1.25
+
+
+# ── Idiosyncratic detector ────────────────────────────────────────────────
+
+from strategies.signals.idiosyncratic_detector import detect_idiosyncratic_mode
+
+
+def test_idiosyncratic_insufficient_data():
+    doge = [(0, 0.1)]
+    btc = [(0, 50000.0)]
+    is_idio, sig = detect_idiosyncratic_mode(doge, btc, beta=1.3)
+    assert is_idio is False
+    assert "insufficient" in sig["reason"]
+
+
+def test_idiosyncratic_normal_move_not_flagged():
+    now = _time.time()
+    doge_prices = []
+    btc_prices = []
+    doge_price = 0.10
+    btc_price = 50000.0
+    for i in range(90):
+        ts = now - (90 - i) * 60
+        btc_ret = 0.0005 * (1 if i % 2 == 0 else -1)
+        btc_price = btc_price * (1 + btc_ret)
+        doge_ret = 1.3 * btc_ret
+        doge_price = doge_price * (1 + doge_ret)
+        btc_prices.append((ts, btc_price))
+        doge_prices.append((ts, doge_price))
+    is_idio, sig = detect_idiosyncratic_mode(doge_prices, btc_prices, beta=1.3)
+    assert is_idio is False
+
+
+def test_idiosyncratic_divergent_move_flagged():
+    import random
+    random.seed(42)
+    now = _time.time()
+    doge_prices = []
+    btc_prices = []
+    doge_price = 0.10
+    btc_price = 50000.0
+    for i in range(90):
+        ts = now - (90 - i) * 60
+        btc_ret = random.gauss(0, 0.0001)
+        btc_price = btc_price * (1 + btc_ret)
+        if i < 75:
+            doge_ret = 1.3 * btc_ret + random.gauss(0, 0.0001)
+        else:
+            doge_ret = 0.003  # +0.3%/min with BTC flat
+        doge_price = doge_price * (1 + doge_ret)
+        btc_prices.append((ts, btc_price))
+        doge_prices.append((ts, doge_price))
+    is_idio, sig = detect_idiosyncratic_mode(doge_prices, btc_prices, beta=1.3)
+    assert is_idio is True
+    assert sig["divergence_sigma"] > 2.5

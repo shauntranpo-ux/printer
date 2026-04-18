@@ -37,7 +37,7 @@
       "min_ev_base": 9
     },
     "XRP": {"min_ev_base": 9, "max_spread_cents": 3},
-    "DOGE": {}
+    "DOGE": {"min_ev_base": 10, "max_spread_cents": 3}
   },
   "use_new_strategies": {
     "BTC": true,
@@ -45,7 +45,7 @@
     "ETH": true,
     "SOL": true,
     "XRP": true,
-    "DOGE": false
+    "DOGE": true
   },
   "max_spread_cents": 3.0,
   "min_seconds_left": 30,

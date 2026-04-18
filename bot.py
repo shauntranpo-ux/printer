@@ -2037,6 +2037,13 @@ def _get_or_make_strategy(asset: str, config):
                 min_ev=min_ev,
                 stake_dollars=stake,
             )
+        elif asset == "DOGE":
+            from strategies.doge_strategy import DOGEStrategy
+            strat = DOGEStrategy(
+                skip_config=skip_cfg,
+                min_ev=min_ev,
+                stake_dollars=stake,
+            )
         else:
             return None  # other assets not yet implemented
 
