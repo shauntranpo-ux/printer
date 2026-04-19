@@ -1559,6 +1559,9 @@ if __name__ == "__main__":
     parser.add_argument("--max-rr",          type=float, default=999.0,
                         dest="max_rr",
                         help="Max risk:reward ratio (entry / reward). Default: 999 = no filter.")
+    parser.add_argument("--vol-gate",        type=float, default=1.50,
+                        dest="vol_gate",
+                        help="Skip window if expected_move / realized_vol >= this. Default: 1.50.")
     args = parser.parse_args()
 
     if args.periods:
@@ -1644,6 +1647,7 @@ if __name__ == "__main__":
                 max_entry_price_cents = args.max_entry_price,
                 min_reward_cents      = args.min_reward,
                 max_risk_reward_ratio = args.max_rr,
+                vol_threshold         = args.vol_gate,
             )
             if _r:
                 print_report(_r)
