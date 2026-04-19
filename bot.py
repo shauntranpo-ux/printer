@@ -2228,15 +2228,17 @@ async def place_order(
     mode: str,
     market: dict | None = None,
     asset: str = "BTC",
+    secs_left: float = 900.0,
 ) -> dict:
     """
-    Place a fill-or-kill limit order on Kalshi.
+    Place a limit order on Kalshi.
 
-    Re-fetches a fresh price before each attempt — the price from READY
-    evaluation can be stale by the time we reach this call (brain + Claude
-    evaluation takes time, and BTC markets reprice fast).
+    Late window (<5 min): resting GTC limit at target price, polled for up to
+    15 seconds then cancelled if unfilled. Guarantees fill at evaluated price —
+    no price chasing when the market is moving fast.
 
-    Retries up to 5 times, bumping by 2c each attempt.
+    Early window (>=5 min): IOC with up to 5 retries bumping 3c each attempt.
+
     In paper mode, simulates an instant fill without hitting the API.
 
     Returns:
@@ -2252,6 +2254,98 @@ async def place_order(
         }
 
     path = "/portfolio/orders"
+
+    # ── Late-window: resting GTC limit ────────────────────────────────────────
+    # When < 5 minutes remain, price is volatile. Post at the evaluated price
+    # and wait up to 15 seconds for a fill rather than bumping price on retries.
+    if secs_left < 300.0:
+        # Re-fetch fresh price once before posting
+        try:
+            fresh_ob = await fetch_orderbook(session, ticker, market)
+            if fresh_ob is not None:
+                fp = fresh_ob["best_yes_ask"] if side == "yes" else fresh_ob["best_no_ask"]
+                if fp is not None and fp != entry_price_cents:
+                    log.info(f"[passive] Price updated {entry_price_cents}c -> {fp}c for {side.upper()} on {ticker}")
+                    entry_price_cents = fp
+        except Exception as _fe:
+            log.warning(f"[passive] Fresh price fetch failed: {_fe}")
+
+        yes_price = entry_price_cents if side == "yes" else (100 - entry_price_cents)
+        client_order_id = f"kalshi_{int(time.time() * 1000)}_passive"
+        body = {
+            "ticker": ticker,
+            "side": side,
+            "type": "limit",
+            "count": contracts,
+            "yes_price": yes_price,
+            "action": "buy",
+            "client_order_id": client_order_id,
+            "time_in_force": "good_till_cancelled",
+        }
+        log.info(f"[passive] GTC limit {side.upper()} {contracts}x @ {entry_price_cents}c on {ticker} ({secs_left:.0f}s left)")
+        try:
+            async with session.post(
+                KALSHI_BASE_URL + path,
+                headers=kalshi_headers("POST", path),
+                json=body,
+                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+            ) as resp:
+                data = await resp.json()
+                http_status = resp.status
+        except Exception as exc:
+            log.error(f"[passive] Order POST failed: {exc}")
+            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+
+        if http_status not in (200, 201):
+            log.error(f"[passive] Order HTTP {http_status}: {data}")
+            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+
+        order_id = (data.get("order") or {}).get("order_id") or data.get("order_id")
+        if not order_id:
+            log.error(f"[passive] No order_id in response: {data}")
+            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+
+        # Poll for fill, cancel if not filled within 15 seconds
+        _poll_interval = 2.0
+        _poll_timeout  = 15.0
+        _elapsed       = 0.0
+        while _elapsed < _poll_timeout:
+            await asyncio.sleep(_poll_interval)
+            _elapsed += _poll_interval
+            try:
+                chk_path = f"/portfolio/orders/{order_id}"
+                async with session.get(
+                    KALSHI_BASE_URL + chk_path,
+                    headers=kalshi_headers("GET", chk_path),
+                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                ) as chk_resp:
+                    chk_data = await chk_resp.json()
+                chk_order = chk_data.get("order") or chk_data
+                status = chk_order.get("status", "")
+                if status not in ("resting", "pending"):
+                    cc = chk_order.get("contracts_count") or chk_order.get("filled_count") or contracts
+                    fp_raw = chk_order.get("yes_price", entry_price_cents)
+                    fp = fp_raw if side == "yes" else (100 - fp_raw)
+                    log.info(f"[passive] Order {order_id} status={status!r} filled={cc}x @ {fp}c")
+                    return {"fill_confirmed": True, "fill_price_cents": fp, "order_id": order_id, "filled_contracts": cc}
+            except Exception as pe:
+                log.warning(f"[passive] Poll error: {pe}")
+
+        # Timeout — cancel the resting order
+        log.info(f"[passive] No fill after {_poll_timeout:.0f}s — cancelling {order_id}")
+        try:
+            del_path = f"/portfolio/orders/{order_id}"
+            async with session.delete(
+                KALSHI_BASE_URL + del_path,
+                headers=kalshi_headers("DELETE", del_path),
+                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+            ) as del_resp:
+                await del_resp.json()
+        except Exception as ce:
+            log.warning(f"[passive] Cancel failed: {ce}")
+        return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
+
+    # ── Early window: IOC with price retries ──────────────────────────────────
     _bump_per_retry = 3   # cents per retry — 3c gives 0/3/6/9/12c spread across 5 attempts
     _max_retries    = 5
 
@@ -2986,7 +3080,7 @@ async def handle_ready_phase(
     if _use_state: state["order_attempted"].add(ticker)
     else: _order_attempted_tickers.add(ticker)
     log.info(f"{ticker}: TRADE {side} {contracts}x @ {int(entry_price_cents)}c (score={score}, mode={mode})")
-    result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market, asset=asset)
+    result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market, asset=asset, secs_left=secs_left)
 
     fill_confirmed = result["fill_confirmed"]
     _fp = result.get("fill_price_cents")
