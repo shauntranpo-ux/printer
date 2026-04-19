@@ -2,14 +2,14 @@
   "bot_enabled": false,
   "mode": "paper",
   "trade_amount_dollars": 5,
-  "confidence_threshold": 75,
+  "confidence_threshold": 82,
   "daily_loss_limit_dollars": 50,
   "daily_profit_target_dollars": 200,
   "max_consecutive_losses": 5,
   "enable_reversal_signal": false,
   "use_fixed_sizing": false,
   "kelly_cap": 0.25,
-  "min_ev_base": 5,
+  "min_ev_base": 10,
   "_note_min_ev_base": "in percent, e.g. 8 = 0.08 minimum EV threshold",
   "kalshi_fee_per_contract_cents": 7,
   "preflight_override": false,
@@ -23,22 +23,17 @@
   "enabled_assets": [
     "ETH",
     "SOL",
-    "XRP",
-    "DOGE"
+    "XRP"
   ],
   "asset_overrides": {
     "ETH": {
-      "min_ev_base": 3
+      "min_ev_base": 8
     },
     "SOL": {
-      "min_ev_base": 4
+      "min_ev_base": 8
     },
     "XRP": {
-      "min_ev_base": 4,
-      "max_spread_cents": 3
-    },
-    "DOGE": {
-      "min_ev_base": 5,
+      "min_ev_base": 8,
       "max_spread_cents": 3
     }
   },

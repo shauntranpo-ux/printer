@@ -1132,11 +1132,11 @@ async def fetch_orderbook(
             f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c < 100, skipping"
         )
         return None
-    if best_yes_ask + best_no_ask > 115:
-        # Spread > 15c is extreme — likely stale data
-        log.error(
-            f"Orderbook sanity FAIL for {ticker}: "
-            f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c > 115, skipping"
+    if best_yes_ask + best_no_ask > 110:
+        # Spread > 10c means thin liquidity — fill quality will be poor
+        log.warning(
+            f"Orderbook spread too wide for {ticker}: "
+            f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c > 110, skipping"
         )
         return None
 
@@ -2799,6 +2799,12 @@ async def handle_ready_phase(
         log.info(f"{ticker}: < 90s remaining. Moving to DONE.")
         if _use_state: state["phase"] = "DONE"
         else: current_phase = "DONE"
+        return
+
+    # Early-window gate — skip first 90s while price is still anchoring
+    _elapsed = seconds_elapsed(market)
+    if _elapsed < 90:
+        log.debug(f"{ticker}: {_elapsed:.0f}s elapsed — price anchoring, skipping")
         return
 
     # ── Multi-window best-pick (BTC only) ────────────────────────────────────
