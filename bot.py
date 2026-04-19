@@ -2308,7 +2308,7 @@ async def place_order(
 
         _placed_mins = int(secs_left // 60)
         _placed_secs = int(secs_left % 60)
-        asyncio.ensure_future(send_telegram(
+        asyncio.create_task(send_telegram(
             f"📋 <b>[{asset}] LIMIT ORDER PLACED</b>\n"
             f"{'⬆' if side == 'yes' else '⬇'} <b>{side.upper()}</b>  {contracts} contracts @ <b>{entry_price_cents}¢</b>\n"
             f"Expires in {_placed_mins}m {_placed_secs}s  |  <code>{ticker}</code>"
@@ -2332,7 +2332,12 @@ async def place_order(
                 chk_order = chk_data.get("order") or chk_data
                 status = chk_order.get("status", "")
                 if status not in ("resting", "pending"):
-                    cc = chk_order.get("contracts_count") or chk_order.get("filled_count") or contracts
+                    if status in ("cancelled", "canceled", "expired"):
+                        log.info(f"[passive] Order {order_id} terminal status={status!r} — no fill")
+                        return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
+                    _cc = chk_order.get("contracts_count")
+                    _fc = chk_order.get("filled_count")
+                    cc = _cc if _cc is not None else (_fc if _fc is not None else contracts)
                     fp_raw = chk_order.get("yes_price", entry_price_cents)
                     fp = fp_raw if side == "yes" else (100 - fp_raw)
                     log.info(f"[passive] Order {order_id} status={status!r} filled={cc}x @ {fp}c")
@@ -3615,7 +3620,7 @@ async def main_loop() -> None:
 
                 if "BTC" not in config.get("enabled_assets", []):
                     await write_state_file(config, None, "DONE", 0,
-                                           get_btc_price(), None, {}, None, None)
+                                           get_btc_price(), 0, {}, "btc_disabled", "")
                     await asyncio.sleep(10)
                     continue
 
