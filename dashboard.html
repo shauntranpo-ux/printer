@@ -88,7 +88,7 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 .reset-btn:hover{border-color:var(--down);color:var(--down);}
 
 /* ── Market grid ── */
-#market-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
+#market-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
 .market-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 14px 12px;box-shadow:var(--shadow);cursor:pointer;transition:border-color .15s;}
 .market-card:hover{border-color:var(--line-2);}
 .market-card.mc-offline{opacity:.55;}
@@ -287,6 +287,9 @@ tr:last-child td{border-bottom:none;}
   <div class="topbar-inner">
     <div class="tab-group">
       <button class="tb-tab active" id="tbtab-overview" onclick="selectTab('overview')">Overview</button>
+      <button class="tb-tab" id="tbtab-BTC"  onclick="selectTab('BTC')">
+        <span id="logo-BTC-sm"></span>BTC
+      </button>
       <button class="tb-tab" id="tbtab-ETH"  onclick="selectTab('ETH')">
         <span id="logo-ETH-sm"></span>ETH
       </button>
@@ -527,10 +530,10 @@ tr:last-child td{border-bottom:none;}
           <span style="font-size:10px;color:var(--ink-3);margin-left:auto;">min EV: <input type="number" id="s-ev-XRP" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--line-2);border-radius:4px;color:var(--ink);"> <button class="s-save" onclick="saveAssetEV('XRP')">✓</button></span>
         </div>
         <div class="s-group" style="flex-direction:row;align-items:center;gap:10px;">
-          <label style="min-width:60px;">DOGE</label>
-          <label class="tog"><input type="checkbox" id="s-asset-DOGE" onchange="toggleAsset('DOGE',this.checked)"><span class="tog-slider"></span></label>
-          <span class="tog-lbl" id="s-asset-DOGE-label">—</span>
-          <span style="font-size:10px;color:var(--ink-3);margin-left:auto;">min EV: <input type="number" id="s-ev-DOGE" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--line-2);border-radius:4px;color:var(--ink);"> <button class="s-save" onclick="saveAssetEV('DOGE')">✓</button></span>
+          <label style="min-width:60px;">BTC</label>
+          <label class="tog"><input type="checkbox" id="s-asset-BTC" onchange="toggleAsset('BTC',this.checked)"><span class="tog-slider"></span></label>
+          <span class="tog-lbl" id="s-asset-BTC-label">—</span>
+          <span style="font-size:10px;color:var(--ink-3);margin-left:auto;">min EV: <input type="number" id="s-ev-BTC" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--line-2);border-radius:4px;color:var(--ink);"> <button class="s-save" onclick="saveAssetEV('BTC')">✓</button></span>
         </div>
       </div>
     </div>
@@ -599,6 +602,8 @@ tr:last-child td{border-bottom:none;}
 // ── Crypto logo SVGs ──
 function cryptoLogoHtml(sym, size) {
   switch(sym) {
+    case 'BTC':
+      return `<svg viewBox="0 0 32 32" width="${size}" height="${size}" style="display:block"><circle cx="16" cy="16" r="16" fill="#f7931a"/><path fill="#FFF" d="M22.2 14.2c.3-2-1.2-3.1-3.3-3.8l.7-2.7-1.6-.4-.7 2.6-1.3-.3.7-2.6-1.6-.4-.7 2.7-1 .3v-.1l-2.2-.6-.4 1.7s1.2.3 1.2.3c.7.2.8.7.8 1l-.8 3.3c.1 0 .1 0 .2.1l-.2-.1-1.1 4.4c-.1.2-.3.6-.8.4 0 0-1.2-.3-1.2-.3l-.8 1.8 2.1.5 1.1.3-.7 2.7 1.6.4.7-2.7 1.3.3-.7 2.7 1.6.4.7-2.7c2.8.5 4.8.3 5.7-2.2.7-2-.1-3.2-1.5-3.9 1.1-.3 1.9-1 2.1-2.6zm-3.8 5.3c-.5 2-3.8.9-4.9.7l.9-3.5c1.1.3 4.5.8 4 2.8zm.5-5.3c-.5 1.8-3.2.9-4.2.7l.8-3.2c1 .3 4 .7 3.4 2.5z"/></svg>`;
     case 'ETH':
       return `<svg viewBox="0 0 256 417" width="${size}" height="${size}" style="display:block"><polygon fill="#343434" points="127.9,0 125.2,9.5 125.2,285.2 127.9,287.9 255.8,212.3"/><polygon fill="#8C8C8C" points="127.9,0 0,212.3 127.9,287.9 127.9,154.2"/><polygon fill="#3C3C3B" points="127.9,312.2 126.4,314.1 126.4,412.2 127.9,416.9 255.9,236.6"/><polygon fill="#8C8C8C" points="127.9,416.9 127.9,312.2 0,236.6"/><polygon fill="#141414" points="127.9,287.9 255.8,212.3 127.9,154.2"/><polygon fill="#393939" points="0,212.3 127.9,287.9 127.9,154.2"/></svg>`;
     case 'SOL':
@@ -612,7 +617,7 @@ function cryptoLogoHtml(sym, size) {
 }
 
 // Inject small logos into topbar tabs
-['ETH','SOL','XRP'].forEach(sym => {
+['BTC','ETH','SOL','XRP'].forEach(sym => {
   const el = document.getElementById('logo-'+sym+'-sm');
   if (el) el.innerHTML = cryptoLogoHtml(sym, 16);
 });
@@ -631,7 +636,7 @@ let _currentTab='overview';
 let _currentMarketSym=null;
 
 // ── Tab navigation ──
-const MARKET_TABS = ['ETH','SOL','XRP'];
+const MARKET_TABS = ['BTC','ETH','SOL','XRP'];
 function selectTab(tab) {
   _currentTab = tab;
   // Hide all panels
@@ -1064,8 +1069,8 @@ function updateAllocation() {
 }
 
 // ── Price / secs formatters ──
-const _ASSET_ORDER = ['ETH','SOL','XRP'];
-const _ASSET_LABEL = {ETH:'ETH',SOL:'SOL',XRP:'XRP'};
+const _ASSET_ORDER = ['BTC','ETH','SOL','XRP'];
+const _ASSET_LABEL = {BTC:'BTC',ETH:'ETH',SOL:'SOL',XRP:'XRP'};
 function _fmtPrice(asset, price) {
   if (price==null) return '—';
   if (asset==='ETH') return '$'+price.toLocaleString('en-US',{maximumFractionDigits:0});
@@ -1269,8 +1274,8 @@ async function saveAssetEV(asset) {
   await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_asset_ev',asset,value:val})});
 }
 function populateAssetToggles(cfg) {
-  const enabled = cfg.enabled_assets || ['ETH','SOL','XRP','DOGE'];
-  ['ETH','SOL','XRP','DOGE'].forEach(a => {
+  const enabled = cfg.enabled_assets || ['ETH','SOL','XRP'];
+  ['BTC','ETH','SOL','XRP'].forEach(a => {
     const cb=document.getElementById('s-asset-'+a), lbl=document.getElementById('s-asset-'+a+'-label');
     if (cb) cb.checked = enabled.includes(a);
     if (lbl) lbl.textContent = enabled.includes(a) ? 'ON' : 'OFF';
