@@ -7,7 +7,6 @@
   "daily_profit_target_dollars": 200,
   "max_consecutive_losses": 5,
   "enable_reversal_signal": false,
-  "enable_claude_filter": false,
   "use_fixed_sizing": false,
   "kelly_cap": 0.25,
   "min_ev_base": 5,

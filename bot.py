@@ -41,12 +41,6 @@ from asset_manager import (
     coinbase_price_task,
 )
 
-try:
-    import anthropic as _anthropic_module
-    _ANTHROPIC_AVAILABLE = True
-except ImportError:
-    _ANTHROPIC_AVAILABLE = False
-
 # ─────────────────────────── logging ──────────────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
@@ -138,19 +132,10 @@ _asset_eval: dict = {}
 # Contract price history — tracks YES ask over time per ticker for velocity signal
 _contract_price_history: dict = {}   # ticker → deque[(ts, price)]
 
-# Claude AI client
-_claude_client = None       # AsyncAnthropic instance, set in main()
-_claude_cache: dict = {}    # cache_key → {ts, result}
-CLAUDE_CACHE_TTL = 15       # seconds between Claude calls for same market+side
-
 # Real-time market context cache (Fear & Greed, news headlines, social signals)
 _market_context: dict = {"fear_greed": None, "news": []}
 _market_context_ts: float = 0.0
 _MARKET_CONTEXT_TTL: int = 120   # refresh every 2 minutes
-
-# Claude's last analysis (written to state file for dashboard)
-last_claude_reasoning: str = ""
-last_claude_key_signals: list = []
 
 # Adaptive weights — updated every 20 completed trades from DB analysis
 _adaptive: dict = {
@@ -374,13 +359,11 @@ def _init_config() -> None:
         "daily_profit_target_dollars": 200,
         "max_consecutive_losses": 5,             # pause 15 min after this many losses in a row
         "enable_reversal_signal": False,         # disabled by default — no backtested evidence yet
-        "enable_claude_filter": False,           # disabled by default — LLM adds latency/cost, no proven edge
         "use_fixed_sizing": False,               # when True, bypasses Kelly and uses fixed trade_amount
         "kelly_cap": 0.25,                       # quarter-Kelly cap; Kelly fraction never exceeds this
         "min_ev_base": 8,                        # raised from 3 to 8 after adding fee accounting
         "kalshi_fee_per_contract_cents": 7,      # Kalshi platform fee; update if pricing changes
         "preflight_override": False,             # set true ONLY to bypass pre-flight hard stop — not recommended
-        # claude_enabled: config key unused — Claude activates automatically via ANTHROPIC_API_KEY
     }
 
     # Load existing config or start from defaults
@@ -450,9 +433,7 @@ def init_db() -> None:
                 exit_reason           TEXT,
                 outcome               TEXT DEFAULT 'pending',
                 pnl_dollars           REAL,
-                profit_percent        REAL,
-                claude_confidence     INTEGER,
-                claude_signals        TEXT
+                profit_percent        REAL
             )
         """)
 
@@ -512,8 +493,6 @@ def init_db() -> None:
 
         # Migrate existing DB — add new columns if not present
         for col, typedef in (
-            ("claude_confidence", "INTEGER"),
-            ("claude_signals",    "TEXT"),
             ("order_id",          "TEXT"),
             ("asset",             "TEXT DEFAULT 'BTC'"),  # multi-asset support
         ):
@@ -573,8 +552,8 @@ async def db_write_trade(trade: dict) -> int | None:
                     model_prob, implied_prob, btc_price_at_entry, strike,
                     seconds_left_at_entry, fill_confirmed,
                     exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                    claude_confidence, claude_signals, order_id, asset
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    order_id, asset
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
                 trade.get("mode"), trade.get("side"), trade.get("contracts"),
@@ -586,7 +565,6 @@ async def db_write_trade(trade: dict) -> int | None:
                 trade.get("exit_price_cents"), trade.get("exit_reason"),
                 trade.get("outcome", "pending"), trade.get("pnl_dollars"),
                 trade.get("profit_percent"),
-                trade.get("claude_confidence"), trade.get("claude_signals"),
                 trade.get("order_id"), trade.get("asset", "BTC"),
             ))
             await db.commit()
@@ -1470,38 +1448,6 @@ async def calibrate_brain() -> None:
         if len(no_rows) >= 10:
             _brain_cal["bearish_wr"] = sum(1 for r in no_rows  if r[5] == "win") / len(no_rows)
 
-        # ── 5. Learn from Claude's stored decisions ───────────────────────────
-        async with aiosqlite.connect(_DB_FILE) as _db2:
-            await _db2.execute("PRAGMA journal_mode=WAL")
-            async with _db2.execute("""
-                SELECT claude_confidence, outcome FROM trades
-                WHERE outcome IN ('win','loss') AND claude_confidence IS NOT NULL
-                ORDER BY ts DESC LIMIT 50
-            """) as _cur2:
-                claude_rows = await _cur2.fetchall()
-
-        if len(claude_rows) >= 5:
-            # Claude's avg confidence on wins vs losses
-            c_wins  = [r[0] for r in claude_rows if r[1] == "win"]
-            c_losses= [r[0] for r in claude_rows if r[1] == "loss"]
-            if c_wins and c_losses:
-                avg_c_win  = sum(c_wins)  / len(c_wins)
-                avg_c_loss = sum(c_losses)/ len(c_losses)
-                # If Claude's confidence on wins is meaningfully higher than on losses,
-                # its probability estimates were directionally correct → trust its scale
-                if avg_c_win > avg_c_loss + 10:
-                    claude_implied_scale = (avg_c_win / 100) / max(overall_wr, 0.01)
-                    # Blend very gently — same conservative rate as the main calibration
-                    _brain_cal["prob_scale"] = (
-                        0.95 * _brain_cal["prob_scale"] +
-                        0.05 * claude_implied_scale
-                    )
-                    _brain_cal["prob_scale"] = max(0.85, min(1.5, _brain_cal["prob_scale"]))
-                    brain_log.info(
-                        f"[CLAUDE->BRAIN] Absorbed {len(claude_rows)} Claude decisions. "
-                        f"avg_conf wins={avg_c_win:.0f} losses={avg_c_loss:.0f} | "
-                        f"prob_scale={_brain_cal['prob_scale']:.2f}"
-                    )
         _brain_cal["last_count"] = total
         brain_log.info(
             f"[CALIBRATION] {total} trades | WR={overall_wr:.0%} -> {tier_label} | "
@@ -1517,309 +1463,6 @@ async def calibrate_brain() -> None:
 
     except Exception as exc:
         log.error(f"Brain calibration error: {exc}")
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  Claude AI — primary decision engine
-# ══════════════════════════════════════════════════════════════════════════════
-
-def _init_claude() -> None:
-    """Initialise the AsyncAnthropic client if the package and API key are present."""
-    global _claude_client
-    if not _ANTHROPIC_AVAILABLE:
-        log.warning("anthropic package not installed — Claude AI disabled (falling back to rule-based).")
-        return
-    ak = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    if not ak:
-        log.warning("ANTHROPIC_API_KEY not set — Claude AI disabled (falling back to rule-based).")
-        return
-    _claude_client = _anthropic_module.AsyncAnthropic(api_key=ak)
-    log.info("Claude AI client ready (claude-haiku-4-5 — borderline filter mode).")
-
-
-async def _recent_trades_for_claude() -> list:
-    """Return the last 15 completed trades as plain dicts for the Claude prompt."""
-    try:
-        async with aiosqlite.connect(_DB_FILE) as conn:
-            async with conn.execute("""
-                SELECT ts, side, entry_price_cents, seconds_left_at_entry,
-                       btc_price_at_entry, strike, outcome, pnl_dollars, confidence_score
-                FROM trades WHERE outcome IN ('win','loss')
-                ORDER BY ts DESC LIMIT 15
-            """) as cursor:
-                rows = await cursor.fetchall()
-        return [
-            {
-                "ts": r[0], "side": r[1], "entry_cents": r[2],
-                "secs_left": r[3], "btc": r[4], "strike": r[5],
-                "outcome": r[6], "pnl": r[7], "score": r[8],
-            }
-            for r in rows
-        ]
-    except Exception:
-        return []
-
-
-async def _fetch_market_context(session: aiohttp.ClientSession) -> dict:
-    """
-    Pull real-time BTC market sentiment from free public APIs.
-
-    Sources (always, no auth required):
-      - alternative.me Fear & Greed Index  — 0 (extreme fear) to 100 (extreme greed)
-      - CryptoPanic BTC news               — latest 5 headlines
-
-    Sources (optional, env-var gated):
-      - NewsAPI.org keyword search          — NEWSAPI_KEY (100 req/day free tier)
-
-    Returns cached result if < _MARKET_CONTEXT_TTL seconds old.
-    """
-    global _market_context, _market_context_ts
-
-    now = time.time()
-    if now - _market_context_ts < _MARKET_CONTEXT_TTL:
-        return _market_context
-
-    # Single-coroutine path (main_loop is sequential) — no lock needed.
-    # If the call graph ever becomes concurrent, add an asyncio.Lock here.
-    ctx: dict = {"fear_greed": None, "news": []}
-    timeout = aiohttp.ClientTimeout(total=6)
-
-    # ── Fear & Greed Index ──────────────────────────────────────────────────
-    try:
-        async with session.get(
-            "https://api.alternative.me/fng/?limit=1",
-            timeout=timeout,
-        ) as resp:
-            if resp.status == 200:
-                data = await resp.json(content_type=None)
-                entry = data["data"][0]
-                ctx["fear_greed"] = {
-                    "value": int(entry["value"]),
-                    "label": entry["value_classification"],
-                }
-    except Exception as exc:
-        log.debug(f"[ctx] Fear&Greed fetch failed: {exc}")
-
-    # ── CryptoPanic BTC news (requires free API key at cryptopanic.com) ─────
-    cryptopanic_key = os.environ.get("CRYPTOPANIC_KEY", "")
-    if cryptopanic_key:
-        try:
-            async with session.get(
-                "https://cryptopanic.com/api/free/v1/posts/",
-                params={"auth_token": cryptopanic_key, "currencies": "BTC", "public": "true"},
-                timeout=timeout,
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json(content_type=None)
-                    for post in (data.get("results") or [])[:5]:
-                        ctx["news"].append({
-                            "title": post.get("title", ""),
-                            "votes": post.get("votes", {}),
-                        })
-                else:
-                    log.debug(f"[ctx] CryptoPanic returned HTTP {resp.status}")
-        except Exception as exc:
-            log.debug(f"[ctx] CryptoPanic fetch failed: {exc}")
-
-    # ── NewsAPI.org (optional) ──────────────────────────────────────────────
-    newsapi_key = os.environ.get("NEWSAPI_KEY", "")
-    if newsapi_key and len(ctx["news"]) < 5:
-        try:
-            async with session.get(
-                "https://newsapi.org/v2/everything",
-                params={
-                    "q": "bitcoin OR crypto",
-                    "sortBy": "publishedAt",
-                    "pageSize": 5,
-                    "language": "en",
-                    "apiKey": newsapi_key,
-                },
-                timeout=timeout,
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json(content_type=None)
-                    for art in (data.get("articles") or [])[:5]:
-                        ctx["news"].append({
-                            "title": art.get("title", ""),
-                            "source": art.get("source", {}).get("name", ""),
-                        })
-        except Exception as exc:
-            log.debug(f"[ctx] NewsAPI fetch failed: {exc}")
-
-    _market_context = ctx
-    _market_context_ts = time.time()
-
-    fg = ctx["fear_greed"]
-    fg_desc = f"F&G={fg['value']}({fg['label']})" if fg else "F&G=n/a"
-    log.info(
-        f"[ctx] Market context updated — {fg_desc} news={len(ctx['news'])}"
-    )
-    return ctx
-
-
-async def claude_analysis(
-    session: aiohttp.ClientSession,
-    btc_price: float,
-    strike: float,
-    yes_ask: float,
-    no_ask: float,
-    elapsed_seconds: float,
-    secs_left: float,
-    ticker: str,
-) -> dict | None:
-    """
-    Ask Claude to pick a side AND decide whether to trade.
-    Receives both YES and NO prices so it is never blocked by a direction gate.
-
-    Returns dict: {action, side, confidence, reasoning, key_signals}
-    Returns None if Claude is unavailable — caller falls back to rule-based.
-    """
-    global last_claude_reasoning, last_claude_key_signals
-
-    if _claude_client is None:
-        return None
-
-    # Cache keyed on ticker + price bucket (refreshes every CLAUDE_CACHE_TTL s)
-    cache_key = f"{ticker}:{int(yes_ask // 3) * 3}"
-    cached = _claude_cache.get(cache_key)
-    if cached and (time.time() - cached["ts"]) < CLAUDE_CACHE_TTL:
-        r = cached["result"]
-        last_claude_reasoning = r.get("reasoning", "")
-        last_claude_key_signals = r.get("key_signals", [])
-        return r
-
-    # BTC price history
-    now_ts = time.time()
-    recent_btc = [(ts, p) for ts, p in btc_prices if ts >= now_ts - 300]
-    btc_5m  = recent_btc[0][1]  if recent_btc else btc_price
-    btc_1m  = next((p for ts, p in reversed(recent_btc) if ts <= now_ts - 60),  btc_price)
-    btc_30s = next((p for ts, p in reversed(recent_btc) if ts <= now_ts - 30),  btc_price)
-
-    mom_pct, mom_label = calculate_momentum()
-    pct_from_strike = (btc_price - strike) / strike * 100
-    recent_trades = await _recent_trades_for_claude()
-
-    # Real-time market context (Fear & Greed, news, social signals)
-    ctx = await _fetch_market_context(session)
-
-    # Build a compact sentiment block for the prompt
-    fg = ctx.get("fear_greed")
-    fg_line = (
-        f"Fear & Greed Index: {fg['value']}/100 — {fg['label']}"
-        if fg else "Fear & Greed Index: unavailable"
-    )
-
-    news_lines = "\n".join(
-        f"  • {n['title'][:120]}"
-        for n in ctx.get("news", [])[:5]
-    ) or "  (no recent headlines)"
-
-    sentiment_block = f"""\nREAL-TIME MARKET SENTIMENT:
-{fg_line}
-
-RECENT CRYPTO NEWS:
-{news_lines}"""
-
-    system_prompt = (
-        "You are a fast quantitative filter for a Kalshi BTC binary options bot. "
-        "The primary model (Brain v3) has already evaluated this trade using empirical win probabilities from 4.5M rows of BTC data. "
-        "You are being consulted because the trade is BORDERLINE — the expected value is between 2-5% or confidence is 60-84. "
-        "You have access to real-time market sentiment: Fear & Greed Index and breaking crypto news. "
-        "Your job: confirm or reject. Be decisive. Only reject if you see a clear red flag "
-        "(momentum reversal, vol spike, price stalling at strike, or obvious negative macro catalyst from news). "
-        "Respond with valid JSON only — no markdown, no explanation outside the JSON."
-    )
-
-    user_prompt = f"""Kalshi BTC 15-minute market. Decide whether to trade and which side.
-
-MARKET: {ticker}
-STRIKE: ${strike:,.2f}
-BTC NOW: ${btc_price:,.2f}  ({pct_from_strike:+.3f}% from strike)
-TIME LEFT: {secs_left/60:.1f} min
-ELAPSED: {elapsed_seconds/60:.1f} min into 15-min window
-
-AVAILABLE CONTRACTS (both sides open):
-  BUY YES: {yes_ask:.1f}¢  — pays 100¢ if BTC > ${strike:,.2f} at close  (implied prob: {yes_ask:.1f}%)
-  BUY NO:  {no_ask:.1f}¢  — pays 100¢ if BTC ≤ ${strike:,.2f} at close  (implied prob: {no_ask:.1f}%)
-
-BTC PRICE MOVEMENT:
-  5 min ago: ${btc_5m:,.2f}
-  1 min ago: ${btc_1m:,.2f}
-  30 s  ago: ${btc_30s:,.2f}
-  Now:       ${btc_price:,.2f}
-  3-min momentum: {mom_label} ({mom_pct*100:+.3f}%){sentiment_block}
-
-PRINTER BRAIN STATE (your decisions will be stored and feed back into this):
-  Overall win rate:     {_brain_cal['overall_wr']:.0%}
-  Reward tier:          {_brain_cal['reward_tier']} / 3  (tier 3 = ≥85% WR = max reward)
-  Min EV required:      {(_brain_cal['min_edge_override'] or 0.20):.0%}
-  Prob scale factor:    {_brain_cal['prob_scale']:.2f}  (1.0 = neutral, <1 = overestimating)
-  YES win rate:         {_brain_cal['bullish_wr']:.0%}
-  NO  win rate:         {_brain_cal['bearish_wr']:.0%}
-  Cheap contracts win:  {_adaptive['low_price_wins']}
-  Near-strike wins:     {_adaptive['near_strike_wins']}
-
-RECENT TRADES ({len(recent_trades)} completed):
-{json.dumps(recent_trades, indent=2)}
-
-YOUR JOB:
-- Compare true probability (BTC distance from strike, momentum, time) vs the contract's implied probability.
-- Pick the side with the bigger edge, or skip if neither side is mispriced.
-- With {secs_left/60:.1f} min left, momentum and distance matter most.
-- Use sentiment/news/social ONLY to break ties or flag obvious macro risk; don't override strong technical signals.
-
-Respond with exactly this JSON:
-{{
-  "action": "trade" or "skip",
-  "side": "yes" or "no",
-  "confidence": <integer 0-100>,
-  "reasoning": "<2-3 sentences explaining the edge or why skipping>",
-  "key_signals": ["<signal 1>", "<signal 2>", "<signal 3>"]
-}}"""
-
-    try:
-        stream = _claude_client.messages.stream(
-            model="claude-haiku-4-5-20251001",
-            max_tokens=512,
-            system=system_prompt,
-            messages=[{"role": "user", "content": user_prompt}],
-        )
-        async with stream as s:
-            response = await s.get_final_message()
-
-        text = ""
-        for block in response.content:
-            if hasattr(block, "text"):
-                text = block.text
-                break
-
-        text = text.strip()
-        if text.startswith("```"):
-            text = re.sub(r"^```[a-z]*\n?", "", text)
-            text = re.sub(r"\n?```$", "", text.strip())
-
-        result = json.loads(text.strip())
-
-        if "action" not in result or result["action"] not in ("trade", "skip"):
-            raise ValueError(f"Invalid action: {result}")
-        result.setdefault("side", "yes")
-        result.setdefault("confidence", 50)
-        result.setdefault("reasoning", "")
-        result.setdefault("key_signals", [])
-
-        _claude_cache[cache_key] = {"ts": time.time(), "result": result}
-        last_claude_reasoning = result["reasoning"]
-        last_claude_key_signals = result["key_signals"]
-
-        log.info(
-            f"[Claude] {result['action'].upper()} {result['side'].upper()} "
-            f"conf={result['confidence']} | {result['reasoning'][:120]}"
-        )
-        return result
-
-    except Exception as exc:
-        log.error(f"Claude analysis error: {exc}")
-        return None
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -2930,9 +2573,6 @@ async def write_state_file(
         "btc_price": btc_price,
         "confidence_score": score,
         "confidence_breakdown": breakdown,
-        "claude_reasoning": last_claude_reasoning,
-        "claude_key_signals": last_claude_key_signals,
-        "claude_active": _claude_client is not None,
         "reward_tier": _brain_cal["reward_tier"],
         "brain_wr": _brain_cal["overall_wr"],
         "brain_min_edge": _brain_cal["min_edge_override"],
@@ -3221,13 +2861,6 @@ async def handle_ready_phase(
     else:
         _consecutive_price_skips = 0
 
-    # ── Claude — blend with brain, don't replace it ──────────────────────────
-    # HIGH CONFIDENCE (brain win_prob >= 0.85 and action=trade) → trade immediately, skip Claude
-    # HARD SKIP (brain EV < 0.02) → skip, don't waste API call
-    # BORDERLINE (EV above 0.02 but below session floor, OR confidence 60-84) → ask Claude
-    # Disabled by default (enable_claude_filter=false) — adds latency/cost with no proven edge.
-    # The claude_conf >= 75 upgrade path (skip→trade) is particularly dangerous when disabled.
-    _active_claude_result = None
     entry_price_cents = yes_ask if side == "yes" else no_ask
     _fee = config.get("kalshi_fee_per_contract_cents", 7) / 100
     brain_ev = brain.get("win_prob", 0.5) - (entry_price_cents / 100) - _fee
@@ -3245,41 +2878,6 @@ async def handle_ready_phase(
         "status":       "WATCHING",
         "skip_reason":  "",
     }
-
-    if _claude_client is not None and config.get("enable_claude_filter", False):
-        if brain_win_prob >= 0.95 and do_trade:
-            # Very high confidence — go straight through without Claude overhead
-            log.info(f"{ticker}: Brain high-conf {score}, skipping Claude")
-        elif brain_ev < 0.02:
-            # Hard skip — no edge worth evaluating
-            pass
-        else:
-            # Borderline — get Claude's second opinion
-            claude_result = await claude_analysis(
-                session, btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker
-            )
-            if claude_result is not None:
-                _active_claude_result = claude_result
-                claude_conf = claude_result.get("confidence", 50)
-                # 70% brain, 30% Claude
-                blended_score = int(0.70 * score + 0.30 * claude_conf)
-                # Claude can upgrade a brain skip to a trade if it's confident enough
-                if not do_trade and claude_result["action"] == "trade" and claude_conf >= 75:
-                    do_trade = True
-                    side = claude_result["side"]
-                    score = blended_score
-                    skip_reason_ai = ""
-                    log.info(f"{ticker}: Claude upgraded skip→trade (claude_conf={claude_conf}, blended={blended_score})")
-                # Claude can downgrade a brain trade to skip if it's bearish
-                elif do_trade and claude_result["action"] == "skip" and claude_conf < 40:
-                    do_trade = False
-                    score = blended_score
-                    skip_reason_ai = f"Claude vetoed (conf={claude_conf}): {claude_result.get('reasoning', '')[:80]}"
-                    log.info(f"{ticker}: Claude vetoed trade (claude_conf={claude_conf})")
-                else:
-                    # Blend score but keep brain's action
-                    score = blended_score
-                    log.info(f"{ticker}: Claude blended score {score} (brain={brain['confidence']}, claude={claude_conf})")
 
     entry_price_cents = yes_ask if side == "yes" else no_ask
 
@@ -3467,8 +3065,6 @@ async def handle_ready_phase(
         "outcome": "pending",
         "pnl_dollars": None,
         "profit_percent": None,
-        "claude_confidence": _active_claude_result["confidence"] if _active_claude_result else None,
-        "claude_signals":    json.dumps(_active_claude_result["key_signals"]) if _active_claude_result else None,
         "order_id":          order_id,
         "asset":             asset,
     }
@@ -4311,7 +3907,6 @@ async def run_preflight_checks(config: dict) -> None:
         log.info("=" * W)
         log.info(f"  Pre-flight: PASS — {mode.upper()} mode.  "
                  f"fee={fee}c  dll=${dll}  "
-                 f"claude={'ON' if config.get('enable_claude_filter') else 'OFF'}  "
                  f"reversal={'ON' if config.get('enable_reversal_signal') else 'OFF'}")
         log.info("=" * W)
 
@@ -4344,7 +3939,6 @@ async def main() -> None:
         log.warning(f"Startup zombie-trade cleanup failed (non-fatal): {_e}")
 
     _load_bv3_corrections()
-    _init_claude()
 
     # Verify Kalshi credentials and log account balance before doing anything
     async with aiohttp.ClientSession() as verify_session:

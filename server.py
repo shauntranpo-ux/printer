@@ -62,7 +62,6 @@ _FULL_CONFIG_DEFAULT = {
     "confidence_threshold": 72,
     "daily_loss_limit_dollars": 50000,
     "daily_profit_target_dollars": 50000,
-    "claude_enabled": False,
 }
 if not os.path.exists("config.json"):
     try:
@@ -119,7 +118,7 @@ def _telegram_notify(text: str) -> None:
 
 _CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 25, "confidence_threshold": 72,
                    "daily_loss_limit_dollars": 50000,
-                   "daily_profit_target_dollars": 50000, "claude_enabled": False}
+                   "daily_profit_target_dollars": 50000}
 _STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
                    "phase": "waiting", "mode": "paper"}
 
@@ -349,7 +348,6 @@ def api_config():
         "daily_profit_target_dollars": is_positive_number,
         "confidence_threshold":        lambda v: isinstance(v, (int, float)) and 50 <= v <= 100,
         "bot_enabled":                 lambda v: isinstance(v, bool),
-        "claude_enabled":              lambda v: isinstance(v, bool),
         "min_ev_base":                 lambda v: isinstance(v, (int, float)) and 0 <= v <= 20,
         "vol_gate_thresh":             lambda v: isinstance(v, (int, float)) and 0.5 <= v <= 10,
     }
@@ -773,10 +771,6 @@ def health():
 #  AI Analysis endpoints
 # ══════════════════════════════════════════════════════════════════════════════
 
-_analysis_running = False
-_analysis_lock    = threading.Lock()
-
-
 def _latest_analysis_file() -> str | None:
     files = sorted(glob.glob("daily_analysis/*.json"))
     return files[-1] if files else None
@@ -803,45 +797,6 @@ def api_analysis():
         return jsonify({"error": str(exc)}), 500
 
 
-@app.route("/api/analysis/run", methods=["POST"])
-def api_analysis_run():
-    """Run claude_analyzer.py as a blocking subprocess. Returns when done (~10–30 s)."""
-    global _analysis_running
-    with _analysis_lock:
-        if _analysis_running:
-            return jsonify({"ok": False, "msg": "Analysis already running"}), 409
-        _analysis_running = True
-    try:
-        if not os.environ.get("ANTHROPIC_API_KEY"):
-            return jsonify({"ok": False, "msg": "ANTHROPIC_API_KEY not set"}), 400
-        base = os.path.dirname(os.path.abspath(__file__))
-        result = subprocess.run(
-            [sys.executable, os.path.join(base, "claude_analyzer.py")],
-            capture_output=True, text=True, timeout=180, cwd=base,
-        )
-        if result.returncode != 0:
-            err = (result.stderr or result.stdout or "Analyzer failed")[-600:]
-            return jsonify({"ok": False, "msg": err})
-        path = _latest_analysis_file()
-        analysis = json.loads(open(path, encoding="utf-8").read()) if path else None
-        if analysis:
-            analysis["exists"] = True
-        return jsonify({"ok": True, "analysis": analysis})
-    except subprocess.TimeoutExpired:
-        return jsonify({"ok": False, "msg": "Analyzer timed out after 180 s"}), 500
-    except Exception as exc:
-        log.error(f"api_analysis_run error: {exc}", exc_info=True)
-        return jsonify({"error": str(exc)}), 500
-    finally:
-        with _analysis_lock:
-            _analysis_running = False
-
-
-@app.route("/api/analysis/status")
-def api_analysis_status():
-    """Return whether the analyzer is currently running."""
-    return jsonify({"running": _analysis_running})
-
 
 @app.route("/api/weekly")
 def api_weekly():
@@ -859,44 +814,6 @@ def api_weekly():
         return jsonify({"error": str(exc)}), 500
 
 
-def _auto_analysis_thread():
-    """Background daemon: once per day, if 10+ trades and no analysis file, run the analyzer."""
-    import time as _time
-    _last_auto_date = None
-    while True:
-        try:
-            _time.sleep(300)  # check every 5 min
-            today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-            if _last_auto_date == today:
-                continue
-            analysis_path = f"daily_analysis/{today}.json"
-            if os.path.exists(analysis_path):
-                _last_auto_date = today
-                continue
-            if not os.environ.get("ANTHROPIC_API_KEY"):
-                continue
-            # Count today's trades
-            try:
-                conn = get_db()
-                row = conn.execute(
-                    "SELECT COUNT(*) FROM trades WHERE outcome IN ('win','loss') "
-                    "AND ts >= ?", (today,)
-                ).fetchone()
-                conn.close()
-                trade_count = row[0] if row else 0
-            except Exception:
-                trade_count = 0
-            if trade_count < 10:
-                continue
-            log.info(f"Auto-analysis: {trade_count} trades today, no analysis file — running analyzer")
-            _last_auto_date = today
-            base = os.path.dirname(os.path.abspath(__file__))
-            subprocess.run(
-                [sys.executable, os.path.join(base, "claude_analyzer.py")],
-                capture_output=True, text=True, timeout=180, cwd=base,
-            )
-        except Exception as exc:
-            log.warning(f"Auto-analysis thread error: {exc}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -905,9 +822,6 @@ def _auto_analysis_thread():
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
-    _t = threading.Thread(target=_auto_analysis_thread, daemon=True, name="auto-analysis")
-    _t.start()
 
     port = int(os.environ.get("PORT", 5000))
     log.info(f"Starting Flask on 0.0.0.0:{port}")

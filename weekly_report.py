@@ -11,7 +11,7 @@ Usage:
     python weekly_report.py --force       # overwrite existing report
     python weekly_report.py --help        # show this help
 
-Requires daily_analysis/*.json files created by claude_analyzer.py.
+Requires daily_analysis/*.json files (one per trading day).
 """
 
 import argparse
@@ -21,58 +21,8 @@ import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-try:
-    import anthropic
-    _ANTHROPIC_AVAILABLE = True
-except ImportError:
-    _ANTHROPIC_AVAILABLE = False
-
 DAILY_DIR  = Path("daily_analysis")
 WEEKLY_DIR = Path("weekly_reports")
-MODEL      = "claude-sonnet-4-6"
-ASSETS     = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
-
-# Static system prompt — cached across weekly runs (cache_control: ephemeral)
-WEEKLY_SYSTEM_PROMPT = """\
-You are a quantitative trading analyst reviewing a full week of trading for a Kalshi \
-15-minute binary options bot that trades BTC, ETH, SOL, XRP, and DOGE.
-
-Respond ONLY in this exact JSON format:
-
-{
-  "week": "<ISO week label from the data>",
-  "days_analyzed": 0,
-  "overall_grade": "A/B/C/D/F",
-  "overall_assessment": "2-3 sentence summary of the week",
-  "weekly_pnl_per_asset": {
-    "BTC":  {"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"},
-    "ETH":  {"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"},
-    "SOL":  {"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"},
-    "XRP":  {"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"},
-    "DOGE": {"trades": 0, "pnl": 0.0, "win_rate": 0.0, "recommendation": "CONTINUE/PAUSE/REDUCE_SIZE/STOP"}
-  },
-  "win_rate_trend": "IMPROVING/STABLE/DECLINING",
-  "win_rate_trend_detail": "specific numbers from the daily data, e.g. Mon 58% → Fri 71%",
-  "edge_decay_assessment": "NONE/MILD/MODERATE/SEVERE — include PnL/trade numbers",
-  "high_confidence_changes": [
-    {
-      "field": "config field",
-      "asset": "ALL or specific asset",
-      "current_value": 0,
-      "suggested_value": 0,
-      "reason": "suggested N times this week, pattern: ...",
-      "times_suggested": 0
-    }
-  ],
-  "patterns_across_week": [
-    "pattern with specific numbers, e.g. XRP loses 80% of trades when entry > 70c"
-  ],
-  "next_week_strategy": "2-3 sentences on what to change or maintain next week"
-}
-
-Be specific. Use actual numbers from the daily data. Respond with ONLY the JSON. \
-No preamble. No markdown fences."""
-
 
 # ── Data loading ───────────────────────────────────────────────────────────────
 
@@ -165,119 +115,7 @@ def aggregate_weekly(analyses: list) -> dict:
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
-def _parse_claude_json(raw: str) -> dict:
-    """Extract JSON from Claude's response, stripping markdown fences if present."""
-    text = raw.strip()
-    if text.startswith("```"):
-        parts = text.split("```")
-        text = parts[1] if len(parts) > 1 else text
-        if text.startswith("json"):
-            text = text[4:]
-    return json.loads(text.strip())
 
-
-# ── Prompt builder ─────────────────────────────────────────────────────────────
-
-def build_weekly_user_message(week_label: str, analyses: list, agg: dict) -> str:
-    n = len(analyses)
-
-    # Day trend table
-    trend_rows = []
-    for d in agg["daily_trend"]:
-        pnl_sign = "+" if d["net_pnl"] >= 0 else ""
-        trend_rows.append(
-            f"  {d['date']} | grade={d['grade']:2s} | trades={d['trades']:3d} | "
-            f"wr={d['win_rate']:.1f}% | pnl={pnl_sign}${d['net_pnl']:.2f}"
-        )
-    trend_table = "\n".join(trend_rows) if trend_rows else "  (no data)"
-
-    # Per-asset summary
-    asset_rows = []
-    for asset in ASSETS:
-        info = agg["asset_weekly"].get(asset, {})
-        if not info:
-            continue
-        keep_ok = sum(1 for v in info["keep_votes"] if v)
-        total_v = len(info["keep_votes"])
-        asset_rows.append(
-            f"  {asset}: grades=[{', '.join(info['grades'])}] "
-            f"keep_trading={keep_ok}/{total_v} days"
-        )
-    asset_summary = "\n".join(asset_rows) if asset_rows else "  (no asset data)"
-
-    # Edge decay: first half vs second half of the week
-    half = n // 2
-    first_half  = agg["daily_trend"][:half] if half else []
-    second_half = agg["daily_trend"][half:] if half else []
-
-    def _avg_wr(days):
-        wrs = [d["win_rate"] for d in days if d["trades"] > 0]
-        return sum(wrs) / len(wrs) if wrs else 0.0
-
-    def _pnl_per_trade(days):
-        pnl = sum(d["net_pnl"] for d in days)
-        trds = sum(d["trades"] for d in days)
-        return pnl / trds if trds else 0.0
-
-    if first_half and second_half:
-        h1_wr, h2_wr   = _avg_wr(first_half), _avg_wr(second_half)
-        h1_ppt, h2_ppt = _pnl_per_trade(first_half), _pnl_per_trade(second_half)
-        ppt_delta = ((h1_ppt - h2_ppt) / abs(h1_ppt) * 100) if h1_ppt else 0
-        edge_decay = (
-            f"  First half:  WR={h1_wr:.1f}%  PnL/trade=${h1_ppt:.4f}\n"
-            f"  Second half: WR={h2_wr:.1f}%  PnL/trade=${h2_ppt:.4f}\n"
-            f"  PnL/trade change: {ppt_delta:+.1f}%"
-        )
-    else:
-        edge_decay = "  (fewer than 4 days — edge decay analysis unavailable)"
-
-    rep_str = (
-        json.dumps(agg["repeated_suggestions"], indent=2)
-        if agg["repeated_suggestions"]
-        else "  (no suggestions repeated 3+ times this week)"
-    )
-
-    daily_summary_compact = json.dumps(
-        [
-            {
-                "date":             a["_date"],
-                "grade":            a.get("overall_grade"),
-                "assessment":       a.get("overall_assessment"),
-                "tomorrow_strategy": a.get("tomorrow_strategy"),
-                "risk_warnings":    a.get("risk_warnings", []),
-                "patterns":         a.get("patterns_detected", []),
-            }
-            for a in analyses
-        ],
-        indent=2,
-    )
-
-    return f"""WEEK: {week_label}
-DAYS WITH ANALYSIS DATA: {n}/7
-
-WEEKLY TOTALS:
-- Total trades: {agg['total_trades']}
-- Wins: {agg['total_wins']} | Losses: {agg['total_losses']}
-- Overall win rate: {agg['overall_win_rate']:.1f}%
-- Total PnL: ${agg['total_pnl']:.2f}
-
-DAY-BY-DAY TREND:
-{trend_table}
-
-PER-ASSET WEEKLY SUMMARY (grades and keep_trading votes per day):
-{asset_summary}
-
-EDGE DECAY ANALYSIS (first half of week vs. second half):
-{edge_decay}
-
-REPEATED PARAMETER SUGGESTIONS (confidence = high if suggested 3+ days):
-{rep_str}
-
-ALL DAILY SUMMARIES:
-{daily_summary_compact}"""
-
-
-# ── Console output ─────────────────────────────────────────────────────────────
 
 def print_weekly_summary(report: dict, agg: dict) -> None:
     print("\n" + "=" * 62)
@@ -342,16 +180,13 @@ def print_weekly_summary(report: dict, agg: dict) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Weekly trend report for the Kalshi trading bot.",
+        description="Weekly aggregation report for the Kalshi trading bot.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
   python weekly_report.py               # current ISO week
   python weekly_report.py --week 2025-W15  # specific week
   python weekly_report.py --force       # overwrite existing report
-
-Prerequisite:
-  Run python claude_analyzer.py for each trading day first.
 
 Output:
   weekly_reports/YYYY-WNN.json
@@ -360,16 +195,6 @@ Output:
     parser.add_argument("--week",  help="ISO week label (e.g. 2025-W15). Defaults to current week.")
     parser.add_argument("--force", action="store_true", help="Overwrite existing report.")
     args = parser.parse_args()
-
-    if not _ANTHROPIC_AVAILABLE:
-        print("ERROR: anthropic package not installed. Run: pip install anthropic")
-        sys.exit(1)
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        print("ERROR: Set ANTHROPIC_API_KEY environment variable to use the analyzer.")
-        print("       Get your key from console.anthropic.com")
-        sys.exit(1)
 
     now = datetime.now(timezone.utc)
     if args.week:
@@ -391,7 +216,6 @@ Output:
     analyses = load_week_analyses(week_label)
     if not analyses:
         print(f"No daily analysis files found for {week_label}.")
-        print(f"Run: python claude_analyzer.py  (for each trading day)")
         sys.exit(0)
 
     print(f"Loaded {len(analyses)} daily analyses: {[a['_date'] for a in analyses]}")
@@ -406,47 +230,18 @@ Output:
         f"Week totals: {agg['total_trades']} trades, "
         f"{agg['overall_win_rate']:.1f}% WR, ${agg['total_pnl']:.2f} PnL"
     )
-    print(f"Sending to Claude ({MODEL})...")
 
-    user_message = build_weekly_user_message(week_label, analyses, agg)
-    client       = anthropic.Anthropic(api_key=api_key)
-    report       = None
-    raw          = ""
+    report = {
+        "week":             week_label,
+        "days_analyzed":    len(analyses),
+        "overall_grade":    "N/A",
+        "overall_assessment": (
+            f"{agg['total_trades']} trades over {len(analyses)} days | "
+            f"WR={agg['overall_win_rate']:.1f}% | PnL=${agg['total_pnl']:.2f}"
+        ),
+        "_weekly_stats":    agg,
+    }
 
-    try:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=4000,
-            system=[{
-                "type": "text",
-                "text": WEEKLY_SYSTEM_PROMPT,
-                "cache_control": {"type": "ephemeral"},
-            }],
-            messages=[{"role": "user", "content": user_message}],
-        )
-        raw    = response.content[0].text
-        report = _parse_claude_json(raw)
-        # Pin to actual count — don't let the model hallucinate this
-        report["days_analyzed"] = len(analyses)
-    except json.JSONDecodeError as exc:
-        print(f"WARNING: Claude returned non-JSON: {exc}")
-        report = {
-            "week":               week_label,
-            "overall_grade":      "N/A",
-            "overall_assessment": f"Claude returned non-JSON. Error: {exc}",
-            "claude_error":       str(exc),
-            "claude_raw":         raw[:500],
-        }
-    except Exception as exc:
-        print(f"WARNING: Claude API call failed: {exc}")
-        report = {
-            "week":               week_label,
-            "overall_grade":      "N/A",
-            "overall_assessment": f"Claude API error: {exc}",
-            "claude_error":       str(exc),
-        }
-
-    report["_weekly_stats"] = agg
     out_file.write_text(json.dumps(report, indent=2))
     print(f"Weekly report saved → {out_file}")
 
