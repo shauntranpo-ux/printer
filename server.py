@@ -352,6 +352,31 @@ def api_config():
         "vol_gate_thresh":             lambda v: isinstance(v, (int, float)) and 0.5 <= v <= 10,
     }
 
+    # Action-based updates (enable_asset, disable_asset, set_asset_ev)
+    action = data.get("action")
+    if action in ("enable_asset", "disable_asset", "set_asset_ev"):
+        asset = data.get("asset", "").upper()
+        valid_assets = {"ETH", "SOL", "XRP", "DOGE"}
+        if asset not in valid_assets:
+            return jsonify({"error": f"Unknown asset {asset!r}"}), 400
+        enabled = config.setdefault("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"])
+        if action == "enable_asset":
+            if asset not in enabled:
+                enabled.append(asset)
+        elif action == "disable_asset":
+            config["enabled_assets"] = [a for a in enabled if a != asset]
+        elif action == "set_asset_ev":
+            value = data.get("value")
+            if not isinstance(value, (int, float)) or not (0 <= value <= 20):
+                return jsonify({"error": "value must be 0-20"}), 400
+            config.setdefault("asset_overrides", {}).setdefault(asset, {})["min_ev_base"] = value
+        try:
+            write_config(config)
+        except Exception as exc:
+            return jsonify({"error": f"Could not save config: {exc}"}), 500
+        log.info(f"Asset config action={action} asset={asset}")
+        return jsonify(config)
+
     for key, value in data.items():
         if key not in validators:
             continue

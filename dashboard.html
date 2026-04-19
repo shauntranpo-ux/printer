@@ -451,7 +451,6 @@ tr:last-child td { border-bottom: none; }
   <div id="header">
     <div class="hdr-l">
       <div class="logo">MONEY PRINTER</div>
-      <div id="btc-price">—</div>
     </div>
     <div class="hdr-r">
       <div id="bot-status">
@@ -487,14 +486,6 @@ tr:last-child td { border-bottom: none; }
         <div class="pf-stat">
           <div class="pf-lbl">Trades</div>
           <div class="pf-val" id="pb-trades" style="font-size:11px;line-height:1.5;">—</div>
-        </div>
-        <div class="pf-stat">
-          <div class="pf-lbl">Brain WR</div>
-          <div class="pf-val" id="pb-brain-wr">—</div>
-        </div>
-        <div class="pf-stat">
-          <div class="pf-lbl">Evals</div>
-          <div class="pf-val" id="pb-evals">—</div>
         </div>
         <div class="pf-actions">
           <button id="bot-toggle" onclick="toggleBot()">BOT OFF</button>
@@ -552,7 +543,6 @@ tr:last-child td { border-bottom: none; }
           <div class="cf-section-lbl" style="margin-top:6px;">Signals</div>
           <div class="cf-row"><div class="cf-dot" id="cf-mom"></div><span class="cf-name">Momentum</span><span class="cf-val" id="cf-mom-val">—</span></div>
           <div class="cf-row"><div class="cf-dot" id="cf-vel"></div><span class="cf-name">Velocity</span><span class="cf-val" id="cf-vel-val">—</span></div>
-          <div class="cf-row"><div class="cf-dot" id="cf-dist"></div><span class="cf-name">BTC Dist</span><span class="cf-val" id="cf-dist-val">—</span></div>
           <div class="cf-row"><div class="cf-dot" id="cf-time"></div><span class="cf-name">Time Win</span><span class="cf-val" id="cf-time-val">—</span></div>
         </div>
 
@@ -612,59 +602,6 @@ tr:last-child td { border-bottom: none; }
       <div id="paper-count" style="display:none;"></div>
     </div>
 
-    <!-- BRAIN PANEL -->
-    <div id="panel-brain">
-      <div class="card" style="margin-bottom:12px;padding:14px;">
-        <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px;">Evaluation Detail</div>
-        <div class="ai-panel" id="ai-panel">
-          <div class="ai-gate-row">
-            <div class="ai-gate-label">Confidence</div>
-            <div class="ai-gate-want">WANTS &ge; <span id="ai-conf-thresh">—</span></div>
-            <div class="ai-gate-sep">&rarr;</div>
-            <div class="ai-gate-see" id="ai-conf-see">—</div>
-            <div class="ai-gate-badge" id="ai-conf-badge">—</div>
-          </div>
-          <div class="ai-gate-row">
-            <div class="ai-gate-label">Edge (EV)</div>
-            <div class="ai-gate-want">WANTS &ge; <span id="ai-ev-thresh">+7%</span></div>
-            <div class="ai-gate-sep">&rarr;</div>
-            <div class="ai-gate-see" id="ai-ev-see">—</div>
-            <div class="ai-gate-badge" id="ai-ev-badge">—</div>
-          </div>
-          <div class="ai-gate-row">
-            <div class="ai-gate-label">Vol Safe</div>
-            <div class="ai-gate-want">WANTS &lt; <span id="ai-vol-thresh">—</span></div>
-            <div class="ai-gate-sep">&rarr;</div>
-            <div class="ai-gate-see" id="ai-vol-see">—</div>
-            <div class="ai-gate-badge" id="ai-vol-badge">—</div>
-          </div>
-          <div class="ai-divider"></div>
-          <div class="ai-compare">
-            <div>
-              <div class="ai-compare-header">Looking For</div>
-              <div class="ai-compare-item">Conf &ge; <span id="ai-cmp-conf-thresh">—</span></div>
-              <div class="ai-compare-item">EV &ge; <span id="ai-cmp-ev-thresh">+7%</span></div>
-              <div class="ai-compare-item">Vol ratio &lt; <span id="ai-cmp-vol-thresh">—</span></div>
-              <div class="ai-compare-item">Time 1.5–13m left</div>
-              <div class="ai-compare-item">Momentum signal</div>
-            </div>
-            <div>
-              <div class="ai-compare-header">Seeing Now</div>
-              <div class="ai-compare-item" id="ai-cmp-conf">—</div>
-              <div class="ai-compare-item" id="ai-cmp-ev">—</div>
-              <div class="ai-compare-item" id="ai-cmp-vol">—</div>
-              <div class="ai-compare-item" id="ai-cmp-time">—</div>
-              <div class="ai-compare-item" id="ai-cmp-mom">—</div>
-            </div>
-          </div>
-        </div>
-        <div id="brain-claude" style="display:none;margin-top:10px;">
-          <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Claude AI Reasoning</div>
-          <div class="claude-box" id="brain-claude-text"></div>
-          <div id="brain-claude-signals"></div>
-        </div>
-      </div>
-    </div>
 
     <!-- SETTINGS PANEL -->
     <div id="panel-settings">
@@ -678,6 +615,35 @@ tr:last-child td { border-bottom: none; }
               <label class="tog"><input type="checkbox" id="s-mode" onchange="setMode(this.checked?'live':'paper')"><span class="tog-slider"></span></label>
               <span class="tog-lbl">Live</span>
             </div>
+          </div>
+        </div>
+      </div>
+      <div class="card" style="padding:16px;margin-bottom:12px;">
+        <div class="s-section-title">Enabled Markets</div>
+        <div class="settings-grid">
+          <div class="s-group" style="flex-direction:row;align-items:center;gap:10px;">
+            <label style="min-width:60px;">Ξ ETH</label>
+            <label class="tog"><input type="checkbox" id="s-asset-ETH" onchange="toggleAsset('ETH',this.checked)"><span class="tog-slider"></span></label>
+            <span class="tog-lbl" id="s-asset-ETH-label">—</span>
+            <span style="font-size:10px;color:var(--muted);margin-left:auto;">min EV: <input type="number" id="s-ev-ETH" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);"> <button class="s-save" onclick="saveAssetEV('ETH')">✓</button></span>
+          </div>
+          <div class="s-group" style="flex-direction:row;align-items:center;gap:10px;">
+            <label style="min-width:60px;">◎ SOL</label>
+            <label class="tog"><input type="checkbox" id="s-asset-SOL" onchange="toggleAsset('SOL',this.checked)"><span class="tog-slider"></span></label>
+            <span class="tog-lbl" id="s-asset-SOL-label">—</span>
+            <span style="font-size:10px;color:var(--muted);margin-left:auto;">min EV: <input type="number" id="s-ev-SOL" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);"> <button class="s-save" onclick="saveAssetEV('SOL')">✓</button></span>
+          </div>
+          <div class="s-group" style="flex-direction:row;align-items:center;gap:10px;">
+            <label style="min-width:60px;">✦ XRP</label>
+            <label class="tog"><input type="checkbox" id="s-asset-XRP" onchange="toggleAsset('XRP',this.checked)"><span class="tog-slider"></span></label>
+            <span class="tog-lbl" id="s-asset-XRP-label">—</span>
+            <span style="font-size:10px;color:var(--muted);margin-left:auto;">min EV: <input type="number" id="s-ev-XRP" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);"> <button class="s-save" onclick="saveAssetEV('XRP')">✓</button></span>
+          </div>
+          <div class="s-group" style="flex-direction:row;align-items:center;gap:10px;">
+            <label style="min-width:60px;">Ð DOGE</label>
+            <label class="tog"><input type="checkbox" id="s-asset-DOGE" onchange="toggleAsset('DOGE',this.checked)"><span class="tog-slider"></span></label>
+            <span class="tog-lbl" id="s-asset-DOGE-label">—</span>
+            <span style="font-size:10px;color:var(--muted);margin-left:auto;">min EV: <input type="number" id="s-ev-DOGE" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--border);border-radius:4px;color:var(--text);"> <button class="s-save" onclick="saveAssetEV('DOGE')">✓</button></span>
           </div>
         </div>
       </div>
@@ -744,17 +710,12 @@ tr:last-child td { border-bottom: none; }
       <span class="sb-stat-label">Bot</span>
       <span class="sb-stat-val" id="sb-bot">OFFLINE</span>
     </div>
-    <div class="sb-stat" style="margin-left:auto;border-right:none;">
-      <span class="sb-stat-label">BTC</span>
-      <span class="sb-stat-val green" id="sb-btc">—</span>
-    </div>
   </div>
 
   <!-- TAB BAR -->
   <div id="tab-bar">
     <button class="tab-btn active" id="tabbtn-dashboard" onclick="switchTab('dashboard')">Dashboard</button>
     <button class="tab-btn" id="tabbtn-trades"    onclick="switchTab('trades')">Trades</button>
-    <button class="tab-btn" id="tabbtn-brain"     onclick="switchTab('brain')">Brain</button>
     <button class="tab-btn" id="tabbtn-settings"  onclick="switchTab('settings')">Settings</button>
   </div>
 
@@ -803,7 +764,7 @@ function switchMainTab(t) {
   else switchTab('dashboard');
 }
 function switchTab(tab) {
-  ['dashboard','trades','brain','settings'].forEach(x=>{
+  ['dashboard','trades','settings'].forEach(x=>{
     document.getElementById('panel-'+x).classList.toggle('active', x!=='dashboard' && x===tab);
     document.getElementById('panel-'+x).classList.toggle('hidden', x==='dashboard' && tab!=='dashboard');
     const btn=document.getElementById('tabbtn-'+x);
@@ -1090,11 +1051,10 @@ async function saveSetting(key,value,btn){
 }
 
 // ── Market grid ──
-const _ASSET_ORDER = ['BTC','ETH','SOL','XRP','DOGE'];
-const _ASSET_LABEL = {BTC:'₿ BTC',ETH:'Ξ ETH',SOL:'◎ SOL',XRP:'✦ XRP',DOGE:'Ð DOGE'};
+const _ASSET_ORDER = ['ETH','SOL','XRP','DOGE'];
+const _ASSET_LABEL = {ETH:'Ξ ETH',SOL:'◎ SOL',XRP:'✦ XRP',DOGE:'Ð DOGE'};
 function _fmtPrice(asset,price){
   if(price==null)return '—';
-  if(asset==='BTC')return '$'+Math.round(price).toLocaleString();
   if(asset==='ETH')return '$'+price.toLocaleString('en-US',{maximumFractionDigits:0});
   if(price>=100)return '$'+price.toLocaleString('en-US',{maximumFractionDigits:0});
   if(price>=1)return '$'+price.toFixed(2);
@@ -1606,6 +1566,27 @@ async function pollWeekly(){
   }catch(e){console.error('Weekly poll error:',e);}
 }
 
+async function toggleAsset(asset,enabled){
+  await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:enabled?'enable_asset':'disable_asset',asset})});
+  const lbl=document.getElementById('s-asset-'+asset+'-label');
+  if(lbl)lbl.textContent=enabled?'ON':'OFF';
+}
+async function saveAssetEV(asset){
+  const val=parseFloat(document.getElementById('s-ev-'+asset).value);
+  if(isNaN(val))return;
+  await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'set_asset_ev',asset,value:val})});
+}
+function populateAssetToggles(cfg){
+  const enabled=cfg.enabled_assets||['ETH','SOL','XRP','DOGE'];
+  ['ETH','SOL','XRP','DOGE'].forEach(a=>{
+    const cb=document.getElementById('s-asset-'+a);
+    const lbl=document.getElementById('s-asset-'+a+'-label');
+    if(cb)cb.checked=enabled.includes(a);
+    if(lbl)lbl.textContent=enabled.includes(a)?'ON':'OFF';
+    const evEl=document.getElementById('s-ev-'+a);
+    if(evEl){const ov=(cfg.asset_overrides||{})[a]||{};evEl.value=ov.min_ev_base!=null?ov.min_ev_base:(cfg.min_ev_base||4);}
+  });
+}
 // ── Start ──
 async function pollAll(){await Promise.all([pollState(),pollTrades(),pollMarketState(),pollMarketPulse(),pollPnl(),pollAnalysis(),pollWeekly()]);}
 // Render OFFLINE cards immediately so the grid has height before first API poll
