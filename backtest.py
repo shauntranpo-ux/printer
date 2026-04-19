@@ -433,11 +433,13 @@ def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True
     # -- Apply train / OOS split -----------------------------------------------
     if mode != "full":
         cfg = _load_split_cfg()
-        if cfg is None:
+        _split_valid = cfg is not None and "train_start_ts" in cfg and "oos_start_ts" in cfg
+        if not _split_valid:
             if verbose:
-                print("  [warn] data/split_config.json not found - using all data.")
+                print("  [warn] data/split_config.json not found or outdated - using all data.")
                 print("         Run  python data/splitter.py  to enforce train/OOS split.")
-        else:
+            cfg = None
+        if cfg is not None:
             ts_lo = cfg["train_start_ts"] if mode == "train" else cfg["oos_start_ts"]
             ts_hi = cfg["train_end_ts"]   if mode == "train" else cfg["oos_end_ts"]
             mask         = (windows.index >= ts_lo) & (windows.index <= ts_hi)
