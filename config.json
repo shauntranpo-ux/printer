@@ -21,11 +21,17 @@
     "yes"
   ],
   "enabled_assets": [
+    "BTC",
     "ETH",
     "SOL",
     "XRP"
   ],
   "asset_overrides": {
+    "BTC": {
+      "min_ev_base": 9,
+      "vol_gate_thresh": 1.60,
+      "confidence_threshold": 80
+    },
     "ETH": {
       "min_ev_base": 8
     },
@@ -38,6 +44,7 @@
     }
   },
   "use_new_strategies": {
+    "BTC": true,
     "ETH": true,
     "SOL": true,
     "XRP": true,

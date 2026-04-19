@@ -3006,7 +3006,7 @@ async def handle_ready_phase(
     last_confidence_breakdown = breakdown
 
     raw_win_pct = int(brain.get("win_prob", 0) * 100)
-    conf_threshold = int(config.get("confidence_threshold", 72))
+    conf_threshold = int(get_asset_config(config, asset, "confidence_threshold", config.get("confidence_threshold", 72)))
     if do_trade and raw_win_pct < conf_threshold:
         skip_reason_ai = f"win prob {raw_win_pct}% below floor {conf_threshold}%"
         do_trade = False
