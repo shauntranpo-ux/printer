@@ -360,9 +360,6 @@ tr:last-child td { border-bottom: none; }
 #ai-analysis-panel { margin-bottom: 12px; }
 .aap-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
 .aap-title { font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; }
-.aap-run-btn { font-size:10px; padding:3px 12px; background:var(--green); color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:600; display:flex; align-items:center; gap:6px; }
-.aap-run-btn:disabled { opacity:0.55; cursor:not-allowed; }
-.aap-run-btn .spin { display:inline-block; width:10px; height:10px; border:2px solid rgba(255,255,255,0.4); border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .aap-no-data { color:var(--muted); font-size:12px; padding:8px 0; }
 .aap-grade-row { display:flex; align-items:center; gap:14px; margin-bottom:10px; }
@@ -564,12 +561,9 @@ tr:last-child td { border-bottom: none; }
       <!-- ROW 3b: AI Analysis Panel -->
       <div class="card" id="ai-analysis-panel">
         <div class="aap-header">
-          <div class="aap-title">AI Analysis</div>
-          <button class="aap-run-btn" id="aap-run-btn" onclick="runAnalysis()">
-            <span id="aap-run-icon">&#9654;</span> Run AI Analysis
-          </button>
+          <div class="aap-title">Analysis</div>
         </div>
-        <div id="aap-content"><div class="aap-no-data">No analysis yet — click Run AI Analysis or wait for auto-run.</div></div>
+        <div id="aap-content"><div class="aap-no-data">No analysis available.</div></div>
       </div>
 
       <!-- ROW 4: Market pulse -->
@@ -1544,7 +1538,7 @@ function exportCSV(){window.location.href='/api/export/trades';}
 // ── AI Analysis ──
 function renderAnalysis(data){
   const el=document.getElementById('aap-content'); if(!el)return;
-  if(!data||!data.exists){el.innerHTML='<div class="aap-no-data">No analysis yet — click Run AI Analysis or wait for auto-run.</div>';return;}
+  if(!data||!data.exists){el.innerHTML='<div class="aap-no-data">No analysis available.</div>';return;}
   const a=data; const g=a.overall_grade||'?';
   const gradeCls='aap-grade-'+(('ABCDF'.includes(g))?g:'C');
   let html=`<div class="aap-grade-row"><div class="aap-grade-letter ${gradeCls}">${escHtml(g)}</div><div class="aap-assessment">${escHtml(a.overall_assessment||'')}</div></div>`;
@@ -1610,25 +1604,6 @@ async function pollWeekly(){
     if(existing){existing.outerHTML=weeklyHtml;}
     else{el.insertAdjacentHTML('beforeend',weeklyHtml);}
   }catch(e){console.error('Weekly poll error:',e);}
-}
-
-async function runAnalysis(){
-  const btn=document.getElementById('aap-run-btn');
-  const icon=document.getElementById('aap-run-icon');
-  if(btn)btn.disabled=true;
-  if(icon)icon.outerHTML='<span id="aap-run-icon" class="spin"></span>';
-  try{
-    const r=await fetch('/api/analysis/run',{method:'POST'});
-    const data=await r.json();
-    if(r.ok&&data){renderAnalysis({...data,exists:true});}
-    else{const el=document.getElementById('aap-content');if(el)el.innerHTML=`<div class="aap-no-data" style="color:var(--red)">${escHtml(data&&data.error?data.error:'Run failed.')}</div>`;}
-  }catch(e){const el=document.getElementById('aap-content');if(el)el.innerHTML=`<div class="aap-no-data" style="color:var(--red)">Error: ${escHtml(e.message)}</div>`;}
-  finally{
-    const btnF=document.getElementById('aap-run-btn');
-    if(btnF)btnF.disabled=false;
-    const iconEl=document.getElementById('aap-run-icon');
-    if(iconEl)iconEl.outerHTML='<span id="aap-run-icon">&#9654;</span>';
-  }
 }
 
 // ── Start ──

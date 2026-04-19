@@ -132,11 +132,6 @@ _asset_eval: dict = {}
 # Contract price history — tracks YES ask over time per ticker for velocity signal
 _contract_price_history: dict = {}   # ticker → deque[(ts, price)]
 
-# Real-time market context cache (Fear & Greed, news headlines, social signals)
-_market_context: dict = {"fear_greed": None, "news": []}
-_market_context_ts: float = 0.0
-_MARKET_CONTEXT_TTL: int = 120   # refresh every 2 minutes
-
 # Adaptive weights — updated every 20 completed trades from DB analysis
 _adaptive: dict = {
     "last_calibrated_count": 0,
