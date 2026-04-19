@@ -2590,27 +2590,6 @@ async def write_state_file(
 
     # Per-asset snapshot for multi-asset dashboard display
     assets_snap: dict = {}
-    # BTC — built from the arguments passed to this function + last eval snapshot
-    _btc_ev = _asset_eval.get("BTC", {})
-    # If BTC is LOCKED (position open), override status so dashboard shows TRADING
-    _btc_status = "TRADING" if phase == "LOCKED" else (_btc_ev.get("status") or phase)
-    assets_snap["BTC"] = {
-        "price":        btc_price,
-        "phase":        phase,
-        "ticker":       market.get("ticker", "") if market else "",
-        "market_title": market.get("title",  "") if market else "",
-        "secs_left":    secs_left,
-        "price_age":    _am_price_age("BTC"),
-        "strike":       _btc_ev.get("strike"),
-        "distance_pct": _btc_ev.get("distance_pct"),
-        "direction":    _btc_ev.get("direction"),
-        "yes_ask":      _btc_ev.get("yes_ask"),
-        "no_ask":       _btc_ev.get("no_ask"),
-        "ev":           _btc_ev.get("ev"),
-        "win_prob":     _btc_ev.get("win_prob"),
-        "status":       _btc_status,
-        "skip_reason":  _btc_ev.get("skip_reason"),
-    }
     # Non-BTC assets — pulled from the in-memory _asset_states dict
     for _a, _st in _asset_states.items():
         _m  = _st.get("market")
@@ -3526,6 +3505,8 @@ async def main_loop() -> None:
                     continue
 
                 if "BTC" not in config.get("enabled_assets", []):
+                    await write_state_file(config, None, "DONE", 0,
+                                           get_btc_price(), None, {}, None, None)
                     await asyncio.sleep(10)
                     continue
 
