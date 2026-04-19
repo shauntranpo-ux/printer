@@ -153,7 +153,7 @@ def test_settle_trade_no_wins_below_strike():
 
 
 def test_run_backtest_smoke():
-    """End-to-end smoke: generate events, run BTC strategy, inspect trades."""
+    """End-to-end smoke: generate events, run ETH strategy, inspect trades."""
     from strategies.backtest.window_generator import generate_events
     from strategies.backtest.runner import run_backtest
     from scripts.backtest_walk_forward import make_strategy
@@ -163,15 +163,15 @@ def test_run_backtest_smoke():
     for i in range(300):
         rows.append({
             "timestamp": now - (300 - i) * 60,
-            "close": 100000.0 + (i % 20) * 50,
+            "close": 2000.0 + (i % 20) * 5,
         })
     df = pd.DataFrame(rows)
 
-    events = list(generate_events(df, "BTC", seed=42))
+    events = list(generate_events(df, "ETH", seed=42))
     if not events:
         pytest.skip("synthesized data too short")
 
-    strat = make_strategy("BTC", calibrator=None)
+    strat = make_strategy("ETH", calibrator=None)
     trades = run_backtest(strat, events, stake_dollars=5.0)
     assert isinstance(trades, list)
     for t in trades:
@@ -192,14 +192,14 @@ def test_one_trade_per_window_respected():
     from scripts.backtest_walk_forward import make_strategy
 
     now = time.time()
-    rows = [{"timestamp": now - (300 - i) * 60, "close": 100000.0 + i * 10}
+    rows = [{"timestamp": now - (300 - i) * 60, "close": 2000.0 + i * 1}
             for i in range(300)]
     df = pd.DataFrame(rows)
-    events = list(generate_events(df, "BTC", seed=1))
+    events = list(generate_events(df, "ETH", seed=1))
     if not events:
         pytest.skip("too short")
 
-    strat = make_strategy("BTC", calibrator=None)
+    strat = make_strategy("ETH", calibrator=None)
     trades = run_backtest(strat, events, stake_dollars=5.0, one_trade_per_window=True)
 
     window_starts = [t.window_start_ts for t in trades]

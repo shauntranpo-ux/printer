@@ -1,10 +1,10 @@
 """
-bot.py — Core trading logic for the Kalshi BTC 15-minute prediction market bot.
+bot.py — Core trading logic for the Kalshi 15-minute prediction market bot.
 
-Connects to Coinbase WebSocket for live BTC prices, polls Kalshi for the
-soonest-expiring BTC 15-minute market, evaluates a four-component confidence
-score, places paper or live orders, and enforces daily
-loss / profit limits. Writes bot_state.json every cycle for server.py to read.
+Connects to Binance WebSocket for live crypto prices, polls Kalshi for the
+soonest-expiring 15-minute markets (ETH, SOL, XRP, DOGE), evaluates
+evidence-based strategy signals, places paper or live orders, and enforces
+daily loss / profit limits. Writes bot_state.json every cycle for server.py.
 
 Start via runner.py, not directly.
 """
@@ -327,7 +327,7 @@ def read_config() -> dict:
     try:
         with open(_CONFIG_FILE, "r") as fh:
             cfg = json.load(fh)
-        cfg.setdefault("enabled_assets", ["BTC"])  # multi-asset: defaults to BTC-only
+        cfg.setdefault("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"])
         _last_good_config = cfg
         return cfg
     except json.JSONDecodeError as exc:
@@ -2005,23 +2005,7 @@ def _get_or_make_strategy(asset: str, config):
                                      config.get("min_ev_base", 8))) / 100.0
         stake = float(config.get("trade_amount_dollars", 5))
 
-        if asset == "BTC":
-            from strategies.btc_strategy import BTCStrategy
-            continuation_only = bool(
-                config.get("use_new_strategies", {}).get("BTC_continuation_only", False)
-            )
-            btc_overrides = config.get("asset_overrides", {}).get("BTC", {})
-            vol_gate = float(btc_overrides.get("vol_gate_thresh", 1.8))
-            conf_thresh = float(btc_overrides.get("confidence_threshold", 75))
-            strat = BTCStrategy(
-                skip_config=skip_cfg,
-                min_ev=min_ev,
-                stake_dollars=stake,
-                continuation_only=continuation_only,
-                vol_gate_thresh=vol_gate,
-                confidence_threshold=conf_thresh,
-            )
-        elif asset == "ETH":
+        if asset == "ETH":
             from strategies.eth_strategy import ETHStrategy
             strat = ETHStrategy(
                 skip_config=skip_cfg,
@@ -3948,6 +3932,10 @@ async def main_loop() -> None:
                     await write_state_file(config, current_market, "PAUSED", 0,
                                            get_btc_price(), last_confidence_score,
                                            last_confidence_breakdown, last_action, last_skip_reason)
+                    await asyncio.sleep(10)
+                    continue
+
+                if "BTC" not in config.get("enabled_assets", []):
                     await asyncio.sleep(10)
                     continue
 
