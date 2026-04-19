@@ -88,7 +88,7 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 .reset-btn:hover{border-color:var(--down);color:var(--down);}
 
 /* ── Market grid ── */
-#market-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+#market-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px;}
 .market-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 14px 12px;box-shadow:var(--shadow);cursor:pointer;transition:border-color .15s;}
 .market-card:hover{border-color:var(--line-2);}
 .market-card.mc-offline{opacity:.55;}
@@ -246,7 +246,7 @@ tr:last-child td{border-bottom:none;}
 #toast.error{background:rgba(214,57,73,.12);border-color:rgba(214,57,73,.3);color:var(--down);}
 
 @media(max-width:1000px){
-  #market-grid{grid-template-columns:repeat(2,1fr);}
+  #market-grid{grid-template-columns:repeat(2,1fr);} /* stays 2-col on tablet */
   .mid-row,.mv-row{grid-template-columns:1fr;grid-template-rows:auto;}
   .mv-kpi-grid{grid-template-columns:repeat(3,1fr);}
 }
@@ -360,6 +360,10 @@ tr:last-child td{border-bottom:none;}
       <div class="pf-stat">
         <div class="pf-lbl">Trades</div>
         <div class="pf-val" id="pb-trades" style="font-size:12px;line-height:1.5;">—</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;margin-left:auto;flex-shrink:0;">
+        <button class="reset-btn" onclick="openResetModal('live')">Reset Live</button>
+        <button class="reset-btn" onclick="openResetModal('paper')">Reset Paper</button>
       </div>
     </div>
 
