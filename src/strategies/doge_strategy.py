@@ -37,7 +37,7 @@ from strategies.signals.taper import magnitude_taper
 
 
 BETA_ADJ_MAX  = 0.08
-MOMENTUM_BIAS = 0.0     # disabled section 12.7 — ablation showed -$414 delta_pnl
+MOMENTUM_BIAS = 0.015   # smaller than SOL (0.02) — DOGE momentum less reliable
 VELOCITY_ADJ  = 0.02
 
 

@@ -44,7 +44,7 @@ from strategies.signals.taper import magnitude_taper
 
 
 BETA_ADJ_MAX_CAP           = 0.06
-REGIME_ADJ                 = 0.0    # disabled section 12.7 — ablation showed -$611 delta_pnl
+REGIME_ADJ                 = 0.04   # XRP's own regime gets higher weight
 RATIO_ADJ_MAX              = 0.02
 VELOCITY_ADJ               = 0.02
 NEWS_MODE_CONTINUATION_ADJ = 0.06

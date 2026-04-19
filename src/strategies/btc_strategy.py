@@ -38,7 +38,7 @@ from strategies.signals.taper import magnitude_taper
 
 
 MOMENTUM_BIAS    = 0.02
-REGIME_ADJ       = 0.0     # disabled section 12.7 — ablation showed -$451 delta_pnl
+REGIME_ADJ       = 0.03
 VELOCITY_ADJ     = 0.02
 BV3_BLEND_WEIGHT = 0.20
 

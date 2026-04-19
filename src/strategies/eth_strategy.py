@@ -35,7 +35,7 @@ from strategies.signals.taper import magnitude_taper
 
 
 BETA_ADJ_MAX   = 0.10   # max contribution from BTC-beta signal
-REGIME_ADJ     = 0.0    # disabled section 12.7 — ablation showed -$513 delta_pnl
+REGIME_ADJ     = 0.03   # momentum / reversion regime nudge
 RATIO_ADJ_MAX  = 0.03   # max contribution from ratio divergence
 VELOCITY_ADJ   = 0.02   # Kalshi velocity nudge
 
