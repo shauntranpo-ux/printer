@@ -46,8 +46,13 @@ def make_strategy(asset: str, calibrator=None):
     if asset == "BTC":
         from strategies.btc_strategy import BTCStrategy
         return BTCStrategy(
-            skip_config=skip_cfg, min_ev=0.03, stake_dollars=stake,
-            calibrator=calibrator, continuation_only=False,
+            skip_config=skip_cfg,
+            min_ev=0.06,
+            stake_dollars=stake,
+            calibrator=calibrator,
+            continuation_only=True,
+            vol_gate_thresh=1.8,
+            confidence_threshold=75,
         )
     elif asset == "ETH":
         from strategies.eth_strategy import ETHStrategy

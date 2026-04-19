@@ -57,6 +57,8 @@ class BTCStrategy(BaseStrategy):
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
         continuation_only: bool = False,
+        vol_gate_thresh: float = 1.8,
+        confidence_threshold: float = 75,
     ):
         super().__init__(
             asset="BTC",
@@ -67,6 +69,8 @@ class BTCStrategy(BaseStrategy):
             maker=maker,
         )
         self.continuation_only = continuation_only
+        self.vol_gate_thresh = vol_gate_thresh
+        self.confidence_threshold = confidence_threshold / 100.0
 
     def decide(
         self,
@@ -219,6 +223,33 @@ class BTCStrategy(BaseStrategy):
         calibrated_p_yes = self.calibrator.calibrate(p_yes)
         forced_side = "yes" if above else "no"
 
+        # Vol gate: skip if current vol is too high relative to recent baseline
+        rv = features.realized_vol_1min
+        if rv is not None and features.prices_60m and len(features.prices_60m) >= 30:
+            import math
+            prices = [p for _, p in list(features.prices_60m)[-60:]]
+            log_returns = []
+            for i in range(1, len(prices)):
+                if prices[i-1] > 0 and prices[i] > 0:
+                    log_returns.append(math.log(prices[i] / prices[i-1]))
+            if len(log_returns) >= 10:
+                sorted_returns = sorted(abs(r) for r in log_returns)
+                median_abs_return = sorted_returns[len(sorted_returns) // 2]
+                if median_abs_return > 0:
+                    vol_ratio = rv / median_abs_return
+                    if vol_ratio > self.vol_gate_thresh:
+                        return Decision(
+                            action="skip",
+                            side=None,
+                            p_model=calibrated_p_yes,
+                            reason=f"vol_gate: ratio {vol_ratio:.2f} > {self.vol_gate_thresh}",
+                            contributing_signals={
+                                "decision_mode": "continuation_only",
+                                "vol_ratio": vol_ratio,
+                                "vol_gate_thresh": self.vol_gate_thresh,
+                            },
+                        )
+
         ev_result = compute_bidirectional_ev(
             p_model=calibrated_p_yes,
             yes_ask_cents=features.yes_ask,
@@ -227,6 +258,22 @@ class BTCStrategy(BaseStrategy):
             maker=self.maker,
         )
         forced_ev = ev_result.yes_ev if forced_side == "yes" else ev_result.no_ev
+
+        # Confidence gate: skip if model confidence on forced side < threshold
+        confidence_on_forced = calibrated_p_yes if forced_side == "yes" else (1.0 - calibrated_p_yes)
+        if confidence_on_forced < self.confidence_threshold:
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=calibrated_p_yes,
+                reason=f"confidence_gate: {confidence_on_forced*100:.1f}% < {self.confidence_threshold*100:.0f}%",
+                contributing_signals={
+                    "decision_mode": "continuation_only",
+                    "confidence_on_forced": confidence_on_forced,
+                    "confidence_threshold": self.confidence_threshold,
+                    "forced_side": forced_side,
+                },
+            )
 
         signals = {
             "bv3_raw_same_side": raw_same_side,

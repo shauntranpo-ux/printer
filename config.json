@@ -30,7 +30,9 @@
   ],
   "asset_overrides": {
     "BTC": {
-      "min_ev_base": 3
+      "min_ev_base": 6,
+      "vol_gate_thresh": 1.8,
+      "confidence_threshold": 75
     },
     "ETH": {
       "min_ev_base": 3
@@ -49,7 +51,7 @@
   },
   "use_new_strategies": {
     "BTC": true,
-    "BTC_continuation_only": false,
+    "BTC_continuation_only": true,
     "ETH": true,
     "SOL": true,
     "XRP": true,

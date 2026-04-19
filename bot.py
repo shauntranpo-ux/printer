@@ -2010,11 +2010,16 @@ def _get_or_make_strategy(asset: str, config):
             continuation_only = bool(
                 config.get("use_new_strategies", {}).get("BTC_continuation_only", False)
             )
+            btc_overrides = config.get("asset_overrides", {}).get("BTC", {})
+            vol_gate = float(btc_overrides.get("vol_gate_thresh", 1.8))
+            conf_thresh = float(btc_overrides.get("confidence_threshold", 75))
             strat = BTCStrategy(
                 skip_config=skip_cfg,
                 min_ev=min_ev,
                 stake_dollars=stake,
                 continuation_only=continuation_only,
+                vol_gate_thresh=vol_gate,
+                confidence_threshold=conf_thresh,
             )
         elif asset == "ETH":
             from strategies.eth_strategy import ETHStrategy

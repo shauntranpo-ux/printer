@@ -110,6 +110,7 @@ def test_legacy_fallback_signals_populated(mock_bv3):
         min_ev=0.05,
         stake_dollars=5.0,
         continuation_only=True,
+        vol_gate_thresh=100.0,  # disable vol gate so signals dict is populated
     )
     d = strat.decide(_features_above_strike())
     for key in ("bv3_raw_same_side", "mom_label", "cal_scale"):
