@@ -123,7 +123,18 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 .mc-pos-row b{color:var(--ink);font-weight:700;}
 
 /* ── Mid row ── */
-.mid-row{display:grid;grid-template-columns:3fr 2fr;gap:12px;margin-bottom:14px;}
+.mid-row{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px;margin-bottom:14px;}
+/* ── Allocation donut ── */
+.alloc-card{padding:14px 16px;display:flex;flex-direction:column;}
+.alloc-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
+.alloc-wrap{display:flex;align-items:center;gap:14px;flex:1;}
+.alloc-legend{display:flex;flex-direction:column;gap:7px;flex:1;}
+.alloc-leg-row{display:flex;align-items:center;gap:7px;font-size:11px;}
+.alloc-leg-pct{margin-left:auto;color:var(--ink-3);font-size:10px;}
+.alloc-footer{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;padding-top:10px;border-top:1px solid var(--line);margin-top:10px;}
+.alloc-stat-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:700;margin-bottom:2px;}
+.alloc-stat-val{font-size:14px;font-weight:800;color:var(--ink);font-variant-numeric:tabular-nums;}
+.alloc-stat-sub{font-size:10px;color:var(--ink-2);}
 .chart-card{padding:14px 16px 12px;}
 .chart-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
 .chart-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--ink-3);}
@@ -236,7 +247,7 @@ tr:last-child td{border-bottom:none;}
 
 @media(max-width:1000px){
   #market-grid{grid-template-columns:repeat(2,1fr);}
-  .mid-row,.mv-row{grid-template-columns:1fr;}
+  .mid-row,.mv-row{grid-template-columns:1fr;grid-template-rows:auto;}
   .mv-kpi-grid{grid-template-columns:repeat(3,1fr);}
 }
 @media(max-width:600px){
@@ -284,9 +295,6 @@ tr:last-child td{border-bottom:none;}
       </button>
       <button class="tb-tab" id="tbtab-XRP"  onclick="selectTab('XRP')">
         <span id="logo-XRP-sm"></span>XRP
-      </button>
-      <button class="tb-tab" id="tbtab-DOGE" onclick="selectTab('DOGE')">
-        <span id="logo-DOGE-sm"></span>DOGE
       </button>
       <button class="tb-tab" id="tbtab-trades" onclick="selectTab('trades')">Trades</button>
     </div>
@@ -378,6 +386,20 @@ tr:last-child td{border-bottom:none;}
         </div>
         <canvas class="equity-chart" id="live-chart" style="display:none;"></canvas>
         <canvas class="equity-chart" id="paper-chart"></canvas>
+      </div>
+
+      <!-- Market Allocation donut -->
+      <div class="card alloc-card" id="alloc-card">
+        <div class="alloc-title">Market Allocation <span style="font-weight:400;text-transform:none;letter-spacing:0;">by trades</span></div>
+        <div class="alloc-wrap">
+          <svg id="alloc-donut-svg" viewBox="0 0 130 130" width="130" height="130" style="flex-shrink:0;"></svg>
+          <div class="alloc-legend" id="alloc-legend"><div style="color:var(--ink-3);font-size:11px;">No trades yet</div></div>
+        </div>
+        <div class="alloc-footer">
+          <div><div class="alloc-stat-lbl">Top market</div><div class="alloc-stat-val" id="alloc-top">—</div></div>
+          <div><div class="alloc-stat-lbl">Total trades</div><div class="alloc-stat-val" id="alloc-total">—</div></div>
+          <div><div class="alloc-stat-lbl">Win rate</div><div class="alloc-stat-val" id="alloc-wr">—</div></div>
+        </div>
       </div>
 
       <div class="card brain-card" id="signals-card">
@@ -586,7 +608,7 @@ function cryptoLogoHtml(sym, size) {
 }
 
 // Inject small logos into topbar tabs
-['ETH','SOL','XRP','DOGE'].forEach(sym => {
+['ETH','SOL','XRP'].forEach(sym => {
   const el = document.getElementById('logo-'+sym+'-sm');
   if (el) el.innerHTML = cryptoLogoHtml(sym, 16);
 });
@@ -605,7 +627,7 @@ let _currentTab='overview';
 let _currentMarketSym=null;
 
 // ── Tab navigation ──
-const MARKET_TABS = ['ETH','SOL','XRP','DOGE'];
+const MARKET_TABS = ['ETH','SOL','XRP'];
 function selectTab(tab) {
   _currentTab = tab;
   // Hide all panels
@@ -614,7 +636,7 @@ function selectTab(tab) {
     if (el) el.classList.remove('active');
   });
   // Highlight topbar tabs
-  ['overview','ETH','SOL','XRP','DOGE','trades','settings'].forEach(t => {
+  ['overview','ETH','SOL','XRP','trades','settings'].forEach(t => {
     const btn = document.getElementById('tbtab-'+t);
     if (btn) btn.classList.remove('active');
   });
@@ -992,9 +1014,54 @@ function fmtTime(ts) { if (!ts) return '—'; return new Date(ts).toLocaleString
 function shortTicker(t) { if (!t) return '—'; return t.length>16?t.slice(0,16)+'…':t; }
 function escHtml(s) { if (s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+// ── Market allocation donut ──
+const _ALLOC_COLORS = {ETH:'#7b8cff', SOL:'#8a5cf0', XRP:'#5cc8f0'};
+function drawAllocDonut(data) {
+  const svg = document.getElementById('alloc-donut-svg');
+  const leg = document.getElementById('alloc-legend');
+  if (!svg || !leg) return;
+  const total = data.reduce((a,d) => a + d.count, 0);
+  if (total === 0) { svg.innerHTML=''; leg.innerHTML='<div style="color:var(--ink-3);font-size:11px;">No trades yet</div>'; return; }
+  const cx=65, cy=65, r=60, ir=r-20;
+  let a0 = -Math.PI/2, paths='';
+  data.forEach(d => {
+    if (!d.count) return;
+    const a1 = a0 + (d.count/total)*Math.PI*2;
+    const lg = (a1-a0)>Math.PI?1:0;
+    const cos0=Math.cos(a0),sin0=Math.sin(a0),cos1=Math.cos(a1),sin1=Math.sin(a1);
+    paths += `<path d="M${cx+cos0*r},${cy+sin0*r} A${r},${r} 0 ${lg} 1 ${cx+cos1*r},${cy+sin1*r} L${cx+cos1*ir},${cy+sin1*ir} A${ir},${ir} 0 ${lg} 0 ${cx+cos0*ir},${cy+sin0*ir} Z" fill="${d.color}"/>`;
+    a0 = a1;
+  });
+  paths += `<text x="${cx}" y="${cy-3}" text-anchor="middle" font-size="19" font-weight="800" fill="var(--ink)" font-family="Barlow Condensed,sans-serif">${total}</text>`;
+  paths += `<text x="${cx}" y="${cy+13}" text-anchor="middle" font-size="8" fill="var(--ink-3)" letter-spacing="1.5" font-family="Barlow Condensed,sans-serif">TRADES</text>`;
+  svg.innerHTML = paths;
+  leg.innerHTML = data.filter(d=>d.count>0).map(d => {
+    const pct = Math.round(d.count/total*100);
+    return `<div class="alloc-leg-row">${cryptoLogoHtml(d.sym,14)}<span style="font-weight:700;color:var(--ink)">${d.sym}</span><span class="alloc-leg-pct">${d.count} <span style="opacity:.6">${pct}%</span></span></div>`;
+  }).join('');
+}
+function updateAllocation() {
+  const all = [...liveTradesData, ...paperTradesData];
+  const counts={ETH:0,SOL:0,XRP:0}, wins={ETH:0,SOL:0,XRP:0};
+  all.forEach(t => {
+    const a = t.asset || (['ETH','SOL','XRP'].find(x=>(t.market_id||'').includes(x)));
+    if (a && counts[a]!==undefined) { counts[a]++; if(t.outcome==='win') wins[a]++; }
+  });
+  const data = ['ETH','SOL','XRP'].map(sym=>({sym, count:counts[sym], color:_ALLOC_COLORS[sym]}));
+  drawAllocDonut(data);
+  const total = Object.values(counts).reduce((a,b)=>a+b,0);
+  const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
+  const totalWins = Object.values(wins).reduce((a,b)=>a+b,0);
+  const wr = total>0 ? Math.round(totalWins/total*100) : null;
+  const topEl=document.getElementById('alloc-top'), totEl=document.getElementById('alloc-total'), wrEl=document.getElementById('alloc-wr');
+  if(topEl) topEl.textContent = top&&top[1]>0?top[0]:'—';
+  if(totEl) totEl.textContent = total>0?total:'—';
+  if(wrEl) wrEl.textContent = wr!==null&&total>0?wr+'%':'—';
+}
+
 // ── Price / secs formatters ──
-const _ASSET_ORDER = ['ETH','SOL','XRP','DOGE'];
-const _ASSET_LABEL = {ETH:'ETH',SOL:'SOL',XRP:'XRP',DOGE:'DOGE'};
+const _ASSET_ORDER = ['ETH','SOL','XRP'];
+const _ASSET_LABEL = {ETH:'ETH',SOL:'SOL',XRP:'XRP'};
 function _fmtPrice(asset, price) {
   if (price==null) return '—';
   if (asset==='ETH') return '$'+price.toLocaleString('en-US',{maximumFractionDigits:0});
@@ -1369,6 +1436,7 @@ async function pollTrades() {
   } catch(e) { console.error('Trades poll:', e); }
   renderTradeTable('live-trades', liveTradesData);
   renderTradeTable('paper-trades', paperTradesData);
+  updateAllocation();
   const today=new Date().toISOString().slice(0,10);
   function todayCount(trades,mode){return trades.filter(x=>x.mode===mode&&x.ts&&x.ts.startsWith(today)).length;}
   function allCount(trades,mode){return trades.filter(x=>x.mode===mode).length;}
@@ -1398,7 +1466,7 @@ async function pollAll() { await Promise.all([pollState(), pollTrades(), pollMar
 // Restore tab from last session (guard against old saved values)
 (function(){
   const savedTab = localStorage.getItem('mp_tab');
-  const valid = ['overview','ETH','SOL','XRP','DOGE','trades','settings'];
+  const valid = ['overview','ETH','SOL','XRP','trades','settings'];
   if (savedTab && valid.includes(savedTab) && savedTab !== 'overview') selectTab(savedTab);
 })();
 
