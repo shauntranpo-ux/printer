@@ -1,0 +1,6 @@
+@echo off
+set KALSHI_API_KEY=your-kalshi-api-key-here
+set KALSHI_PRIVATE_KEY=%~dp0kalshi_private_key.pem
+cd /d %~dp0
+python runner.py
+pause

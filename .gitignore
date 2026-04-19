@@ -58,3 +58,4 @@ data/historical/*.parquet
 # OS
 .DS_Store
 Thumbs.db
+start.bat
