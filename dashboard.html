@@ -522,28 +522,22 @@ tr:last-child td { border-bottom: none; }
           <canvas class="equity-chart" id="paper-chart"></canvas>
         </div>
 
-        <!-- BRAIN SIGNALS -->
-        <div class="card brain-card">
+        <!-- STRATEGY SIGNALS -->
+        <div class="card brain-card" id="signals-card">
           <div class="brain-card-title">
             Signals
-            <span style="display:flex;align-items:center;gap:6px;">
-              <span style="font-size:10px;color:var(--muted);">Score: <b id="brain-total-score" style="color:var(--text);">—</b></span>
-              <span style="font-size:10px;color:var(--muted);">Conf: <b id="st-score" style="color:var(--text);">—</b></span>
-            </span>
+            <span id="sig-asset-badge" style="font-size:10px;background:var(--accent);color:#fff;padding:2px 7px;border-radius:4px;letter-spacing:0.04em;">—</span>
           </div>
           <div class="cf-section-lbl">Last Action</div>
-          <div class="cf-row" style="border-bottom:none;padding-bottom:6px;">
+          <div class="cf-row" style="border-bottom:none;padding-bottom:4px;">
             <span class="cf-name" id="st-action" style="font-weight:600;color:var(--text);">—</span>
+            <span class="cf-val" id="sig-ev-badge" style="font-weight:700;">—</span>
           </div>
           <div style="font-size:10px;color:var(--muted);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="st-reason">—</div>
-          <div class="cf-section-lbl">Gates — must pass</div>
-          <div class="cf-row"><div class="cf-check" id="cf-conf">·</div><span class="cf-name">Confidence</span><span class="cf-val" id="cf-conf-val">—</span></div>
-          <div class="cf-row"><div class="cf-check" id="cf-ev">·</div><span class="cf-name">EV</span><span class="cf-val" id="cf-ev-val">—</span></div>
-          <div class="cf-row"><div class="cf-check" id="cf-vol">·</div><span class="cf-name">Vol Safe</span><span class="cf-val" id="cf-vol-val">—</span></div>
-          <div class="cf-section-lbl" style="margin-top:6px;">Signals</div>
-          <div class="cf-row"><div class="cf-dot" id="cf-mom"></div><span class="cf-name">Momentum</span><span class="cf-val" id="cf-mom-val">—</span></div>
-          <div class="cf-row"><div class="cf-dot" id="cf-vel"></div><span class="cf-name">Velocity</span><span class="cf-val" id="cf-vel-val">—</span></div>
-          <div class="cf-row"><div class="cf-dot" id="cf-time"></div><span class="cf-name">Time Win</span><span class="cf-val" id="cf-time-val">—</span></div>
+          <div class="cf-section-lbl">Strategy Signals</div>
+          <div id="sig-rows">
+            <div class="cf-row"><span class="cf-name" style="color:var(--muted);">Click a market card to view signals</span></div>
+          </div>
         </div>
 
       </div><!-- /mid-row -->
@@ -754,6 +748,8 @@ let liveChartCurrent={pts:[],pendingStart:0}, paperChartCurrent={pts:[],pendingS
 let chartAnimFrame=null, settingsPopulated=false, settingsOpen=false, _resetMode=null;
 let _activeChartTab='paper', _gaugeScore=0, _chartView='today';
 let _openPosition=null; // set by pollState; read by renderMarketGrid
+let _lastAssetsData={};
+let _selectedSignalAsset=null;
 
 // ── Tab navigation ──
 function switchMainTab(t) {
@@ -1074,7 +1070,15 @@ function _shortTicker(t){
 function renderMarketGrid(assets, dailyData){
   const grid=document.getElementById('market-grid');
   if(!grid)return;
-  // Always render all 5 asset cards — show OFFLINE if data is missing
+  // Cache for signal panel
+  if(assets) _lastAssetsData=assets;
+  // Auto-select first active asset if nothing is selected
+  if(!_selectedSignalAsset&&assets){
+    const active=_ASSET_ORDER.find(k=>assets[k]&&assets[k].status&&assets[k].status!=='OFFLINE');
+    if(active){_selectedSignalAsset=active;renderSignalPanel(active,assets[active]);}
+  } else if(_selectedSignalAsset&&assets&&assets[_selectedSignalAsset]){
+    renderSignalPanel(_selectedSignalAsset,assets[_selectedSignalAsset]);
+  }
   const keys=_ASSET_ORDER;
   grid.innerHTML=keys.map(k=>{
     const a=(assets&&assets[k])||{phase:'OFFLINE',price:null};
@@ -1136,7 +1140,7 @@ function renderMarketGrid(assets, dailyData){
       }
     }
 
-    return `<div class="market-card${effectiveStatus==='OFFLINE'?' mc-offline':''}" style="${cardStyle}">
+    return `<div class="market-card${effectiveStatus==='OFFLINE'?' mc-offline':''}" style="${cardStyle}cursor:pointer;" onclick="selectSignalAsset('${k}')" title="View ${k} signals">
       <div class="mc-head">
         <span class="mc-name">${_ASSET_LABEL[k]||k}</span>
         <span class="mc-price">${_fmtPrice(k,a.price)}</span>
@@ -1163,6 +1167,72 @@ function renderMarketGrid(assets, dailyData){
     </div>`;
   }).join('');
 }
+// ── Per-asset signals panel ──
+const _SIG_LABELS={
+  beta_adj:'BTC β adj', regime:'Regime', regime_adj:'Regime adj',
+  velocity:'Velocity', velocity_adj:'Vel adj',
+  ratio_z:'Ratio Z', ratio_adj:'Ratio adj',
+  exhaustion_adj:'Exhaustion',
+  news_mode:'News mode', news_direction:'News dir',
+  momentum_bias:'Momentum', session:'Session',
+  btc_3m_return:'BTC 3m ret', final_p_yes:'P(YES)',
+};
+const _SIG_ORDER=[
+  'btc_3m_return','beta_adj','regime','regime_adj',
+  'ratio_z','momentum_bias','exhaustion_adj',
+  'news_mode','news_direction','session',
+  'velocity','velocity_adj','final_p_yes',
+];
+function _fmtSigVal(k,v){
+  if(v===null||v===undefined)return null;
+  if(typeof v==='boolean')return v?'YES':'NO';
+  if(k==='final_p_yes'||k==='beta_adj'||k==='regime_adj'||k==='velocity_adj'||k==='exhaustion_adj'||k==='ratio_adj')
+    return (v>=0?'+':'')+( v*100).toFixed(1)+'%';
+  if(k==='btc_3m_return') return (v>=0?'+':'')+(v*100).toFixed(2)+'%';
+  if(k==='ratio_z') return v.toFixed(2);
+  if(k==='momentum_bias') return (v>=0?'+':'')+(v*100).toFixed(1)+'%';
+  if(typeof v==='number') return v.toFixed(3);
+  return String(v);
+}
+function _sigDotHtml(k,v){
+  if(k==='regime') return `<div class="cf-dot ${v==='momentum'?'on':v==='reversion'?'off':''}"></div>`;
+  if(k==='velocity') return `<div class="cf-dot ${v==='rising'?'on':v==='falling'?'off':''}"></div>`;
+  if(k==='news_mode') return `<div class="cf-dot ${v?'on':''}"></div>`;
+  return '<div class="cf-dot"></div>';
+}
+function renderSignalPanel(asset, assetData){
+  const badge=document.getElementById('sig-asset-badge');
+  if(badge) badge.textContent=asset;
+  const action=document.getElementById('st-action');
+  const reason=document.getElementById('st-reason');
+  const evBadge=document.getElementById('sig-ev-badge');
+  const rows=document.getElementById('sig-rows');
+  if(!rows) return;
+  const d=assetData||{};
+  if(action) action.textContent=d.status||'—';
+  if(reason) reason.textContent=d.skip_reason||'';
+  const ev=d.ev;
+  if(evBadge){evBadge.textContent=ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—';evBadge.style.color=ev>0?'var(--green)':ev<0?'var(--red)':'var(--muted)';}
+  const sigs=d.signals||{};
+  const html=_SIG_ORDER
+    .filter(k=>sigs[k]!==null&&sigs[k]!==undefined)
+    .map(k=>{
+      const label=_SIG_LABELS[k]||k;
+      const fmtVal=_fmtSigVal(k,sigs[k]);
+      if(fmtVal===null) return '';
+      return `<div class="cf-row">${_sigDotHtml(k,sigs[k])}<span class="cf-name">${label}</span><span class="cf-val">${fmtVal}</span></div>`;
+    }).join('');
+  rows.innerHTML=html||'<div class="cf-row"><span class="cf-name" style="color:var(--muted);">No signal data yet</span></div>';
+}
+function selectSignalAsset(asset){
+  _selectedSignalAsset=asset;
+  renderSignalPanel(asset, _lastAssetsData[asset]);
+  // highlight selected card
+  document.querySelectorAll('.market-card').forEach((el,i)=>{
+    el.style.outline=_ASSET_ORDER[i]===asset?'2px solid var(--accent)':'';
+  });
+}
+
 // Legacy compat: pollMarkets used old markets-strip endpoint
 function renderMarketsStrip(assets){ renderMarketGrid(assets,null); }
 
@@ -1383,52 +1453,6 @@ async function pollState(){
     const stScore=document.getElementById('st-score');if(stScore)stScore.textContent=s.confidence_score!=null?s.confidence_score:'—';
     const stAction=document.getElementById('st-action');if(stAction)stAction.textContent=s.last_action||'—';
     const stReason=document.getElementById('st-reason');if(stReason)stReason.textContent=s.last_skip_reason||'—';
-
-    // Brain breakdown
-    const bd=s.confidence_breakdown||{};
-    const wp=bd.win_prob_final,ev=bd.ev,mom=bd.momentum_label||'neutral',vel=bd.velocity_label||'neutral';
-    const vr=bd.vol_ratio,dp=bd.distance_pct,sr=s.seconds_remaining;
-    const confThresh=(s.config&&s.config.confidence_threshold)||72;
-    const evMin=(s.config&&s.config.min_ev_pct)||3;
-    const volGate=(s.config&&s.config.vol_gate_thresh)||1.80;
-
-    // Confluence checks (signals panel)
-    function setGate(id,valId,pass,val){
-      const b=document.getElementById(id),v=document.getElementById(valId);
-      if(b){b.textContent=pass?'✓':'✗';b.className='cf-check '+(pass?'pass':'fail');}
-      if(v)v.textContent=val;
-    }
-    function setSig(id,valId,on,val){
-      const d=document.getElementById(id),v=document.getElementById(valId);
-      if(d)d.className='cf-dot '+(on?'on':'off');
-      if(v){v.textContent=val;v.style.color=on?'var(--green)':'var(--muted)';}
-    }
-    setGate('cf-conf','cf-conf-val',wp!=null&&wp>=confThresh,wp!=null?wp.toFixed(1)+'%':'—');
-    setGate('cf-ev',  'cf-ev-val',  ev!=null&&ev>=evMin,     ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—');
-    setGate('cf-vol', 'cf-vol-val', vr!=null&&vr<volGate,    vr!=null?'ratio '+vr.toFixed(2):'no data');
-    setSig('cf-mom', 'cf-mom-val', mom!=='neutral',  mom.toUpperCase());
-    setSig('cf-vel', 'cf-vel-val', vel==='favorable',vel.toUpperCase());
-    setSig('cf-dist','cf-dist-val',dp!=null&&dp>=0.10,dp!=null?dp.toFixed(3)+'%':'—');
-    setSig('cf-time','cf-time-val',sr!=null&&sr>90&&sr<13*60,sr!=null?Math.floor(sr/60)+'m '+(sr%60|0)+'s':'—');
-
-    const tse=document.getElementById('brain-total-score');if(tse)tse.textContent=s.confidence_score||'—';
-
-    // Perf bar — Brain WR + Evals
-    const pbBrWr=document.getElementById('pb-brain-wr');
-    if(pbBrWr)pbBrWr.textContent=s.brain_wr!=null?(s.brain_wr*100).toFixed(0)+'%':'—';
-    const pbEv=document.getElementById('pb-evals');
-    if(pbEv)pbEv.textContent=s.brain_n!=null?s.brain_n:'—';
-
-    _updateAiPanel(s,bd,wp,ev,vr,confThresh);
-
-    // Claude (brain panel only)
-    const cBox=document.getElementById('brain-claude');
-    const reasoning=s.claude_reasoning||'';
-    const sigHtml=(s.claude_key_signals||[]).map(sig=>`<span style="background:var(--bg);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--blue);">${sig}</span>`).join('');
-    if(cBox){
-      if(reasoning){cBox.style.display='block';document.getElementById('brain-claude-text').textContent=reasoning;document.getElementById('brain-claude-signals').innerHTML=sigHtml;}
-      else cBox.style.display='none';
-    }
 
     // Limit badge
     const limitBadge=document.getElementById('limit-badge');

@@ -1776,6 +1776,7 @@ def printer_brain_routed(
         "confidence": int(round(true_p * 100)),
         "reasoning": decision.reason,
         "key_signals": [f"{k}: {v}" for k, v in decision.contributing_signals.items()],
+        "signals": dict(decision.contributing_signals),
         "win_prob": float(decision.p_model),
         "mom_label": decision.contributing_signals.get(
             "regime", decision.contributing_signals.get("mom_label", "neutral")
@@ -2717,6 +2718,7 @@ async def write_state_file(
             "win_prob":     _ev.get("win_prob"),
             "status":       _a_status,
             "skip_reason":  _ev.get("skip_reason"),
+            "signals":      _ev.get("signals", {}),
         }
     state["assets"] = assets_snap
 
@@ -2955,6 +2957,7 @@ async def handle_ready_phase(
         "win_prob":     round(brain_win_prob * 100, 1),
         "status":       "WATCHING",
         "skip_reason":  "",
+        "signals":      brain.get("signals", {}),
     }
 
     entry_price_cents = yes_ask if side == "yes" else no_ask
