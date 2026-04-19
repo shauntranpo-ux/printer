@@ -2305,6 +2305,14 @@ async def place_order(
             log.error(f"[passive] No order_id in response: {data}")
             return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
 
+        _placed_mins = int(secs_left // 60)
+        _placed_secs = int(secs_left % 60)
+        asyncio.ensure_future(send_telegram(
+            f"📋 <b>[{asset}] LIMIT ORDER PLACED</b>\n"
+            f"{'⬆' if side == 'yes' else '⬇'} <b>{side.upper()}</b>  {contracts} contracts @ <b>{entry_price_cents}¢</b>\n"
+            f"Expires in {_placed_mins}m {_placed_secs}s  |  <code>{ticker}</code>"
+        ))
+
         # Poll for fill, cancel if not filled within 15 seconds
         _poll_interval = 2.0
         _poll_timeout  = 15.0
@@ -2522,7 +2530,7 @@ async def sell_position(
     current_bid: int,
 ) -> int:
     """
-    Exit a position via a market IOC sell order. Retries up to 3 times.
+    Exit a position via a limit IOC sell order at the current bid. Retries up to 3 times.
     In paper mode, simulates an instant sell at the current bid.
 
     Returns:
@@ -2538,13 +2546,15 @@ async def sell_position(
         if attempt > 0:
             log.warning(f"Sell retry {attempt}/2...")
             await asyncio.sleep(1)
+        yes_price = current_bid if side == "yes" else (100 - current_bid)
         body = {
             "ticker": ticker,
             "side": side,
-            "type": "market",
+            "type": "limit",
             "count": contracts,
+            "yes_price": yes_price,
             "action": "sell",
-            "client_order_id": f"btcbot_exit_{int(time.time() * 1000)}_{attempt}",
+            "client_order_id": f"kalshi_exit_{int(time.time() * 1000)}_{attempt}",
             "time_in_force": "immediate_or_cancel",
         }
         try:
@@ -3177,14 +3187,16 @@ async def handle_ready_phase(
     _payout    = round((100 - fill_price) * contracts / 100, 2)
     _cost      = round(fill_price * contracts / 100, 2)
     _time_str  = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
-    _strat_tag = "🔄 REVERSAL TRADE" if _is_reversal else "TRADE ENTERED"
+    _expiry_dt = datetime.now(timezone(timedelta(hours=-7))) + timedelta(seconds=secs_left)
+    _expiry_str = _expiry_dt.strftime("%I:%M %p PST")
+    _strat_tag = "🔄 REVERSAL" if _is_reversal else "LIMIT ORDER FILLED"
     await send_telegram(
         f"{mode_icon} <b>[{asset}] {_strat_tag}</b>  —  {_time_str}\n"
         f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
-        f"Time left: {int(secs_left // 60)}m {int(secs_left % 60)}s  |  <code>{ticker}</code>"
+        f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s → {_expiry_str}  |  <code>{ticker}</code>"
     )
 
 
