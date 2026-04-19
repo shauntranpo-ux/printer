@@ -2724,6 +2724,7 @@ async def write_state_file(
             "status":       _a_status,
             "skip_reason":  _ev.get("skip_reason"),
             "signals":      _ev.get("signals", {}),
+            "position":     _st.get("position"),
         }
     state["assets"] = assets_snap
 
