@@ -27,6 +27,7 @@ from strategies.signals.exhaustion_fade import exhaustion_fade_adjustment
 from strategies.signals.kalshi_velocity import contract_velocity
 from strategies.signals.beta_cache import load_beta
 from strategies.signals.btc_context import three_min_return
+from strategies.signals.taper import magnitude_taper
 
 
 BETA_ADJ_MAX   = 0.12   # larger than ETH's (SOL moves harder)
@@ -145,6 +146,7 @@ class SOLStrategy(BaseStrategy):
     ) -> tuple[float, dict]:
         signals: dict = {}
         p_yes = baseline_p_above
+        taper = magnitude_taper(baseline_p_above)
         above = features.current_price > features.strike
 
         # ── Component 1: BTC beta signal ────────────────────────────────
@@ -161,7 +163,7 @@ class SOLStrategy(BaseStrategy):
         signals["btc_3m_return"] = btc_3m
         signals["beta"] = self.beta
         signals["beta_adj"] = beta_adj
-        p_yes += beta_adj
+        p_yes += beta_adj * taper
 
         # ── Component 2: momentum-biased prior + regime detector ────────
         base_bias = +MOMENTUM_BIAS if above else -MOMENTUM_BIAS
@@ -178,7 +180,7 @@ class SOLStrategy(BaseStrategy):
         signals["variance_ratio"] = vr
         signals["regime"] = regime
         signals["regime_adj"] = regime_adj
-        p_yes += base_bias + regime_adj
+        p_yes += (base_bias + regime_adj) * taper
 
         # ── Component 3: Kalshi velocity ────────────────────────────────
         velocity = contract_velocity(
@@ -193,7 +195,7 @@ class SOLStrategy(BaseStrategy):
             velocity_adj = -VELOCITY_ADJ
         signals["velocity"] = velocity
         signals["velocity_adj"] = velocity_adj
-        p_yes += velocity_adj
+        p_yes += velocity_adj * taper
 
         # ── Component 4: exhaustion fade ────────────────────────────────
         exh_adj, exh_signals = exhaustion_fade_adjustment(
@@ -204,7 +206,7 @@ class SOLStrategy(BaseStrategy):
         )
         signals.update(exh_signals)
         signals["exhaustion_adj"] = exh_adj
-        p_yes += exh_adj
+        p_yes += exh_adj * taper
 
         p_yes = max(0.05, min(0.95, p_yes))
         signals["final_p_yes"] = p_yes
