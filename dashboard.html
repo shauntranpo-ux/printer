@@ -30,7 +30,7 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 
 /* ── TopBar ── */
 #topbar{position:sticky;top:0;z-index:10;background:rgba(236,235,230,0.9);backdrop-filter:blur(12px);border-bottom:1px solid var(--line);}
-.topbar-inner{max-width:1440px;margin:0 auto;padding:10px 20px;display:flex;align-items:center;gap:14px;}
+.topbar-inner{padding:10px 20px;display:flex;align-items:center;gap:14px;}
 .tab-group{display:flex;align-items:center;gap:3px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:4px;}
 .tb-tab{display:flex;align-items:center;gap:6px;border:none;background:transparent;color:var(--ink-2);font-family:'Barlow Condensed',sans-serif;font-size:14px;font-weight:700;padding:7px 16px;border-radius:7px;cursor:pointer;letter-spacing:.3px;transition:all .1s;}
 .tb-tab:hover{color:var(--ink);background:rgba(0,0,0,0.04);}
@@ -58,7 +58,7 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 #clock-txt{font-size:14px;font-weight:600;color:var(--ink);letter-spacing:.2px;white-space:nowrap;}
 
 /* ── Main ── */
-#main{max-width:1440px;margin:0 auto;padding:18px 20px 60px;}
+#main{padding:18px 20px 60px;}
 
 /* ── Panels ── */
 .panel{display:none;}
@@ -353,12 +353,6 @@ tr:last-child td{border-bottom:none;}
         <div class="pf-lbl">Trades</div>
         <div class="pf-val" id="pb-trades" style="font-size:12px;line-height:1.5;">—</div>
       </div>
-      <div class="pf-actions">
-        <button id="bot-toggle" onclick="toggleBot()">BOT OFF</button>
-        <button class="mode-pill paper" id="mode-pill" onclick="toggleMode()">PAPER</button>
-        <button class="reset-btn" onclick="openResetModal('live')">Reset Live</button>
-        <button class="reset-btn" onclick="openResetModal('paper')">Reset Paper</button>
-      </div>
     </div>
 
     <!-- Market grid -->
@@ -606,7 +600,7 @@ let _activeChartTab='paper', _chartView='daily', _resetMode=null;
 let _openPosition=null;
 let _lastAssetsData={};
 let _selectedSignalAsset=null;
-let _botEnabled=false;
+let _botEnabled=false, _currentMode='paper';
 let _currentTab='overview';
 let _currentMarketSym=null;
 
@@ -820,8 +814,7 @@ function renderPnlValues() {
 
 // ── Mode ──
 function updateModePillVisual(mode) {
-  const pill = document.getElementById('mode-pill');
-  if (pill) { pill.textContent = mode.toUpperCase(); pill.className = 'mode-pill ' + mode; }
+  _currentMode = mode;
   const btn = document.getElementById('mode-btn-tb');
   const lbl = document.getElementById('mode-btn-tb-label');
   if (lbl) lbl.textContent = mode.toUpperCase();
@@ -833,14 +826,14 @@ let _pendingModeSwitch = null;
 function openLiveModal() { _pendingModeSwitch='live'; document.getElementById('live-modal').classList.add('open'); }
 function closeLiveModal() {
   _pendingModeSwitch = null; document.getElementById('live-modal').classList.remove('open');
-  const cur = document.getElementById('mode-pill').classList.contains('live') ? 'live' : 'paper';
+  const cur = _currentMode;
   const tog = document.getElementById('s-mode'); if (tog) tog.checked = cur === 'live';
 }
 async function confirmLiveSwitch() { document.getElementById('live-modal').classList.remove('open'); await _doModeSwitch('live'); }
 document.addEventListener('click', function(e) { if (e.target === document.getElementById('live-modal')) closeLiveModal(); });
 async function _doModeSwitch(mode) {
-  const prev = document.getElementById('mode-pill').classList.contains('live') ? 'live' : 'paper';
-  const pill = document.getElementById('mode-pill'); if (pill) pill.classList.add('loading'); updateModePillVisual(mode);
+  const prev = _currentMode;
+  updateModePillVisual(mode);
   try {
     const r = await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode})});
     if (!r.ok) { updateModePillVisual(prev); showToast('Failed to switch mode','error'); return; }
@@ -848,10 +841,10 @@ async function _doModeSwitch(mode) {
     if (cfg.mode !== mode) { updateModePillVisual(cfg.mode||prev); showToast('Mode switch failed','error'); }
     else showToast('Switched to '+mode.toUpperCase()+' mode');
   } catch(e) { updateModePillVisual(prev); showToast('Network error','error'); console.error(e); }
-  finally { if (pill) pill.classList.remove('loading'); }
+  finally {}
 }
 async function setMode(mode) { if (mode === 'live') { openLiveModal(); return; } await _doModeSwitch(mode); }
-function toggleMode() { const p = document.getElementById('mode-pill'); setMode(p && p.classList.contains('live') ? 'paper' : 'live'); }
+function toggleMode() { setMode(_currentMode === 'live' ? 'paper' : 'live'); }
 
 // ── Toast ──
 let _toastTimer = null;
