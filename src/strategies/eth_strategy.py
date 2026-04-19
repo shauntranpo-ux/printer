@@ -31,10 +31,11 @@ from strategies.signals.ratio_divergence import ratio_z_score
 from strategies.signals.kalshi_velocity import contract_velocity
 from strategies.signals.beta_cache import load_beta
 from strategies.signals.btc_context import three_min_return
+from strategies.signals.taper import magnitude_taper
 
 
 BETA_ADJ_MAX   = 0.10   # max contribution from BTC-beta signal
-REGIME_ADJ     = 0.03   # momentum / reversion regime nudge
+REGIME_ADJ     = 0.0    # disabled section 12.7 — ablation showed -$513 delta_pnl
 RATIO_ADJ_MAX  = 0.03   # max contribution from ratio divergence
 VELOCITY_ADJ   = 0.02   # Kalshi velocity nudge
 
@@ -66,6 +67,7 @@ class ETHStrategy(BaseStrategy):
         signals = {}
 
         p_yes = baseline_p_above
+        taper = magnitude_taper(baseline_p_above)
         above = features.current_price > features.strike
 
         # ── Component 1: concurrent BTC beta ────────────────────────────
@@ -82,7 +84,7 @@ class ETHStrategy(BaseStrategy):
         signals["btc_3m_return"] = btc_3m
         signals["beta"] = self.beta
         signals["beta_adj"] = beta_adj
-        p_yes += beta_adj
+        p_yes += beta_adj * taper
 
         # ── Component 2: variance-ratio regime ──────────────────────────
         eth_returns = log_returns_from_prices(list(features.prices_60m))
@@ -97,7 +99,7 @@ class ETHStrategy(BaseStrategy):
         signals["variance_ratio"] = vr
         signals["regime"] = regime
         signals["regime_adj"] = regime_adj
-        p_yes += regime_adj
+        p_yes += regime_adj * taper
 
         # ── Component 3: ETH/BTC ratio divergence ───────────────────────
         z = ratio_z_score(
@@ -112,7 +114,7 @@ class ETHStrategy(BaseStrategy):
             ratio_adj = -z_clip * (RATIO_ADJ_MAX / 3.0)
         signals["ratio_z"] = z
         signals["ratio_adj"] = ratio_adj
-        p_yes += ratio_adj
+        p_yes += ratio_adj * taper
 
         # ── Component 4: Kalshi contract velocity ───────────────────────
         velocity = contract_velocity(
@@ -127,7 +129,7 @@ class ETHStrategy(BaseStrategy):
             velocity_adj = -VELOCITY_ADJ
         signals["velocity"] = velocity
         signals["velocity_adj"] = velocity_adj
-        p_yes += velocity_adj
+        p_yes += velocity_adj * taper
 
         # Final clamp
         p_yes = max(0.05, min(0.95, p_yes))

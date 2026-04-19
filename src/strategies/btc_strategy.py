@@ -34,10 +34,11 @@ from strategies.signals.rolling_beta import log_returns_from_prices
 from strategies.signals.variance_ratio import variance_ratio, variance_ratio_to_regime
 from strategies.signals.kalshi_velocity import contract_velocity
 from strategies.signals.bv3_lookup import bv3_p_yes
+from strategies.signals.taper import magnitude_taper
 
 
 MOMENTUM_BIAS    = 0.02
-REGIME_ADJ       = 0.03
+REGIME_ADJ       = 0.0     # disabled section 12.7 — ablation showed -$451 delta_pnl
 VELOCITY_ADJ     = 0.02
 BV3_BLEND_WEIGHT = 0.20
 
@@ -90,6 +91,7 @@ class BTCStrategy(BaseStrategy):
         """
         signals: dict = {}
         p_yes = baseline_p_above
+        taper = magnitude_taper(baseline_p_above)
         above = features.current_price > features.strike
 
         # ── Component 1: variance-ratio regime detector ─────────────────
@@ -104,12 +106,12 @@ class BTCStrategy(BaseStrategy):
         signals["variance_ratio"] = vr
         signals["regime"] = regime
         signals["regime_adj"] = regime_adj
-        p_yes += regime_adj
+        p_yes += regime_adj * taper
 
         # ── Component 2: momentum-biased prior ──────────────────────────
         momentum_bias = +MOMENTUM_BIAS if above else -MOMENTUM_BIAS
         signals["momentum_bias"] = momentum_bias
-        p_yes += momentum_bias
+        p_yes += momentum_bias * taper
 
         # ── Component 3: Kalshi contract velocity ───────────────────────
         velocity = contract_velocity(
@@ -124,7 +126,7 @@ class BTCStrategy(BaseStrategy):
             velocity_adj = -VELOCITY_ADJ
         signals["velocity"] = velocity
         signals["velocity_adj"] = velocity_adj
-        p_yes += velocity_adj
+        p_yes += velocity_adj * taper
 
         # ── Component 4: BV3 blend (secondary, 20% weight) ──────────────
         bv3 = bv3_p_yes(

@@ -33,10 +33,11 @@ from strategies.signals.session_awareness import (
 from strategies.signals.idiosyncratic_detector import detect_idiosyncratic_mode
 from strategies.signals.beta_cache import load_beta
 from strategies.signals.btc_context import three_min_return
+from strategies.signals.taper import magnitude_taper
 
 
 BETA_ADJ_MAX  = 0.08
-MOMENTUM_BIAS = 0.015
+MOMENTUM_BIAS = 0.0     # disabled section 12.7 — ablation showed -$414 delta_pnl
 VELOCITY_ADJ  = 0.02
 
 
@@ -168,6 +169,7 @@ class DOGEStrategy(BaseStrategy):
     ) -> tuple[float, dict]:
         signals: dict = {}
         p_yes = baseline_p_above
+        taper = magnitude_taper(baseline_p_above)
         above = features.current_price > features.strike
 
         btc_3m = three_min_return(features.btc_prices_60m)
@@ -182,11 +184,11 @@ class DOGEStrategy(BaseStrategy):
         signals["btc_3m_return"] = btc_3m
         signals["beta"] = self.beta
         signals["beta_adj"] = beta_adj
-        p_yes += beta_adj
+        p_yes += beta_adj * taper
 
         base_bias = +MOMENTUM_BIAS if above else -MOMENTUM_BIAS
         signals["momentum_bias"] = base_bias
-        p_yes += base_bias
+        p_yes += base_bias * taper
 
         velocity = contract_velocity(
             list(features.kalshi_price_history),
@@ -200,7 +202,7 @@ class DOGEStrategy(BaseStrategy):
             velocity_adj = -VELOCITY_ADJ
         signals["velocity"] = velocity
         signals["velocity_adj"] = velocity_adj
-        p_yes += velocity_adj
+        p_yes += velocity_adj * taper
 
         p_yes = max(0.05, min(0.95, p_yes))
         signals["final_p_yes"] = p_yes

@@ -46,31 +46,31 @@ def make_strategy(asset: str, calibrator=None):
     if asset == "BTC":
         from strategies.btc_strategy import BTCStrategy
         return BTCStrategy(
-            skip_config=skip_cfg, min_ev=0.08, stake_dollars=stake,
+            skip_config=skip_cfg, min_ev=0.03, stake_dollars=stake,
             calibrator=calibrator, continuation_only=False,
         )
     elif asset == "ETH":
         from strategies.eth_strategy import ETHStrategy
         return ETHStrategy(
-            skip_config=skip_cfg, min_ev=0.08, stake_dollars=stake,
+            skip_config=skip_cfg, min_ev=0.04, stake_dollars=stake,
             calibrator=calibrator,
         )
     elif asset == "SOL":
         from strategies.sol_strategy import SOLStrategy
         return SOLStrategy(
-            skip_config=skip_cfg, min_ev=0.09, stake_dollars=stake,
+            skip_config=skip_cfg, min_ev=0.04, stake_dollars=stake,
             calibrator=calibrator,
         )
     elif asset == "XRP":
         from strategies.xrp_strategy import XRPStrategy
         return XRPStrategy(
-            skip_config=skip_cfg, min_ev=0.09, stake_dollars=stake,
+            skip_config=skip_cfg, min_ev=0.03, stake_dollars=stake,
             calibrator=calibrator,
         )
     elif asset == "DOGE":
         from strategies.doge_strategy import DOGEStrategy
         return DOGEStrategy(
-            skip_config=skip_cfg, min_ev=0.10, stake_dollars=stake,
+            skip_config=skip_cfg, min_ev=0.03, stake_dollars=stake,
             calibrator=calibrator,
         )
     else:
@@ -103,11 +103,15 @@ def slice_events(asset: str, df: pd.DataFrame, start_ts: float, end_ts: float, s
 def fit_calibration_from_trades(asset: str, trades: list):
     """Fit AssetCalibrator from a list of BacktestTrade records."""
     from strategies.calibration import AssetCalibrator
-    if len(trades) < 50:
+    if len(trades) < 15:
         return None
     cal = AssetCalibrator(asset)
     raw = [t.raw_p_model for t in trades]
-    outcomes = [1 if t.outcome == "win" else 0 for t in trades]
+    outcomes = [
+        1 if ((t.side == "yes" and t.outcome == "win") or
+              (t.side == "no" and t.outcome == "loss")) else 0
+        for t in trades
+    ]
     cal.refit(raw, outcomes)
     return cal
 

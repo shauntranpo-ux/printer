@@ -40,10 +40,11 @@ from strategies.signals.kalshi_velocity import (
 from strategies.signals.event_calendar import EventCalendar
 from strategies.signals.beta_cache import load_beta
 from strategies.signals.btc_context import three_min_return
+from strategies.signals.taper import magnitude_taper
 
 
 BETA_ADJ_MAX_CAP           = 0.06
-REGIME_ADJ                 = 0.04
+REGIME_ADJ                 = 0.0    # disabled section 12.7 — ablation showed -$611 delta_pnl
 RATIO_ADJ_MAX              = 0.02
 VELOCITY_ADJ               = 0.02
 NEWS_MODE_CONTINUATION_ADJ = 0.06
@@ -154,6 +155,7 @@ class XRPStrategy(BaseStrategy):
     ) -> tuple[float, dict]:
         signals: dict = {}
         p_yes = baseline_p_above
+        taper = magnitude_taper(baseline_p_above)
         above = features.current_price > features.strike
 
         btc_prices_60m = list(features.btc_prices_60m)
@@ -174,7 +176,7 @@ class XRPStrategy(BaseStrategy):
             elif news_direction == "down":
                 news_mode_adj = -NEWS_MODE_CONTINUATION_ADJ
         signals["news_mode_adj"] = news_mode_adj
-        p_yes += news_mode_adj
+        p_yes += news_mode_adj * taper
 
         # ── Step B: dynamic BTC-signal weight from correlation ──────────
         correlation = rolling_correlation(
@@ -203,7 +205,7 @@ class XRPStrategy(BaseStrategy):
         signals["btc_3m_return"] = btc_3m
         signals["beta"] = self.beta
         signals["beta_adj"] = beta_adj
-        p_yes += beta_adj
+        p_yes += beta_adj * taper
 
         # ── Step D: variance-ratio regime on XRP's own returns ──────────
         xrp_returns = log_returns_from_prices(list(features.prices_60m))
@@ -217,7 +219,7 @@ class XRPStrategy(BaseStrategy):
         signals["variance_ratio"] = vr
         signals["regime"] = regime
         signals["regime_adj"] = regime_adj
-        p_yes += regime_adj
+        p_yes += regime_adj * taper
 
         # ── Step E: XRP/BTC ratio divergence (secondary) ────────────────
         z = ratio_z_score(
@@ -231,7 +233,7 @@ class XRPStrategy(BaseStrategy):
             ratio_adj = -z_clip * (RATIO_ADJ_MAX / 3.0)
         signals["ratio_z"] = z
         signals["ratio_adj"] = ratio_adj
-        p_yes += ratio_adj
+        p_yes += ratio_adj * taper
 
         # ── Step F: Kalshi velocity (non-extreme) ───────────────────────
         velocity_adj = 0.0
@@ -249,7 +251,7 @@ class XRPStrategy(BaseStrategy):
                 velocity_adj = -VELOCITY_ADJ
         signals["velocity"] = velocity_label
         signals["velocity_adj"] = velocity_adj
-        p_yes += velocity_adj
+        p_yes += velocity_adj * taper
 
         p_yes = max(0.05, min(0.95, p_yes))
         signals["final_p_yes"] = p_yes
