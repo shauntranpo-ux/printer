@@ -255,7 +255,7 @@ def walk_forward_one_asset(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--assets", nargs="+", default=["BTC", "ETH", "SOL", "XRP", "DOGE"])
+    parser.add_argument("--assets", nargs="+", default=["ETH", "SOL", "XRP", "DOGE"])
     parser.add_argument("--train-days", type=int, default=90)
     parser.add_argument("--test-days", type=int, default=30)
     parser.add_argument("--purge-days", type=int, default=1)

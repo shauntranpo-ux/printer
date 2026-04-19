@@ -1983,7 +1983,6 @@ def _session_ev_adjustment() -> float:
 # ── Feature-flagged routing to new-foundation strategies (refactor) ──────
 # Routes any asset through strategies/ pipeline when config
 # use_new_strategies.<ASSET> is True. Default: False (legacy path unchanged).
-# BTC parity confirmed by section2_ab_harness.py.
 
 _STRATEGY_SINGLETONS: dict = {}  # keyed by asset name, lazy init
 
@@ -3823,7 +3822,7 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
             config = read_config()
             if not config.get("bot_enabled", False):
                 # Populate PAUSED state so dashboard shows prices instead of OFFLINE
-                for _pa in config.get("enabled_assets", ["BTC"]):
+                for _pa in config.get("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"]):
                     if _pa == "BTC":
                         continue
                     if _pa not in _asset_states:
@@ -3832,7 +3831,7 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
                         _asset_states[_pa]["phase"] = "PAUSED"
                 await asyncio.sleep(10)
                 continue
-            for asset in config.get("enabled_assets", ["BTC"]):
+            for asset in config.get("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"]):
                 if asset == "BTC":
                     continue
                 try:
@@ -4356,12 +4355,15 @@ async def main() -> None:
 
     # Start Binance multi-asset price feed
     _startup_config = read_config()
-    _enabled = _startup_config.get("enabled_assets", ["BTC"])
-    asyncio.create_task(binance_feed_task(_enabled))
-    asyncio.create_task(coinbase_price_task(_enabled))
+    _enabled = _startup_config.get("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"])
+    # Always subscribe BTC regardless of enabled_assets — other strategies use
+    # btc_prices_60m for correlation signals and the deque must stay populated.
+    _feed_assets = list(dict.fromkeys(["BTC"] + _enabled))
+    asyncio.create_task(binance_feed_task(_feed_assets))
+    asyncio.create_task(coinbase_price_task(_feed_assets))
 
     # Wait for the first price from any enabled asset (timeout after 120s so Railway doesn't hang)
-    _first_asset = _enabled[0] if _enabled else "BTC"
+    _first_asset = _enabled[0] if _enabled else "ETH"
     log.info(f"Waiting for price feeds ({_enabled})...")
     waited = 0
     while _am_get_price(_first_asset) is None and waited < 120:
