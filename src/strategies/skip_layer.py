@@ -28,6 +28,41 @@ class SkipConfig:
     macro_event_skip_minutes: float = 15.0      # skip within +/- this of macro event
     mom_lock_enabled: bool = True               # skip when momentum opposes best-EV side
     mom_lock_neutral_tighten: float = 1.0       # tighten vol threshold by this mult when momentum is neutral
+    mom_accel_scale: float = 3.0               # multiplier for acceleration probability adjustment
+
+
+def _momentum_acceleration(prices, window_seconds: int = 180) -> tuple[float, str]:
+    """
+    Second derivative of price: how much is momentum changing?
+
+    Compares the most recent `window_seconds` momentum against the prior
+    equal-length window. Returns (acceleration, label):
+      acceleration: pct-point difference (recent_mom - prior_mom)
+      label: "accelerating" | "decelerating" | "flat"
+    """
+    if not prices:
+        return 0.0, "flat"
+    now = time.time()
+    cutoff_recent = now - window_seconds
+    cutoff_prior  = now - window_seconds * 2
+
+    p_prior  = next((p for ts, p in prices if ts >= cutoff_prior),  None)
+    p_mid    = next((p for ts, p in prices if ts >= cutoff_recent), None)
+    p_now    = list(prices)[-1][1]
+
+    if p_prior is None or p_mid is None or p_prior <= 0 or p_mid <= 0:
+        return 0.0, "flat"
+
+    mom_recent = (p_now - p_mid)   / p_mid
+    mom_prior  = (p_mid - p_prior) / p_prior
+    accel = mom_recent - mom_prior
+
+    THRESHOLD = 0.002
+    if accel > THRESHOLD:
+        return accel, "accelerating"
+    if accel < -THRESHOLD:
+        return accel, "decelerating"
+    return accel, "flat"
 
 
 def _momentum_label(prices, window_seconds: int = 180) -> str:

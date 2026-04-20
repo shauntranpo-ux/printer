@@ -1270,6 +1270,44 @@ def calculate_momentum(prices=None) -> tuple[float, str]:
     return pct, "neutral"
 
 
+def calculate_momentum_acceleration(prices=None) -> tuple[float, str]:
+    """
+    Second derivative of price: how much is 3-min momentum changing vs 3-6 min ago?
+
+    Returns (acceleration, label):
+      acceleration: pct-point change between recent and prior 3-min momentum
+      label: "accelerating" | "decelerating" | "flat"
+
+    "accelerating" = momentum strengthening in its current direction.
+    "decelerating" = momentum weakening (trend fading, potential reversal).
+    """
+    prices = prices or btc_prices
+    if not prices:
+        return 0.0, "flat"
+
+    now = time.time()
+    cutoff_3m = now - 180
+    cutoff_6m = now - 360
+
+    p_6m = next((p for ts, p in prices if ts >= cutoff_6m), None)
+    p_3m = next((p for ts, p in prices if ts >= cutoff_3m), None)
+    p_now = prices[-1][1]
+
+    if p_6m is None or p_3m is None or p_6m <= 0 or p_3m <= 0:
+        return 0.0, "flat"
+
+    mom_recent = (p_now - p_3m) / p_3m   # last 3 min
+    mom_prior  = (p_3m - p_6m) / p_6m    # 3-6 min ago
+    accel = mom_recent - mom_prior
+
+    THRESHOLD = 0.002  # 0.2% momentum shift = meaningful acceleration
+    if accel > THRESHOLD:
+        return accel, "accelerating"
+    if accel < -THRESHOLD:
+        return accel, "decelerating"
+    return accel, "flat"
+
+
 def btc_realized_vol(prices=None) -> float | None:
     """
     Realized volatility: std dev of 1-minute percentage returns over the
@@ -1737,6 +1775,7 @@ def _get_or_make_strategy(asset: str, config):
             vol_oppose_mult=float(get_asset_config(config, asset, "vol_oppose_mult", 0.70)),
             mom_lock_enabled=bool(get_asset_config(config, asset, "mom_lock_enabled", True)),
             mom_lock_neutral_tighten=float(get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0)),
+            mom_accel_scale=float(get_asset_config(config, asset, "mom_accel_scale", 3.0)),
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
         min_ev = float(overrides.get("min_ev_base",
@@ -1789,6 +1828,7 @@ def printer_brain_routed(
     min_reward_cents=0.0, max_risk_reward_ratio=999.0,
     vol_confirm_mult=1.25, vol_oppose_mult=0.70,
     mom_lock_enabled=True, mom_lock_neutral_tighten=1.0,
+    mom_accel_scale=3.0,
 ):
     """
     Routes to legacy printer_brain OR new strategy based on per-asset config flag.
@@ -1811,6 +1851,7 @@ def printer_brain_routed(
             vol_oppose_mult=vol_oppose_mult,
             mom_lock_enabled=mom_lock_enabled,
             mom_lock_neutral_tighten=mom_lock_neutral_tighten,
+            mom_accel_scale=mom_accel_scale,
         )
 
     strat = _get_or_make_strategy(asset, config)
@@ -1930,6 +1971,7 @@ def printer_brain(
     vol_oppose_mult: float = 0.70,
     mom_lock_enabled: bool = True,
     mom_lock_neutral_tighten: float = 1.0,
+    mom_accel_scale: float = 3.0,
 ) -> dict:
     """
     Printer Brain v3 — empirically calibrated from 4.5M rows BTC 1-min data.
@@ -2006,6 +2048,19 @@ def printer_brain(
     else:
         mom_adj = 0.0
 
+    # ── 2b. Momentum acceleration (second derivative) ─────────────────────────
+    # Scale mom_adj up when momentum is strengthening, down when it's fading.
+    # Only applies when momentum confirms the trade — opposing momentum is
+    # already blocked by the direction lock (Priority 2).
+    _accel, _accel_label = calculate_momentum_acceleration(prices=_asset_prices)
+    accel_adj = 0.0
+    if _mom_confirms and _accel_label != "flat":
+        # mom_sign: +1 for YES (above), -1 for NO (below).
+        # Bullish accel confirms YES → positive adj. Bearish accel confirms NO
+        # (accel is negative) → flip sign so the adj is still positive.
+        _mom_sign = 1.0 if above else -1.0
+        accel_adj = float(max(-0.03, min(0.03, _mom_sign * _accel * mom_accel_scale)))
+
     # ── 3. Contract velocity ──────────────────────────────────────────────────
     vel_adj = +0.01 if vel_signal == "favorable" else (-0.01 if vel_signal == "unfavorable" else 0.0)
 
@@ -2023,7 +2078,7 @@ def printer_brain(
         lag_adj = _lag_mag * 0.04   # max +4% probability boost for a fully unpriced lag
 
     # ── 4. Combined probability + learned calibration scale ──────────────────
-    win_prob = win_prob_raw + mom_adj + vel_adj + lag_adj
+    win_prob = win_prob_raw + mom_adj + accel_adj + vel_adj + lag_adj
     win_prob = 0.50 + (win_prob - 0.50) * _brain_cal["prob_scale"]
     win_prob = max(0.10, min(0.997, win_prob))
 
@@ -2162,7 +2217,7 @@ def printer_brain(
         f"BTC {pct_above*100:+.2f}% from strike | {mins_left:.1f} min left",
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
         f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
-        f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal} | AMM lag: {_lag_sig} ({_lag_mag:.2f})",
+        f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) accel={_accel_label} ({_accel*100:+.2f}%) | Velocity: {vel_signal} | AMM lag: {_lag_sig} ({_lag_mag:.2f})",
         f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (thresh={_eff_thresh:.2f}) | Dur: {f'{_buf_durability:.1f}min' if _buf_durability else 'n/a'}",
     ]
 
@@ -3144,6 +3199,7 @@ async def handle_ready_phase(
                             vol_oppose_mult=get_asset_config(config, asset, "vol_oppose_mult", 0.70),
                             mom_lock_enabled=get_asset_config(config, asset, "mom_lock_enabled", True),
                             mom_lock_neutral_tighten=get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0),
+                            mom_accel_scale=get_asset_config(config, asset, "mom_accel_scale", 3.0),
                             max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                             asset=asset,
                         )
@@ -3226,6 +3282,7 @@ async def handle_ready_phase(
                           vol_oppose_mult=get_asset_config(config, asset, "vol_oppose_mult", 0.70),
                           mom_lock_enabled=get_asset_config(config, asset, "mom_lock_enabled", True),
                           mom_lock_neutral_tighten=get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0),
+                          mom_accel_scale=get_asset_config(config, asset, "mom_accel_scale", 3.0),
                           asset=asset)
     side     = brain["side"]
     score    = brain["confidence"]

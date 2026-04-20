@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import check_skip, SkipConfig, _momentum_label
+from strategies.skip_layer import check_skip, SkipConfig, _momentum_label, _momentum_acceleration
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
 from strategies.lag_detector import amm_lag_signal
@@ -111,6 +111,27 @@ class BaseStrategy(ABC):
         raw_p_yes = max(0.05, min(0.95, raw_p_yes + _lag_adj))
         signals["amm_lag_signal"] = _lag_sig
         signals["amm_lag_magnitude"] = round(_lag_mag, 3)
+
+        # Step 3.6: momentum acceleration — scale probability up when momentum
+        # is strengthening, down when it's fading. Only applies when momentum
+        # confirms the trade direction (opposing cases are blocked by the lock).
+        _accel, _accel_label = _momentum_acceleration(features.prices_60m)
+        _accel_adj = 0.0
+        if _accel_label != "flat" and self.skip_config.mom_accel_scale > 0:
+            above = features.current_price > features.strike
+            _mom = _momentum_label(features.prices_60m)
+            _mom_confirms = (
+                (_mom == "bullish" and above) or (_mom == "bearish" and not above)
+            )
+            if _mom_confirms:
+                _mom_sign = 1.0 if above else -1.0
+                _accel_adj = float(max(
+                    -0.03,
+                    min(0.03, _mom_sign * _accel * self.skip_config.mom_accel_scale),
+                ))
+        raw_p_yes = max(0.05, min(0.95, raw_p_yes + _accel_adj))
+        signals["mom_accel_label"] = _accel_label
+        signals["mom_accel_adj"] = round(_accel_adj, 4)
 
         # Step 4: calibrate
         calibrated_p_yes = self.calibrator.calibrate(raw_p_yes)
