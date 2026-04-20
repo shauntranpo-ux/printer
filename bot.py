@@ -1203,23 +1203,22 @@ async def fetch_orderbook(
         log.warning(f"No price data available for {ticker} (yes_ask={best_yes_ask} no_ask={best_no_ask})")
         return None
 
-    # Sanity check — reject prices that are clearly wrong
-    if not (1 <= best_yes_ask <= 99 and 1 <= best_no_ask <= 99):
+    # Sanity check — reject prices outside [1, 100]. 0c is impossible; >100c is data corruption.
+    # One side at 100c is valid at window open (e.g. yes_ask=12c, no_ask=100c).
+    # Both at 100c means the market hasn't opened yet — reject.
+    if not (1 <= best_yes_ask <= 100 and 1 <= best_no_ask <= 100):
         log.warning(
             f"Orderbook prices out of range for {ticker}: "
-            f"yes_ask={best_yes_ask}c no_ask={best_no_ask}c — skipping (market not ready)"
+            f"yes_ask={best_yes_ask}c no_ask={best_no_ask}c — skipping"
         )
+        return None
+    if best_yes_ask == 100 and best_no_ask == 100:
+        log.debug(f"Both sides at ceiling for {ticker} — market not ready yet")
         return None
     if best_yes_ask + best_no_ask < 100:
         log.warning(
             f"Orderbook sum below 100 for {ticker}: "
             f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c — skipping"
-        )
-        return None
-    if best_yes_ask + best_no_ask > 110:
-        log.warning(
-            f"Orderbook spread too wide for {ticker}: "
-            f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c > 110, skipping"
         )
         return None
 
