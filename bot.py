@@ -4205,7 +4205,7 @@ async def main() -> None:
     # Clean up zombie "pending" trades from prior crashed sessions.
     # Any trade still pending after 30+ minutes never settled — mark it as expired.
     try:
-        conn = get_db()
+        conn = sqlite3.connect(_DB_FILE)
         cleaned = conn.execute(
             """UPDATE trades
                SET outcome         = 'expired_untracked',
@@ -4224,9 +4224,11 @@ async def main() -> None:
 
     _load_bv3_corrections()
 
-    # Verify Kalshi credentials and log account balance before doing anything
-    async with aiohttp.ClientSession() as verify_session:
-        await verify_kalshi_connection(verify_session)
+    # Verify Kalshi credentials and log account balance before doing anything.
+    # Skipped in paper mode — no real credentials are loaded there.
+    if read_config().get("mode", "paper") != "paper":
+        async with aiohttp.ClientSession() as verify_session:
+            await verify_kalshi_connection(verify_session)
 
     # Load BV3 tables for all assets (full tables for live trading)
     load_bv3_tables(use_pre2023=False)
