@@ -3237,8 +3237,6 @@ async def handle_ready_phase(
                             mom_lock_enabled=get_asset_config(config, asset, "mom_lock_enabled", True),
                             mom_lock_neutral_tighten=get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0),
                             mom_accel_scale=get_asset_config(config, asset, "mom_accel_scale", 3.0),
-                            mom_accel_scale=get_asset_config(config, asset, "mom_accel_scale", 3.0),
-                            max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                             asset=asset,
                         )
                         c_win_prob = c_brain.get("win_prob", 0.5)
