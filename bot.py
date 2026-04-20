@@ -1051,7 +1051,11 @@ def parse_strike(market: dict) -> float | None:
         log.info(f"Strike parsed from title regex: {strike} (text: {text[:80]})")
         return strike
 
-    log.warning(f"Cannot parse strike. Full market fields: { {k: market.get(k) for k in ('ticker','title','subtitle','floor_strike','cap_strike','strike_price','result','yes_sub_title','no_sub_title')} }")
+    yes_sub = market.get("yes_sub_title") or ""
+    if "TBD" in yes_sub:
+        log.debug(f"Cannot parse strike (TBD): {market.get('ticker')}")
+    else:
+        log.warning(f"Cannot parse strike. Full market fields: { {k: market.get(k) for k in ('ticker','title','subtitle','floor_strike','cap_strike','strike_price','result','yes_sub_title','no_sub_title')} }")
     return None
 
 
@@ -1110,7 +1114,8 @@ async def fetch_orderbook(
     """
     def _dollars_to_cents(val) -> int | None:
         try:
-            return int(round(float(val) * 100))
+            v = int(round(float(val) * 100))
+            return v if v > 0 else None  # 0 means no data / empty side
         except (TypeError, ValueError):
             return None
 
@@ -1135,8 +1140,8 @@ async def fetch_orderbook(
     ob = ob_data.get("orderbook", {})
     yes_arr = ob.get("yes", [])
     no_arr  = ob.get("no",  [])
-    yes_asks = [(p, q) for p, q in yes_arr if q > 0]
-    no_asks  = [(p, q) for p, q in no_arr  if q > 0]
+    yes_asks = [(p, q) for p, q in yes_arr if q > 0 and p > 0]
+    no_asks  = [(p, q) for p, q in no_arr  if q > 0 and p > 0]
 
     best_yes_ask = min(p for p, _ in yes_asks) if yes_asks else None
     best_no_ask  = min(p for p, _ in no_asks)  if no_asks  else None
@@ -1199,21 +1204,19 @@ async def fetch_orderbook(
         return None
 
     # Sanity check — reject prices that are clearly wrong
-    if not (1 <= best_yes_ask <= 99 and 1 <= best_no_ask <= 100):
-        log.error(
-            f"Orderbook sanity FAIL for {ticker}: "
-            f"yes_ask={best_yes_ask}c no_ask={best_no_ask}c — out of valid range, skipping"
+    if not (1 <= best_yes_ask <= 99 and 1 <= best_no_ask <= 99):
+        log.warning(
+            f"Orderbook prices out of range for {ticker}: "
+            f"yes_ask={best_yes_ask}c no_ask={best_no_ask}c — skipping (market not ready)"
         )
         return None
     if best_yes_ask + best_no_ask < 100:
-        # Sum below 100 is impossible (would allow riskless arbitrage)
-        log.error(
-            f"Orderbook sanity FAIL for {ticker}: "
-            f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c < 100, skipping"
+        log.warning(
+            f"Orderbook sum below 100 for {ticker}: "
+            f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c — skipping"
         )
         return None
     if best_yes_ask + best_no_ask > 110:
-        # Spread > 10c means thin liquidity — fill quality will be poor
         log.warning(
             f"Orderbook spread too wide for {ticker}: "
             f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c > 110, skipping"
@@ -3228,10 +3231,12 @@ async def handle_ready_phase(
                             kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
                             max_entry_price_cents=get_asset_config(config, asset, "max_entry_price_cents", 100.0),
                             min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
+                            max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                             vol_confirm_mult=get_asset_config(config, asset, "vol_confirm_mult", 1.25),
                             vol_oppose_mult=get_asset_config(config, asset, "vol_oppose_mult", 0.70),
                             mom_lock_enabled=get_asset_config(config, asset, "mom_lock_enabled", True),
                             mom_lock_neutral_tighten=get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0),
+                            mom_accel_scale=get_asset_config(config, asset, "mom_accel_scale", 3.0),
                             mom_accel_scale=get_asset_config(config, asset, "mom_accel_scale", 3.0),
                             max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                             asset=asset,
