@@ -81,6 +81,11 @@ _CONFIG_FILE = os.environ.get("BOT_CONFIG_FILE", "config.json")
 _DB_FILE     = os.environ.get("BOT_DB_FILE",     "kalshi_bot.db")
 _STATE_FILE  = os.environ.get("BOT_STATE_FILE",  "bot_state.json")
 
+# Derive data directory from DB path so all persistent files land together.
+# On Railway: BOT_DB_FILE=/app/data/kalshi_bot.db  → _DATA_DIR=/app/data (volume).
+# Local dev:  BOT_DB_FILE not set, DB at cwd/kalshi_bot.db → _DATA_DIR=cwd.
+_DATA_DIR = os.path.dirname(os.path.abspath(_DB_FILE))
+
 # ─────────────────────────── global state ─────────────────────────────────────
 # btc_prices is an alias to asset_manager's BTC price deque.
 # All existing code that reads btc_prices (momentum, vol, feed) works unchanged.
@@ -105,7 +110,7 @@ _all_markets_cache_ts: float = 0.0
 # Live BV3 correction table — tracks actual win rates per (dist_idx, time_idx) bucket
 # Updated after every resolved trade. Blended into _empirical_win_prob().
 _bv3_corrections: dict = {}  # (dist_idx, time_idx) -> [wins, total]
-_BV3_CORRECTIONS_FILE = "bv3_corrections.json"
+_BV3_CORRECTIONS_FILE = os.path.join(_DATA_DIR, "bv3_corrections.json")
 
 # Daily-limit tracking
 limit_triggered: bool = False
@@ -114,7 +119,7 @@ pre_limit_mode: str | None = None
 daily_reset_date = None
 
 # Price-validator CSV — counts rows collected and running totals for summary
-_PRICE_VAL_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "price_validation_log.csv")
+_PRICE_VAL_CSV = os.path.join(_DATA_DIR, "price_validation_log.csv")
 _price_val_count: int = 0
 _price_val_gap_n: int = 0      # rows where real_yes is not None (valid gap count)
 _price_val_sim_sum: float = 0.0

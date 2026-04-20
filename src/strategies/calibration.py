@@ -20,7 +20,7 @@ from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 
 
-CALIBRATION_DIR = Path("data/calibration")
+CALIBRATION_DIR = Path(__file__).resolve().parents[2] / "data" / "calibration"
 MIN_SAMPLES_FOR_ISOTONIC = 50
 MIN_SAMPLES_FOR_PLATT = 15
 

@@ -685,7 +685,8 @@ def api_market_pulse():
         except Exception:
             pass
         try:
-            pv_path = "price_validation_log.csv"
+            _db_dir = os.path.dirname(os.path.abspath(os.environ.get("BOT_DB_FILE", "kalshi_bot.db")))
+            pv_path = os.path.join(_db_dir, "price_validation_log.csv")
             if os.path.exists(pv_path):
                 import csv as _csv
                 with open(pv_path) as _f:
@@ -835,7 +836,7 @@ def api_signal_stats():
     lag_signal, vel_signal.
     """
     try:
-        db_path = os.path.join(os.path.dirname(__file__), "trades.db")
+        db_path = os.environ.get("BOT_DB_FILE", "kalshi_bot.db")
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
