@@ -18,6 +18,11 @@ import re
 import sys
 import tempfile
 import time
+
+# Add src/ to path so `import strategies` works on Railway and locally
+_src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+if _src_dir not in sys.path:
+    sys.path.insert(0, _src_dir)
 from base64 import b64encode
 from collections import deque
 from datetime import datetime, timezone, timedelta
@@ -1177,21 +1182,27 @@ async def fetch_orderbook(
         if best_yes_ask is None:
             no_bid = _dollars_to_cents(src.get("no_bid_dollars"))
             if no_bid is not None:
-                best_yes_ask = 100 - no_bid
+                _derived = 100 - no_bid
+                if _derived > 0:
+                    best_yes_ask = _derived
 
         if best_no_ask is None:
             best_no_ask = _dollars_to_cents(src.get("no_ask_dollars"))
         if best_no_ask is None:
             yes_bid = _dollars_to_cents(src.get("yes_bid_dollars"))
             if yes_bid is not None:
-                best_no_ask = 100 - yes_bid
+                _derived = 100 - yes_bid
+                if _derived > 0:
+                    best_no_ask = _derived
 
         if best_yes_bid is None:
             best_yes_bid = _dollars_to_cents(src.get("yes_bid_dollars"))
         if best_yes_bid is None:
             no_ask_raw = _dollars_to_cents(src.get("no_ask_dollars"))
             if no_ask_raw is not None:
-                best_yes_bid = 100 - no_ask_raw
+                _derived = 100 - no_ask_raw
+                if _derived >= 0:
+                    best_yes_bid = _derived
 
         if best_yes_ask is not None or best_no_ask is not None:
             log.info(
