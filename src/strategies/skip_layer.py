@@ -17,6 +17,10 @@ from strategies.features import MarketFeatures
 class SkipConfig:
     max_spread_cents: float = 3.0               # max spread on the side we'd trade
     min_seconds_left: float = 30.0              # skip if under this
+    min_entry_price_cents: float = 35.0         # skip markets where either side costs below this floor
+    #   (prevents trading strongly-directional markets where signal adjustments
+    #    are too small to overcome the market's conviction; 0% observed win rate
+    #    on cheap-side contracts in historical data)
     cold_start_samples: int = 60                # need this many prices_60m samples
     vol_top_pct_threshold: float = 0.95         # skip if realized vol > 95th pct
     vol_bot_pct_threshold: float = 0.05         # skip if realized vol < 5th pct
@@ -34,6 +38,17 @@ def check_skip(
     # Time remaining
     if features.seconds_left < cfg.min_seconds_left:
         return f"seconds_left={features.seconds_left:.0f} < {cfg.min_seconds_left}"
+
+    # Deep-OTM filter: both sides must have at least one tradeable contract above
+    # the minimum price. Deep-OTM contracts (<35c) have 0% observed win rate
+    # because the model's signal adjustments are too small to overcome market pricing.
+    min_p = cfg.min_entry_price_cents
+    if min(features.yes_ask, features.no_ask) < min_p:
+        cheap_side = "yes" if features.yes_ask < features.no_ask else "no"
+        cheap_price = min(features.yes_ask, features.no_ask)
+        return (
+            f"deep_otm: {cheap_side}_ask={cheap_price:.0f}c below {min_p:.0f}c floor"
+        )
 
     # Macro event
     if macro_event_active:

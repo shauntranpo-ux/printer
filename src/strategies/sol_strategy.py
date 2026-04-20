@@ -7,7 +7,7 @@ Components:
 3. Solana network health kill switch (fail-safe, skip if unhealthy)
 4. Final-2-minute exhaustion fade on extreme moves
 
-Uses Brownian-bridge baseline adjusted by evidence signals.
+Uses market-implied probability baseline (Kalshi AMM price) adjusted by evidence signals.
 BaseStrategy handles calibration, EV, and bidirectional side selection.
 """
 
@@ -83,15 +83,12 @@ class SOLStrategy(BaseStrategy):
 
     def _decide_after_skip(self, features: MarketFeatures) -> Decision:
         """Full decision pipeline after the skip layer has passed."""
-        from strategies.baseline import brownian_bridge_prob_above
         from strategies.ev import compute_bidirectional_ev
 
-        baseline_p_above = brownian_bridge_prob_above(
-            features.current_price,
-            features.strike,
-            features.seconds_left,
-            features.realized_vol_1min or 0.001,
-        )
+        _yes = features.yes_ask / 100.0
+        _no = features.no_ask / 100.0
+        _total = _yes + _no
+        baseline_p_above = _yes / _total if _total > 0 else 0.5
 
         raw_p_yes, signals = self.compute_raw_p_model(features, baseline_p_above)
         calibrated_p_yes = self.calibrator.calibrate(raw_p_yes)

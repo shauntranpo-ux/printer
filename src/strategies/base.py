@@ -11,7 +11,6 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from strategies.features import MarketFeatures, Decision
-from strategies.baseline import brownian_bridge_prob_above
 from strategies.skip_layer import check_skip, SkipConfig
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
@@ -24,7 +23,7 @@ class BaseStrategy(ABC):
     The decide() method receives raw features and returns a Decision.
     The base class handles:
       - skip layer (pre-strategy filters)
-      - baseline computation (Brownian bridge)
+      - baseline computation (market-implied probability from Kalshi AMM price)
       - calibration of p_model
       - bidirectional EV calculation
       - final skip if no positive-EV side exists
@@ -61,8 +60,8 @@ class BaseStrategy(ABC):
 
         Args:
             features: all available market features
-            baseline_p_above: Brownian-bridge P(close above strike), already
-                             computed by base class
+            baseline_p_above: market-implied P(close above strike), derived from
+                             Kalshi AMM ask prices: yes_ask / (yes_ask + no_ask)
 
         Returns:
             (p_model_yes, contributing_signals)
@@ -85,13 +84,14 @@ class BaseStrategy(ABC):
                 reason=f"skip_layer: {skip_reason}",
             )
 
-        # Step 2: baseline probability
-        baseline_p_above = brownian_bridge_prob_above(
-            features.current_price,
-            features.strike,
-            features.seconds_left,
-            features.realized_vol_1min or 0.001,
-        )
+        # Step 2: baseline probability — use market-implied probability.
+        # The Kalshi AMM already prices in price distance vs strike and vol.
+        # Our signals should be the only source of edge, not a physics model
+        # that disagrees with the market on information it already has.
+        _yes = features.yes_ask / 100.0
+        _no = features.no_ask / 100.0
+        _total = _yes + _no
+        baseline_p_above = _yes / _total if _total > 0 else 0.5
 
         # Step 3: strategy's raw p_model (P(yes wins) = P(close > strike))
         raw_p_yes, signals = self.compute_raw_p_model(features, baseline_p_above)
