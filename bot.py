@@ -1732,7 +1732,9 @@ def _get_or_make_strategy(asset: str, config):
             min_seconds_left=float(config.get("min_seconds_left", 30.0)),
             min_entry_price_cents=float(config.get("min_entry_price_cents", 35.0)),
             cold_start_samples=int(config.get("cold_start_samples", 60)),
-            vol_ratio_threshold=float(config.get("vol_gate_thresh", 1.80)),
+            vol_ratio_threshold=float(get_asset_config(config, asset, "vol_gate_thresh", 1.80)),
+            vol_confirm_mult=float(get_asset_config(config, asset, "vol_confirm_mult", 1.25)),
+            vol_oppose_mult=float(get_asset_config(config, asset, "vol_oppose_mult", 0.70)),
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
         min_ev = float(overrides.get("min_ev_base",
@@ -1783,6 +1785,7 @@ def printer_brain_routed(
     min_ev_base=3.0, vol_gate_thresh=1.80, kalshi_fee=0.07,
     asset="BTC", max_entry_price_cents=100.0,
     min_reward_cents=0.0, max_risk_reward_ratio=999.0,
+    vol_confirm_mult=1.25, vol_oppose_mult=0.70,
 ):
     """
     Routes to legacy printer_brain OR new strategy based on per-asset config flag.
@@ -1801,6 +1804,8 @@ def printer_brain_routed(
             max_entry_price_cents=max_entry_price_cents,
             min_reward_cents=min_reward_cents,
             max_risk_reward_ratio=max_risk_reward_ratio,
+            vol_confirm_mult=vol_confirm_mult,
+            vol_oppose_mult=vol_oppose_mult,
         )
 
     strat = _get_or_make_strategy(asset, config)
@@ -1813,6 +1818,8 @@ def printer_brain_routed(
             max_entry_price_cents=max_entry_price_cents,
             min_reward_cents=min_reward_cents,
             max_risk_reward_ratio=max_risk_reward_ratio,
+            vol_confirm_mult=vol_confirm_mult,
+            vol_oppose_mult=vol_oppose_mult,
         )
 
     from strategies.feature_builder import build_features_from_bot_state
@@ -1912,6 +1919,8 @@ def printer_brain(
     max_entry_price_cents: float = 100.0,
     min_reward_cents: float = 0.0,
     max_risk_reward_ratio: float = 999.0,
+    vol_confirm_mult: float = 1.25,
+    vol_oppose_mult: float = 0.70,
 ) -> dict:
     """
     Printer Brain v3 — empirically calibrated from 4.5M rows BTC 1-min data.
@@ -1957,9 +1966,9 @@ def printer_brain(
         _mom_confirms = (mom_label == "bullish" and above) or (mom_label == "bearish" and not above)
         _mom_opposes  = (mom_label == "bullish" and not above) or (mom_label == "bearish" and above)
         if _mom_confirms:
-            _eff_thresh = vol_gate_thresh * 1.25  # momentum widens effective buffer
+            _eff_thresh = vol_gate_thresh * vol_confirm_mult
         elif _mom_opposes:
-            _eff_thresh = vol_gate_thresh * 0.70  # momentum erodes buffer, need more room
+            _eff_thresh = vol_gate_thresh * vol_oppose_mult
         # else: neutral → _eff_thresh stays at vol_gate_thresh
 
         if _vol_ratio >= _eff_thresh:
@@ -3092,6 +3101,8 @@ async def handle_ready_phase(
                             kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
                             max_entry_price_cents=get_asset_config(config, asset, "max_entry_price_cents", 100.0),
                             min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
+                            vol_confirm_mult=get_asset_config(config, asset, "vol_confirm_mult", 1.25),
+                            vol_oppose_mult=get_asset_config(config, asset, "vol_oppose_mult", 0.70),
                             max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                             asset=asset,
                         )
@@ -3170,6 +3181,8 @@ async def handle_ready_phase(
                           max_entry_price_cents=get_asset_config(config, asset, "max_entry_price_cents", 100.0),
                           min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
                           max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
+                          vol_confirm_mult=get_asset_config(config, asset, "vol_confirm_mult", 1.25),
+                          vol_oppose_mult=get_asset_config(config, asset, "vol_oppose_mult", 0.70),
                           asset=asset)
     side     = brain["side"]
     score    = brain["confidence"]

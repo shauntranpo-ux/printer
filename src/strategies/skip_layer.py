@@ -21,6 +21,8 @@ class SkipConfig:
     min_entry_price_cents: float = 35.0         # skip markets where either side costs below this floor
     cold_start_samples: int = 60                # need this many prices_60m samples
     vol_ratio_threshold: float = 1.80           # base threshold: skip if expected_move/buffer >= this
+    vol_confirm_mult: float = 1.25              # relax threshold by this when momentum confirms trade
+    vol_oppose_mult: float = 0.70               # tighten threshold by this when momentum opposes trade
     vol_top_pct_threshold: float = 0.95         # legacy field, unused
     vol_bot_pct_threshold: float = 0.05         # legacy field, unused
     macro_event_skip_minutes: float = 15.0      # skip within +/- this of macro event
@@ -112,9 +114,9 @@ def check_skip(
             mom_opposes  = (mom == "bullish" and not above) or (mom == "bearish" and above)
 
             if mom_confirms:
-                eff_thresh = cfg.vol_ratio_threshold * 1.25
+                eff_thresh = cfg.vol_ratio_threshold * cfg.vol_confirm_mult
             elif mom_opposes:
-                eff_thresh = cfg.vol_ratio_threshold * 0.70
+                eff_thresh = cfg.vol_ratio_threshold * cfg.vol_oppose_mult
             else:
                 eff_thresh = cfg.vol_ratio_threshold
 
