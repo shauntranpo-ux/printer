@@ -1221,6 +1221,11 @@ async def fetch_orderbook(
             f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c — skipping"
         )
         return None
+    if best_yes_ask + best_no_ask > 150:
+        log.warning(
+            f"Orderbook sum very wide for {ticker}: "
+            f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c — thin market, passing through"
+        )
 
     # For AMM markets use the reported size; fall back to generous default
     if yes_asks:
