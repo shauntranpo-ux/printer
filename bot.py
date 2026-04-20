@@ -707,14 +707,40 @@ def load_credentials(mode: str = "paper") -> None:
     api_key = os.environ.get(key_id_var, "").strip()
     pem_val = os.environ.get(pem_var, "").strip()
 
-    if not api_key:
-        print(f"ERROR: {key_id_var} is not set (required for {label} mode).")
-        sys.exit(1)
-
-    if not pem_val:
-        print(f"ERROR: {pem_var} is not set (required for {label} mode).")
-        print(f"       Set it to your PEM string or a file path to your .pem file.")
-        sys.exit(1)
+    if not api_key or not pem_val:
+        missing = key_id_var if not api_key else pem_var
+        if mode == "demo":
+            # Demo creds not set in environment — degrade gracefully to paper mode
+            # so the bot doesn't crash-loop. Set KALSHI_DEMO_API_KEY and
+            # KALSHI_DEMO_PRIVATE_KEY in Railway to enable demo trading.
+            log.warning(
+                f"{missing} not set — DEMO mode requires demo credentials. "
+                f"Falling back to paper mode. Add the env vars in Railway to enable demo."
+            )
+            try:
+                cfg = read_config()
+                cfg["mode"] = "paper"
+                with open(_CONFIG_FILE, "w", encoding="utf-8") as fh:
+                    import json as _json
+                    _json.dump(cfg, fh, indent=2)
+            except Exception as _ce:
+                log.warning(f"Could not write paper fallback to config: {_ce}")
+            # Load live creds if available so market data still works
+            _key = os.environ.get("KALSHI_API_KEY", "").strip()
+            _pem = os.environ.get("KALSHI_PRIVATE_KEY", "").strip()
+            if _key and _pem:
+                api_key = _key
+                try:
+                    pem_bytes = open(_pem, "rb").read() if os.path.exists(_pem) else _pem.encode()
+                    private_key = serialization.load_pem_private_key(pem_bytes, password=None)
+                    log.info("Paper fallback: loaded live credentials for market data access.")
+                except Exception as exc:
+                    log.warning(f"Paper fallback: live credential load failed ({exc}).")
+            KALSHI_BASE_URL = KALSHI_LIVE_BASE_URL
+            return
+        else:
+            print(f"ERROR: {missing} is not set (required for {label} mode).")
+            sys.exit(1)
 
     # Safety assertions — fail loudly rather than silently routing to the wrong endpoint
     if mode == "demo" and KALSHI_BASE_URL != KALSHI_DEMO_BASE_URL:
