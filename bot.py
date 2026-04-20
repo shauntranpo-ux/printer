@@ -493,6 +493,7 @@ def init_db() -> None:
             ("order_id",          "TEXT"),
             ("asset",             "TEXT DEFAULT 'BTC'"),  # multi-asset support
             ("raw_p_yes",         "REAL"),                # pre-calibration P(YES wins)
+            ("claude_signals",    "TEXT"),                # JSON snapshot of entry signals
         ):
             try:
                 c.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")
@@ -550,8 +551,8 @@ async def db_write_trade(trade: dict) -> int | None:
                     model_prob, implied_prob, btc_price_at_entry, strike,
                     seconds_left_at_entry, fill_confirmed,
                     exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                    order_id, asset, raw_p_yes
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    order_id, asset, raw_p_yes, claude_signals
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
                 trade.get("mode"), trade.get("side"), trade.get("contracts"),
@@ -564,7 +565,7 @@ async def db_write_trade(trade: dict) -> int | None:
                 trade.get("outcome", "pending"), trade.get("pnl_dollars"),
                 trade.get("profit_percent"),
                 trade.get("order_id"), trade.get("asset", "BTC"),
-                trade.get("raw_p_yes"),
+                trade.get("raw_p_yes"), trade.get("claude_signals"),
             ))
             await db.commit()
             return cur.lastrowid
@@ -3516,6 +3517,14 @@ async def handle_ready_phase(
         "order_id":          order_id,
         "asset":             asset,
         "raw_p_yes":         brain.get("raw_p_yes"),
+        "claude_signals":    json.dumps({
+            "mom_label":    brain.get("mom_label", "neutral"),
+            "accel_label":  (brain.get("signals") or {}).get("mom_accel_label", "flat"),
+            "lag_signal":   (brain.get("signals") or {}).get("amm_lag_signal", "neutral"),
+            "lag_mag":      round((brain.get("signals") or {}).get("amm_lag_magnitude", 0.0), 3),
+            "vel_signal":   brain.get("vel_signal", "neutral"),
+            "mom_confirms": brain.get("mom_label", "neutral") != "neutral",
+        }),
     }
     trade_id = await db_write_trade(trade_data)
 

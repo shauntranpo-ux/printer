@@ -827,6 +827,59 @@ def api_analysis():
 
 
 
+@app.route("/api/signal-stats")
+def api_signal_stats():
+    """
+    Per-signal win rates from settled trades.
+    Returns win/loss/wr for each signal bucket: mom_label, accel_label,
+    lag_signal, vel_signal.
+    """
+    try:
+        db_path = os.path.join(os.path.dirname(__file__), "trades.db")
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT claude_signals, outcome FROM trades "
+            "WHERE outcome IN ('win','loss') AND claude_signals IS NOT NULL "
+            "ORDER BY ts DESC LIMIT 500"
+        ).fetchall()
+        conn.close()
+
+        buckets: dict = {}
+        for row in rows:
+            try:
+                sigs = json.loads(row["claude_signals"])
+            except Exception:
+                continue
+            outcome = row["outcome"]
+            for key in ("mom_label", "accel_label", "lag_signal", "vel_signal"):
+                val = sigs.get(key, "unknown")
+                bucket_key = f"{key}:{val}"
+                if bucket_key not in buckets:
+                    buckets[bucket_key] = {"signal": key, "value": val, "wins": 0, "losses": 0}
+                if outcome == "win":
+                    buckets[bucket_key]["wins"] += 1
+                else:
+                    buckets[bucket_key]["losses"] += 1
+
+        result = []
+        for b in buckets.values():
+            total = b["wins"] + b["losses"]
+            result.append({
+                "signal": b["signal"],
+                "value":  b["value"],
+                "wins":   b["wins"],
+                "losses": b["losses"],
+                "total":  total,
+                "wr":     round(b["wins"] / total, 3) if total > 0 else None,
+            })
+        result.sort(key=lambda x: (x["signal"], x["value"]))
+        return jsonify({"stats": result, "total_trades": len(rows)})
+    except Exception as exc:
+        log.error(f"api_signal_stats error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/api/weekly")
 def api_weekly():
     """Return the latest weekly_reports JSON, or {exists:false} if none."""

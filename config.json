@@ -1,7 +1,7 @@
 {
   "bot_enabled": false,
   "mode": "paper",
-  "trade_amount_dollars": 5,
+  "trade_amount_dollars": 25,
   "confidence_threshold": 76,
   "daily_loss_limit_dollars": 50,
   "daily_profit_target_dollars": 200,
@@ -18,7 +18,8 @@
   "min_reward_cents": 15,
   "max_risk_reward_ratio": 4.0,
   "allowed_sides": [
-    "yes"
+    "yes",
+    "no"
   ],
   "enabled_assets": [
     "BTC",
