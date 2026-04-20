@@ -4127,7 +4127,7 @@ async def main_loop() -> None:
                 if strike is None:
                     yes_sub = market.get("yes_sub_title") or ""
                     if "TBD" in yes_sub:
-                        strike = _am_get_price(asset)
+                        strike = _am_get_price("BTC")
                         if strike:
                             log.info(f"{ticker}: strike TBD — using live price {strike:.2f}")
                         else:
