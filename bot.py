@@ -58,7 +58,9 @@ _brain_fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
 brain_log.addHandler(_brain_fh)
 
 # ─────────────────────────── constants ────────────────────────────────────────
-KALSHI_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
+KALSHI_LIVE_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
+KALSHI_DEMO_BASE_URL = "https://demo-api.kalshi.co/trade-api/v2"
+KALSHI_BASE_URL      = KALSHI_LIVE_BASE_URL  # overwritten at startup based on mode
 KALSHI_PATH_PREFIX = "/trade-api/v2"  # included in signature but not in the path arg
 API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
 MARKET_CACHE_TTL = 30     # seconds to cache the active market
@@ -490,6 +492,7 @@ def init_db() -> None:
         for col, typedef in (
             ("order_id",          "TEXT"),
             ("asset",             "TEXT DEFAULT 'BTC'"),  # multi-asset support
+            ("raw_p_yes",         "REAL"),                # pre-calibration P(YES wins)
         ):
             try:
                 c.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")
@@ -547,8 +550,8 @@ async def db_write_trade(trade: dict) -> int | None:
                     model_prob, implied_prob, btc_price_at_entry, strike,
                     seconds_left_at_entry, fill_confirmed,
                     exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                    order_id, asset
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    order_id, asset, raw_p_yes
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
                 trade.get("mode"), trade.get("side"), trade.get("contracts"),
@@ -561,6 +564,7 @@ async def db_write_trade(trade: dict) -> int | None:
                 trade.get("outcome", "pending"), trade.get("pnl_dollars"),
                 trade.get("profit_percent"),
                 trade.get("order_id"), trade.get("asset", "BTC"),
+                trade.get("raw_p_yes"),
             ))
             await db.commit()
             return cur.lastrowid
@@ -659,37 +663,67 @@ async def send_telegram(text: str) -> None:
     log.error("Telegram: failed after 3 attempts — notification dropped")
 
 
-def load_credentials() -> None:
+def load_credentials(mode: str = "paper") -> None:
     """
-    Load KALSHI_API_KEY and KALSHI_PRIVATE_KEY from environment variables.
-    KALSHI_PRIVATE_KEY may be a PEM string or a path to a PEM file.
-    Exits with a clear message if either variable is missing.
-    """
-    global api_key, private_key
+    Load Kalshi API credentials from environment variables based on active mode.
 
-    api_key = os.environ.get("KALSHI_API_KEY", "").strip()
-    pem_val = os.environ.get("KALSHI_PRIVATE_KEY", "").strip()
+    paper — skips credential loading (no API calls needed)
+    live  — loads KALSHI_API_KEY + KALSHI_PRIVATE_KEY, routes to live endpoint
+    demo  — loads KALSHI_DEMO_API_KEY + KALSHI_DEMO_PRIVATE_KEY, routes to demo endpoint
+
+    Credential values may be a PEM string or a path to a PEM file.
+    Exits with a clear error message if required variables are missing.
+    """
+    global api_key, private_key, KALSHI_BASE_URL
+
+    if mode == "paper":
+        return
+
+    if mode == "demo":
+        KALSHI_BASE_URL = KALSHI_DEMO_BASE_URL
+        key_id_var = "KALSHI_DEMO_API_KEY"
+        pem_var    = "KALSHI_DEMO_PRIVATE_KEY"
+        label      = "DEMO"
+    else:  # live
+        KALSHI_BASE_URL = KALSHI_LIVE_BASE_URL
+        key_id_var = "KALSHI_API_KEY"
+        pem_var    = "KALSHI_PRIVATE_KEY"
+        label      = "LIVE"
+
+    api_key = os.environ.get(key_id_var, "").strip()
+    pem_val = os.environ.get(pem_var, "").strip()
 
     if not api_key:
-        print("ERROR: KALSHI_API_KEY environment variable is not set.")
-        print("       Set it with: export KALSHI_API_KEY=your_api_key_here")
+        print(f"ERROR: {key_id_var} is not set (required for {label} mode).")
         sys.exit(1)
 
     if not pem_val:
-        print("ERROR: KALSHI_PRIVATE_KEY environment variable is not set.")
-        print("       Set it to your PEM string or a file path to your .pem file.")
+        print(f"ERROR: {pem_var} is not set (required for {label} mode).")
+        print(f"       Set it to your PEM string or a file path to your .pem file.")
+        sys.exit(1)
+
+    # Safety assertions — fail loudly rather than silently routing to the wrong endpoint
+    if mode == "demo" and KALSHI_BASE_URL != KALSHI_DEMO_BASE_URL:
+        print(f"SAFETY ERROR: demo mode must use demo URL; got {KALSHI_BASE_URL}")
+        sys.exit(1)
+    if mode == "live" and KALSHI_BASE_URL != KALSHI_LIVE_BASE_URL:
+        print(f"SAFETY ERROR: live mode must use live URL; got {KALSHI_BASE_URL}")
         sys.exit(1)
 
     if os.path.exists(pem_val):
         with open(pem_val, "rb") as fh:
             pem_bytes = fh.read()
-        log.info(f"Loaded private key from file: {pem_val}")
+        log.info(f"Loaded {label} private key from file: {pem_val}")
     else:
         pem_bytes = pem_val.encode()
-        log.info("Loaded private key from environment variable string.")
+        log.info(f"Loaded {label} private key from environment variable string.")
 
     private_key = serialization.load_pem_private_key(pem_bytes, password=None)
-    log.info("Credentials loaded successfully.")
+
+    masked = api_key[:6] + "..." if len(api_key) > 6 else "***"
+    print(f"[{label} MODE] Base URL : {KALSHI_BASE_URL}")
+    print(f"[{label} MODE] API key  : {masked}")
+    log.info(f"{label} credentials loaded successfully.")
 
 
 def kalshi_headers(method: str, path: str) -> dict:
@@ -1460,6 +1494,54 @@ async def calibrate_brain() -> None:
         log.error(f"Brain calibration error: {exc}")
 
 
+async def recalibrate_asset_strategies() -> None:
+    """
+    Fit per-asset AssetCalibrator from actual trade outcomes in the DB.
+
+    Queries raw_p_yes (pre-calibration P(YES wins)) and the actual YES outcome
+    per asset, then refits isotonic/Platt calibration. Requires >= 15 trades
+    per asset to fit (AssetCalibrator's own minimum).
+    """
+    if not _STRATEGY_SINGLETONS:
+        log.debug("recalibrate_asset_strategies: no active strategy singletons — skipping")
+        return
+    try:
+        async with aiosqlite.connect(_DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            for asset, strat in list(_STRATEGY_SINGLETONS.items()):
+                async with db.execute("""
+                    SELECT raw_p_yes, side, outcome
+                    FROM trades
+                    WHERE asset = ?
+                      AND outcome IN ('win', 'loss')
+                      AND raw_p_yes IS NOT NULL
+                    ORDER BY ts DESC LIMIT 500
+                """, (asset,)) as cur:
+                    rows = await cur.fetchall()
+
+                if len(rows) < 15:
+                    continue
+
+                # Calibrator maps raw_p_yes → better P(YES wins).
+                # actual_yes_won = 1 if YES resolved True regardless of which
+                # side we took: YES trade won, or NO trade lost.
+                raw_probs = [r[0] for r in rows]
+                outcomes = [
+                    1 if (r[1] == "yes" and r[2] == "win") or
+                         (r[1] == "no"  and r[2] == "loss")
+                    else 0
+                    for r in rows
+                ]
+                strat.calibrator.refit(raw_probs, outcomes)
+                log.info(
+                    f"[Calibration] {asset}: {len(rows)} trades → "
+                    f"method={strat.calibrator._method} "
+                    f"n={strat.calibrator.sample_count}"
+                )
+    except Exception as exc:
+        log.error(f"recalibrate_asset_strategies error: {exc}")
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 #  Printer Brain v3 — Empirically Calibrated from 4.5M rows of BTC 1-min data
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1635,6 +1717,7 @@ def _get_or_make_strategy(asset: str, config):
         skip_cfg = SkipConfig(
             max_spread_cents=float(config.get("max_spread_cents", 3.0)),
             min_seconds_left=float(config.get("min_seconds_left", 30.0)),
+            min_entry_price_cents=float(config.get("min_entry_price_cents", 35.0)),
             cold_start_samples=int(config.get("cold_start_samples", 60)),
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
@@ -1787,6 +1870,7 @@ def printer_brain_routed(
         "vel_signal": decision.contributing_signals.get(
             "velocity", decision.contributing_signals.get("vel_signal", "neutral")
         ),
+        "raw_p_yes": decision.contributing_signals.get("raw_p_yes"),
         "mins_left": secs_left / 60.0,
         "abs_pct": abs_pct,
         "above": above,
@@ -2220,6 +2304,51 @@ def implied_prob(contract_price_cents: float) -> float:
 #  Order placement
 # ══════════════════════════════════════════════════════════════════════════════
 
+async def _verify_order_fill(
+    session: aiohttp.ClientSession,
+    order_id: str,
+    expected_filled: int,
+) -> bool:
+    """
+    Confirm a fill is recorded in Kalshi by re-fetching the order.
+
+    Returns True if Kalshi confirms at least one contract filled.
+    Falls back to True on network errors so a transient failure doesn't
+    cause the bot to miss a real fill and leave an orphaned position.
+    """
+    try:
+        chk_path = f"/portfolio/orders/{order_id}"
+        async with session.get(
+            KALSHI_BASE_URL + chk_path,
+            headers=kalshi_headers("GET", chk_path),
+            timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+        ) as resp:
+            if resp.status != 200:
+                log.warning(f"_verify_order_fill: GET {order_id} HTTP {resp.status} — assuming filled")
+                return True
+            chk = await resp.json()
+        order = chk.get("order") or chk
+        status = order.get("status", "")
+        total     = order.get("contracts_count") or expected_filled
+        remaining = order.get("remaining_count")
+        fc        = order.get("filled_count")
+        if fc is not None:
+            confirmed_filled = fc
+        elif remaining is not None:
+            confirmed_filled = total - remaining
+        else:
+            # Can't determine — trust the POST response
+            confirmed_filled = expected_filled
+        log.info(
+            f"_verify_order_fill: {order_id} status={status!r} "
+            f"filled={confirmed_filled}/{total}"
+        )
+        return confirmed_filled > 0
+    except Exception as exc:
+        log.warning(f"_verify_order_fill error for {order_id}: {exc} — assuming filled")
+        return True
+
+
 async def place_order(
     session: aiohttp.ClientSession,
     ticker: str,
@@ -2335,13 +2464,21 @@ async def place_order(
                     if status in ("cancelled", "canceled", "expired"):
                         log.info(f"[passive] Order {order_id} terminal status={status!r} — no fill")
                         return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
-                    _cc = chk_order.get("contracts_count")
-                    _fc = chk_order.get("filled_count")
-                    cc = _cc if _cc is not None else (_fc if _fc is not None else contracts)
+                    _total     = chk_order.get("contracts_count")
+                    _remaining = chk_order.get("remaining_count")
+                    _fc        = chk_order.get("filled_count")
+                    if _fc is not None:
+                        cc = _fc
+                    elif _total is not None and _remaining is not None:
+                        cc = _total - _remaining
+                    else:
+                        cc = _total if _total is not None else contracts
                     fp_raw = chk_order.get("yes_price", entry_price_cents)
                     fp = fp_raw if side == "yes" else (100 - fp_raw)
                     log.info(f"[passive] Order {order_id} status={status!r} filled={cc}x @ {fp}c")
-                    return {"fill_confirmed": True, "fill_price_cents": fp, "order_id": order_id, "filled_contracts": cc}
+                    # GTC path: fill already verified — we just re-fetched the order via GET.
+                    # No need to call _verify_order_fill again.
+                    return {"fill_confirmed": cc > 0, "fill_price_cents": fp, "order_id": order_id, "filled_contracts": cc}
             except Exception as pe:
                 log.warning(f"[passive] Poll error: {pe}")
 
@@ -2362,8 +2499,10 @@ async def place_order(
     # ── Early window: IOC with price retries ──────────────────────────────────
     _bump_per_retry = 3   # cents per retry — 3c gives 0/3/6/9/12c spread across 5 attempts
     _max_retries    = 5
+    # attempt = real order placements (429s don't count against this)
+    attempt         = 0
 
-    for attempt in range(_max_retries):
+    while attempt < _max_retries:
         # ── Re-fetch fresh price before each attempt ───────────────────────────
         # Orderbook data from READY eval can be 5-30s stale by here. A fresh
         # fetch ensures we're pricing against the actual current market.
@@ -2431,6 +2570,12 @@ async def place_order(
                             return {"fill_confirmed": True, "fill_price_cents": price_this_attempt, "order_id": None, "filled_contracts": held_count}
             except Exception as chk_exc:
                 log.error(f"Portfolio check after POST exception failed: {chk_exc}")
+            attempt += 1
+            continue
+
+        if http_status == 429:
+            log.warning(f"Order rate-limited (429) on attempt {attempt} — waiting 2s before retry")
+            await asyncio.sleep(2.0)
             continue
 
         if http_status not in (200, 201):
@@ -2441,57 +2586,84 @@ async def place_order(
                 # bumping the price on the next attempt may find liquidity.
                 log.error(f"Non-retryable error ({err_code}). Stopping order attempts.")
                 await send_telegram(
-                    f"🚫 <b>[{asset}] ORDER FAILED</b>  —  {err_code}\n"
-                    f"{side.upper()}  {contracts}x @ {price_this_attempt}¢  |  <code>{ticker}</code>"
+                    f"ORDER FAILED  —  {err_code}\n"
+                    f"{side.upper()}  {contracts}x @ {price_this_attempt}c  |  {ticker}"
                 )
                 break
+            attempt += 1
             continue
 
         order_id = (data.get("order") or {}).get("order_id") or data.get("order_id")
         if not order_id:
             log.error(f"No order_id in response: {data}")
+            attempt += 1
             continue
 
-        # ── For IOC orders: "canceled" = zero fill. Everything else = filled.
-        # Don't guess specific status strings — Kalshi may return "resting",
-        # "executed", "filled", or others for a successful fill.
         post_order  = data.get("order") or data
         post_status = post_order.get("status", "")
         log.info(f"Order {order_id} POST status={post_status!r}")
 
-        if post_status == "canceled":
-            # For IOC orders "canceled" means either:
-            #   (a) zero fill — contracts_count=0 → retry at higher price
-            #   (b) partial fill — contracts_count>0 (filled + remainder canceled)
-            _cc_canceled = post_order.get("contracts_count")
-            if _cc_canceled:
-                _fp_raw = post_order.get("yes_price", price_this_attempt)
-                # Kalshi always returns yes_price. For NO buys, convert back to the NO cost.
-                _fp_canceled = _fp_raw if side == "yes" else (100 - _fp_raw)
-                log.info(f"Order {order_id} IOC partial fill: {_cc_canceled} contracts @ {_fp_canceled}c (canceled remainder)")
-                return {"fill_confirmed": True, "fill_price_cents": _fp_canceled, "order_id": order_id, "filled_contracts": _cc_canceled}
-            log.info(f"Order {order_id} IOC zero-fill (canceled) — retrying")
+        # "resting" from an IOC means Kalshi accepted the order but didn't
+        # match it immediately — treat as unfilled, cancel it, and retry.
+        if post_status in ("resting", "pending"):
+            log.warning(f"Order {order_id} IOC returned {post_status!r} — cancelling and retrying")
+            try:
+                del_path = f"/portfolio/orders/{order_id}"
+                async with session.delete(
+                    KALSHI_BASE_URL + del_path,
+                    headers=kalshi_headers("DELETE", del_path),
+                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                ) as _del_resp:
+                    await _del_resp.json()
+            except Exception as _de:
+                log.warning(f"Cancel of resting IOC {order_id} failed: {_de}")
+            attempt += 1
             continue
 
-        # Determine actual fill count — must use explicit None check because
-        # Kalshi sometimes returns contracts_count=0 on 'executed' status when
-        # there was no counter-party.  Python `or` treats 0 as falsy and would
-        # incorrectly fall through to the original `contracts` value.
-        cc = post_order.get("contracts_count")
-        fc = post_order.get("filled_count")
-        filled_count = cc if cc is not None else (fc if fc is not None else contracts)
+        if post_status in ("canceled", "cancelled"):
+            # IOC canceled: check how many actually filled.
+            # contracts_count = total requested; remaining_count = unfilled.
+            # Filled = contracts_count - remaining_count.
+            _total     = post_order.get("contracts_count") or contracts
+            _remaining = post_order.get("remaining_count")
+            _remaining = _remaining if _remaining is not None else _total
+            _filled    = _total - _remaining
+            if _filled > 0:
+                _fp_raw      = post_order.get("yes_price", price_this_attempt)
+                _fp_canceled = _fp_raw if side == "yes" else (100 - _fp_raw)
+                log.info(f"Order {order_id} IOC partial fill: {_filled}/{_total} @ {_fp_canceled}c")
+                # Verify via GET before confirming
+                _verified = await _verify_order_fill(session, order_id, _filled)
+                return {"fill_confirmed": _verified, "fill_price_cents": _fp_canceled, "order_id": order_id, "filled_contracts": _filled}
+            log.info(f"Order {order_id} IOC zero-fill — retrying")
+            attempt += 1
+            continue
+
+        # Non-canceled, non-resting status. Compute actual filled count.
+        # Use explicit None checks: `or` treats 0 as falsy and would fall through.
+        _total     = post_order.get("contracts_count")
+        _remaining = post_order.get("remaining_count")
+        _fc        = post_order.get("filled_count")
+        if _fc is not None:
+            filled_count = _fc
+        elif _total is not None and _remaining is not None:
+            filled_count = _total - _remaining
+        elif _total is not None:
+            filled_count = _total
+        else:
+            filled_count = contracts
 
         if filled_count == 0:
-            # Non-canceled status but zero fill (Kalshi 'executed' with no counter-party).
-            # Treat exactly like a canceled IOC — bump price and retry.
             log.warning(f"Order {order_id} status={post_status!r} but filled_count=0 — bumping price and retrying")
+            attempt += 1
             continue
 
         _fill_yes_price = post_order.get("yes_price", price_this_attempt)
-        # Kalshi always returns yes_price. For NO buys, convert to the actual NO cost.
         fill_price = _fill_yes_price if side == "yes" else (100 - _fill_yes_price)
         log.info(f"Order FILLED: {order_id} @ {fill_price}c x{filled_count} status={post_status!r}")
-        return {"fill_confirmed": True, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
+        # Verify the fill is recorded in Kalshi before returning confirmed
+        _verified = await _verify_order_fill(session, order_id, filled_count)
+        return {"fill_confirmed": _verified, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
 
     # Both attempts exhausted — check portfolio directly as ground truth.
     # Handles the case where the request went through but the response timed out.
@@ -2590,39 +2762,52 @@ async def sell_position(
 
 async def check_daily_limits(config: dict) -> tuple[bool, str]:
     """
-    Check daily loss limit and profit target for live mode.
-    Switches mode to 'paper' in config.json and memory when triggered.
+    Check daily loss limit and profit target for live/demo mode.
+
+    live  — DLL/profit target flips mode to 'paper' in config.json
+    demo  — DLL disables bot entirely and fires Telegram; profit target flips to paper
 
     Returns:
         (triggered: bool, reason: str)
     """
     global limit_triggered, limit_reason, pre_limit_mode
 
-    if config.get("mode") == "paper":
+    mode = config.get("mode", "paper")
+    if mode == "paper":
         return False, ""
 
-    live_pnl = await db_get_today_pnl("live")
+    pnl = await db_get_today_pnl(mode)
 
-    if live_pnl < 0 and abs(live_pnl) >= config.get("daily_loss_limit_dollars", 20):
+    if pnl < 0 and abs(pnl) >= config.get("daily_loss_limit_dollars", 20):
         if not limit_triggered:
             limit_triggered = True
             limit_reason = "daily loss limit reached"
-            pre_limit_mode = config["mode"]
+            pre_limit_mode = mode
             cfg = read_config()
-            cfg["mode"] = "paper"
-            write_config(cfg)
-            log.warning(f"Daily loss limit hit (${live_pnl:.2f}). Switched to paper mode.")
+            if mode == "demo":
+                cfg["bot_enabled"] = False
+                write_config(cfg)
+                log.warning(f"Demo DLL hit (${pnl:.2f}). Bot disabled.")
+                await send_telegram(
+                    f"🛑 <b>[DEMO] Daily loss limit triggered</b>\n"
+                    f"PnL today: <b>${pnl:.2f}</b>\n"
+                    f"Bot has been disabled. Re-enable manually in config."
+                )
+            else:
+                cfg["mode"] = "paper"
+                write_config(cfg)
+                log.warning(f"Daily loss limit hit (${pnl:.2f}). Switched to paper mode.")
         return True, limit_reason
 
-    if live_pnl > 0 and live_pnl >= config.get("daily_profit_target_dollars", 50):
+    if pnl > 0 and pnl >= config.get("daily_profit_target_dollars", 50):
         if not limit_triggered:
             limit_triggered = True
             limit_reason = "daily profit target reached"
-            pre_limit_mode = config["mode"]
+            pre_limit_mode = mode
             cfg = read_config()
             cfg["mode"] = "paper"
             write_config(cfg)
-            log.info(f"Daily profit target hit (${live_pnl:.2f}). Switched to paper mode.")
+            log.info(f"Daily profit target hit (${pnl:.2f}). Switched to paper mode.")
         return True, limit_reason
 
     return False, ""
@@ -3160,6 +3345,7 @@ async def handle_ready_phase(
         "profit_percent": None,
         "order_id":          order_id,
         "asset":             asset,
+        "raw_p_yes":         brain.get("raw_p_yes"),
     }
     trade_id = await db_write_trade(trade_data)
 
@@ -3605,6 +3791,7 @@ async def main_loop() -> None:
                     completed = _cal_row[0] if _cal_row else 0
                     if completed >= _adaptive["last_calibrated_count"] + 20:
                         await calibrate_from_history()
+                        await recalibrate_asset_strategies()
                     if completed >= _brain_cal["last_count"] + 5:
                         await calibrate_brain()
                 except Exception:
@@ -3963,7 +4150,7 @@ async def run_preflight_checks(config: dict) -> None:
 
     # ── Check 4: mode gate ────────────────────────────────────────────────────
     mode      = config.get("mode", "paper")
-    is_live   = (mode == "live")
+    is_live   = mode in ("live", "demo")
     override  = bool(config.get("preflight_override", False))
 
     if is_live and issues:
@@ -4011,7 +4198,7 @@ async def run_preflight_checks(config: dict) -> None:
 async def main() -> None:
     """Bootstrap: load credentials, init DB, start BTC feed, run main loop."""
     _init_config()
-    load_credentials()
+    load_credentials(mode=read_config().get("mode", "paper"))
     init_db()
     test_db_write()
 
