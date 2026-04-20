@@ -677,6 +677,19 @@ def load_credentials(mode: str = "paper") -> None:
     global api_key, private_key, KALSHI_BASE_URL
 
     if mode == "paper":
+        # Paper mode simulates fills but still reads real Kalshi market data.
+        # Load live credentials if present so market fetch/orderbook calls work.
+        # Non-fatal if missing — bot runs fully simulated without them.
+        _key = os.environ.get("KALSHI_API_KEY", "").strip()
+        _pem = os.environ.get("KALSHI_PRIVATE_KEY", "").strip()
+        if _key and _pem:
+            api_key = _key
+            try:
+                pem_bytes = open(_pem, "rb").read() if os.path.exists(_pem) else _pem.encode()
+                private_key = serialization.load_pem_private_key(pem_bytes, password=None)
+                log.info("Paper mode: Kalshi credentials loaded for market data access.")
+            except Exception as exc:
+                log.warning(f"Paper mode: credential load failed ({exc}) — market data unavailable.")
         return
 
     if mode == "demo":
