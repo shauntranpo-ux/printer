@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import check_skip, SkipConfig
+from strategies.skip_layer import check_skip, SkipConfig, _momentum_label
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
 
@@ -128,6 +128,35 @@ class BaseStrategy(ABC):
                 },
                 expected_value=ev.best_ev,
             )
+
+        # Step 6.5: momentum direction lock
+        # Block trades where BTC momentum opposes the chosen side. Bullish
+        # momentum → only YES; bearish → only NO; neutral passes but the vol
+        # gate was already tightened via mom_lock_neutral_tighten.
+        if self.skip_config.mom_lock_enabled:
+            _mom = _momentum_label(features.prices_60m)
+            if _mom != "neutral":
+                _mom_opposes_side = (
+                    (_mom == "bullish" and ev.best_side == "no") or
+                    (_mom == "bearish" and ev.best_side == "yes")
+                )
+                if _mom_opposes_side:
+                    return Decision(
+                        action="skip",
+                        side=None,
+                        p_model=calibrated_p_yes,
+                        reason=f"mom_lock: {_mom} momentum opposes {ev.best_side} trade",
+                        contributing_signals={
+                            **signals,
+                            "baseline_p_above": baseline_p_above,
+                            "raw_p_yes": raw_p_yes,
+                            "calibrated_p_yes": calibrated_p_yes,
+                            "yes_ev": ev.yes_ev,
+                            "no_ev": ev.no_ev,
+                            "momentum": _mom,
+                        },
+                        expected_value=ev.best_ev,
+                    )
 
         # Step 7: trade decision
         return Decision(

@@ -1735,6 +1735,8 @@ def _get_or_make_strategy(asset: str, config):
             vol_ratio_threshold=float(get_asset_config(config, asset, "vol_gate_thresh", 1.80)),
             vol_confirm_mult=float(get_asset_config(config, asset, "vol_confirm_mult", 1.25)),
             vol_oppose_mult=float(get_asset_config(config, asset, "vol_oppose_mult", 0.70)),
+            mom_lock_enabled=bool(get_asset_config(config, asset, "mom_lock_enabled", True)),
+            mom_lock_neutral_tighten=float(get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0)),
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
         min_ev = float(overrides.get("min_ev_base",
@@ -1786,6 +1788,7 @@ def printer_brain_routed(
     asset="BTC", max_entry_price_cents=100.0,
     min_reward_cents=0.0, max_risk_reward_ratio=999.0,
     vol_confirm_mult=1.25, vol_oppose_mult=0.70,
+    mom_lock_enabled=True, mom_lock_neutral_tighten=1.0,
 ):
     """
     Routes to legacy printer_brain OR new strategy based on per-asset config flag.
@@ -1806,6 +1809,8 @@ def printer_brain_routed(
             max_risk_reward_ratio=max_risk_reward_ratio,
             vol_confirm_mult=vol_confirm_mult,
             vol_oppose_mult=vol_oppose_mult,
+            mom_lock_enabled=mom_lock_enabled,
+            mom_lock_neutral_tighten=mom_lock_neutral_tighten,
         )
 
     strat = _get_or_make_strategy(asset, config)
@@ -1820,6 +1825,8 @@ def printer_brain_routed(
             max_risk_reward_ratio=max_risk_reward_ratio,
             vol_confirm_mult=vol_confirm_mult,
             vol_oppose_mult=vol_oppose_mult,
+            mom_lock_enabled=mom_lock_enabled,
+            mom_lock_neutral_tighten=mom_lock_neutral_tighten,
         )
 
     from strategies.feature_builder import build_features_from_bot_state
@@ -1921,6 +1928,8 @@ def printer_brain(
     max_risk_reward_ratio: float = 999.0,
     vol_confirm_mult: float = 1.25,
     vol_oppose_mult: float = 0.70,
+    mom_lock_enabled: bool = True,
+    mom_lock_neutral_tighten: float = 1.0,
 ) -> dict:
     """
     Printer Brain v3 — empirically calibrated from 4.5M rows BTC 1-min data.
@@ -1953,8 +1962,12 @@ def printer_brain(
     # is effectively widening, so relax threshold by 25%.
     # Momentum opposes (price moving toward strike) → buffer is eroding, so
     # tighten threshold by 30%.
+    _mom_confirms = (mom_label == "bullish" and above) or (mom_label == "bearish" and not above)
+    _mom_opposes  = (mom_label == "bullish" and not above) or (mom_label == "bearish" and above)
+
     _rv             = btc_realized_vol(prices=_asset_prices)
     _vol_skip       = False
+    _mom_lock_skip  = False
     _vol_ratio      = None
     _buf_durability = None   # (buffer / rv)^2, in vol-minutes
     _eff_thresh     = vol_gate_thresh
@@ -1963,16 +1976,22 @@ def printer_brain(
         _vol_ratio      = _expected_move / abs_pct
         _buf_durability = (abs_pct / _rv) ** 2
 
-        _mom_confirms = (mom_label == "bullish" and above) or (mom_label == "bearish" and not above)
-        _mom_opposes  = (mom_label == "bullish" and not above) or (mom_label == "bearish" and above)
         if _mom_confirms:
             _eff_thresh = vol_gate_thresh * vol_confirm_mult
         elif _mom_opposes:
             _eff_thresh = vol_gate_thresh * vol_oppose_mult
-        # else: neutral → _eff_thresh stays at vol_gate_thresh
+        elif mom_lock_neutral_tighten < 1.0:
+            _eff_thresh = vol_gate_thresh * mom_lock_neutral_tighten
 
         if _vol_ratio >= _eff_thresh:
             _vol_skip = True
+
+    # ── 0b. Momentum direction lock ───────────────────────────────────────────
+    # Hard skip when BTC momentum opposes the continuation trade. Vol gate
+    # already tightens the threshold when opposing; this blocks the remainder.
+    if mom_lock_enabled and _mom_opposes and not _vol_skip:
+        _vol_skip = True
+        _mom_lock_skip = True
 
     # ── 1. Empirical win probability from backtest table ──────────────────────
     win_prob_raw = _win_prob_for_asset(asset, abs_pct, mins_left)
@@ -2086,15 +2105,22 @@ def printer_brain(
     skip_reason = _price_filter_reason if _price_filter_skip else ""
     if not _price_filter_skip:
         if _vol_skip:
-            _ratio_str = f"{_vol_ratio:.2f}" if _vol_ratio is not None else "?"
-            _dur_str   = f"{_buf_durability:.1f}min" if _buf_durability is not None else "?"
-            _align_str = ("mom=confirms/relaxed" if _mom_confirms else
-                          "mom=opposes/tightened" if _mom_opposes else "mom=neutral")
-            skip_reason = (
-                f"vol too high: expected move covers {_ratio_str}x strike distance "
-                f"(dist={abs_pct*100:.2f}% | dur={_dur_str} | "
-                f"thresh={_eff_thresh:.2f} | {_align_str} | {mins_left:.1f}min left)"
-            )
+            if _mom_lock_skip:
+                skip_reason = (
+                    f"mom_lock: {mom_label} momentum opposes {side} trade "
+                    f"(dist={abs_pct*100:.2f}% {mins_left:.1f}min left)"
+                )
+            else:
+                _ratio_str = f"{_vol_ratio:.2f}" if _vol_ratio is not None else "?"
+                _dur_str   = f"{_buf_durability:.1f}min" if _buf_durability is not None else "?"
+                _neutral_tight = not _mom_confirms and not _mom_opposes and mom_lock_neutral_tighten < 1.0
+                _align_str = ("mom=confirms/relaxed" if _mom_confirms else
+                              "mom=neutral/tightened" if _neutral_tight else "mom=neutral")
+                skip_reason = (
+                    f"vol too high: expected move covers {_ratio_str}x strike distance "
+                    f"(dist={abs_pct*100:.2f}% | dur={_dur_str} | "
+                    f"thresh={_eff_thresh:.2f} | {_align_str} | {mins_left:.1f}min left)"
+                )
         elif best_ev < min_ev:
             skip_reason = (
                 f"EV {best_ev:+.1%} below {min_ev:.0%} minimum | "
@@ -3103,6 +3129,8 @@ async def handle_ready_phase(
                             min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
                             vol_confirm_mult=get_asset_config(config, asset, "vol_confirm_mult", 1.25),
                             vol_oppose_mult=get_asset_config(config, asset, "vol_oppose_mult", 0.70),
+                            mom_lock_enabled=get_asset_config(config, asset, "mom_lock_enabled", True),
+                            mom_lock_neutral_tighten=get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0),
                             max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                             asset=asset,
                         )
@@ -3183,6 +3211,8 @@ async def handle_ready_phase(
                           max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                           vol_confirm_mult=get_asset_config(config, asset, "vol_confirm_mult", 1.25),
                           vol_oppose_mult=get_asset_config(config, asset, "vol_oppose_mult", 0.70),
+                          mom_lock_enabled=get_asset_config(config, asset, "mom_lock_enabled", True),
+                          mom_lock_neutral_tighten=get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0),
                           asset=asset)
     side     = brain["side"]
     score    = brain["confidence"]

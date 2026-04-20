@@ -32,23 +32,31 @@
       "vol_gate_thresh": 1.60,
       "confidence_threshold": 80,
       "vol_confirm_mult": 1.25,
-      "vol_oppose_mult": 0.70
+      "vol_oppose_mult": 0.70,
+      "mom_lock_enabled": true,
+      "mom_lock_neutral_tighten": 0.90
     },
     "ETH": {
       "min_ev_base": 8,
       "vol_confirm_mult": 1.30,
-      "vol_oppose_mult": 0.65
+      "vol_oppose_mult": 0.65,
+      "mom_lock_enabled": true,
+      "mom_lock_neutral_tighten": 0.90
     },
     "SOL": {
       "min_ev_base": 8,
       "vol_confirm_mult": 1.35,
-      "vol_oppose_mult": 0.60
+      "vol_oppose_mult": 0.60,
+      "mom_lock_enabled": true,
+      "mom_lock_neutral_tighten": 0.85
     },
     "XRP": {
       "min_ev_base": 8,
       "max_spread_cents": 3,
       "vol_confirm_mult": 1.20,
-      "vol_oppose_mult": 0.75
+      "vol_oppose_mult": 0.75,
+      "mom_lock_enabled": true,
+      "mom_lock_neutral_tighten": 0.90
     }
   },
   "use_new_strategies": {

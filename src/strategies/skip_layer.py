@@ -26,6 +26,8 @@ class SkipConfig:
     vol_top_pct_threshold: float = 0.95         # legacy field, unused
     vol_bot_pct_threshold: float = 0.05         # legacy field, unused
     macro_event_skip_minutes: float = 15.0      # skip within +/- this of macro event
+    mom_lock_enabled: bool = True               # skip when momentum opposes best-EV side
+    mom_lock_neutral_tighten: float = 1.0       # tighten vol threshold by this mult when momentum is neutral
 
 
 def _momentum_label(prices, window_seconds: int = 180) -> str:
@@ -118,10 +120,12 @@ def check_skip(
             elif mom_opposes:
                 eff_thresh = cfg.vol_ratio_threshold * cfg.vol_oppose_mult
             else:
-                eff_thresh = cfg.vol_ratio_threshold
+                eff_thresh = cfg.vol_ratio_threshold * cfg.mom_lock_neutral_tighten
 
             if vol_ratio >= eff_thresh:
-                align = "confirms/relaxed" if mom_confirms else "opposes/tightened" if mom_opposes else "neutral"
+                align = ("confirms/relaxed" if mom_confirms else
+                         "opposes/tightened" if mom_opposes else
+                         "neutral/tightened" if cfg.mom_lock_neutral_tighten < 1.0 else "neutral")
                 return (
                     f"buffer_too_thin: vol_ratio={vol_ratio:.2f} >= {eff_thresh:.2f} "
                     f"(dist={abs_pct*100:.2f}% dur={buf_durability:.1f}min "
