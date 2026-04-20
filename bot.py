@@ -1312,9 +1312,9 @@ def btc_realized_vol(prices=None) -> float | None:
 # ══════════════════════════════════════════════════════════════════════════════
 
 def track_contract_price(ticker: str, price: float) -> None:
-    """Record the latest contract ask price for velocity analysis."""
+    """Record the latest contract ask price for velocity and lag analysis."""
     if ticker not in _contract_price_history:
-        _contract_price_history[ticker] = deque(maxlen=30)
+        _contract_price_history[ticker] = deque(maxlen=60)
     _contract_price_history[ticker].append((time.time(), price))
 
 
@@ -1851,7 +1851,7 @@ def printer_brain_routed(
             yes_bid=max(0.0, yes_ask - 1.0),
             no_bid=max(0.0, no_ask - 1.0),
             prices_deque=prices_deque,
-            contract_history=None,
+            contract_history=_contract_price_history.get(ticker),
             btc_prices_deque=btc_prices,
         )
     except Exception as exc:
@@ -2009,8 +2009,21 @@ def printer_brain(
     # ── 3. Contract velocity ──────────────────────────────────────────────────
     vel_adj = +0.01 if vel_signal == "favorable" else (-0.01 if vel_signal == "unfavorable" else 0.0)
 
+    # ── 3b. AMM lag detector ──────────────────────────────────────────────────
+    # If BTC has moved >= 0.3% in the last 45 seconds but the contract price
+    # hasn't repriced proportionally, the contract is temporarily mispriced.
+    # We capture this edge before the AMM catches up.
+    try:
+        from strategies.lag_detector import amm_lag_signal as _amm_lag_fn
+        _lag_sig, _lag_mag = _amm_lag_fn(_asset_prices, _contract_price_history.get(ticker))
+    except Exception:
+        _lag_sig, _lag_mag = "neutral", 0.0
+    lag_adj = 0.0
+    if (_lag_sig == "lag_yes" and above) or (_lag_sig == "lag_no" and not above):
+        lag_adj = _lag_mag * 0.04   # max +4% probability boost for a fully unpriced lag
+
     # ── 4. Combined probability + learned calibration scale ──────────────────
-    win_prob = win_prob_raw + mom_adj + vel_adj
+    win_prob = win_prob_raw + mom_adj + vel_adj + lag_adj
     win_prob = 0.50 + (win_prob - 0.50) * _brain_cal["prob_scale"]
     win_prob = max(0.10, min(0.997, win_prob))
 
@@ -2149,7 +2162,7 @@ def printer_brain(
         f"BTC {pct_above*100:+.2f}% from strike | {mins_left:.1f} min left",
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
         f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
-        f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal}",
+        f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal} | AMM lag: {_lag_sig} ({_lag_mag:.2f})",
         f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (thresh={_eff_thresh:.2f}) | Dur: {f'{_buf_durability:.1f}min' if _buf_durability else 'n/a'}",
     ]
 

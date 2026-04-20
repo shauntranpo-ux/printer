@@ -14,6 +14,7 @@ from strategies.features import MarketFeatures, Decision
 from strategies.skip_layer import check_skip, SkipConfig, _momentum_label
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
+from strategies.lag_detector import amm_lag_signal
 
 
 class BaseStrategy(ABC):
@@ -95,6 +96,21 @@ class BaseStrategy(ABC):
 
         # Step 3: strategy's raw p_model (P(yes wins) = P(close > strike))
         raw_p_yes, signals = self.compute_raw_p_model(features, baseline_p_above)
+
+        # Step 3.5: AMM lag adjustment — applied before calibration so the
+        # calibrator can smooth it. Boost p_yes when YES is underpriced by lag,
+        # reduce when NO is underpriced.
+        _lag_sig, _lag_mag = amm_lag_signal(
+            features.prices_60m, features.kalshi_price_history
+        )
+        _lag_adj = 0.0
+        if _lag_sig == "lag_yes":
+            _lag_adj = _lag_mag * 0.04
+        elif _lag_sig == "lag_no":
+            _lag_adj = -_lag_mag * 0.04
+        raw_p_yes = max(0.05, min(0.95, raw_p_yes + _lag_adj))
+        signals["amm_lag_signal"] = _lag_sig
+        signals["amm_lag_magnitude"] = round(_lag_mag, 3)
 
         # Step 4: calibrate
         calibrated_p_yes = self.calibrator.calibrate(raw_p_yes)
