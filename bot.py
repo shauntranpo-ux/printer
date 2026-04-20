@@ -1043,7 +1043,8 @@ def parse_strike(market: dict) -> float | None:
             except (ValueError, TypeError):
                 pass
 
-    text = market.get("title", "") + " " + market.get("subtitle", "")
+    text = (market.get("title", "") + " " + market.get("subtitle", "")
+            + " " + (market.get("yes_sub_title") or ""))
     match = re.search(r"\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)", text)
     if match:
         strike = float(match.group(1).replace(",", ""))
@@ -3834,8 +3835,17 @@ async def _process_asset(
     except Exception:
         strike = None
     if strike is None:
-        log.warning(f"[{asset}] cannot parse strike — skipping")
-        return
+        yes_sub = market.get("yes_sub_title") or ""
+        if "TBD" in yes_sub:
+            strike = _am_get_price(asset)
+            if strike:
+                log.info(f"[{asset}] strike TBD — using live price {strike:.2f}")
+            else:
+                log.warning(f"[{asset}] cannot parse strike — skipping")
+                return
+        else:
+            log.warning(f"[{asset}] cannot parse strike — skipping")
+            return
 
     # Ticker rollover detection
     prev_ticker = st.get("prev_ticker")
@@ -4115,9 +4125,19 @@ async def main_loop() -> None:
                     strike = None
 
                 if strike is None:
-                    log.warning(f"{ticker}: cannot parse strike. Skipping cycle.")
-                    await asyncio.sleep(10)
-                    continue
+                    yes_sub = market.get("yes_sub_title") or ""
+                    if "TBD" in yes_sub:
+                        strike = _am_get_price(asset)
+                        if strike:
+                            log.info(f"{ticker}: strike TBD — using live price {strike:.2f}")
+                        else:
+                            log.warning(f"{ticker}: cannot parse strike. Skipping cycle.")
+                            await asyncio.sleep(10)
+                            continue
+                    else:
+                        log.warning(f"{ticker}: cannot parse strike. Skipping cycle.")
+                        await asyncio.sleep(10)
+                        continue
 
                 # ── WATCH ──────────────────────────────────────────────────
                 if current_phase == "WATCH":
