@@ -529,9 +529,11 @@ def run_backtest(
     mom_lock_enabled        = _overrides.get("mom_lock_enabled",        True)
     mom_lock_neutral_tighten = _overrides.get("mom_lock_neutral_tighten", 1.0)
     mom_accel_scale         = _overrides.get("mom_accel_scale",         3.0)
-    # Per-asset vol_gate_thresh overrides the CLI --vol-gate arg (matches live bot behaviour)
+    # Per-asset overrides for vol_gate_thresh and min_ev_base (match live bot behaviour)
     if "vol_gate_thresh" in _overrides:
         vol_threshold = _overrides["vol_gate_thresh"]
+    if "min_ev_base" in _overrides:
+        min_ev = float(_overrides["min_ev_base"]) / 100.0
     if verbose:
         print(f"  P1/P2/P4 overrides for {asset}: "
               f"vol_confirm={vol_confirm_mult}, vol_oppose={vol_oppose_mult}, "
@@ -611,7 +613,7 @@ def run_backtest(
                         _p_prior, _p_mid, btc, mom_accel_scale
                     )
                     _mom_sign  = 1.0 if _above else -1.0
-                    _accel_adj = float(max(-0.03, min(0.03, _mom_sign * abs(_raw_accel))))
+                    _accel_adj = float(max(-0.03, min(0.03, _mom_sign * _raw_accel)))
 
             # -- Vol gate (mirrors bot.py realized vol gate) ------------------
             # FIX: Original code used only prices from minute 0..`minute`
