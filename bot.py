@@ -1732,6 +1732,7 @@ def _get_or_make_strategy(asset: str, config):
             min_seconds_left=float(config.get("min_seconds_left", 30.0)),
             min_entry_price_cents=float(config.get("min_entry_price_cents", 35.0)),
             cold_start_samples=int(config.get("cold_start_samples", 60)),
+            vol_ratio_threshold=float(config.get("vol_gate_thresh", 1.80)),
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
         min_ev = float(overrides.get("min_ev_base",
@@ -1934,17 +1935,34 @@ def printer_brain(
     abs_pct   = abs(pct_above)
     above     = pct_above > 0
 
-    # ── 0. Realized volatility gate ──────────────────────────────────────────
-    # Brownian motion: expected BTC move before expiry ≈ vol * sqrt(mins_left).
-    # If that expected move ≥ 90% of the distance to strike, the distance is
-    # not large enough relative to current volatility — skip the trade.
-    _rv        = btc_realized_vol(prices=_asset_prices)
-    _vol_skip  = False
-    _vol_ratio = None
-    if _rv is not None and abs_pct > 0:
-        _expected_move = _rv * (mins_left ** 0.5)
-        _vol_ratio     = _expected_move / abs_pct
-        if _vol_ratio >= vol_gate_thresh:
+    # ── 0. Buffer durability gate ─────────────────────────────────────────────
+    # vol_ratio = (rv * sqrt(mins_left)) / buffer_pct  — how many times larger
+    # the expected move is vs. the current buffer. Skip when ratio is too high.
+    #
+    # Adaptive threshold: we ALWAYS bet continuation (above→YES, below→NO).
+    # Momentum confirms trade direction (price moving away from strike) → buffer
+    # is effectively widening, so relax threshold by 25%.
+    # Momentum opposes (price moving toward strike) → buffer is eroding, so
+    # tighten threshold by 30%.
+    _rv             = btc_realized_vol(prices=_asset_prices)
+    _vol_skip       = False
+    _vol_ratio      = None
+    _buf_durability = None   # (buffer / rv)^2, in vol-minutes
+    _eff_thresh     = vol_gate_thresh
+    if _rv is not None and _rv > 0 and abs_pct > 0:
+        _expected_move  = _rv * (mins_left ** 0.5)
+        _vol_ratio      = _expected_move / abs_pct
+        _buf_durability = (abs_pct / _rv) ** 2
+
+        _mom_confirms = (mom_label == "bullish" and above) or (mom_label == "bearish" and not above)
+        _mom_opposes  = (mom_label == "bullish" and not above) or (mom_label == "bearish" and above)
+        if _mom_confirms:
+            _eff_thresh = vol_gate_thresh * 1.25  # momentum widens effective buffer
+        elif _mom_opposes:
+            _eff_thresh = vol_gate_thresh * 0.70  # momentum erodes buffer, need more room
+        # else: neutral → _eff_thresh stays at vol_gate_thresh
+
+        if _vol_ratio >= _eff_thresh:
             _vol_skip = True
 
     # ── 1. Empirical win probability from backtest table ──────────────────────
@@ -2060,9 +2078,13 @@ def printer_brain(
     if not _price_filter_skip:
         if _vol_skip:
             _ratio_str = f"{_vol_ratio:.2f}" if _vol_ratio is not None else "?"
+            _dur_str   = f"{_buf_durability:.1f}min" if _buf_durability is not None else "?"
+            _align_str = ("mom=confirms/relaxed" if _mom_confirms else
+                          "mom=opposes/tightened" if _mom_opposes else "mom=neutral")
             skip_reason = (
-                f"vol too high: expected move covers {_ratio_str}x the strike distance "
-                f"(dist={abs_pct*100:.2f}% | {mins_left:.1f} min left)"
+                f"vol too high: expected move covers {_ratio_str}x strike distance "
+                f"(dist={abs_pct*100:.2f}% | dur={_dur_str} | "
+                f"thresh={_eff_thresh:.2f} | {_align_str} | {mins_left:.1f}min left)"
             )
         elif best_ev < min_ev:
             skip_reason = (
@@ -2093,7 +2115,7 @@ def printer_brain(
         f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
         f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
         f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) | Velocity: {vel_signal}",
-        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (skip >=>{vol_gate_thresh:.2f})",
+        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (thresh={_eff_thresh:.2f}) | Dur: {f'{_buf_durability:.1f}min' if _buf_durability else 'n/a'}",
     ]
 
     brain_log.info(

@@ -7,6 +7,7 @@ strategy's decide() method for this window.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -18,13 +19,36 @@ class SkipConfig:
     max_spread_cents: float = 3.0               # max spread on the side we'd trade
     min_seconds_left: float = 30.0              # skip if under this
     min_entry_price_cents: float = 35.0         # skip markets where either side costs below this floor
-    #   (prevents trading strongly-directional markets where signal adjustments
-    #    are too small to overcome the market's conviction; 0% observed win rate
-    #    on cheap-side contracts in historical data)
     cold_start_samples: int = 60                # need this many prices_60m samples
-    vol_top_pct_threshold: float = 0.95         # skip if realized vol > 95th pct
-    vol_bot_pct_threshold: float = 0.05         # skip if realized vol < 5th pct
+    vol_ratio_threshold: float = 1.80           # base threshold: skip if expected_move/buffer >= this
+    vol_top_pct_threshold: float = 0.95         # legacy field, unused
+    vol_bot_pct_threshold: float = 0.05         # legacy field, unused
     macro_event_skip_minutes: float = 15.0      # skip within +/- this of macro event
+
+
+def _momentum_label(prices, window_seconds: int = 180) -> str:
+    """3-min momentum label from a (timestamp, price) deque."""
+    if not prices:
+        return "neutral"
+    now = time.time()
+    cutoff = now - window_seconds
+    oldest = None
+    for ts, price in prices:
+        if ts >= cutoff:
+            oldest = price
+            break
+    entries = list(prices)
+    if oldest is None or not entries:
+        return "neutral"
+    current = entries[-1][1]
+    if oldest == 0:
+        return "neutral"
+    pct = (current - oldest) / oldest
+    if pct > 0.005:
+        return "bullish"
+    if pct < -0.005:
+        return "bearish"
+    return "neutral"
 
 
 def check_skip(
@@ -67,13 +91,40 @@ def check_skip(
     if features.spread_yes > cfg.max_spread_cents and features.spread_no > cfg.max_spread_cents:
         return f"spread too wide: yes={features.spread_yes:.0f}c no={features.spread_no:.0f}c"
 
-    # Top/bottom vol check — requires vol history, which we don't have yet.
-    # Placeholder: implement percentile-based vol gate in a later section when
-    # we have rolling vol tracking. For now, absolute threshold:
-    if features.realized_vol_1min > 0.01:  # 1% per minute = extreme
-        return f"realized_vol too high: {features.realized_vol_1min:.4f}/min"
-    if features.realized_vol_1min < 0.0001:  # 0.01% per minute = market halted?
-        return f"realized_vol too low: {features.realized_vol_1min:.4f}/min"
+    rv = features.realized_vol_1min
+    if rv < 0.0001:
+        return f"realized_vol too low: {rv:.4f}/min (market may be halted)"
+
+    # Buffer durability gate with momentum-adjusted threshold.
+    # vol_ratio = (rv * sqrt(mins_left)) / buffer_pct
+    # Skip when ratio is too high (buffer too thin relative to expected move).
+    # Momentum confirmation relaxes the threshold; opposition tightens it.
+    if features.current_price > 0 and features.strike > 0 and rv > 0:
+        abs_pct = abs(features.current_price - features.strike) / features.current_price
+        mins_left = features.seconds_left / 60.0
+        if abs_pct > 0 and mins_left > 0:
+            vol_ratio      = rv * (mins_left ** 0.5) / abs_pct
+            buf_durability = (abs_pct / rv) ** 2
+
+            above = features.current_price > features.strike
+            mom   = _momentum_label(features.prices_60m)
+            mom_confirms = (mom == "bullish" and above) or (mom == "bearish" and not above)
+            mom_opposes  = (mom == "bullish" and not above) or (mom == "bearish" and above)
+
+            if mom_confirms:
+                eff_thresh = cfg.vol_ratio_threshold * 1.25
+            elif mom_opposes:
+                eff_thresh = cfg.vol_ratio_threshold * 0.70
+            else:
+                eff_thresh = cfg.vol_ratio_threshold
+
+            if vol_ratio >= eff_thresh:
+                align = "confirms/relaxed" if mom_confirms else "opposes/tightened" if mom_opposes else "neutral"
+                return (
+                    f"buffer_too_thin: vol_ratio={vol_ratio:.2f} >= {eff_thresh:.2f} "
+                    f"(dist={abs_pct*100:.2f}% dur={buf_durability:.1f}min "
+                    f"mom={mom}/{align})"
+                )
 
     return None
 
