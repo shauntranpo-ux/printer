@@ -128,7 +128,7 @@ def _load_best_params() -> dict:
     return {"min_ev": 0.30, "min_confidence": 80}
 
 # -----------------------------------------------------------------------------
-# Empirical win-probability tables — loaded from bv3_tables/*.json
+# Empirical win-probability tables -- loaded from bv3_tables/*.json
 # Pre-2023 tables are used to avoid data leakage in backtesting.
 # Falls back to the hardcoded BTC table when no JSON file is present.
 # -----------------------------------------------------------------------------
@@ -166,10 +166,10 @@ def _load_bv3_for_asset(asset: str) -> tuple[list, list]:
                   f"({data.get('metadata', {}).get('total_windows', '?'):,} windows)")
             return data["table"], data["dist_bounds"]
         except Exception as exc:
-            print(f"  [BV3] {asset}: failed to load {path}: {exc} — using BTC fallback")
+            print(f"  [BV3] {asset}: failed to load {path}: {exc} -- using BTC fallback")
     else:
         if asset != "BTC":
-            print(f"  [BV3] {asset}: no pre-2023 table at {path} — using BTC fallback")
+            print(f"  [BV3] {asset}: no pre-2023 table at {path} -- using BTC fallback")
     return _BV3_TABLE, _BV3_DIST_BOUNDS
 
 
@@ -259,6 +259,7 @@ def brain_decide(
     max_entry_price_cents: float = 100.0,
     min_reward_cents: float = 0.0,
     max_risk_reward_ratio: float = 999.0,
+    accel_adj: float = 0.0,
 ) -> dict:
     pct_above = (btc_price - strike) / strike
     abs_pct   = abs(pct_above)
@@ -273,7 +274,7 @@ def brain_decide(
     else:
         mom_adj = 0.0
 
-    win_prob = win_prob_raw + mom_adj
+    win_prob = win_prob_raw + mom_adj + accel_adj
     win_prob = 0.50 + (win_prob - 0.50) * prob_scale
     win_prob = max(0.10, min(0.997, win_prob))
 
@@ -318,14 +319,32 @@ def brain_decide(
     }
 
 
-def compute_momentum(recent_closes: list) -> str:
-    """3-min momentum label from a list of recent close prices."""
+def compute_momentum(recent_closes: list) -> tuple[float, str]:
+    """3-min momentum pct and label from a list of recent close prices."""
     if len(recent_closes) < 2:
-        return "neutral"
+        return 0.0, "neutral"
     pct = (recent_closes[-1] - recent_closes[0]) / recent_closes[0]
-    if pct > 0.005:  return "bullish"
-    if pct < -0.005: return "bearish"
-    return "neutral"
+    if pct > 0.005:  return pct, "bullish"
+    if pct < -0.005: return pct, "bearish"
+    return pct, "neutral"
+
+
+def compute_momentum_acceleration(p_prior: float, p_mid: float, p_now: float,
+                                  mom_accel_scale: float = 3.0) -> float:
+    """
+    Second derivative of momentum: (recent 3-min mom) - (prior 3-min mom).
+    Returns clamped accel value (not adjusted by direction yet).
+    Mirrors skip_layer._momentum_acceleration().
+    """
+    if p_prior <= 0 or p_mid <= 0:
+        return 0.0
+    mom_recent = (p_now - p_mid)   / p_mid
+    mom_prior  = (p_mid - p_prior) / p_prior
+    accel = mom_recent - mom_prior
+    THRESHOLD = 0.002
+    if abs(accel) < THRESHOLD:
+        return 0.0
+    return float(max(-0.03, min(0.03, accel * mom_accel_scale)))
 
 
 # -----------------------------------------------------------------------------
@@ -386,9 +405,9 @@ def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True
         )
         df.rename(columns={"open_time": "Timestamp", "open": "Open", "high": "High",
                             "low": "Low", "close": "Close", "volume": "Volume"}, inplace=True)
-        # Parse ISO timestamps → UTC datetime, then Unix seconds
+        # Parse ISO timestamps -> UTC datetime, then Unix seconds
         df["_dt"] = pd.to_datetime(df["Timestamp"], utc=True)
-        # Use total_seconds() — avoids pandas version differences with astype("int64")
+        # Use total_seconds() -- avoids pandas version differences with astype("int64")
         _epoch = pd.Timestamp("1970-01-01", tz="UTC")
         df["ts"] = (df["_dt"] - _epoch).dt.total_seconds().astype("int64")
 
@@ -446,7 +465,7 @@ def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True
             windows      = windows[mask]
             price_lookup = price_lookup[price_lookup.index.isin(windows.index)]
             if verbose:
-                lbl = "TRAIN" if mode == "train" else "OOS HOLDOUT ⚠"
+                lbl = "TRAIN" if mode == "train" else "OOS HOLDOUT [!]"
                 d0  = cfg["train_start_date" if mode == "train" else "oos_start_date"]
                 d1  = cfg["train_end_date"   if mode == "train" else "oos_end_date"]
                 print(f"  [{lbl}] {len(windows):,} windows  [{d0} -> {d1}]")
@@ -467,6 +486,17 @@ def _load_fee_from_config() -> int:
         return 7
 
 KALSHI_FEE_CENTS: int = _load_fee_from_config()
+
+
+def _load_asset_overrides(asset: str) -> dict:
+    """Load per-asset signal config from config.json asset_overrides."""
+    try:
+        _cfg_path = os.path.join(_BASE_DIR, "config.json")
+        with open(_cfg_path) as _fh:
+            cfg = json.load(_fh)
+        return cfg.get("asset_overrides", {}).get(asset, {})
+    except Exception:
+        return {}
 
 
 def run_backtest(
@@ -491,6 +521,22 @@ def run_backtest(
     _trades_out: list | None = None,
 ) -> dict:
     rng = random.Random(seed)
+
+    # Load per-asset P1/P2/P4 signal config from config.json
+    _overrides = _load_asset_overrides(asset)
+    vol_confirm_mult        = _overrides.get("vol_confirm_mult",        1.0)
+    vol_oppose_mult         = _overrides.get("vol_oppose_mult",         1.0)
+    mom_lock_enabled        = _overrides.get("mom_lock_enabled",        True)
+    mom_lock_neutral_tighten = _overrides.get("mom_lock_neutral_tighten", 1.0)
+    mom_accel_scale         = _overrides.get("mom_accel_scale",         3.0)
+    # Per-asset vol_gate_thresh overrides the CLI --vol-gate arg (matches live bot behaviour)
+    if "vol_gate_thresh" in _overrides:
+        vol_threshold = _overrides["vol_gate_thresh"]
+    if verbose:
+        print(f"  P1/P2/P4 overrides for {asset}: "
+              f"vol_confirm={vol_confirm_mult}, vol_oppose={vol_oppose_mult}, "
+              f"mom_lock={mom_lock_enabled}, neutral_tighten={mom_lock_neutral_tighten}, "
+              f"accel_scale={mom_accel_scale}")
 
     # Pre-warm the BV3 table for this asset (prints load message once)
     if asset not in _bv3_by_asset:
@@ -538,14 +584,38 @@ def run_backtest(
 
             mins_left = float(15 - minute)
 
-            # 3-minute momentum
+            # 3-minute momentum (P1/P2/P4)
             recent = [prices[m] for m in range(max(0, minute - 3), minute + 1)
                       if m in prices]
-            mom = compute_momentum(recent)
+            _mom_pct, mom = compute_momentum(recent)
+
+            # P2: Direction lock -- skip when momentum opposes trade side.
+            # above=True -> would bet YES; bearish momentum opposes YES.
+            # above=False -> would bet NO; bullish momentum opposes NO.
+            _above = btc > strike
+            if mom_lock_enabled and mom != "neutral":
+                _mom_opposes = (mom == "bearish" and _above) or \
+                               (mom == "bullish" and not _above)
+                if _mom_opposes:
+                    continue
+
+            # P4: Momentum acceleration -- second derivative, confirming direction only.
+            _accel_adj = 0.0
+            _p_mid   = prices.get(minute - 3)
+            _p_prior = prices.get(minute - 6)
+            if _p_mid is not None and _p_prior is not None and mom != "neutral":
+                _mom_confirms = (mom == "bullish" and _above) or \
+                                (mom == "bearish" and not _above)
+                if _mom_confirms:
+                    _raw_accel = compute_momentum_acceleration(
+                        _p_prior, _p_mid, btc, mom_accel_scale
+                    )
+                    _mom_sign  = 1.0 if _above else -1.0
+                    _accel_adj = float(max(-0.03, min(0.03, _mom_sign * abs(_raw_accel))))
 
             # -- Vol gate (mirrors bot.py realized vol gate) ------------------
             # FIX: Original code used only prices from minute 0..`minute`
-            # within the current window. At minute 2, that's 3 data points —
+            # within the current window. At minute 2, that's 3 data points --
             # too few for a stable std estimate and ignores prior-window vol.
             #
             # The live bot uses btc_prices deque (500 entries), always giving
@@ -555,7 +625,7 @@ def run_backtest(
             #
             # Fix: collect the last 10 minutes crossing the 15-min boundary.
             # If prior-window data is unavailable, skip the vol gate for that
-            # evaluation rather than using a ≤3-point estimate.
+            # evaluation rather than using a <=3-point estimate.
             abs_pct = abs((btc - strike) / strike)
             vol_skip = False
             if abs_pct > 0:
@@ -573,7 +643,7 @@ def run_backtest(
                                      if m >= 15 - need]
                         vol_prices = prev_tail + within_prices
                     else:
-                        # No prior-window data — skip vol gate rather than
+                        # No prior-window data -- skip vol gate rather than
                         # using an unreliable sparse estimate.
                         vol_prices = []
 
@@ -582,7 +652,17 @@ def run_backtest(
                                 for j in range(1, len(vol_prices))]
                     rv = float(np.std(vol_rets))
                     expected_move = rv * (mins_left ** 0.5)
-                    if expected_move / abs_pct >= vol_threshold:
+                    # P1: Momentum-adaptive vol threshold.
+                    # Confirming momentum -> relax threshold (require stronger vol to skip).
+                    # Opposing momentum already blocked by P2 direction lock above.
+                    # Neutral -> tighten slightly.
+                    if mom == "neutral":
+                        _eff_thresh = vol_threshold * mom_lock_neutral_tighten
+                    elif (mom == "bullish" and _above) or (mom == "bearish" and not _above):
+                        _eff_thresh = vol_threshold * vol_confirm_mult
+                    else:
+                        _eff_thresh = vol_threshold * vol_oppose_mult
+                    if expected_move / abs_pct >= _eff_thresh:
                         vol_skip = True
             if vol_skip:
                 continue
@@ -596,7 +676,8 @@ def run_backtest(
                                   asset=asset,
                                   max_entry_price_cents=max_entry_price_cents,
                                   min_reward_cents=min_reward_cents,
-                                  max_risk_reward_ratio=max_risk_reward_ratio)
+                                  max_risk_reward_ratio=max_risk_reward_ratio,
+                                  accel_adj=_accel_adj)
 
             if brain["action"] != "trade":
                 continue
@@ -628,7 +709,7 @@ def run_backtest(
                   (side == "no"  and not above_at_close)
             exit_price = 100.0 if won else 0.0
 
-            # Fee model: $0.07/contract deducted from every trade (conservative —
+            # Fee model: $0.07/contract deducted from every trade (conservative --
             # Kalshi only charges on wins, but flat deduction simplifies accounting).
             fee_total  = contracts * KALSHI_FEE_CENTS / 100.0
             pnl        = (exit_price - entry_c) * contracts / 100.0 - fee_total
@@ -678,7 +759,7 @@ def run_backtest(
     total_fees         = sum(t["fee"] for t in trades)
     total_pnl_no_fees  = round(total_pnl + total_fees, 2)
 
-    # Daily Sharpe: group trade PnL by calendar day, then scale by √252
+    # Daily Sharpe: group trade PnL by calendar day, then scale by sqrt252
     _daily_pnl: dict[int, float] = {}
     for _t in trades:
         _day = _t["window_start"] // 86400
@@ -708,10 +789,10 @@ def run_backtest(
         mu  = sum(pnls) / len(pnls)
         var = sum((p - mu) ** 2 for p in pnls) / (len(pnls) - 1)
         sd  = math.sqrt(var)
-        # Per-trade Sharpe: no annualization multiplier — honest baseline
+        # Per-trade Sharpe: no annualization multiplier -- honest baseline
         sharpe_per_trade = (mu / sd) if sd > 0 else 0.0
-        # Annualised Sharpe: inflated by √35040 (each 15-min slot/year).
-        # WARNING: this number is misleading — use sharpe_per_trade for realistic assessment.
+        # Annualised Sharpe: inflated by sqrt35040 (each 15-min slot/year).
+        # WARNING: this number is misleading -- use sharpe_per_trade for realistic assessment.
         sharpe = (mu / sd * math.sqrt(35040)) if sd > 0 else 0.0
     else:
         sharpe = 0.0
@@ -836,9 +917,9 @@ def print_report(r: dict) -> None:
     _asset_r = r.get("asset", "BTC")
     _pre23_path = os.path.join(_BV3_DIR, f"{_asset_r}_bv3_pre2023.json")
     if os.path.exists(_pre23_path):
-        print(f"  ✓  BV3 table: pre-2023 data only — honest out-of-sample baseline.")
+        print(f"  [OK] BV3 table: pre-2023 data only -- honest out-of-sample baseline.")
     else:
-        print(f"  ⚠  WARNING: BV3 table built on 2017-2026 data — OOS period NOT clean.")
+        print(f"  [!!] WARNING: BV3 table built on 2017-2026 data -- OOS period NOT clean.")
         print(f"     Run: python generate_bv3_table.py --asset {_asset_r}")
     print("-" * W)
     print(f"  Windows simulated : {r['total_windows']:>10,}")
@@ -854,12 +935,12 @@ def print_report(r: dict) -> None:
     print("-" * W)
     print(f"  Max drawdown      : {r['max_drawdown_percent']:>9.1f}%")
     spt = r.get("sharpe_per_trade", 0.0)
-    print(f"  Sharpe (annlzd)   : {r['sharpe_ratio']:>10.3f}  ← inflated by √35040")
-    print(f"  Sharpe (per-trade): {spt:>10.4f}  ← use this for honest assessment")
-    print(f"  NOTE: Per-slot annualized Sharpe is inflated by √35040 multiplier.")
+    print(f"  Sharpe (annlzd)   : {r['sharpe_ratio']:>10.3f}  <- inflated by sqrt35040")
+    print(f"  Sharpe (per-trade): {spt:>10.4f}  <- use this for honest assessment")
+    print(f"  NOTE: Per-slot annualized Sharpe is inflated by sqrt35040 multiplier.")
     print(f"        Use per-trade or daily Sharpe for realistic assessment.")
     if spt > 3.0:
-        print(f"  ⚠  Per-trade Sharpe > 3.0 is suspicious.")
+        print(f"  [!]  Per-trade Sharpe > 3.0 is suspicious.")
         print(f"     Verify that simulated prices match real market prices before")
         print(f"     trusting this number. Run price_validator.py to check.")
     print(f"  Max consec losses : {r['max_consecutive_losses']:>10}")
@@ -874,7 +955,7 @@ def print_report(r: dict) -> None:
 
 
 # -----------------------------------------------------------------------------
-# Reality check — always-on block, cannot be disabled
+# Reality check -- always-on block, cannot be disabled
 # -----------------------------------------------------------------------------
 
 def print_reality_check(r: dict) -> None:
@@ -885,7 +966,7 @@ def print_reality_check(r: dict) -> None:
     if not r:
         return
 
-    BORDER = "═" * 51
+    BORDER = "=" * 51
 
     # Pull metrics from result
     total      = r.get("total_trades", 0)
@@ -931,60 +1012,60 @@ def print_reality_check(r: dict) -> None:
 
     # Print the block
     print("\n" + BORDER)
-    print("REALITY CHECK — READ THIS BEFORE TRUSTING RESULTS")
+    print("REALITY CHECK -- READ THIS BEFORE TRUSTING RESULTS")
     print(BORDER)
     print()
     print(f"Sharpe (per-trade):            {spt:.2f}")
-    print(f"Sharpe (daily, \u221a252):           {sdaily:.2f}")
-    print(f"Sharpe (per-slot, \u221a35040):      {sann:.2f}  \u2190 inflated, do not use for decisions")
+    print(f"Sharpe (daily, sqrt252):           {sdaily:.2f}")
+    print(f"Sharpe (per-slot, sqrt35040):      {sann:.2f}  <- inflated, do not use for decisions")
     print()
     print(f"Win rate:                      {wr:.1f}%")
     print(f"Avg PnL per trade (with fees): ${avg_pnl:.2f}")
-    print(f"Avg PnL per trade (no fees):   ${avg_pnl_nf:.2f}  \u2190 this is what old backtest reported")
+    print(f"Avg PnL per trade (no fees):   ${avg_pnl_nf:.2f}  <- this is what old backtest reported")
     print(f"Fee drag per trade:            -${avg_fee:.2f}")
     print()
     print(f"Total trades:                  {total:,}")
     print(f"Total PnL (with fees):        ${pnl:.2f}")
-    print(f"Total PnL (no fees):          ${pnl_nf:.2f}  \u2190 old backtest reported this")
+    print(f"Total PnL (no fees):          ${pnl_nf:.2f}  <- old backtest reported this")
     print()
     _asset_rc = r.get("asset", "BTC")
     _pre23_path_rc = os.path.join(_BV3_DIR, f"{_asset_rc}_bv3_pre2023.json")
     if os.path.exists(_pre23_path_rc):
-        print(f"BV3 data leakage:             NO  — pre-2023 table used (honest baseline)")
+        print(f"BV3 data leakage:             NO  -- pre-2023 table used (honest baseline)")
     else:
-        print(f"BV3 data leakage:             YES — OOS metrics unreliable (generate pre-2023 table)")
+        print(f"BV3 data leakage:             YES -- OOS metrics unreliable (generate pre-2023 table)")
     if price_validated:
-        print(f"Price model validated:         \u2705 YES \u2014 {pv_samples} samples in price_validation_log.csv")
+        print(f"Price model validated:         [OK] YES --   {pv_samples} samples in price_validation_log.csv")
     else:
         _s = f"{pv_samples}/200 samples" if pv_samples else "0 samples"
-        print(f"Price model validated:         \u274c NO \u2014 {_s}, run price_validator.py for 200+ trades")
+        print(f"Price model validated:         [X]  NO --   {_s}, run price_validator.py for 200+ trades")
     if wfv_varied is None:
-        print(f"Walk-forward param variation:  NOT RUN \u2014 use --walk-forward to check")
+        print(f"Walk-forward param variation:  NOT RUN --   use --walk-forward to check")
     elif wfv_varied:
-        print(f"Walk-forward param variation:  YES \u2014 params changed across windows")
+        print(f"Walk-forward param variation:  YES --   params changed across windows")
     else:
-        print(f"Walk-forward param variation:  NO \u2014 params converged (edge may come from BV3 only)")
+        print(f"Walk-forward param variation:  NO --   params converged (edge may come from BV3 only)")
     print()
 
-    # Verdicts — all matching rules print, in priority order
+    # Verdicts -- all matching rules print, in priority order
     verdicts: list[str] = []
     if not price_validated:
         verdicts.append(
-            "UNRELIABLE \u2014 backtest uses simulated prices not compared to real Kalshi "
+            "UNRELIABLE --   backtest uses simulated prices not compared to real Kalshi "
             "prices. Run paper mode with price_validator.py before trusting any results."
         )
     if spt > 3.0:
         verdicts.append(
-            "SUSPICIOUS \u2014 per-trade Sharpe above 3.0 suggests simulated prices are "
+            "SUSPICIOUS --   per-trade Sharpe above 3.0 suggests simulated prices are "
             "too favorable."
         )
     if avg_pnl < 0.0:
         verdicts.append(
-            "NEGATIVE EV \u2014 strategy loses money after fees with current parameters."
+            "NEGATIVE EV --   strategy loses money after fees with current parameters."
         )
     elif avg_pnl < 1.0:
         verdicts.append(
-            "MARGINAL \u2014 edge is small after fees. Sensitive to price model accuracy."
+            "MARGINAL --   edge is small after fees. Sensitive to price model accuracy."
         )
 
     if verdicts:
@@ -1054,7 +1135,7 @@ PARAM_SPACE = {
     "kelly_cap":      [0.10, 0.15, 0.20, 0.25],
 }
 
-# Pre-computed pool of all unique combinations (6 × 6 × 4 = 144)
+# Pre-computed pool of all unique combinations (6 x 6 x 4 = 144)
 _ALL_COMBOS = list(itertools.product(
     PARAM_SPACE["min_ev"],
     PARAM_SPACE["min_confidence"],
@@ -1387,7 +1468,7 @@ def _save_oos_report(train_r: dict, oos_r: dict,
 
 
 # -----------------------------------------------------------------------------
-# Period comparison — runs the current live strategy across multiple date ranges
+# Period comparison -- runs the current live strategy across multiple date ranges
 # -----------------------------------------------------------------------------
 
 def run_period_comparison(trade_amount: float = 25.0) -> None:
@@ -1398,7 +1479,7 @@ def run_period_comparison(trade_amount: float = 25.0) -> None:
     Live params replicated here:
       min_ev        = 0.05  (5% neutral floor; 3% US hours in live bot)
       min_confidence= 65    (config.json confidence_threshold)
-      vol_threshold = 1.50  (skip if expected_move >= 1.5× strike distance)
+      vol_threshold = 1.50  (skip if expected_move >= 1.5x strike distance)
       trade_amount  = $25   (config.json trade_amount_dollars)
     """
     MIN_EV      = 0.05
@@ -1406,9 +1487,9 @@ def run_period_comparison(trade_amount: float = 25.0) -> None:
     VOL_THRESH  = 1.50
 
     periods = [
-        ("2020 → 2026  (full history)", 2020, 2026),
-        ("2024 → 2025  (recent bull)",  2024, 2025),
-        ("2025 → 2026  (live regime)",  2025, 2026),
+        ("2020 -> 2026  (full history)", 2020, 2026),
+        ("2024 -> 2025  (recent bull)",  2024, 2025),
+        ("2025 -> 2026  (live regime)",  2025, 2026),
     ]
 
     results = []
@@ -1420,7 +1501,7 @@ def run_period_comparison(trade_amount: float = 25.0) -> None:
             start_year=sy, end_year=ey, verbose=True, mode="full"
         )
         if len(windows) == 0:
-            print("  [!] No data for this period — skipping.")
+            print("  [!] No data for this period -- skipping.")
             continue
         r = run_backtest(
             start_year     = sy,
@@ -1442,20 +1523,20 @@ def run_period_comparison(trade_amount: float = 25.0) -> None:
     if not results:
         return
 
-    # ── Annotate computed fields ─────────────────────────────────────────────
+    # == Annotate computed fields =============================================
     for r in results:
         t = r.get("total_trades", 0)
         w = r.get("total_windows", 1)
         r["_trade_rate"]   = t / w * 100 if w else 0
         r["_pnl_per_trade"] = r.get("total_pnl_dollars", 0) / t if t else 0
-        # Annualised: 96 windows/day × 365 days = 35,040 slots/year
+        # Annualised: 96 windows/day x 365 days = 35,040 slots/year
         r["_ann_pnl"] = r["_pnl_per_trade"] * 35040 if t else 0
 
-    # ── Side-by-side summary ─────────────────────────────────────────────────
+    # == Side-by-side summary =================================================
     W = 78
     print("\n\n" + "=" * W)
-    print("  PERIOD COMPARISON  —  current live strategy params")
-    print(f"  min_ev={MIN_EV:.0%}  |  confidence≥{MIN_CONF}  |  vol_gate≥{VOL_THRESH}  |  ${trade_amount}/trade")
+    print("  PERIOD COMPARISON  --  current live strategy params")
+    print(f"  min_ev={MIN_EV:.0%}  |  confidence>={MIN_CONF}  |  vol_gate>={VOL_THRESH}  |  ${trade_amount}/trade")
     print("=" * W)
 
     col = 22
@@ -1620,7 +1701,7 @@ if __name__ == "__main__":
     elif args.sweep:
         run_sweep(args.start_year, args.amount)
     else:
-        # Resolve asset list — "ALL" expands to every supported asset
+        # Resolve asset list -- "ALL" expands to every supported asset
         _raw_assets = args.asset
         if len(_raw_assets) == 1 and _raw_assets[0].upper() == "ALL":
             requested_assets = ALL_ASSETS
@@ -1660,7 +1741,7 @@ if __name__ == "__main__":
         # Combined summary when multiple assets were run
         if len(all_results) > 1:
             print(f"\n{'='*70}")
-            print("  COMBINED REALITY CHECK — ALL ASSETS")
+            print("  COMBINED REALITY CHECK -- ALL ASSETS")
             print(f"{'='*70}")
             W = 70
             print(f"  {'Asset':<8}  {'Trades':>7}  {'Win%':>6}  {'P&L':>10}  {'Sharpe':>8}  {'MaxDD%':>7}")
@@ -1683,5 +1764,5 @@ if __name__ == "__main__":
             _cwr = combined_wins / combined_trades * 100 if combined_trades else 0
             print(f"  {'TOTAL':<8}  {combined_trades:>7,}  {_cwr:>5.1f}%  ${combined_pnl:>9,.2f}")
             print()
-            print("NOTE: Uses pre-2023 BV3 tables for all assets — honest out-of-sample baseline.")
+            print("NOTE: Uses pre-2023 BV3 tables for all assets -- honest out-of-sample baseline.")
             print(f"{'='*70}")
