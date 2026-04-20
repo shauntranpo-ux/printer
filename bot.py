@@ -4355,7 +4355,7 @@ async def run_preflight_checks(config: dict) -> None:
 
     # ── Check 4: mode gate ────────────────────────────────────────────────────
     mode      = config.get("mode", "paper")
-    is_live   = mode in ("live", "demo")
+    is_live   = mode == "live"   # demo uses simulated funds — only block for real-money live
     override  = bool(config.get("preflight_override", False))
 
     if is_live and issues:
