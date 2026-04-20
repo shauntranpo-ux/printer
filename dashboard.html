@@ -49,10 +49,15 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 /* Topbar buttons */
 .tb-btn{display:inline-flex;align-items:center;gap:6px;border-radius:7px;padding:7px 13px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;border:1px solid var(--line-2);background:var(--card);color:var(--ink);transition:all .1s;}
 .tb-btn:hover{background:var(--card-2);}
-.tb-btn.live-mode{border-color:rgba(27,158,85,.4);background:rgba(27,158,85,.12);color:var(--up);}
-.tb-btn.paper-mode{border-color:rgba(58,111,181,.3);background:rgba(58,111,181,.1);color:var(--accent);}
 .tb-btn.on{border-color:rgba(27,158,85,.5);color:var(--up);background:rgba(27,158,85,.1);}
 .tb-btn.off{border-color:rgba(214,57,73,.5);color:var(--down);background:rgba(214,57,73,.1);}
+/* Mode selector — three explicit buttons, one active at a time */
+.mode-selector-tb{display:inline-flex;gap:4px;align-items:center;}
+.mode-sel-btn{display:inline-flex;align-items:center;padding:7px 13px;border-radius:7px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);transition:all .15s;}
+.mode-sel-btn:hover{background:var(--card-2);}
+.mode-sel-btn.sel-live{color:#4cbe7a;border-color:rgba(27,158,85,.45);background:rgba(27,158,85,.1);box-shadow:0 0 7px rgba(255,215,0,.28),0 0 0 1px rgba(255,215,0,.32);}
+.mode-sel-btn.sel-demo{color:#5badff;border-color:rgba(74,158,255,.45);background:rgba(74,158,255,.1);box-shadow:0 0 7px rgba(255,215,0,.28),0 0 0 1px rgba(255,215,0,.32);}
+.mode-sel-btn.sel-paper{color:#aaa;border-color:rgba(160,160,160,.35);background:rgba(160,160,160,.07);box-shadow:0 0 7px rgba(255,215,0,.28),0 0 0 1px rgba(255,215,0,.32);}
 .tb-dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3);}
 .tb-dot.on{background:var(--up);}
 #clock-txt{font-size:14px;font-weight:600;color:var(--ink);letter-spacing:.2px;white-space:nowrap;}
@@ -82,6 +87,7 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 #bot-toggle.off{border-color:rgba(214,57,73,.5);color:var(--down);background:rgba(214,57,73,.1);}
 .mode-pill{font-size:11px;font-weight:700;letter-spacing:.05em;padding:4px 11px;border-radius:20px;cursor:pointer;font-family:inherit;transition:all .15s;}
 .mode-pill.live{background:rgba(27,158,85,.12);color:var(--up);border:1px solid rgba(27,158,85,.3);}
+.mode-pill.demo{background:rgba(74,158,255,.12);color:#5badff;border:1px solid rgba(74,158,255,.3);}
 .mode-pill.paper{background:transparent;color:var(--ink-2);border:1px solid var(--line-2);}
 .mode-pill.loading{opacity:.4;pointer-events:none;}
 .reset-btn{font-size:10px;padding:3px 8px;border-radius:5px;border:1px solid var(--line-2);color:var(--ink-3);background:transparent;cursor:pointer;font-family:inherit;transition:all .15s;}
@@ -315,10 +321,12 @@ tr:last-child td{border-bottom:none;}
         <span id="bot-toggle-tb-label">Bot Off</span>
       </button>
 
-      <!-- Paper/Live toggle -->
-      <button id="mode-btn-tb" class="tb-btn paper-mode" onclick="toggleMode()">
-        <span id="mode-btn-tb-label">PAPER</span>
-      </button>
+      <!-- Mode selector: LIVE / DEMO / PAPER -->
+      <div class="mode-selector-tb">
+        <button id="mode-btn-live"  class="mode-sel-btn" onclick="setMode('live')">LIVE</button>
+        <button id="mode-btn-demo"  class="mode-sel-btn" onclick="setMode('demo')">DEMO</button>
+        <button id="mode-btn-paper" class="mode-sel-btn" onclick="setMode('paper')">PAPER</button>
+      </div>
 
       <!-- Clock -->
       <span id="clock-txt">—</span>
@@ -500,10 +508,10 @@ tr:last-child td{border-bottom:none;}
       <div class="settings-grid">
         <div class="s-group">
           <label>Mode</label>
-          <div class="tog-wrap">
-            <span class="tog-lbl">Paper</span>
-            <label class="tog"><input type="checkbox" id="s-mode" onchange="setMode(this.checked?'live':'paper')"><span class="tog-slider"></span></label>
-            <span class="tog-lbl">Live</span>
+          <div class="tog-wrap" style="gap:5px;">
+            <button id="s-mode-live"  class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('live')">LIVE</button>
+            <button id="s-mode-demo"  class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('demo')">DEMO</button>
+            <button id="s-mode-paper" class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('paper')">PAPER</button>
           </div>
         </div>
       </div>
@@ -846,19 +854,18 @@ function renderPnlValues() {
 // ── Mode ──
 function updateModePillVisual(mode) {
   _currentMode = mode;
-  const btn = document.getElementById('mode-btn-tb');
-  const lbl = document.getElementById('mode-btn-tb-label');
-  if (lbl) lbl.textContent = mode.toUpperCase();
-  if (btn) btn.className = 'tb-btn ' + (mode === 'live' ? 'live-mode' : 'paper-mode');
-  const tog = document.getElementById('s-mode');
-  if (tog) tog.checked = mode === 'live';
+  ['live','demo','paper'].forEach(m => {
+    const cls = 'mode-sel-btn' + (mode === m ? ' sel-'+m : '');
+    const tb = document.getElementById('mode-btn-'+m);   if (tb) tb.className = cls;
+    const sb = document.getElementById('s-mode-'+m);     if (sb) sb.className = cls;
+    if (sb) sb.style.cssText = 'padding:5px 10px;font-size:11px;';
+  });
 }
 let _pendingModeSwitch = null;
 function openLiveModal() { _pendingModeSwitch='live'; document.getElementById('live-modal').classList.add('open'); }
 function closeLiveModal() {
   _pendingModeSwitch = null; document.getElementById('live-modal').classList.remove('open');
-  const cur = _currentMode;
-  const tog = document.getElementById('s-mode'); if (tog) tog.checked = cur === 'live';
+  updateModePillVisual(_currentMode);
 }
 async function confirmLiveSwitch() { document.getElementById('live-modal').classList.remove('open'); await _doModeSwitch('live'); }
 document.addEventListener('click', function(e) { if (e.target === document.getElementById('live-modal')) closeLiveModal(); });
@@ -875,7 +882,6 @@ async function _doModeSwitch(mode) {
   finally {}
 }
 async function setMode(mode) { if (mode === 'live') { openLiveModal(); return; } await _doModeSwitch(mode); }
-function toggleMode() { setMode(_currentMode === 'live' ? 'paper' : 'live'); }
 
 // ── Toast ──
 let _toastTimer = null;
