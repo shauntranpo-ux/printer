@@ -361,12 +361,24 @@ tr:last-child td{border-bottom:none;}
         <div class="pf-val" id="pb-live-pnl">—</div>
       </div>
       <div class="pf-stat">
+        <div class="pf-lbl">Live WR · All-Time</div>
+        <div class="pf-val" id="pb-live-wr">—</div>
+      </div>
+      <div class="pf-stat">
+        <div class="pf-lbl">Demo P&amp;L · All-Time</div>
+        <div class="pf-val" id="pb-demo-pnl">—</div>
+      </div>
+      <div class="pf-stat">
+        <div class="pf-lbl">Demo WR · All-Time</div>
+        <div class="pf-val" id="pb-demo-wr">—</div>
+      </div>
+      <div class="pf-stat">
         <div class="pf-lbl">Paper P&amp;L · All-Time</div>
         <div class="pf-val" id="pb-paper-pnl">—</div>
       </div>
       <div class="pf-stat">
-        <div class="pf-lbl">Win Rate (All-Time)</div>
-        <div class="pf-val" id="pb-wr">—</div>
+        <div class="pf-lbl">Paper WR · All-Time</div>
+        <div class="pf-val" id="pb-paper-wr">—</div>
       </div>
       <div class="pf-stat">
         <div class="pf-lbl">Trades</div>
@@ -828,7 +840,7 @@ setInterval(tickClock, 1000); tickClock();
 
 // ── Hide PnL ──
 let _pnlHidden = false;
-let _pnlLiveRaw = null, _pnlPaperRaw = null;
+let _pnlLiveRaw = null, _pnlPaperRaw = null, _pnlDemoRaw = null;
 function togglePnlHide() {
   _pnlHidden = !_pnlHidden;
   const lbl = document.getElementById('pnl-hide-lbl');
@@ -841,13 +853,14 @@ function togglePnlHide() {
 }
 function renderPnlValues() {
   const lEl = document.getElementById('pb-live-pnl');
+  const dEl = document.getElementById('pb-demo-pnl');
   const pEl = document.getElementById('pb-paper-pnl');
   if (_pnlHidden) {
-    if (lEl) { lEl.textContent = '**********'; lEl.className = 'pf-val'; lEl.style.letterSpacing = '2px'; lEl.style.fontSize = '14px'; }
-    if (pEl) { pEl.textContent = '**********'; pEl.className = 'pf-val'; pEl.style.letterSpacing = '2px'; pEl.style.fontSize = '14px'; }
+    const mask = el => { if (el) { el.textContent = '**********'; el.className = 'pf-val'; el.style.letterSpacing = '2px'; el.style.fontSize = '14px'; } };
+    mask(lEl); mask(dEl); mask(pEl);
   } else {
-    if (lEl && _pnlLiveRaw !== null) { const v=_pnlLiveRaw; lEl.textContent=fmtPnl(v); lEl.className='pf-val '+(v>0?'green':v<0?'red':''); lEl.style.letterSpacing=''; lEl.style.fontSize=''; }
-    if (pEl && _pnlPaperRaw !== null) { const v=_pnlPaperRaw; pEl.textContent=fmtPnl(v); pEl.className='pf-val '+(v>0?'green':v<0?'red':''); pEl.style.letterSpacing=''; pEl.style.fontSize=''; }
+    const show = (el, v) => { if (el && v !== null) { el.textContent=fmtPnl(v); el.className='pf-val '+(v>0?'green':v<0?'red':''); el.style.letterSpacing=''; el.style.fontSize=''; } };
+    show(lEl, _pnlLiveRaw); show(dEl, _pnlDemoRaw); show(pEl, _pnlPaperRaw);
   }
 }
 
@@ -1416,13 +1429,17 @@ async function pollPnl() {
     const r = await fetch('/api/pnl'); if (!r.ok) return;
     const data = await r.json(); if (!data || data.error) return;
     const alltime=data.alltime||{};
-    const al=alltime.live||{}, ap=alltime.paper||{};
-    _pnlLiveRaw = al.pnl || 0;
-    _pnlPaperRaw = ap.pnl || 0;
+    const al=alltime.live||{}, ad=alltime.demo||{}, ap=alltime.paper||{};
+    _pnlLiveRaw  = al.pnl != null ? al.pnl : 0;
+    _pnlDemoRaw  = ad.pnl != null ? ad.pnl : 0;
+    _pnlPaperRaw = ap.pnl != null ? ap.pnl : 0;
     renderPnlValues();
-    const best=al.trades>0?al:ap.trades>0?ap:{};
-    const pbWr=document.getElementById('pb-wr');
-    if (pbWr && best.trades>0) { const wr=best.win_rate; pbWr.textContent=wr.toFixed(0)+'% ('+best.trades+')'; pbWr.className='pf-val '+(wr>=75?'green':wr>=60?'':'red'); }
+    const _fmtWr = (obj, elId) => {
+      const el = document.getElementById(elId); if (!el) return;
+      if (obj.trades > 0) { const wr=obj.win_rate; el.textContent=wr.toFixed(0)+'% ('+obj.trades+')'; el.className='pf-val '+(wr>=75?'green':wr>=60?'':'red'); }
+      else { el.textContent='—'; el.className='pf-val'; }
+    };
+    _fmtWr(al, 'pb-live-wr'); _fmtWr(ad, 'pb-demo-wr'); _fmtWr(ap, 'pb-paper-wr');
   } catch(e) { console.error('PnL poll:', e); }
 }
 

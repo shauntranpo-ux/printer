@@ -343,7 +343,7 @@ def api_config():
 
     validators = {
         "trade_amount_dollars":        is_positive_number,
-        "mode":                        lambda v: v in ("live", "paper"),
+        "mode":                        lambda v: v in ("live", "paper", "demo"),
         "daily_loss_limit_dollars":    is_positive_number,
         "daily_profit_target_dollars": is_positive_number,
         "confidence_threshold":        lambda v: isinstance(v, (int, float)) and 50 <= v <= 100,
@@ -356,7 +356,7 @@ def api_config():
     action = data.get("action")
     if action in ("enable_asset", "disable_asset", "set_asset_ev"):
         asset = data.get("asset", "").upper()
-        valid_assets = {"ETH", "SOL", "XRP", "DOGE"}
+        valid_assets = {"BTC", "ETH", "SOL", "XRP", "DOGE"}
         if asset not in valid_assets:
             return jsonify({"error": f"Unknown asset {asset!r}"}), 400
         enabled = config.setdefault("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"])
@@ -544,21 +544,25 @@ def api_pnl():
         # Per-mode today
         today_live  = _pnl([t for t in today_trades if t.get("mode") == "live"])
         today_paper = _pnl([t for t in today_trades if t.get("mode") == "paper"])
+        today_demo  = _pnl([t for t in today_trades if t.get("mode") == "demo"])
 
         # All-time
         alltime_live  = _pnl([t for t in all_trades if t.get("mode") == "live"])
         alltime_paper = _pnl([t for t in all_trades if t.get("mode") == "paper"])
+        alltime_demo  = _pnl([t for t in all_trades if t.get("mode") == "demo"])
 
         return jsonify({
             "today": {
-                "live":    today_live,
-                "paper":   today_paper,
+                "live":     today_live,
+                "paper":    today_paper,
+                "demo":     today_demo,
                 "by_asset": today_by_asset,
-                "date":    today,
+                "date":     today,
             },
             "alltime": {
                 "live":  alltime_live,
                 "paper": alltime_paper,
+                "demo":  alltime_demo,
             },
         })
     except Exception as exc:
@@ -566,8 +570,8 @@ def api_pnl():
             empty = {"pnl": 0.0, "trades": 0, "wins": 0, "win_rate": 0.0}
             today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             return jsonify({
-                "today":   {"live": empty, "paper": empty, "by_asset": {}, "date": today},
-                "alltime": {"live": empty, "paper": empty},
+                "today":   {"live": empty, "paper": empty, "demo": empty, "by_asset": {}, "date": today},
+                "alltime": {"live": empty, "paper": empty, "demo": empty},
             })
         log.error(f"api_pnl error: {exc}", exc_info=True)
         return jsonify({"error": str(exc)}), 500
