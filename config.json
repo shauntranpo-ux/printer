@@ -14,6 +14,7 @@
   "kalshi_fee_per_contract_cents": 7,
   "preflight_override": false,
   "vol_gate_thresh": 1.8,
+  "min_entry_price_cents": 35,
   "max_entry_price_cents": 80,
   "min_reward_cents": 15,
   "max_risk_reward_ratio": 4.0,
