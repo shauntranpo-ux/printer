@@ -350,7 +350,7 @@ def _init_config() -> None:
     defaults = {
         "bot_enabled": False,
         "trade_amount_dollars": 25,
-        "mode": "paper",
+        "mode": "demo",
         "confidence_threshold": 72,
         "daily_loss_limit_dollars": 50,          # 2× trade size — real guard, not $5M decoration
         "daily_profit_target_dollars": 200,

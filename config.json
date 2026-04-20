@@ -1,6 +1,6 @@
 {
   "bot_enabled": false,
-  "mode": "paper",
+  "mode": "demo",
   "trade_amount_dollars": 25,
   "confidence_threshold": 76,
   "daily_loss_limit_dollars": 50,
