@@ -1,6 +1,6 @@
 {
   "bot_enabled": false,
-  "mode": "demo",
+  "mode": "paper",
   "trade_amount_dollars": 25,
   "confidence_threshold": 76,
   "daily_loss_limit_dollars": 50,
@@ -15,7 +15,7 @@
   "preflight_override": false,
   "vol_gate_thresh": 1.8,
   "min_entry_price_cents": 35,
-  "max_entry_price_cents": 80,
+  "max_entry_price_cents": 100,
   "min_reward_cents": 15,
   "max_risk_reward_ratio": 4.0,
   "allowed_sides": [

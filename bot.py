@@ -355,7 +355,7 @@ def _init_config() -> None:
     defaults = {
         "bot_enabled": False,
         "trade_amount_dollars": 25,
-        "mode": "demo",
+        "mode": "paper",
         "confidence_threshold": 72,
         "daily_loss_limit_dollars": 50,          # 2× trade size — real guard, not $5M decoration
         "daily_profit_target_dollars": 200,
@@ -1827,13 +1827,15 @@ def _session_ev_adjustment() -> float:
 # Routes any asset through strategies/ pipeline when config
 # use_new_strategies.<ASSET> is True. Default: False (legacy path unchanged).
 
-_STRATEGY_SINGLETONS: dict = {}  # keyed by asset name, lazy init
+_STRATEGY_SINGLETONS: dict = {}  # keyed by "ASSET" or "ASSET_hourly"
 
 
-def _get_or_make_strategy(asset: str, config):
+def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):
     """Lazily construct per-asset strategy singleton. Returns None on failure."""
-    if asset in _STRATEGY_SINGLETONS:
-        return _STRATEGY_SINGLETONS[asset]
+    is_hourly = market_duration_min > 25.0
+    cache_key = f"{asset}_hourly" if is_hourly else asset
+    if cache_key in _STRATEGY_SINGLETONS:
+        return _STRATEGY_SINGLETONS[cache_key]
     try:
         import sys as _sys
         _src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
@@ -1856,9 +1858,22 @@ def _get_or_make_strategy(asset: str, config):
         overrides = config.get("asset_overrides", {}).get(asset, {})
         min_ev = float(overrides.get("min_ev_base",
                                      config.get("min_ev_base", 8))) / 100.0
-        stake = float(config.get("trade_amount_dollars", 5))
+        stake = float(config.get("trade_amount_dollars", 25))
 
-        if asset == "ETH":
+        if asset == "ETH" and is_hourly:
+            from strategies.eth_hourly_combined import ETHHourlyCombinedStrategy
+            strat = ETHHourlyCombinedStrategy(
+                skip_config=skip_cfg,
+                stake_dollars=stake,
+            )
+        elif asset == "BTC" and is_hourly:
+            from strategies.btc_hourly_strategy import BTCHourlyStrategy
+            strat = BTCHourlyStrategy(
+                skip_config=skip_cfg,
+                min_ev=min_ev,
+                stake_dollars=stake,
+            )
+        elif asset == "ETH":
             from strategies.eth_strategy import ETHStrategy
             strat = ETHStrategy(
                 skip_config=skip_cfg,
@@ -1889,7 +1904,8 @@ def _get_or_make_strategy(asset: str, config):
         else:
             return None  # other assets not yet implemented
 
-        _STRATEGY_SINGLETONS[asset] = strat
+        _STRATEGY_SINGLETONS[cache_key] = strat
+        log.info(f"Strategy initialized: {cache_key} ({'hourly' if is_hourly else '15m'}, stake=${stake})")
         return strat
     except Exception as exc:
         log.warning(f"{asset} strategy init failed, falling back to legacy: {exc}")
@@ -1930,7 +1946,8 @@ def printer_brain_routed(
             mom_accel_scale=mom_accel_scale,
         )
 
-    strat = _get_or_make_strategy(asset, config)
+    market_duration_min = (elapsed_seconds + secs_left) / 60.0
+    strat = _get_or_make_strategy(asset, config, market_duration_min=market_duration_min)
     if strat is None:
         return printer_brain(
             btc_price, strike, yes_ask, no_ask,
@@ -2835,21 +2852,42 @@ async def place_order(
         log.info(f"Order {order_id} POST status={post_status!r}")
 
         # "resting" from an IOC means Kalshi accepted the order but didn't
-        # match it immediately — treat as unfilled, cancel it, and retry.
+        # match it immediately — poll briefly (demo mode ignores time_in_force),
+        # then cancel if still resting.
         if post_status in ("resting", "pending"):
-            log.warning(f"Order {order_id} IOC returned {post_status!r} — cancelling and retrying")
-            try:
-                del_path = f"/portfolio/orders/{order_id}"
-                async with session.delete(
-                    KALSHI_BASE_URL + del_path,
-                    headers=kalshi_headers("DELETE", del_path),
-                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
-                ) as _del_resp:
-                    await _del_resp.json()
-            except Exception as _de:
-                log.warning(f"Cancel of resting IOC {order_id} failed: {_de}")
-            attempt += 1
-            continue
+            log.warning(f"Order {order_id} IOC returned {post_status!r} — polling 3s for fill")
+            for _pi in range(3):
+                await asyncio.sleep(1.0)
+                try:
+                    _op = f"/portfolio/orders/{order_id}"
+                    async with session.get(
+                        KALSHI_BASE_URL + _op,
+                        headers=kalshi_headers("GET", _op),
+                        timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                    ) as _r:
+                        _d = await _r.json()
+                    _polled = _d.get("order") or _d
+                    if _polled.get("status", "") not in ("resting", "pending"):
+                        post_order  = _polled
+                        post_status = _polled.get("status", "")
+                        log.info(f"Order {order_id} status changed to {post_status!r} (poll {_pi+1}/3)")
+                        break
+                except Exception:
+                    break
+            if post_status in ("resting", "pending"):
+                try:
+                    del_path = f"/portfolio/orders/{order_id}"
+                    async with session.delete(
+                        KALSHI_BASE_URL + del_path,
+                        headers=kalshi_headers("DELETE", del_path),
+                        timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                    ) as _del_resp:
+                        await _del_resp.json()
+                except Exception as _de:
+                    log.warning(f"Cancel of resting IOC {order_id} failed: {_de}")
+                attempt += 1
+                continue
+            # status changed during poll — fall through to canceled/filled handling
 
         if post_status in ("canceled", "cancelled"):
             # IOC canceled: check how many actually filled.

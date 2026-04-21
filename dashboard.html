@@ -665,7 +665,7 @@ function selectTab(tab) {
     if (el) el.classList.remove('active');
   });
   // Highlight topbar tabs
-  ['overview','ETH','SOL','XRP','trades','settings'].forEach(t => {
+  ['overview','BTC','ETH','SOL','XRP','trades','settings'].forEach(t => {
     const btn = document.getElementById('tbtab-'+t);
     if (btn) btn.classList.remove('active');
   });
@@ -716,7 +716,16 @@ function renderMarketView(sym) {
   const badgeCls = effectiveStatus==='TRADING'?'trading':effectiveStatus==='WATCHING'?'watching':effectiveStatus==='SKIPPED'?'skipped':'offline';
   const phaseCls = 'phase-'+(a.phase||'DONE');
 
+  const isHourlyAsset = (sym === 'BTC' || sym === 'ETH');
+  const hourlySubTabs = isHourlyAsset ? `
+    <div style="display:flex;gap:6px;padding:10px 14px 0;border-bottom:1px solid var(--line-1);margin-bottom:4px;">
+      <button class="chart-tab ${_mvStratTab==='15min'?'active':''}" id="mv-stab-15min" onclick="setMvStratTab('15min')" style="font-size:11px;">15min</button>
+      <button class="chart-tab ${_mvStratTab==='hourly'?'active':''}" id="mv-stab-hourly" onclick="setMvStratTab('hourly')" style="font-size:11px;">Hourly</button>
+    </div>` : '';
+
   const html = `
+    ${hourlySubTabs}
+    <div id="mv-15min-view" style="${isHourlyAsset&&_mvStratTab==='hourly'?'display:none':''}">
     <div class="mv-hero">
       ${cryptoLogoHtml(sym, 36)}
       <div>
@@ -759,7 +768,37 @@ function renderMarketView(sym) {
           <div id="mv-sig-rows">${_buildSigRowsHtml(a.signals||{})}</div>
         </div>
       </div>
-    </div>`;
+    </div>
+    </div>
+    ${isHourlyAsset ? `<div id="mv-hourly-view" style="${_mvStratTab==='hourly'?'':'display:none'}">
+    <div class="mv-hero">
+      ${cryptoLogoHtml(sym, 36)}
+      <div>
+        <div class="mv-asset-name">${sym} Hourly</div>
+        <div class="mv-price-big">${_fmtPrice(sym, a.price)}</div>
+      </div>
+      <div style="margin-left:8px;">${arrowHtml}</div>
+      <div class="mv-badges">
+        <span class="mc-badge ${badgeCls}">${effectiveStatus}</span>
+        ${secs>0?`<span style="font-size:12px;color:var(--ink-3);">⏱ ${_fmtSecs(secs)}</span>`:''}
+      </div>
+    </div>
+    <div class="mv-kpi-grid">
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Strike</div><div class="mv-kpi-val">${strike!=null?_fmtPrice(sym,strike):'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Dist</div><div class="mv-kpi-val">${dist!=null?dist.toFixed(2)+'%':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">YES Ask</div><div class="mv-kpi-val">${yask!=null?yask+'¢':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${nask!=null?nask+'¢':'—'}</div></div>
+    </div>
+    <div class="mv-body">
+      <div class="card brain-card" style="min-height:100px;">
+        <div class="brain-card-title">
+          Hourly Strategy — Window State
+          <span style="font-size:10px;background:#6366f1;color:#fff;padding:2px 7px;border-radius:4px;">${sym}</span>
+        </div>
+        <div id="mv-hourly-sig-rows">${_buildHourlyViewHtml(a)}</div>
+      </div>
+    </div>
+    </div>` : ''}`;
 
   const card = document.getElementById('mv-card');
   if (card) card.innerHTML = html;
@@ -1207,13 +1246,67 @@ const _SIG_LABELS = {
   news_mode:'News mode', news_direction:'News dir',
   momentum_bias:'Momentum', session:'Session',
   btc_3m_return:'BTC 3m ret', final_p_yes:'P(YES)',
+  // Hourly strategy signals
+  eth_cross:'ETH crossings', btc_cross:'BTC crossings',
+  eth_itm:'ETH ITM', btc_itm:'BTC ITM',
+  eth_dist_pct:'ETH dist %', elapsed_min:'Elapsed min',
+  entry_cents:'Entry', dwell_itm:'Dwell %',
+  streak_frac:'Streak %', cross_count:'Crossings',
+  pct_from_strike:'Dist from strike',
 };
 const _SIG_ORDER = [
   'btc_3m_return','beta_adj','regime','regime_adj',
   'ratio_z','momentum_bias','exhaustion_adj',
   'news_mode','news_direction','session',
   'velocity','velocity_adj','final_p_yes',
+  // Hourly strategy signals (shown when hourly strategy is active)
+  'elapsed_min','eth_cross','btc_cross','eth_itm','btc_itm',
+  'eth_dist_pct','dwell_itm','streak_frac','cross_count',
+  'pct_from_strike','entry_cents',
 ];
+
+let _mvStratTab = '15min';
+function setMvStratTab(mode) {
+  _mvStratTab = mode;
+  ['15min','hourly'].forEach(m => {
+    const b = document.getElementById('mv-stab-'+m);
+    if (b) b.classList.toggle('active', m===mode);
+  });
+  const v15 = document.getElementById('mv-15min-view');
+  const vhr = document.getElementById('mv-hourly-view');
+  if (v15) v15.style.display = mode==='15min' ? '' : 'none';
+  if (vhr) vhr.style.display = mode==='hourly' ? '' : 'none';
+}
+
+function _buildHourlyViewHtml(a) {
+  const s = a.signals || {};
+  const elMin = s.elapsed_min != null ? s.elapsed_min : (a.elapsed_min != null ? a.elapsed_min : null);
+  const secsLeft = a.secs_left || 0;
+  // Determine window phase from elapsed minutes
+  let phase = 'between', phaseColor = 'var(--ink-3)';
+  if (elMin != null) {
+    if (elMin >= 9 && elMin <= 11)        { phase = 'Mid (t=10min)';  phaseColor = 'var(--up)'; }
+    else if (elMin >= 30 && elMin <= 42)  { phase = 'Dwell (t=35min)'; phaseColor = '#f59e0b'; }
+    else if (elMin >= 45)                 { phase = 'Late (t=45+min)'; phaseColor = '#6366f1'; }
+  }
+
+  const rows = [
+    ['Phase', `<span style="color:${phaseColor};font-weight:700;">${phase}</span>`],
+    ['Elapsed', elMin != null ? elMin.toFixed(1)+' min' : '—'],
+    ['ETH crossings', s.eth_cross != null ? `<span style="color:${s.eth_cross===0?'var(--up)':'var(--down)'};font-weight:700;">${s.eth_cross}</span>` : '—'],
+    ['BTC crossings', s.btc_cross != null ? `<span style="color:${s.btc_cross===0?'var(--up)':'var(--down)'};font-weight:700;">${s.btc_cross}</span>` : '—'],
+    ['ETH dist', s.eth_dist_pct != null ? s.eth_dist_pct.toFixed(3)+'%' : (s.pct_from_strike != null ? s.pct_from_strike.toFixed(3)+'%' : '—')],
+    ['ETH ITM', s.eth_itm != null ? (s.eth_itm ? '<span style="color:var(--up)">YES</span>' : '<span style="color:var(--down)">NO</span>') : '—'],
+    ['BTC ITM', s.btc_itm != null ? (s.btc_itm ? '<span style="color:var(--up)">YES</span>' : '<span style="color:var(--down)">NO</span>') : '—'],
+    ['Dwell %', s.dwell_itm != null ? (s.dwell_itm*100).toFixed(1)+'%' : '—'],
+    ['Streak %', s.streak_frac != null ? (s.streak_frac*100).toFixed(1)+'%' : '—'],
+    ['Entry', s.entry_cents != null ? s.entry_cents.toFixed(0)+'¢' : '—'],
+  ].filter(([,v]) => v !== '—');
+
+  if (!rows.length) return '<div style="color:var(--ink-3);font-size:12px;padding:8px 0;">No hourly data — strategy fires at t=9-11min, t=30-42min, or t≥45min</div>';
+
+  return rows.map(([k,v]) => `<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">${k}</span><span class="cf-val">${v}</span></div>`).join('');
+}
 function _fmtSigVal(k, v) {
   if (v===null||v===undefined) return null;
   if (typeof v==='boolean') return v?'YES':'NO';
