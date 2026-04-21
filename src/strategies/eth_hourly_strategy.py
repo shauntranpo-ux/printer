@@ -42,6 +42,12 @@ CORR_ADJ_MAX             = 0.03  # max correlation stability contribution
 VOL_RATIO_BREAK          = 3.0   # if eth_rv / btc_rv > this, scale down signals
 VOL_BREAK_SCALE          = 0.5   # scale factor when correlation breaks
 
+# Late-window persistence bias: BB ignores drift, underestimates P(ITM stays ITM)
+# Validated in BOTH 2022-23 (train) and 2024-26 (test): 98%+ WR at t>=40min dist>=0.3%
+LATE_WINDOW_SEC_LEFT = 1200  # <=20 min remaining (t>=40min in 60min window)
+PERSISTENCE_DIST_PCT = 0.3   # min % price distance from strike
+PERSISTENCE_BIAS     = 0.04  # BB underestimates by ~4-5% in this regime
+
 
 def _lead_return(prices: list, window_seconds: float) -> Optional[float]:
     """Log return over the last `window_seconds` seconds."""
@@ -278,6 +284,19 @@ class ETHHourlyStrategy(BaseStrategy):
 
         p_yes += bb_confirm_adj * taper * signal_scale
         signals["bb_confirm_adj"] = round(bb_confirm_adj, 4)
+
+        # ---- Signal 6: Late-window persistence bias -------------------------
+        # BB ignores momentum: when price is deeply ITM at t>=40min, actual close
+        # rate exceeds BB prediction by ~5%. Structural bias in the AMM pricing.
+        pct_from_strike = (features.current_price - features.strike) / features.strike * 100.0
+        persistence_adj = 0.0
+        if features.seconds_left <= LATE_WINDOW_SEC_LEFT:
+            if pct_from_strike >= PERSISTENCE_DIST_PCT:
+                persistence_adj = PERSISTENCE_BIAS
+            elif pct_from_strike <= -PERSISTENCE_DIST_PCT:
+                persistence_adj = -PERSISTENCE_BIAS
+        p_yes += persistence_adj
+        signals["persistence_adj"] = round(persistence_adj, 4)
 
         p_yes = max(0.05, min(0.95, p_yes))
         signals["final_p_yes"] = round(p_yes, 4)

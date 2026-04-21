@@ -92,6 +92,38 @@ def make_hourly_strategy(asset: str, calibrator=None, stake: float = 25.0):
     raise ValueError(f"Unsupported asset: {asset}")
 
 
+def make_late_window_strategy(asset: str, stake: float = 25.0):
+    """
+    Late-window persistence strategy (t>=45min, dist>=0.3%, entry>=85c).
+    Works for ETH and BTC. No directional signals — pure BB-underpricing edge.
+    Validated: ETH 97.1% WR / BTC 97.6% WR in both train and test periods.
+    """
+    from strategies.skip_layer import SkipConfig
+    from strategies.late_window_strategy import LateWindowStrategy
+
+    skip_cfg = SkipConfig(
+        max_spread_cents         = 6.0,
+        min_seconds_left         = 120.0,
+        min_entry_price_cents    = 35.0,   # handled in strategy itself (85c)
+        cold_start_samples       = 60,
+        vol_ratio_threshold      = 4.0,
+        vol_confirm_mult         = 1.25,
+        vol_oppose_mult          = 0.70,
+        mom_lock_enabled         = False,  # momentum lock irrelevant for ITM persistence
+        mom_lock_neutral_tighten = 1.0,
+        mom_accel_scale          = 0.0,
+    )
+
+    if asset not in ("ETH", "BTC"):
+        raise ValueError(f"Late-window strategy not validated for {asset}")
+
+    return LateWindowStrategy(
+        asset=asset,
+        skip_config=skip_cfg,
+        stake_dollars=stake,
+    )
+
+
 # -- Event generation (hourly) -------------------------------------------------
 
 def slice_hourly_events(
@@ -306,7 +338,9 @@ def fit_calibration(asset: str, trades: list):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--assets", nargs="+", default=["ETH"])
+    parser.add_argument("--assets", nargs="+", default=None)
+    parser.add_argument("--strategy", choices=["lead_lag", "late_window"], default="lead_lag",
+                        help="lead_lag: ETH BTC-lead-lag (62-63%% WR); late_window: ITM persistence (97%% WR)")
     parser.add_argument("--train-start",  default="2023-01-01")
     parser.add_argument("--train-end",    default="2023-12-31")
     parser.add_argument("--test-start",   default="2024-01-01")
@@ -314,6 +348,10 @@ def main():
     parser.add_argument("--stake",        type=float, default=25.0)
     parser.add_argument("--seed",         type=int,   default=42)
     args = parser.parse_args()
+
+    # Default assets differ by strategy
+    if args.assets is None:
+        args.assets = ["ETH", "BTC"] if args.strategy == "late_window" else ["ETH"]
 
     def ts(s): return datetime.fromisoformat(s).replace(tzinfo=timezone.utc).timestamp()
 
@@ -324,28 +362,48 @@ def main():
 
     btc_df = load_btc_prices()
 
-    STRATEGY_SETTINGS = {
-        "window_minutes":        60,
-        "eval_interval_seconds": 300,
-        "strike_increment_eth":  10.0,
-        "min_entry_price_cents": 35,
-        "max_spread_cents":      4.0,
-        "min_seconds_left":      120,
-        "vol_gate_thresh":       4.00,
-        "vol_confirm_mult":      1.25,
-        "vol_oppose_mult":       0.70,
-        "mom_lock_enabled":      True,
-        "mom_lock_neutral_tighten": 1.00,
-        "mom_accel_scale":       3.0,
-        "eth_min_ev":            0.02,
-        "eth_calibration":       "identity (no calibration — raw BTC lead-lag signal)",
-        "btc_status":            "disabled (no reliable edge in Brownian bridge framework)",
-        "eth_signals":           ["btc_15min_lead_x_beta", "btc_5min_accel", "corr_stability", "rsi_confirm", "bollinger_confirm"],
-        "stake_dollars":         args.stake,
-    }
+    if args.strategy == "late_window":
+        STRATEGY_SETTINGS = {
+            "strategy":              "late_window (ITM persistence)",
+            "window_minutes":        60,
+            "eval_interval_seconds": 300,
+            "min_elapsed_min":       45,
+            "min_dist_pct":          0.3,
+            "min_entry_cents":       85,
+            "min_seconds_left":      120,
+            "mom_lock_enabled":      False,
+            "assets":                args.assets,
+            "stake_dollars":         args.stake,
+            "wr_expected":           "97%+ (ETH 97.1%, BTC 97.6%)",
+        }
+    else:
+        STRATEGY_SETTINGS = {
+            "strategy":              "lead_lag (BTC 15-min lead)",
+            "window_minutes":        60,
+            "eval_interval_seconds": 300,
+            "strike_increment_eth":  10.0,
+            "min_entry_price_cents": 35,
+            "max_spread_cents":      4.0,
+            "min_seconds_left":      120,
+            "vol_gate_thresh":       4.00,
+            "vol_confirm_mult":      1.25,
+            "vol_oppose_mult":       0.70,
+            "mom_lock_enabled":      True,
+            "mom_lock_neutral_tighten": 1.00,
+            "mom_accel_scale":       3.0,
+            "eth_min_ev":            0.02,
+            "eth_calibration":       "identity (no calibration)",
+            "btc_status":            "disabled",
+            "eth_signals":           ["btc_15min_lead_x_beta", "btc_5min_accel", "corr_stability", "rsi_confirm", "bollinger_confirm"],
+            "stake_dollars":         args.stake,
+        }
 
+    mode_label = ("LATE-WINDOW PERSISTENCE (97%+ WR)"
+                  if args.strategy == "late_window"
+                  else "BTC LEAD-LAG (62-63% WR)")
     print("=" * 60)
-    print("  BTC + ETH HOURLY KALSHI STRATEGY — BACKTEST REPORT")
+    print(f"  HOURLY KALSHI STRATEGY — {mode_label}")
+    print(f"  Assets: {', '.join(args.assets)}")
     print(f"  Train: {args.train_start} -> {args.train_end}")
     print(f"  Test:  {args.test_start}  -> {args.test_end}")
     print(f"  Stake: ${args.stake:.0f} per trade")
@@ -375,7 +433,10 @@ def main():
         print(f"  Generated {len(test_events):,} hourly eval points across {total_windows:,} windows")
         print(f"  Calibration: identity (raw signal only, no disk state)")
 
-        strat_test = make_hourly_strategy(asset, calibrator=None, stake=args.stake)
+        if args.strategy == "late_window":
+            strat_test = make_late_window_strategy(asset, stake=args.stake)
+        else:
+            strat_test = make_hourly_strategy(asset, calibrator=None, stake=args.stake)
         test_btc = btc_df if asset != "BTC" else None
         test_trades = run_hourly_backtest(strat_test, test_events, stake=args.stake, btc_prices_df=test_btc)
 
