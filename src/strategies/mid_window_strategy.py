@@ -182,7 +182,7 @@ class MidWindowStrategy(BaseStrategy):
         return Decision(
             action="trade",
             side=side,
-            p_model=0.835,    # OOS WR from TEST 2024-2026 at t=10min dist>=0.3%
+            p_model=0.835 if eth_itm else (1.0 - 0.835),  # P(YES wins); WR=83.5% OOS
             reason=(
                 f"mid_{side.upper()}: ETH+BTC cross=0 dist={eth_dist_pct:.2f}% at t=10min "
                 f"entry={entry_cents:.0f}c elapsed={features.elapsed_seconds/60:.0f}min"

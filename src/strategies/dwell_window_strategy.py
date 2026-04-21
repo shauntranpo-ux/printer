@@ -194,7 +194,7 @@ class DwellWindowStrategy(BaseStrategy):
         return Decision(
             action="trade",
             side=side,
-            p_model=0.869,    # empirical WR from OOS test (2024-2026)
+            p_model=0.869 if side == "yes" else (1.0 - 0.869),  # P(YES wins); WR=86.9% OOS
             reason=(
                 f"dwell_{side.upper()}: dwell={pf['dwell_itm']:.0%} "
                 f"streak={pf['streak_frac']:.0%} crosses={pf['cross_count']} "

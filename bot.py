@@ -2757,6 +2757,107 @@ async def place_order(
             log.warning(f"[passive] Cancel failed: {ce}")
         return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
 
+    # ── Demo mode: GTC + poll (demo API ignores time_in_force=IOC) ────────────
+    # Kalshi's demo endpoint always returns orders as "resting" regardless of
+    # time_in_force. IOC + cancel = zero fills every time. Instead: post GTC,
+    # poll for up to 30 seconds, cancel if still unfilled.
+    if mode == "demo":
+        try:
+            fresh_ob = await fetch_orderbook(session, ticker, market)
+            if fresh_ob is not None:
+                fp = fresh_ob["best_yes_ask"] if side == "yes" else fresh_ob["best_no_ask"]
+                if fp is not None and fp != entry_price_cents:
+                    log.info(f"[demo] Price updated {entry_price_cents}c -> {fp}c for {side.upper()}")
+                    entry_price_cents = fp
+        except Exception as _fe:
+            log.warning(f"[demo] Fresh price fetch failed: {_fe}")
+
+        yes_price = entry_price_cents if side == "yes" else (100 - entry_price_cents)
+        client_order_id = f"demo_{int(time.time() * 1000)}"
+        body = {
+            "ticker": ticker,
+            "side": side,
+            "type": "limit",
+            "count": contracts,
+            "yes_price": yes_price,
+            "action": "buy",
+            "client_order_id": client_order_id,
+            "time_in_force": "good_till_cancelled",
+        }
+        log.info(f"[demo] GTC limit {side.upper()} {contracts}x @ {entry_price_cents}c on {ticker}")
+        try:
+            async with session.post(
+                KALSHI_BASE_URL + path,
+                headers=kalshi_headers("POST", path),
+                json=body,
+                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+            ) as resp:
+                data = await resp.json()
+                http_status = resp.status
+        except Exception as exc:
+            log.error(f"[demo] Order POST failed: {exc}")
+            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+
+        if http_status not in (200, 201):
+            log.error(f"[demo] Order HTTP {http_status}: {data}")
+            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+
+        order_id = (data.get("order") or {}).get("order_id") or data.get("order_id")
+        if not order_id:
+            log.error(f"[demo] No order_id in response: {data}")
+            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+
+        _poll_interval = 3.0
+        _poll_timeout  = 30.0
+        _elapsed       = 0.0
+        filled_order   = None
+        while _elapsed < _poll_timeout:
+            await asyncio.sleep(_poll_interval)
+            _elapsed += _poll_interval
+            try:
+                chk_path = f"/portfolio/orders/{order_id}"
+                async with session.get(
+                    KALSHI_BASE_URL + chk_path,
+                    headers=kalshi_headers("GET", chk_path),
+                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                ) as chk_resp:
+                    chk_data = await chk_resp.json()
+                chk_order = chk_data.get("order") or chk_data
+                status = chk_order.get("status", "")
+                if status not in ("resting", "pending"):
+                    filled_order = chk_order
+                    break
+            except Exception as pe:
+                log.warning(f"[demo] Poll error: {pe}")
+
+        if filled_order is None:
+            # Still resting — cancel
+            log.info(f"[demo] No fill after {_poll_timeout:.0f}s — cancelling {order_id}")
+            try:
+                del_path = f"/portfolio/orders/{order_id}"
+                async with session.delete(
+                    KALSHI_BASE_URL + del_path,
+                    headers=kalshi_headers("DELETE", del_path),
+                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                ) as del_resp:
+                    await del_resp.json()
+            except Exception as ce:
+                log.warning(f"[demo] Cancel failed: {ce}")
+            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
+
+        status = filled_order.get("status", "")
+        if status in ("cancelled", "canceled", "expired"):
+            return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
+
+        _total     = filled_order.get("contracts_count")
+        _remaining = filled_order.get("remaining_count")
+        _fc        = filled_order.get("filled_count")
+        cc = _fc if _fc is not None else ((_total - _remaining) if (_total is not None and _remaining is not None) else contracts)
+        fp_raw = filled_order.get("yes_price", entry_price_cents)
+        fp     = fp_raw if side == "yes" else (100 - fp_raw)
+        log.info(f"[demo] Order {order_id} filled={cc}x @ {fp}c status={status!r}")
+        return {"fill_confirmed": cc > 0, "fill_price_cents": fp, "order_id": order_id, "filled_contracts": cc}
+
     # ── Early window: IOC with price retries ──────────────────────────────────
     _bump_per_retry = 3   # cents per retry — 3c gives 0/3/6/9/12c spread across 5 attempts
     _max_retries    = 5
