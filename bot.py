@@ -18,11 +18,6 @@ import re
 import sys
 import tempfile
 import time
-
-# Add src/ to path so `import strategies` works on Railway and locally
-_src_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
-if _src_dir not in sys.path:
-    sys.path.insert(0, _src_dir)
 from base64 import b64encode
 from collections import deque
 from datetime import datetime, timezone, timedelta
@@ -1958,7 +1953,24 @@ def printer_brain_routed(
             max_risk_reward_ratio=max_risk_reward_ratio,
         )
 
-    decision = strat.decide(features)
+    try:
+        decision = strat.decide(features)
+    except Exception as exc:
+        log.warning(f"{asset} strat.decide() failed, falling back to legacy: {exc}")
+        return printer_brain(
+            btc_price, strike, yes_ask, no_ask,
+            elapsed_seconds, secs_left, ticker,
+            min_ev_base=min_ev_base, vol_gate_thresh=vol_gate_thresh,
+            kalshi_fee=kalshi_fee, asset=asset,
+            max_entry_price_cents=max_entry_price_cents,
+            min_reward_cents=min_reward_cents,
+            max_risk_reward_ratio=max_risk_reward_ratio,
+            vol_confirm_mult=vol_confirm_mult,
+            vol_oppose_mult=vol_oppose_mult,
+            mom_lock_enabled=mom_lock_enabled,
+            mom_lock_neutral_tighten=mom_lock_neutral_tighten,
+            mom_accel_scale=mom_accel_scale,
+        )
 
     above = current_price > strike
     naive = "yes" if above else "no"
