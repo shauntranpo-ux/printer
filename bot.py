@@ -1016,7 +1016,7 @@ async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> 
     if not all_markets:
         return None
 
-    # Return soonest-expiring market with > 0 seconds left, < 20 min window
+    # Return soonest-expiring market with > 0 seconds left, < 75 min window (covers hourly markets)
     now_utc = datetime.now(timezone.utc)
     def secs_to_close(m: dict) -> float:
         try:
@@ -2053,7 +2053,7 @@ def printer_brain_routed(
         "reasoning": decision.reason,
         "key_signals": [f"{k}: {v}" for k, v in decision.contributing_signals.items()],
         "signals": dict(decision.contributing_signals),
-        "win_prob": float(decision.p_model),
+        "win_prob": float(true_p),  # P(chosen side wins), used by confidence gate
         "mom_label": decision.contributing_signals.get(
             "regime", decision.contributing_signals.get("mom_label", "neutral")
         ),

@@ -125,7 +125,7 @@ class LateWindowStrategy(BaseStrategy):
         return Decision(
             action="trade",
             side=side,
-            p_model=entry_cents / 100.0 + 0.05,  # approx true WR ≈ entry + 5-12%
+            p_model=(entry_cents / 100.0 + 0.05) if side == "yes" else (1.0 - (entry_cents / 100.0 + 0.05)),  # P(YES wins)
             reason=(
                 f"late_window_{side.upper()}: pct={pct:+.2f}% "
                 f"entry={entry_cents:.0f}c "
