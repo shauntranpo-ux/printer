@@ -1,24 +1,13 @@
 """
 Simulated Kalshi orderbook for backtesting.
 
-Kalshi's real orderbook reflects:
-  1. Theoretical fair value based on spot price + realized vol
-  2. Market-maker inventory skew
-  3. Retail directional flow
-  4. Spread widening around events
-
-We can't perfectly reproduce (2)-(4) from historical spot data alone.
-We model the orderbook as fair_value +/- noise, calibrated so simulated
-spreads match the empirical spreads observed in the live data snapshot.
-
-Conservative approach: widen spreads in the simulator vs reality.
-This biases backtest results DOWN — a strategy that's profitable in
-the simulator is likely to be at least as profitable live.
+Deterministic pricing: yes_ask = p_above * 100 + half_spread
+No Gaussian noise — edge must come from signals, not noise artifacts.
+Spread is conservative (wider than real Kalshi) to bias results DOWN.
 """
 
 from __future__ import annotations
 import math
-import random
 from typing import NamedTuple, Optional
 
 from strategies.baseline import brownian_bridge_prob_above
@@ -31,20 +20,12 @@ class SimulatedOrderbook(NamedTuple):
     no_bid: float
 
 
-# Empirical bid/ask spread parameters per asset. Conservative (wider than
-# real Kalshi spreads) to bias backtest results DOWN.
-DEFAULT_SPREAD_CENTS = {
-    "BTC":  2.0,
-    "ETH":  2.0,
-    "SOL":  3.0,
-    "XRP":  3.0,
-    "DOGE": 3.0,
-}
-
-DEFAULT_NOISE_CENTS = {
-    "BTC":  1.0,
-    "ETH":  1.0,
-    "SOL":  1.5,
+# Half-spread per asset in cents. Conservative (wider than live Kalshi data).
+# Real Kalshi spread on active hourly markets is ~2c; we use 3c total = 1.5c half.
+HALF_SPREAD_CENTS = {
+    "BTC":  1.5,
+    "ETH":  1.5,
+    "SOL":  2.0,
     "XRP":  2.0,
     "DOGE": 2.0,
 }
@@ -56,33 +37,37 @@ def simulate_orderbook(
     seconds_left: float,
     realized_vol_1min: float,
     asset: str = "BTC",
-    rng: Optional[random.Random] = None,
-    seed: Optional[int] = None,
+    rng=None,       # ignored — kept for API compatibility
+    seed=None,      # ignored — deterministic pricing
 ) -> SimulatedOrderbook:
     """
-    Produce a simulated Kalshi orderbook consistent with the underlying
-    fair value.
-    """
-    if rng is None:
-        rng = random.Random(seed) if seed is not None else random.Random()
+    Produce a deterministic simulated Kalshi orderbook.
 
+    yes_ask = p_above * 100 + half_spread
+    no_ask  = (1 - p_above) * 100 + half_spread
+    Both clamped to [2, 98].
+
+    No Gaussian noise. Edge must come entirely from signals,
+    not from noise artifacts in the orderbook simulator.
+    """
     p_above = brownian_bridge_prob_above(
         current_price, strike, seconds_left, realized_vol_1min
     )
+    p_above = max(0.01, min(0.99, p_above))
 
-    fair_yes_cents = p_above * 100.0
+    half_spread = HALF_SPREAD_CENTS.get(asset, 1.5)
 
-    noise_std = DEFAULT_NOISE_CENTS.get(asset, 2.0)
-    fair_yes_cents_noisy = fair_yes_cents + rng.gauss(0, noise_std)
-    fair_yes_cents_noisy = max(2.0, min(98.0, fair_yes_cents_noisy))
+    yes_ask = p_above * 100.0 + half_spread
+    yes_bid = p_above * 100.0 - half_spread
+    no_ask  = (1.0 - p_above) * 100.0 + half_spread
+    no_bid  = (1.0 - p_above) * 100.0 - half_spread
 
-    half_spread = DEFAULT_SPREAD_CENTS.get(asset, 2.5) / 2.0
-    yes_bid = max(1.0, fair_yes_cents_noisy - half_spread)
-    yes_ask = min(99.0, fair_yes_cents_noisy + half_spread)
+    yes_ask = max(2.0, min(98.0, yes_ask))
+    yes_bid = max(1.0, min(97.0, yes_bid))
+    no_ask  = max(2.0, min(98.0, no_ask))
+    no_bid  = max(1.0, min(97.0, no_bid))
 
-    no_ask = max(1.0, min(99.0, (100.0 - yes_bid) + rng.gauss(0, noise_std * 0.3)))
-    no_bid = max(1.0, min(99.0, (100.0 - yes_ask) - abs(rng.gauss(0, noise_std * 0.3))))
-
+    # Enforce bid < ask
     if yes_ask <= yes_bid:
         yes_ask = yes_bid + 0.5
     if no_ask <= no_bid:

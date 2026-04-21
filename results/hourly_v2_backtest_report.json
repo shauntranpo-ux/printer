@@ -1,0 +1,152 @@
+{
+  "BTC": {
+    "best_config": {
+      "min_ev": 0.05,
+      "vol_gate": 4.5
+    },
+    "metrics": {
+      "total_trades": 13895,
+      "total_windows": 20038,
+      "trade_rate_pct": 69.3,
+      "wins": 5072,
+      "losses": 8823,
+      "win_rate_pct": 36.5,
+      "total_pnl": -31994.26,
+      "annualized_pnl": -13985.52,
+      "avg_pnl": -2.303,
+      "max_drawdown": 32196.1,
+      "sharpe": -0.074,
+      "avg_ev_at_entry": 0.0812,
+      "min_ev": 0.05,
+      "vol_gate": 4.5
+    },
+    "quarterly": {
+      "2024Q1": {
+        "trades": 1481,
+        "win_rate": 36.2,
+        "pnl": -3775.81
+      },
+      "2024Q2": {
+        "trades": 1496,
+        "win_rate": 37.9,
+        "pnl": -2069.42
+      },
+      "2024Q3": {
+        "trades": 1583,
+        "win_rate": 34.4,
+        "pnl": -5877.38
+      },
+      "2024Q4": {
+        "trades": 1533,
+        "win_rate": 37.6,
+        "pnl": -2351.19
+      },
+      "2025Q1": {
+        "trades": 1566,
+        "win_rate": 36.7,
+        "pnl": -3498.92
+      },
+      "2025Q2": {
+        "trades": 1536,
+        "win_rate": 38.2,
+        "pnl": -1761.2
+      },
+      "2025Q3": {
+        "trades": 1498,
+        "win_rate": 35.8,
+        "pnl": -4106.82
+      },
+      "2025Q4": {
+        "trades": 1496,
+        "win_rate": 37.0,
+        "pnl": -3070.02
+      },
+      "2026Q1": {
+        "trades": 1492,
+        "win_rate": 35.4,
+        "pnl": -4498.19
+      },
+      "2026Q2": {
+        "trades": 214,
+        "win_rate": 32.7,
+        "pnl": -985.31
+      }
+    },
+    "n_days": 835.0
+  },
+  "ETH": {
+    "best_config": {
+      "min_ev": 0.02,
+      "vol_gate": 5.5
+    },
+    "metrics": {
+      "total_trades": 6493,
+      "total_windows": 20038,
+      "trade_rate_pct": 32.4,
+      "wins": 3892,
+      "losses": 2601,
+      "win_rate_pct": 59.9,
+      "total_pnl": 6430.94,
+      "annualized_pnl": 2811.13,
+      "avg_pnl": 0.99,
+      "max_drawdown": 1323.55,
+      "sharpe": 0.044,
+      "avg_ev_at_entry": 0.0475,
+      "min_ev": 0.02,
+      "vol_gate": 5.5
+    },
+    "quarterly": {
+      "2024Q1": {
+        "trades": 911,
+        "win_rate": 61.4,
+        "pnl": 1483.59
+      },
+      "2024Q2": {
+        "trades": 838,
+        "win_rate": 56.1,
+        "pnl": -626.84
+      },
+      "2024Q3": {
+        "trades": 896,
+        "win_rate": 59.5,
+        "pnl": 429.66
+      },
+      "2024Q4": {
+        "trades": 842,
+        "win_rate": 60.8,
+        "pnl": 1435.9
+      },
+      "2025Q1": {
+        "trades": 698,
+        "win_rate": 60.6,
+        "pnl": 784.39
+      },
+      "2025Q2": {
+        "trades": 525,
+        "win_rate": 61.5,
+        "pnl": 907.22
+      },
+      "2025Q3": {
+        "trades": 395,
+        "win_rate": 61.5,
+        "pnl": 872.92
+      },
+      "2025Q4": {
+        "trades": 586,
+        "win_rate": 63.8,
+        "pnl": 1542.23
+      },
+      "2026Q1": {
+        "trades": 695,
+        "win_rate": 56.5,
+        "pnl": -280.51
+      },
+      "2026Q2": {
+        "trades": 107,
+        "win_rate": 57.9,
+        "pnl": -117.63
+      }
+    },
+    "n_days": 835.0
+  }
+}
