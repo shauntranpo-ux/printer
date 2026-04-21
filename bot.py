@@ -976,8 +976,9 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
 
 async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> dict | None:
     """
-    Fetch the soonest-expiring open 15-minute market for the given non-BTC asset.
+    Fetch the soonest-expiring open market for the given non-BTC asset.
     Uses the kalshi_series priority list from ASSET_CONFIG.
+    Accepts windows up to 75 minutes (covers both 15-min and hourly markets).
     Returns None if no suitable market found.
     """
     series_list = ASSET_CONFIG.get(asset, {}).get("kalshi_series", ())
@@ -1023,7 +1024,10 @@ async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> 
         except Exception:
             return -1.0
 
-    valid = [m for m in all_markets if 0 < secs_to_close(m) < 20 * 60]
+    # Accept up to 75 minutes — covers hourly markets (KXETHD) at window open.
+    # The old 20-minute cap was designed for 15-min markets only and blocked all
+    # hourly windows at entry time.
+    valid = [m for m in all_markets if 0 < secs_to_close(m) < 75 * 60]
     if not valid:
         return None
 
@@ -2002,35 +2006,32 @@ def printer_brain_routed(
             btc_prices_deque=btc_prices,
         )
     except Exception as exc:
-        log.warning(f"{asset} feature_builder failed, falling back to legacy: {exc}")
-        return printer_brain(
-            btc_price, strike, yes_ask, no_ask,
-            elapsed_seconds, secs_left, ticker,
-            min_ev_base=min_ev_base, vol_gate_thresh=vol_gate_thresh,
-            kalshi_fee=kalshi_fee, asset=asset,
-            max_entry_price_cents=max_entry_price_cents,
-            min_reward_cents=min_reward_cents,
-            max_risk_reward_ratio=max_risk_reward_ratio,
-        )
+        log.warning(f"{asset} feature_builder failed — skipping (not falling back to legacy): {exc}")
+        _above = current_price > strike if strike > 0 else False
+        return {
+            "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
+            "reasoning": f"feature_builder_error:{exc.__class__.__name__}",
+            "key_signals": [], "signals": {}, "win_prob": 0.5,
+            "mom_label": "error", "mom_pct": 0.0, "vel_signal": "neutral",
+            "raw_p_yes": None, "mins_left": secs_left / 60.0,
+            "abs_pct": abs(current_price - strike) / strike if strike > 0 else 0.0,
+            "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+        }
 
     try:
         decision = strat.decide(features)
     except Exception as exc:
-        log.warning(f"{asset} strat.decide() failed, falling back to legacy: {exc}")
-        return printer_brain(
-            btc_price, strike, yes_ask, no_ask,
-            elapsed_seconds, secs_left, ticker,
-            min_ev_base=min_ev_base, vol_gate_thresh=vol_gate_thresh,
-            kalshi_fee=kalshi_fee, asset=asset,
-            max_entry_price_cents=max_entry_price_cents,
-            min_reward_cents=min_reward_cents,
-            max_risk_reward_ratio=max_risk_reward_ratio,
-            vol_confirm_mult=vol_confirm_mult,
-            vol_oppose_mult=vol_oppose_mult,
-            mom_lock_enabled=mom_lock_enabled,
-            mom_lock_neutral_tighten=mom_lock_neutral_tighten,
-            mom_accel_scale=mom_accel_scale,
-        )
+        log.warning(f"{asset} strat.decide() failed — skipping (not falling back to legacy): {exc}")
+        _above = current_price > strike if strike > 0 else False
+        return {
+            "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
+            "reasoning": f"decide_error:{exc.__class__.__name__}",
+            "key_signals": [], "signals": {}, "win_prob": 0.5,
+            "mom_label": "error", "mom_pct": 0.0, "vel_signal": "neutral",
+            "raw_p_yes": None, "mins_left": secs_left / 60.0,
+            "abs_pct": abs(current_price - strike) / strike if strike > 0 else 0.0,
+            "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+        }
 
     above = current_price > strike
     naive = "yes" if above else "no"
@@ -2636,6 +2637,10 @@ async def place_order(
         Dict with keys: fill_confirmed (bool), fill_price_cents (int|None),
         order_id (str|None).
     """
+    if contracts <= 0:
+        log.error(f"place_order called with contracts={contracts} — refusing to send invalid order")
+        return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+
     if mode == "paper":
         log.info(f"[PAPER] Simulated BUY {side} {contracts}x @ {entry_price_cents}c on {ticker}")
         return {
@@ -2943,9 +2948,15 @@ async def place_order(
         if http_status not in (200, 201):
             log.error(f"Order HTTP {http_status}: {data}")
             err_code = (data.get("error") or {}).get("code", "")
-            if err_code in ("insufficient_funds", "authentication_error", "not_found", "forbidden"):
-                # fill_or_kill_insufficient_resting_volume is intentionally retryable:
-                # bumping the price on the next attempt may find liquidity.
+            # fill_or_kill_insufficient_resting_volume is intentionally retryable:
+            # bumping the price on the next attempt may find liquidity.
+            _non_retryable = {
+                "insufficient_funds", "authentication_error", "not_found", "forbidden",
+                "market_not_open", "market_settled", "market_not_found",
+                "order_limit_exceeded", "contract_limit_exceeded", "position_limit_exceeded",
+                "invalid_count", "invalid_order", "min_contracts_not_met",
+            }
+            if err_code in _non_retryable:
                 log.error(f"Non-retryable error ({err_code}). Stopping order attempts.")
                 await send_telegram(
                     f"ORDER FAILED  —  {err_code}\n"

@@ -675,6 +675,8 @@ function selectTab(tab) {
     const btn = document.getElementById('tbtab-'+tab);
     if (btn) btn.classList.add('active');
     _currentMarketSym = tab;
+    // BTC and ETH only trade hourly markets — default to hourly sub-tab
+    if (tab === 'BTC' || tab === 'ETH') _mvStratTab = 'hourly';
     renderMarketView(tab);
   } else if (tab === 'trades') {
     document.getElementById('panel-trades').classList.add('active');
@@ -719,8 +721,8 @@ function renderMarketView(sym) {
   const isHourlyAsset = (sym === 'BTC' || sym === 'ETH');
   const hourlySubTabs = isHourlyAsset ? `
     <div style="display:flex;gap:6px;padding:10px 14px 0;border-bottom:1px solid var(--line-1);margin-bottom:4px;">
-      <button class="chart-tab ${_mvStratTab==='15min'?'active':''}" id="mv-stab-15min" onclick="setMvStratTab('15min')" style="font-size:11px;">15min</button>
       <button class="chart-tab ${_mvStratTab==='hourly'?'active':''}" id="mv-stab-hourly" onclick="setMvStratTab('hourly')" style="font-size:11px;">Hourly</button>
+      <button class="chart-tab ${_mvStratTab==='15min'?'active':''}" id="mv-stab-15min" onclick="setMvStratTab('15min')" style="font-size:11px;">Signals</button>
     </div>` : '';
 
   const html = `
@@ -776,6 +778,8 @@ function renderMarketView(sym) {
       <div>
         <div class="mv-asset-name">${sym} Hourly</div>
         <div class="mv-price-big">${_fmtPrice(sym, a.price)}</div>
+        ${a.ticker ? `<div style="font-size:10px;color:var(--ink-3);margin-top:2px;font-family:monospace;">${escHtml(a.ticker)}</div>` : ''}
+        ${a.market_title ? `<div style="font-size:10px;color:var(--ink-3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(a.market_title)}</div>` : ''}
       </div>
       <div style="margin-left:8px;">${arrowHtml}</div>
       <div class="mv-badges">
