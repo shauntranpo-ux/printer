@@ -92,6 +92,35 @@ def make_hourly_strategy(asset: str, calibrator=None, stake: float = 25.0):
     raise ValueError(f"Unsupported asset: {asset}")
 
 
+def make_early_window_strategy(asset: str, stake: float = 25.0):
+    """
+    Early-window BTC momentum strategy (t=10-20min, |btc_10m|>=0.5%).
+    ETH only. Entries at ~69.5c, WR~73.5% OOS (2024-2026).
+    EV ~$0.87/trade — better EV per dollar than late-window, but only ~5/week.
+    Combine with late_window in backtest_combined.py for portfolio view.
+    """
+    from strategies.skip_layer import SkipConfig
+    from strategies.early_window_strategy import EarlyWindowStrategy
+
+    skip_cfg = SkipConfig(
+        max_spread_cents         = 8.0,
+        min_seconds_left         = 120.0,
+        min_entry_price_cents    = 35.0,
+        cold_start_samples       = 5,
+        vol_ratio_threshold      = 99.0,   # no vol gate for early window
+        vol_confirm_mult         = 1.0,
+        vol_oppose_mult          = 1.0,
+        mom_lock_enabled         = False,
+        mom_lock_neutral_tighten = 1.0,
+        mom_accel_scale          = 0.0,
+    )
+
+    if asset != "ETH":
+        raise ValueError("EarlyWindowStrategy is ETH-only (BTC signal drives ETH lag)")
+
+    return EarlyWindowStrategy(asset=asset, skip_config=skip_cfg, stake_dollars=stake)
+
+
 def make_late_window_strategy(asset: str, stake: float = 25.0):
     """
     Late-window persistence strategy (t>=45min, dist>=0.3%, entry>=85c).
@@ -339,8 +368,8 @@ def fit_calibration(asset: str, trades: list):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--assets", nargs="+", default=None)
-    parser.add_argument("--strategy", choices=["lead_lag", "late_window"], default="lead_lag",
-                        help="lead_lag: ETH BTC-lead-lag (62-63%% WR); late_window: ITM persistence (97%% WR)")
+    parser.add_argument("--strategy", choices=["lead_lag", "late_window", "early_window"], default="lead_lag",
+                        help="lead_lag: ETH BTC-lead-lag (62-63%% WR); late_window: ITM persistence (97%% WR); early_window: BTC momentum t=10-20min (73.5%% WR, 69c entries)")
     parser.add_argument("--train-start",  default="2023-01-01")
     parser.add_argument("--train-end",    default="2023-12-31")
     parser.add_argument("--test-start",   default="2024-01-01")
@@ -352,6 +381,9 @@ def main():
     # Default assets differ by strategy
     if args.assets is None:
         args.assets = ["ETH", "BTC"] if args.strategy == "late_window" else ["ETH"]
+    if args.strategy == "early_window" and any(a != "ETH" for a in args.assets):
+        print("early_window is ETH-only; ignoring non-ETH assets")
+        args.assets = ["ETH"]
 
     def ts(s): return datetime.fromisoformat(s).replace(tzinfo=timezone.utc).timestamp()
 
@@ -376,6 +408,19 @@ def main():
             "stake_dollars":         args.stake,
             "wr_expected":           "97%+ (ETH 97.1%, BTC 97.6%)",
         }
+    elif args.strategy == "early_window":
+        STRATEGY_SETTINGS = {
+            "strategy":              "early_window (BTC momentum t=10-20min)",
+            "window_minutes":        60,
+            "eval_interval_seconds": 300,
+            "btc_10m_signal_pct":    0.5,
+            "entry_timing":          "t=10-20min",
+            "assets":                args.assets,
+            "stake_dollars":         args.stake,
+            "wr_expected":           "~77.5% OOS (TEST 2024-2026)",
+            "avg_entry_cents":       74.5,
+            "note":                  "Use backtest_combined.py for early+late portfolio view",
+        }
     else:
         STRATEGY_SETTINGS = {
             "strategy":              "lead_lag (BTC 15-min lead)",
@@ -398,9 +443,10 @@ def main():
             "stake_dollars":         args.stake,
         }
 
-    mode_label = ("LATE-WINDOW PERSISTENCE (97%+ WR)"
-                  if args.strategy == "late_window"
-                  else "BTC LEAD-LAG (62-63% WR)")
+    mode_label = {
+        "late_window":  "LATE-WINDOW PERSISTENCE (97%+ WR)",
+        "early_window": "EARLY-WINDOW BTC MOMENTUM (77.5% WR, 74c entries)",
+    }.get(args.strategy, "BTC LEAD-LAG (62-63% WR)")
     print("=" * 60)
     print(f"  HOURLY KALSHI STRATEGY — {mode_label}")
     print(f"  Assets: {', '.join(args.assets)}")
@@ -435,6 +481,8 @@ def main():
 
         if args.strategy == "late_window":
             strat_test = make_late_window_strategy(asset, stake=args.stake)
+        elif args.strategy == "early_window":
+            strat_test = make_early_window_strategy(asset, stake=args.stake)
         else:
             strat_test = make_hourly_strategy(asset, calibrator=None, stake=args.stake)
         test_btc = btc_df if asset != "BTC" else None
