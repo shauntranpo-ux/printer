@@ -934,6 +934,22 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
 
     pool.sort(key=lambda m: m.get("close_time", ""))
 
+    # Filter out markets that have already closed — sort picks earliest close_time
+    # first, which can be an expired market when multiple windows are returned.
+    def _is_open(m):
+        ct = m.get("close_time")
+        if not ct:
+            return True
+        try:
+            return datetime.fromisoformat(ct.replace("Z", "+00:00")) > now_utc
+        except Exception:
+            return True
+
+    open_pool = [m for m in pool if _is_open(m)]
+    if open_pool:
+        pool = open_pool
+    # If every market has closed (rare edge case), keep pool as-is so caller sees DONE.
+
     # Prefer the shortest-duration markets (KXBTC15M 15-min over KXBTCD 60-min).
     # If we have any markets within 5 minutes of the minimum duration, use only those.
     # This prevents 60-min KXBTCD markets from polluting the multi-window pool when
