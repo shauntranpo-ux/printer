@@ -23,7 +23,10 @@
     "no"
   ],
   "enabled_assets": [
-    "BTC"
+    "BTC",
+    "ETH",
+    "SOL",
+    "XRP"
   ],
   "asset_overrides": {
     "BTC": {
