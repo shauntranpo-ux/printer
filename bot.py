@@ -1809,6 +1809,10 @@ def _get_or_make_strategy(asset: str, config):
     if asset in _STRATEGY_SINGLETONS:
         return _STRATEGY_SINGLETONS[asset]
     try:
+        import sys as _sys
+        _src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+        if _src not in _sys.path:
+            _sys.path.insert(0, _src)
         from strategies.skip_layer import SkipConfig
 
         skip_cfg = SkipConfig(
