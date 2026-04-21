@@ -10,13 +10,12 @@ assumes historical volatility. When both assets are in a clean directional trend
 (no strike crossings in either), it's a macro regime signal the BB model can't price.
 The joint "no crossing" condition is unpriced by the market.
 
-OOS TEST 2024-2026 (t=15min, ETH_cross=0 AND BTC_cross=0):
-  N=2,826/119.3weeks = 23.7/wk   WR=78.2%   entry=74.9c   EV=+$0.75/trade
-  EV/wk at $25 stake: $17.8/wk
+OOS TEST 2024-2026 (t=10min, entry<80c, ETH_cross=0 AND BTC_cross=0):
+  N=1,892/119.3weeks = 15.9/wk   WR=73.6%   entry=67.5c   EV=+$1.71/trade
+  EV/wk at $25 stake: $27.2/wk
 
 TRAIN 2022-2023 (same signal):
-  WR=78.7%  entry=78.5c  EV=-$0.28/trade  (market correctly priced in 2022-2023)
-  Note: edge appears structural to the post-2024 macro correlation regime.
+  WR=70.0%  entry=68.5c  EV=+$0.02/trade  (near break-even in high-vol bear regime)
 
 Designed to fire BEFORE DwellWindowStrategy (t=30-42min) and LateWindowStrategy (t>=45min).
 This strategy takes the cleanest windows early; remaining windows fall through to Dwell/Late.
@@ -31,8 +30,9 @@ from strategies.features import MarketFeatures, Decision
 from strategies.skip_layer import SkipConfig
 
 
-MIN_ELAPSED_SEC  = 850     # fire at ~t=14.2min (catch 15-min eval point)
-MAX_ELAPSED_SEC  = 950     # stop at ~t=15.8min
+MIN_ELAPSED_SEC  = 550     # fire at ~t=9.2min (catch 10-min eval point)
+MAX_ELAPSED_SEC  = 650     # stop at ~t=10.8min
+MAX_ENTRY_CENTS  = 79.9    # 80c+ entries are negative EV at t=10min
 SKIP_HOURS_UTC   = {12, 13}
 
 
@@ -162,6 +162,12 @@ class MidWindowStrategy(BaseStrategy):
         side        = "yes" if eth_itm else "no"
         entry_cents = features.yes_ask if eth_itm else features.no_ask
 
+        if entry_cents > MAX_ENTRY_CENTS:
+            return Decision(
+                action="skip", side=None, p_model=0.5,
+                reason=f"entry_too_high: {entry_cents:.0f}c > {MAX_ENTRY_CENTS:.0f}c cap",
+            )
+
         signals = {
             "eth_cross":    eth_cross,
             "btc_cross":    btc_cross,
@@ -174,11 +180,11 @@ class MidWindowStrategy(BaseStrategy):
         return Decision(
             action="trade",
             side=side,
-            p_model=0.782,    # OOS WR from TEST 2024-2026
+            p_model=0.736,    # OOS WR from TEST 2024-2026 at t=10min
             reason=(
-                f"mid_{side.upper()}: ETH+BTC both cross=0 at t=15min "
+                f"mid_{side.upper()}: ETH+BTC both cross=0 at t=10min "
                 f"entry={entry_cents:.0f}c elapsed={features.elapsed_seconds/60:.0f}min"
             ),
             contributing_signals=signals,
-            expected_value=0.030,   # ~$0.75/$25 at avg 74.9c entry
+            expected_value=0.068,   # ~$1.71/$25 at avg 67.5c entry
         )
