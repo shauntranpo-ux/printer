@@ -1222,7 +1222,17 @@ async def fetch_orderbook(
             )
 
     if best_yes_ask is None or best_no_ask is None:
-        log.warning(f"No price data available for {ticker} (yes_ask={best_yes_ask} no_ask={best_no_ask})")
+        # Diagnostic: dump the raw market fields so we can see what Kalshi actually returned.
+        # On demo, non-BTC markets sometimes return no AMM fields at all — this log tells us
+        # whether the field is missing vs. present but zero vs. present but filtered out.
+        _diag_keys = ("yes_ask_dollars", "no_ask_dollars", "yes_bid_dollars", "no_bid_dollars",
+                      "last_price", "status", "volume", "liquidity")
+        _diag = {k: (src.get(k) if isinstance(src, dict) else None) for k in _diag_keys}
+        log.warning(
+            f"No price data available for {ticker} "
+            f"(yes_ask={best_yes_ask} no_ask={best_no_ask}). "
+            f"Raw market fields: {_diag}"
+        )
         return None
 
     # Sanity check — reject prices outside [1, 100]. 0c is impossible; >100c is data corruption.
@@ -3317,14 +3327,35 @@ async def handle_ready_phase(
         ob = None  # non-BTC: no multi-window, orderbook fetched below
 
     # Orderbook — retry next cycle if temporarily unavailable
+    def _no_data_eval(reason: str) -> dict:
+        return {
+            "strike":       strike,
+            "distance_pct": round(abs(btc_price - strike) / strike * 100, 3) if strike else None,
+            "direction":    None,
+            "yes_ask":      None,
+            "no_ask":       None,
+            "ev":           None,
+            "win_prob":     None,
+            "status":       "NO_DATA",
+            "skip_reason":  reason,
+            "signals":      {},
+        }
+
     if ob is None:
         try:
             ob = await fetch_orderbook(session, ticker, market)
         except Exception as exc:
-            log.error(f"Orderbook error in READY: {exc}")
+            log.error(f"[{asset}] Orderbook error in READY: {exc}")
+            _snap = _no_data_eval(f"orderbook error: {exc}")
+            if _use_state: state["eval"] = _snap
+            else: _asset_eval[asset] = _snap
             return
 
     if ob is None:
+        log.warning(f"[{asset}] {ticker}: orderbook returned no price data — retrying next cycle")
+        _snap = _no_data_eval("no orderbook data — retrying")
+        if _use_state: state["eval"] = _snap
+        else: _asset_eval[asset] = _snap
         last_action, last_skip_reason = "watching", "no price data — retrying"
         return
 
