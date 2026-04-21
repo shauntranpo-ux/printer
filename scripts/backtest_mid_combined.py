@@ -35,7 +35,7 @@ PERIODS = [
 # ── MidWindow params ──────────────────────────────────────────────────────────
 MID_MIN_ELAPSED  = 550
 MID_MAX_ELAPSED  = 650
-MID_MAX_ENTRY    = 79.9   # 80c+ entries are negative EV at t=10min
+MID_MIN_DIST_PCT = 0.30   # ETH must be >=0.30% from strike (signal quality, not price)
 MID_SKIP_HOURS   = {12, 13}
 
 # ── DwellWindow params ────────────────────────────────────────────────────────
@@ -181,10 +181,12 @@ def run_combined(eth_events: list, btc_events: list,
         if eth_itm != btc_itm:
             continue
 
+        eth_dist_pct = abs(eth_w[-1] - mid_ev.strike) / mid_ev.strike * 100.0
+        if eth_dist_pct < MID_MIN_DIST_PCT:
+            continue
+
         side    = "YES" if eth_itm else "NO"
         entry_c = mid_ev.orderbook.yes_ask if eth_itm else mid_ev.orderbook.no_ask
-        if entry_c > MID_MAX_ENTRY:
-            continue
         won_yes = mid_ev.close_price > mid_ev.strike
         won     = (side == "YES" and won_yes) or (side == "NO" and not won_yes)
 

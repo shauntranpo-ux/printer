@@ -10,12 +10,12 @@ assumes historical volatility. When both assets are in a clean directional trend
 (no strike crossings in either), it's a macro regime signal the BB model can't price.
 The joint "no crossing" condition is unpriced by the market.
 
-OOS TEST 2024-2026 (t=10min, entry<80c, ETH_cross=0 AND BTC_cross=0):
-  N=1,892/119.3weeks = 15.9/wk   WR=73.6%   entry=67.5c   EV=+$1.71/trade
-  EV/wk at $25 stake: $27.2/wk
+OOS TEST 2024-2026 (t=10min, ETH_dist>=0.30%, ETH_cross=0 AND BTC_cross=0):
+  N=1,128/119.3weeks = 9.5/wk   WR=83.5%   entry=79.2c   EV=+$1.14/trade
+  EV/wk at $25 stake: $10.8/wk
 
 TRAIN 2022-2023 (same signal):
-  WR=70.0%  entry=68.5c  EV=+$0.02/trade  (near break-even in high-vol bear regime)
+  WR=84.6%  entry=82.6c  EV=+$0.40/trade  (consistent across both regimes)
 
 Designed to fire BEFORE DwellWindowStrategy (t=30-42min) and LateWindowStrategy (t>=45min).
 This strategy takes the cleanest windows early; remaining windows fall through to Dwell/Late.
@@ -32,7 +32,7 @@ from strategies.skip_layer import SkipConfig
 
 MIN_ELAPSED_SEC  = 550     # fire at ~t=9.2min (catch 10-min eval point)
 MAX_ELAPSED_SEC  = 650     # stop at ~t=10.8min
-MAX_ENTRY_CENTS  = 79.9    # 80c+ entries are negative EV at t=10min
+MIN_DIST_PCT     = 0.30    # ETH must be >=0.30% from strike (signal, not price)
 SKIP_HOURS_UTC   = {12, 13}
 
 
@@ -159,20 +159,22 @@ class MidWindowStrategy(BaseStrategy):
                 reason=f"diverged: ETH={'ITM' if eth_itm else 'OTM'} BTC={'ITM' if btc_itm else 'OTM'}",
             )
 
-        side        = "yes" if eth_itm else "no"
-        entry_cents = features.yes_ask if eth_itm else features.no_ask
-
-        if entry_cents > MAX_ENTRY_CENTS:
+        eth_dist_pct = abs(eth_prices[-1] - features.strike) / features.strike * 100.0
+        if eth_dist_pct < MIN_DIST_PCT:
             return Decision(
                 action="skip", side=None, p_model=0.5,
-                reason=f"entry_too_high: {entry_cents:.0f}c > {MAX_ENTRY_CENTS:.0f}c cap",
+                reason=f"dist_too_small: {eth_dist_pct:.3f}% < {MIN_DIST_PCT:.2f}% required",
             )
+
+        side        = "yes" if eth_itm else "no"
+        entry_cents = features.yes_ask if eth_itm else features.no_ask
 
         signals = {
             "eth_cross":    eth_cross,
             "btc_cross":    btc_cross,
             "eth_itm":      eth_itm,
             "btc_itm":      btc_itm,
+            "eth_dist_pct": round(eth_dist_pct, 3),
             "elapsed_min":  round(features.elapsed_seconds / 60, 1),
             "entry_cents":  entry_cents,
         }
@@ -180,11 +182,11 @@ class MidWindowStrategy(BaseStrategy):
         return Decision(
             action="trade",
             side=side,
-            p_model=0.736,    # OOS WR from TEST 2024-2026 at t=10min
+            p_model=0.835,    # OOS WR from TEST 2024-2026 at t=10min dist>=0.3%
             reason=(
-                f"mid_{side.upper()}: ETH+BTC both cross=0 at t=10min "
+                f"mid_{side.upper()}: ETH+BTC cross=0 dist={eth_dist_pct:.2f}% at t=10min "
                 f"entry={entry_cents:.0f}c elapsed={features.elapsed_seconds/60:.0f}min"
             ),
             contributing_signals=signals,
-            expected_value=0.068,   # ~$1.71/$25 at avg 67.5c entry
+            expected_value=0.046,   # ~$1.14/$25 at avg 79.2c entry
         )

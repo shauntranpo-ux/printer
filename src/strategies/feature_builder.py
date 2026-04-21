@@ -30,6 +30,8 @@ def build_features_from_bot_state(
     prices_deque,
     contract_history=None,
     btc_prices_deque=None,
+    eth_ohlcv_df=None,
+    btc_ohlcv_df=None,
 ) -> MarketFeatures:
     """
     Construct a MarketFeatures from whatever state the bot has available.
@@ -86,6 +88,8 @@ def build_features_from_bot_state(
         prices_5m=prices_5m,
         prices_60m=prices_60m,
         btc_prices_60m=btc_60m,
+        ohlcv_60m=eth_ohlcv_df,
+        btc_ohlcv_60m=btc_ohlcv_df,
         kalshi_price_history=kalshi_hist,
         realized_vol_1min=rv,
     )

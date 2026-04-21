@@ -4,6 +4,8 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Literal, Optional
 
+import pandas as pd
+
 
 @dataclass
 class MarketFeatures:
@@ -41,6 +43,11 @@ class MarketFeatures:
 
     # BTC price history — injected for non-BTC strategies so they never read bot globals
     btc_prices_60m: deque = field(default_factory=lambda: deque(maxlen=3600))
+
+    # Full OHLCV minute bars (last 90 min) for candle-body / volume analysis
+    # Each row: ts (DatetimeIndex), open, high, low, close, volume
+    ohlcv_60m: Optional[pd.DataFrame] = None      # ETH OHLCV bars for this window
+    btc_ohlcv_60m: Optional[pd.DataFrame] = None  # BTC OHLCV bars for this window
 
     # Contract velocity tracking
     kalshi_price_history: deque = field(default_factory=lambda: deque(maxlen=60))
