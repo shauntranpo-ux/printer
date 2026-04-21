@@ -837,10 +837,9 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         return _all_markets_cache if return_all else _market_cache
 
     path = "/markets"
-    # Priority order: KXBTCD/BTCD-B are the active "Above/below" short-duration BTC markets.
-    # KXBTC15M is legacy (no active markets as of 2026). KXBTC returns 25-hour daily range
-    # markets that get filtered out — still included as fallback.
-    _SERIES_SEARCH_ORDER = ("KXBTCD", "BTCD-B", "KXBTC15M", "BTC15M", "KXBTC", "BTC")
+    # Hourly above/below markets only. KXBTC15M (15-min directional) is excluded —
+    # no validated edge; paper trading showed 50/50 win rate from legacy strategy.
+    _SERIES_SEARCH_ORDER = ("KXBTCD", "BTCD-B")
     all_markets = []
     seen_tickers: set[str] = set()
     for series in _SERIES_SEARCH_ORDER:
@@ -1949,19 +1948,33 @@ def printer_brain_routed(
     market_duration_min = (elapsed_seconds + secs_left) / 60.0
     strat = _get_or_make_strategy(asset, config, market_duration_min=market_duration_min)
     if strat is None:
-        return printer_brain(
-            btc_price, strike, yes_ask, no_ask,
-            elapsed_seconds, secs_left, ticker,
-            min_ev_base=min_ev_base, vol_gate_thresh=vol_gate_thresh,
-            kalshi_fee=kalshi_fee, asset=asset,
-            max_entry_price_cents=max_entry_price_cents,
-            min_reward_cents=min_reward_cents,
-            max_risk_reward_ratio=max_risk_reward_ratio,
-            vol_confirm_mult=vol_confirm_mult,
-            vol_oppose_mult=vol_oppose_mult,
-            mom_lock_enabled=mom_lock_enabled,
-            mom_lock_neutral_tighten=mom_lock_neutral_tighten,
+        # No validated strategy for this asset/duration. Skipping is better than
+        # using the legacy printer_brain which has no calibrated edge on these markets
+        # and produces random-confidence outputs (observed 50/50 win rate in paper trading).
+        log.info(
+            f"No strategy for {asset} at {market_duration_min:.0f}min "
+            f"(use_new_strategies=True) — skipping"
         )
+        _above = btc_price > strike if strike > 0 else False
+        return {
+            "action": "skip",
+            "side": "yes" if _above else "no",
+            "confidence": 50,
+            "reasoning": f"no_strategy:{asset}_{market_duration_min:.0f}min",
+            "key_signals": [],
+            "signals": {},
+            "win_prob": 0.5,
+            "mom_label": "no_strategy",
+            "mom_pct": 0.0,
+            "vel_signal": "neutral",
+            "raw_p_yes": None,
+            "mins_left": secs_left / 60.0,
+            "abs_pct": abs(btc_price - strike) / strike if strike > 0 else 0.0,
+            "above": _above,
+            "_rv": None,
+            "_vol_ratio": None,
+            "price_filter_skip": False,
+        }
 
     from strategies.feature_builder import build_features_from_bot_state
     try:

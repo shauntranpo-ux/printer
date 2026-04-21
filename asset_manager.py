@@ -38,12 +38,12 @@ ASSET_CONFIG = {
     "BTC": {
         "binance_symbol":   "btcusdt",
         "strike_increment": 1000.0,
-        "kalshi_series":    ("KXBTCD", "BTCD-B", "KXBTC15M", "BTC15M", "KXBTC", "BTC"),
+        "kalshi_series":    ("KXBTCD", "BTCD-B"),  # hourly above/below only — no 15-min (no validated edge)
     },
     "ETH": {
         "binance_symbol":   "ethusdt",
         "strike_increment": 25.0,
-        "kalshi_series":    ("KXETHD", "ETHD-B", "KXETH15M", "KXETH15", "KXETH", "ETH"),
+        "kalshi_series":    ("KXETHD", "ETHD-B"),  # hourly above/below only — validated Mid+Dwell+Late edge
     },
     "SOL": {
         "binance_symbol":   "solusdt",
