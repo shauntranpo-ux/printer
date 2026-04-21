@@ -31,6 +31,7 @@ from strategies.calibration import AssetCalibrator
 from strategies.signals.taper import magnitude_taper
 from strategies.signals.rolling_beta import log_returns_from_prices
 from strategies.signals.beta_cache import load_beta
+from strategies.signals.intraday_signals import rsi, bollinger_signal
 
 
 BTC_LEAD_WINDOW_SECONDS  = 900   # 15 minutes
@@ -243,6 +244,40 @@ class ETHHourlyStrategy(BaseStrategy):
 
         p_yes += corr_adj * taper * signal_scale
         signals["corr_adj"] = round(corr_adj, 4)
+
+        # ---- Signal 4: RSI confirmation ------------------------------------
+        # When RSI extreme confirms the BTC lead signal, boost confidence.
+        eth_rsi = rsi(eth_prices, period=14)
+        signals["eth_rsi"] = round(eth_rsi, 2) if eth_rsi is not None else None
+
+        rsi_confirm_adj = 0.0
+        if eth_rsi is not None and btc_15m is not None:
+            # BTC down + ETH RSI overbought (above 65) -> stronger NO signal
+            if btc_15m < -0.002 and eth_rsi > 65 and above:
+                rsi_confirm_adj = -0.03
+            # BTC up + ETH RSI oversold (below 35) -> stronger YES signal
+            elif btc_15m > 0.002 and eth_rsi < 35 and not above:
+                rsi_confirm_adj = 0.03
+
+        p_yes += rsi_confirm_adj * taper * signal_scale
+        signals["rsi_confirm_adj"] = round(rsi_confirm_adj, 4)
+
+        # ---- Signal 5: Bollinger confirmation ------------------------------
+        # When ETH at upper band AND BTC lead says NO, boost NO confidence.
+        eth_bb = bollinger_signal(eth_prices, period=20, num_std=2.0)
+        signals["eth_bollinger"] = eth_bb
+
+        bb_confirm_adj = 0.0
+        if eth_bb is not None and btc_15m is not None:
+            # ETH above upper band AND BTC leading down AND above strike -> boost NO
+            if eth_bb == "above_upper" and btc_15m < -0.001 and above:
+                bb_confirm_adj = -0.03
+            # ETH below lower band AND BTC leading up AND below strike -> boost YES
+            elif eth_bb == "below_lower" and btc_15m > 0.001 and not above:
+                bb_confirm_adj = 0.03
+
+        p_yes += bb_confirm_adj * taper * signal_scale
+        signals["bb_confirm_adj"] = round(bb_confirm_adj, 4)
 
         p_yes = max(0.05, min(0.95, p_yes))
         signals["final_p_yes"] = round(p_yes, 4)

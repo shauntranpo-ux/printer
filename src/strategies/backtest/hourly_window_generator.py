@@ -46,6 +46,7 @@ class HourlyBacktestEvent:
     orderbook: SimulatedOrderbook
     price_history: list           # [(ts, price)]
     realized_vol_1min: Optional[float]
+    window_open_price: Optional[float] = None
 
 
 def round_to_strike(price: float, increment: float) -> float:
@@ -119,6 +120,7 @@ def generate_hourly_events(
         open_price  = prices_by_min[window_start]
         close_price = prices_by_min[window_close]
         strike      = round_to_strike(open_price, strike_incr)
+        window_open = open_price
 
         for elapsed in range(FIRST_EVAL_SECONDS, LAST_EVAL_SECONDS + 1, EVAL_INTERVAL_SECONDS):
             eval_ts = window_start + elapsed
@@ -157,4 +159,5 @@ def generate_hourly_events(
                 orderbook=ob,
                 price_history=history,
                 realized_vol_1min=rv,
+                window_open_price=float(window_open),
             )

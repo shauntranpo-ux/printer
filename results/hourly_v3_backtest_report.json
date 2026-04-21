@@ -1,0 +1,210 @@
+{
+  "BTC": {
+    "best_config": {
+      "min_ev": 0.04,
+      "vol_gate": 4.0
+    },
+    "metrics": {
+      "total_trades": 3322,
+      "total_windows": 20038,
+      "trade_rate_pct": 16.6,
+      "wins": 1356,
+      "losses": 1966,
+      "win_rate_pct": 40.8,
+      "total_pnl": 581.18,
+      "annualized_pnl": 254.05,
+      "avg_pnl": 0.175,
+      "max_drawdown": 2574.49,
+      "sharpe": 0.006,
+      "avg_ev_at_entry": 0.1018,
+      "min_ev": 0.04,
+      "vol_gate": 4.0
+    },
+    "quarterly": {
+      "2024Q1": {
+        "trades": 327,
+        "win_rate": 44.6,
+        "pnl": 940.24
+      },
+      "2024Q2": {
+        "trades": 361,
+        "win_rate": 41.3,
+        "pnl": 192.29
+      },
+      "2024Q3": {
+        "trades": 375,
+        "win_rate": 43.7,
+        "pnl": 760.46
+      },
+      "2024Q4": {
+        "trades": 351,
+        "win_rate": 41.9,
+        "pnl": 276.08
+      },
+      "2025Q1": {
+        "trades": 399,
+        "win_rate": 37.8,
+        "pnl": -700.8
+      },
+      "2025Q2": {
+        "trades": 357,
+        "win_rate": 35.6,
+        "pnl": -1059.47
+      },
+      "2025Q3": {
+        "trades": 365,
+        "win_rate": 38.6,
+        "pnl": -522.99
+      },
+      "2025Q4": {
+        "trades": 384,
+        "win_rate": 42.7,
+        "pnl": 482.55
+      },
+      "2026Q1": {
+        "trades": 344,
+        "win_rate": 41.0,
+        "pnl": 77.58
+      },
+      "2026Q2": {
+        "trades": 59,
+        "win_rate": 44.1,
+        "pnl": 135.23
+      }
+    },
+    "n_days": 835.0,
+    "signal_report": {
+      "vwap_adj": {
+        "win_count": 1173,
+        "loss_count": 1741,
+        "win_avg": 0.0083,
+        "loss_avg": 0.0079
+      },
+      "rsi_adj": {
+        "win_count": 1320,
+        "loss_count": 1943,
+        "win_avg": 0.0053,
+        "loss_avg": 0.0047
+      },
+      "bb_adj": {
+        "win_count": 417,
+        "loss_count": 645,
+        "win_avg": 0.0116,
+        "loss_avg": 0.0102
+      },
+      "mom_adj": {
+        "win_count": 39,
+        "loss_count": 65,
+        "win_avg": 0.0323,
+        "loss_avg": 0.036
+      }
+    }
+  },
+  "ETH": {
+    "best_config": {
+      "min_ev": 0.04,
+      "vol_gate": 4.5
+    },
+    "metrics": {
+      "total_trades": 4898,
+      "total_windows": 20038,
+      "trade_rate_pct": 24.4,
+      "wins": 2841,
+      "losses": 2057,
+      "win_rate_pct": 58.0,
+      "total_pnl": 562.15,
+      "annualized_pnl": 245.73,
+      "avg_pnl": 0.115,
+      "max_drawdown": 1321.76,
+      "sharpe": 0.005,
+      "avg_ev_at_entry": 0.0603,
+      "min_ev": 0.04,
+      "vol_gate": 4.5
+    },
+    "quarterly": {
+      "2024Q1": {
+        "trades": 615,
+        "win_rate": 55.0,
+        "pnl": -503.52
+      },
+      "2024Q2": {
+        "trades": 555,
+        "win_rate": 55.7,
+        "pnl": -348.37
+      },
+      "2024Q3": {
+        "trades": 548,
+        "win_rate": 57.1,
+        "pnl": 65.5
+      },
+      "2024Q4": {
+        "trades": 551,
+        "win_rate": 58.1,
+        "pnl": 307.03
+      },
+      "2025Q1": {
+        "trades": 496,
+        "win_rate": 55.8,
+        "pnl": -114.94
+      },
+      "2025Q2": {
+        "trades": 452,
+        "win_rate": 63.1,
+        "pnl": 1120.35
+      },
+      "2025Q3": {
+        "trades": 589,
+        "win_rate": 60.1,
+        "pnl": -155.67
+      },
+      "2025Q4": {
+        "trades": 518,
+        "win_rate": 62.9,
+        "pnl": 955.59
+      },
+      "2026Q1": {
+        "trades": 494,
+        "win_rate": 56.7,
+        "pnl": -319.46
+      },
+      "2026Q2": {
+        "trades": 80,
+        "win_rate": 48.8,
+        "pnl": -444.37
+      }
+    },
+    "n_days": 835.0,
+    "signal_report": {
+      "beta_adj": {
+        "win_count": 2825,
+        "loss_count": 2053,
+        "win_avg": -0.0161,
+        "loss_avg": -0.0222
+      },
+      "accel_adj": {
+        "win_count": 1582,
+        "loss_count": 1171,
+        "win_avg": -0.0264,
+        "loss_avg": -0.0291
+      },
+      "corr_adj": {
+        "win_count": 1685,
+        "loss_count": 1368,
+        "win_avg": -0.0138,
+        "loss_avg": -0.0153
+      },
+      "rsi_confirm_adj": {
+        "win_count": 16,
+        "loss_count": 26,
+        "win_avg": -0.0225,
+        "loss_avg": -0.0208
+      },
+      "bb_confirm_adj": {
+        "win_count": 9,
+        "loss_count": 22,
+        "win_avg": -0.0167,
+        "loss_avg": -0.0245
+      }
+    }
+  }
+}
