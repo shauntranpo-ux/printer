@@ -27,7 +27,7 @@
   ],
   "asset_overrides": {
     "BTC": {
-      "min_ev_base": 9,
+      "min_ev_base": 5,
       "vol_gate_thresh": 1.60,
       "confidence_threshold": 80,
       "vol_confirm_mult": 1.25,
