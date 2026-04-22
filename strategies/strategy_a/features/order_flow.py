@@ -42,20 +42,36 @@ class OrderFlowFeatures:
     def _ingest(self, trades: list[dict]) -> None:
         for t in trades:
             ts = pd.Timestamp(t["timestamp"])
-            signed = t["size"] if t["aggressor_side"] == "buy" else -t["size"]
+            if ts.tz is None:
+                ts = ts.tz_localize("UTC")
+            side = t["aggressor_side"]
+            signed = t["size"] if side == "buy" else -t["size"] if side == "sell" else 0.0
             for buf in self._trade_bufs.values():
                 buf.append((ts, signed))
-            buy_vol  = t["size"] if t["aggressor_side"] == "buy"  else 0.0
-            sell_vol = t["size"] if t["aggressor_side"] == "sell" else 0.0
+            if side not in ("buy", "sell"):
+                continue
+            buy_vol  = t["size"] if side == "buy"  else 0.0
+            sell_vol = t["size"] if side == "sell" else 0.0
             self._vpin_buy  += buy_vol
             self._vpin_sell += sell_vol
             self._vpin_vol  += t["size"]
-            if self._vpin_vol >= self._bucket_size:
-                imb = abs(self._vpin_buy - self._vpin_sell) / self._bucket_size
-                self._vpin_buckets.append(imb)
-                self._vpin_buy = self._vpin_sell = self._vpin_vol = 0.0
+            while self._vpin_vol >= self._bucket_size:
+                # imbalance = |B - S| / V, guaranteed in [0, 1]
+                imb = abs(self._vpin_buy - self._vpin_sell) / self._vpin_vol
+                self._vpin_buckets.append(float(imb))
+                # carry over the residual proportionally
+                carry = self._vpin_vol - self._bucket_size
+                if self._vpin_vol > 0:
+                    ratio = carry / self._vpin_vol
+                    self._vpin_buy  *= ratio
+                    self._vpin_sell *= ratio
+                else:
+                    self._vpin_buy = self._vpin_sell = 0.0
+                self._vpin_vol = carry
 
     def _purge(self, now: pd.Timestamp) -> None:
+        if now.tz is None:
+            now = now.tz_localize("UTC")
         for window, buf in self._trade_bufs.items():
             cutoff = now - pd.Timedelta(seconds=self._WINDOWS[window])
             while buf and buf[0][0] < cutoff:
@@ -70,7 +86,7 @@ class OrderFlowFeatures:
         book   = data_window.get("book", {})
         bids   = book.get("bids", [])
         asks   = book.get("asks", [])
-        now    = pd.Timestamp(book.get("timestamp", pd.Timestamp.utcnow()))
+        now    = pd.Timestamp(book.get("timestamp", pd.Timestamp.now("UTC")))
         self._ingest(data_window.get("trades", []))
         self._purge(now)
 
