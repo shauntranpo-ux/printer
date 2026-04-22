@@ -1,0 +1,8 @@
+asset: eth
+symbol: ETH
+kalshi_market_prefix: KXETH15M
+reference_source: spot
+reference_exchange: binance
+data_path: null
+min_samples: 26000
+volatility_reference_annualized: 0.77

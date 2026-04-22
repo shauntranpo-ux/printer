@@ -1,0 +1,8 @@
+asset: sol
+symbol: SOL
+kalshi_market_prefix: KXSOL15M
+reference_source: spot
+reference_exchange: binance
+data_path: null
+min_samples: 26000
+volatility_reference_annualized: 0.87
