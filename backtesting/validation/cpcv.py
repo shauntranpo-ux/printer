@@ -67,10 +67,9 @@ def get_cpcv_splits(
     for test_group_indices in combinations(range(n_groups), k_test_groups):
         # Build test timestamps
         test_parts = [groups[i] for i in test_group_indices]
-        test_timestamps = test_parts[0]
-        for part in test_parts[1:]:
-            test_timestamps = test_timestamps.append(part)
-        test_timestamps = test_timestamps.sort_values()
+        test_timestamps = pd.DatetimeIndex(
+            pd.concat([p.to_series() for p in test_parts]).sort_values()
+        )
 
         test_start = test_timestamps.min()
         test_end   = test_timestamps.max()
@@ -88,10 +87,9 @@ def get_cpcv_splits(
             yield pd.DatetimeIndex([]), test_timestamps
             continue
 
-        train_timestamps_raw = train_parts[0]
-        for part in train_parts[1:]:
-            train_timestamps_raw = train_timestamps_raw.append(part)
-        train_timestamps_raw = train_timestamps_raw.sort_values()
+        train_timestamps_raw = pd.DatetimeIndex(
+            pd.concat([p.to_series() for p in train_parts]).sort_values()
+        )
 
         # Apply purging and embargo
         mask = (train_timestamps_raw < purge_cutoff) | (train_timestamps_raw > embargo_end)
