@@ -1,0 +1,33 @@
+# {{ asset }} Backtest Report
+
+## Calibration
+| Metric | Value |
+|--------|-------|
+| Brier Score | {{ "%.4f"|format(calibration.brier or 0) }} |
+| Log Loss | {{ "%.4f"|format(calibration.log_loss or 0) }} |
+| ECE | {{ "%.4f"|format(calibration.ece or 0) }} |
+| N samples | {{ calibration.n or 0 }} |
+
+## Trading Performance
+| Metric | Value |
+|--------|-------|
+| N Trades | {{ trading.n_trades or 0 }} |
+| Sharpe | {{ "%.3f"|format(trading.sharpe or 0) }} |
+| Win Rate | {{ "%.1f%%"|format((trading.win_rate or 0) * 100) }} |
+| Total Net P&L | {{ "%.4f"|format(trading.total_pnl or 0) }} |
+| Max Drawdown | {{ "%.4f"|format(trading.max_drawdown or 0) }} |
+| Fee Drag | {{ "%.1f%%"|format((trading.fee_drag or 0) * 100) }} |
+
+## Overfitting Metrics
+| Metric | Value |
+|--------|-------|
+| Deflated Sharpe Ratio | {{ "%.4f"|format(overfitting.dsr or 0) }} |
+| Probabilistic Sharpe Ratio | {{ "%.4f"|format(overfitting.psr or 0) }} |
+| Probability of Backtest Overfitting | {{ "%.4f"|format(overfitting.pbo or 0) }} |
+
+## Charts
+- [Reliability Diagram]({{ artifacts.calibration_chart }})
+- [Equity Curve]({{ artifacts.equity_curve }})
+- [Regime Heatmap]({{ artifacts.regime_heatmap }})
+- [CPCV Splits]({{ artifacts.cpcv_splits }})
+- [Bootstrap CI]({{ artifacts.bootstrap_ci }})
