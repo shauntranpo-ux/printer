@@ -1,0 +1,12 @@
+asset:
+  symbol: BTC
+  kalshi_market_prefix: KXBTC15M
+
+dislocation:
+  lookback_seconds: 30
+  residual_threshold: null     # tuned per asset; null → 2.0 runtime default
+  signal_staleness_seconds: 60
+
+implied_move:
+  volatility_source: har_rs_j  # inject via update_vol() from Strategy A
+  fallback_rolling_std_minutes: 30

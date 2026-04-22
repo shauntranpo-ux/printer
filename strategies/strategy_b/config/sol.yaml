@@ -1,0 +1,12 @@
+asset:
+  symbol: SOL
+  kalshi_market_prefix: KXSOL15M
+
+dislocation:
+  lookback_seconds: 30
+  residual_threshold: null
+  signal_staleness_seconds: 60
+
+implied_move:
+  volatility_source: har_rs_j
+  fallback_rolling_std_minutes: 30
