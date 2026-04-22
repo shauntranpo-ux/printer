@@ -1,6 +1,5 @@
 from __future__ import annotations
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass, field, fields
 import pandas as pd
 
 
@@ -15,9 +14,9 @@ class FeatureVector:
 
     def to_flat_dict(self) -> dict[str, float]:
         out: dict[str, float] = {}
-        for module in ("har_rv", "order_flow", "time_of_day", "cross_asset", "funding"):
-            for k, v in getattr(self, module).items():
-                out[f"{module}__{k}"] = v
+        for f in fields(self):
+            for k, v in getattr(self, f.name).items():
+                out[f"{f.name}__{k}"] = v
         return out
 
 
@@ -30,7 +29,7 @@ class Signal:
     p_market: float       # Kalshi YES price in [0, 1] (not cents)
     edge: float           # p_model - p_market; positive → buy YES
     regime: str
-    side: str             # "YES" or "NO"
+    side: str             # "yes" or "no"
     strategy: str = "strategy_a"
 
 
@@ -41,7 +40,7 @@ class DislocationSignal:
     asset: str
     direction: str        # "fade_up" or "fade_down"
     confidence: float     # [0, 1] scaled by residual magnitude
-    side: str             # "YES" or "NO" (the recommended trade side)
+    side: str             # "yes" or "no" (the recommended trade side)
     residual_magnitude: float   # |actual_move - implied_move| in cents
     staleness_timestamp: pd.Timestamp   # signal expires after this time
 
