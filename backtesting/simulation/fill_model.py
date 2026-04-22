@@ -114,7 +114,10 @@ class MakerFillModel:
         Logistic fill probability. Higher price improvement → lower fill prob.
         Returns value in (0, 1).
         """
-        spread_cents = tick["yes_ask"] - tick["yes_bid"]
+        if side == "yes":
+            spread_cents = tick["yes_ask"] - tick["yes_bid"]
+        else:
+            spread_cents = tick["no_ask"] - tick["no_bid"]
         if spread_cents <= 0:
             return 0.5
         x = self.price_improvement_cents / spread_cents

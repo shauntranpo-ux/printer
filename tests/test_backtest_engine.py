@@ -294,6 +294,37 @@ class TestPnLCorrectness:
         assert row["side"] == "yes"
         assert row["pnl"] == pytest.approx(0 - 0.60)
 
+    def test_no_loss_pnl(self):
+        """side=no, label=1 (YES wins, so NO loses), fill_price=0.40 → pnl = (1-1) - 0.40 = -0.40"""
+        labels = _make_labels(n=1, start="2024-01-01 10:00:00")
+        labels["label"] = 1
+        # p_model=0.10 < p_market ≈ 0.50 → side=no → fills at no_ask=40
+        ticks = _make_kalshi_ticks(
+            n=1,
+            start="2024-01-01 09:59:00",
+            yes_bid=50, yes_ask=60,
+            no_bid=30, no_ask=40,
+        )
+        bars = _make_bars(n=1, start="2024-01-01 09:30:00")
+        events = build_event_stream(bars=bars, labels=labels, kalshi_ticks=ticks)
+        model = _AlwaysTradeModel(p_model=0.10)
+
+        result = run_backtest(
+            events=events,
+            labels=labels,
+            asset="btc",
+            strategy="strategy_a",
+            model_a=model,
+            model_config=_CFG,
+            fees_config=_FEES,
+            latency_ms=0.0,
+        )
+        assert len(result) == 1
+        row = result.iloc[0]
+        assert row["side"] == "no"
+        assert row["fill_price"] == pytest.approx(0.40)
+        assert row["pnl"] == pytest.approx((1 - 1) - 0.40)  # = -0.40
+
 
 # ── Test 4: No look-ahead ─────────────────────────────────────────────────────
 

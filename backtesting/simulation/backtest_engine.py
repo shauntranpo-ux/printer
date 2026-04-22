@@ -126,17 +126,20 @@ def run_backtest(
             if model_a.should_trade(p_model, p_market, regime, _model_config):
                 side = "yes" if edge > 0 else "no"
 
-                fill = filler.fill(side, window_ts, kalshi_ticks)
-
-                if fill is None:
-                    # No ticks: use p_market as fill price, apply 3% fee
+                if not kalshi_ticks:
+                    # No ticks: use p_market as fill price, apply filler fee_rate
                     fp_fallback = p_market if side == "yes" else (1 - p_market)
                     fill = {
                         "fill_price": fp_fallback,
-                        "fee": 0.03 * fp_fallback,
+                        "fee": filler.fee_rate * fp_fallback,
                         "slippage": 0.0,
                         "timestamp_filled": window_ts,
                     }
+                else:
+                    fill = filler.fill(side, window_ts, kalshi_ticks)
+                    if fill is None:
+                        # Maker limit order not filled this window; skip
+                        continue
 
                 fp = fill["fill_price"]
                 pnl = (label - fp) if side == "yes" else ((1 - label) - fp)
@@ -188,15 +191,20 @@ def run_backtest(
 
             if signal_b is not None:
                 side = signal_b.side
-                fill = filler.fill(side, window_ts, kalshi_ticks) if kalshi_ticks else None
-                if fill is None:
+                if not kalshi_ticks:
+                    # No ticks: use p_market as fill price, apply filler fee_rate
                     fp_fallback = p_market if side == "yes" else (1 - p_market)
                     fill = {
                         "fill_price": fp_fallback,
-                        "fee": 0.03 * fp_fallback,
+                        "fee": filler.fee_rate * fp_fallback,
                         "slippage": 0.0,
                         "timestamp_filled": window_ts,
                     }
+                else:
+                    fill = filler.fill(side, window_ts, kalshi_ticks)
+                    if fill is None:
+                        # Maker limit order not filled this window; skip
+                        continue
 
                 fp = fill["fill_price"]
                 pnl = (label - fp) if side == "yes" else ((1 - label) - fp)
