@@ -79,3 +79,9 @@ def test_unknown_regime_defaults_to_002():
 def test_no_side_with_zero_edge():
     m = StrategyAModel(_CFG, _FEES)
     assert not m.should_trade(0.55, 0.55, "eu_open", _CFG)
+
+
+def test_edge_exactly_at_threshold_does_not_trade():
+    m = StrategyAModel(_CFG, _FEES)
+    # min_edge = 0.03 + 0.005 + 0.02 = 0.055; edge = exactly 0.055 → must NOT trade (> not >=)
+    assert not m.should_trade(0.605, 0.55, "eu_open", _CFG)

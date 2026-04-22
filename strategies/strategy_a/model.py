@@ -98,12 +98,29 @@ class StrategyAModel:
         self._model.fit(X, y)
         self._fitted = True
 
+    def load(self, weights_path: str | None = None, calibrator_path: str | None = None) -> None:
+        """
+        Load a pre-trained calibrated model and feature-name list from disk.
+
+        Paths are resolved from arguments first, then from config["model"] keys
+        "weights_path" and "calibrator_path".
+        """
+        import pickle
+        wp = weights_path or self.config.get("model", {}).get("weights_path")
+        cp = calibrator_path or self.config.get("model", {}).get("calibrator_path")
+        if wp is None or cp is None:
+            raise ValueError("weights_path and calibrator_path must be provided or set in config")
+        with open(wp, "rb") as f:
+            self._feature_names = pickle.load(f)
+        with open(cp, "rb") as f:
+            self._model = pickle.load(f)
+        self._fitted = True
+
     @staticmethod
     def _build_base(mtype: str):
         if mtype == "xgboost":
             from xgboost import XGBClassifier
-            return XGBClassifier(n_estimators=100, eval_metric="logloss",
-                                 use_label_encoder=False)
+            return XGBClassifier(n_estimators=100, eval_metric="logloss")
         if mtype == "lightgbm":
             from lightgbm import LGBMClassifier
             return LGBMClassifier(n_estimators=100, verbosity=-1)
@@ -114,5 +131,5 @@ class StrategyAModel:
 
     def _to_vec(self, features: dict) -> np.ndarray:
         if self._feature_names is None:
-            self._feature_names = sorted(features.keys())
+            raise RuntimeError("feature_names not set; call fit() or load() first")
         return np.array([features.get(k, 0.0) for k in self._feature_names], dtype=float)
