@@ -5,7 +5,6 @@ Aggregates per-asset summaries into a single comparison table and Markdown repor
 from __future__ import annotations
 import json
 import os
-import numpy as np
 
 
 def build_comparison_report(

@@ -183,6 +183,14 @@ def test_report_reflects_n_trades(tmp_path):
 # Test 8: saved file content matches returned string
 # ---------------------------------------------------------------------------
 
+def test_empty_asset_artifacts_no_crash(tmp_path):
+    from backtesting.reports.comparison import build_comparison_report
+
+    md = build_comparison_report({}, output_dir=str(tmp_path))
+    assert isinstance(md, str)
+    assert os.path.exists(os.path.join(str(tmp_path), "comparison_report.md"))
+
+
 def test_saved_file_matches_returned_string(tmp_path):
     from backtesting.reports.comparison import build_comparison_report
 

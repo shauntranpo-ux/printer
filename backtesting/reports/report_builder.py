@@ -203,7 +203,7 @@ def _plot_cpcv_splits(cpcv_results: Optional[pd.DataFrame], asset_dir: str, asse
     fig, ax = plt.subplots(figsize=(8, 4))
 
     if cpcv_results is not None and not cpcv_results.empty and "sharpe" in cpcv_results.columns:
-        splits = cpcv_results["split_id"].tolist()
+        splits = cpcv_results["split_id"].tolist() if "split_id" in cpcv_results.columns else list(range(len(cpcv_results)))
         sharpes = cpcv_results["sharpe"].fillna(0).tolist()
         ax.bar(splits, sharpes)
         ax.axhline(0, color="gray", linewidth=0.8)
@@ -240,19 +240,20 @@ def _plot_bootstrap_ci(oos_sharpes: np.ndarray, asset_dir: str, asset: str) -> s
     return path
 
 
-def _make_json_safe(d: dict) -> dict:
-    """Convert nan/inf to null for JSON serialization."""
-    out = {}
-    for k, v in d.items():
-        if isinstance(v, float) and (np.isnan(v) or np.isinf(v)):
-            out[k] = None
-        elif isinstance(v, (np.integer,)):
-            out[k] = int(v)
-        elif isinstance(v, (np.floating,)):
-            out[k] = float(v) if not (np.isnan(v) or np.isinf(v)) else None
-        else:
-            out[k] = v
-    return out
+def _make_json_safe(obj):
+    """Recursively convert nan/inf to None and numpy scalars to Python scalars."""
+    if isinstance(obj, dict):
+        return {k: _make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_make_json_safe(v) for v in obj]
+    if isinstance(obj, float) and (np.isnan(obj) or np.isinf(obj)):
+        return None
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.floating,)):
+        v = float(obj)
+        return None if (np.isnan(v) or np.isinf(v)) else v
+    return obj
 
 
 def render_asset_report(
@@ -282,7 +283,9 @@ def render_asset_report(
         artifacts=artifacts,
     )
 
-    out_path = os.path.join(output_dir, asset, "report.md")
+    asset_dir = os.path.join(output_dir, asset)
+    os.makedirs(asset_dir, exist_ok=True)
+    out_path = os.path.join(asset_dir, "report.md")
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(md)
     return md

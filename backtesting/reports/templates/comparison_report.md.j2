@@ -4,4 +4,4 @@
 |-------|----------|--------|----------|-----------|-----|-----|-----|
 {% for row in table -%}
 | {{ row.asset }} | {{ row.n_trades }} | {{ "%.3f"|format(row.sharpe or 0) }} | {{ "%.1f%%"|format((row.win_rate or 0) * 100) }} | {{ "%.4f"|format(row.total_pnl or 0) }} | {{ "%.3f"|format(row.dsr or 0) }} | {{ "%.3f"|format(row.pbo or 0) }} | {{ "%.3f"|format(row.psr or 0) }} |
-{% endfor %}
+{%- endfor %}
