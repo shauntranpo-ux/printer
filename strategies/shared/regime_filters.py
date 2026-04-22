@@ -11,7 +11,7 @@ _REGIME_HOURS: list[tuple[str, int, int]] = [
 ]
 
 
-def get_current_regime(timestamp: pd.Timestamp, config: dict) -> str:
+def get_current_regime(timestamp: pd.Timestamp, config: dict | None = None) -> str:
     """Return the regime string for a UTC timestamp. config is unused (reserved for future extension)."""
     hour = timestamp.hour
     for name, start, end in _REGIME_HOURS:
@@ -46,9 +46,10 @@ def get_fee_adjusted_threshold(
 
     min_edge = taker_fee + safety_margin + regime_extra
 
-    Note: fees.yaml stores a conservative flat-rate approximation (0.03).
-    The actual Kalshi taker fee is 0.07·C·p·(1-p), which peaks at ~3.5% at p=0.5.
-    The execution layer uses the exact formula; this threshold uses the flat approx.
+    # fees.yaml stores a dollar-denominated flat-rate approximation ($0.03 per contract).
+    # The actual Kalshi taker fee is ceil(0.07·C·p·(1-p)) per src/strategies/fees.py,
+    # which peaks at $0.02 per contract at p=0.50. The $0.03 flat overstates the true
+    # fee at every price point, ensuring only high-edge trades pass the threshold.
     """
     taker_fee = float(fees_config["kalshi"]["taker_fee_rate"])
     safety_margin = float(fees_config["safety_margin"])

@@ -1,4 +1,3 @@
-import math
 import numpy as np
 import pytest
 from shared.probability_utils import (
@@ -40,3 +39,12 @@ def test_prob_to_price():
 def test_dp_to_dc():
     assert contract_price_change_from_prob_change(0.05) == pytest.approx(5.0)
     assert contract_price_change_from_prob_change(-0.03) == pytest.approx(-3.0)
+
+
+def test_realistic_15min_value():
+    dt = 15.0 / (365 * 24 * 60)
+    p = drift_vol_to_prob(mu=1.0, sigma=0.8, dt=dt)
+    # Verify formula: Φ(1.0 * sqrt(dt) / 0.8)
+    from scipy.stats import norm
+    expected = float(norm.cdf(1.0 * (dt ** 0.5) / 0.8))
+    assert p == pytest.approx(expected, rel=1e-6)
