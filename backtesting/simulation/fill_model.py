@@ -111,7 +111,7 @@ class MakerFillModel:
 
     def fill_probability(self, side: str, tick: dict) -> float:
         """
-        Logistic fill probability. Higher price improvement → lower fill prob.
+        Logistic fill probability. Higher price improvement → higher fill prob.
         Returns value in (0, 1).
         """
         if side == "yes":
@@ -121,7 +121,7 @@ class MakerFillModel:
         if spread_cents <= 0:
             return 0.5
         x = self.price_improvement_cents / spread_cents
-        return float(1.0 / (1.0 + math.exp(x)))
+        return float(1.0 / (1.0 + math.exp(-x)))
 
     def fill(
         self,
@@ -150,7 +150,10 @@ class MakerFillModel:
         else:
             limit_cents = tick["no_bid"] + self.price_improvement_cents
 
-        spread = abs(tick["yes_ask"] - tick["yes_bid"]) / 100.0
+        if side == "yes":
+            spread = abs(tick["yes_ask"] - tick["yes_bid"]) / 100.0
+        else:
+            spread = abs(tick["no_ask"] - tick["no_bid"]) / 100.0
         adverse = self.adverse_selection_fraction * spread
         fill_price = float(np.clip(limit_cents / 100.0 + adverse, 0.01, 0.99))
         fee = self.fee_rate * fill_price

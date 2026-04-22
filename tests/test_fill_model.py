@@ -136,12 +136,12 @@ class TestTakerFillModelReturnSchema:
 
 
 class TestMakerFillProbability:
-    def test_fill_probability_less_than_half(self):
-        """With positive price_improvement, logistic gives prob < 0.5."""
+    def test_fill_probability_greater_than_half(self):
+        """With positive price_improvement, logistic gives prob > 0.5."""
         model = MakerFillModel(price_improvement_cents=1.0)
         tick = _tick("2024-01-01", yes_bid=45, yes_ask=55)  # spread=10
         prob = model.fill_probability("yes", tick)
-        assert 0.0 < prob < 0.5
+        assert 0.5 < prob < 1.0
 
     def test_zero_spread_returns_half(self):
         """When spread=0, fill_probability returns 0.5."""
@@ -150,12 +150,13 @@ class TestMakerFillProbability:
         prob = model.fill_probability("yes", tick)
         assert prob == pytest.approx(0.5)
 
-    def test_larger_improvement_lower_prob(self):
-        """More price improvement relative to spread → lower fill probability."""
+    def test_larger_improvement_higher_prob(self):
+        """More price improvement relative to spread → higher fill probability."""
         model_small = MakerFillModel(price_improvement_cents=0.5)
         model_large = MakerFillModel(price_improvement_cents=5.0)
         tick = _tick("2024-01-01", yes_bid=45, yes_ask=55)
-        assert model_large.fill_probability("yes", tick) < model_small.fill_probability("yes", tick)
+        # spread=10c, improvement=5c → x=0.5 → prob = 1/(1+exp(-0.5)) > 0.5
+        assert model_large.fill_probability("yes", tick) > model_small.fill_probability("yes", tick)
 
 
 class TestMakerFillEmpty:
@@ -222,6 +223,16 @@ class TestMakerFillAdverseSelection:
         result = model.fill("yes", pd.Timestamp("2024-01-01", tz="UTC"), [tick], rng=_LowRNG())
         assert result is not None
         assert result["fee"] == 0.0
+
+
+def test_fill_probability_no_side_uses_no_spread():
+    # YES spread=10c, NO spread=4c — different fill probs for same improvement
+    tick = {"yes_bid": 45, "yes_ask": 55, "no_bid": 48, "no_ask": 52,
+            "timestamp": pd.Timestamp("2024-01-01", tz="UTC")}
+    m = MakerFillModel(price_improvement_cents=2.0)
+    p_yes = m.fill_probability("yes", tick)  # improvement/10 spread
+    p_no  = m.fill_probability("no",  tick)  # improvement/4 spread
+    assert p_yes != p_no  # different spreads → different probs
 
 
 class TestPriceClipping:

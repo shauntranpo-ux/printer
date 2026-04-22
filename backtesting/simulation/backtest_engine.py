@@ -19,6 +19,8 @@ from typing import Optional
 from backtesting.data.aligner import Event, iter_windows
 from backtesting.simulation.fill_model import TakerFillModel, MakerFillModel
 
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
 _RESULT_COLUMNS = [
     "entry_time", "exit_time", "asset", "strategy", "side",
     "p_model", "p_market", "edge", "regime",
@@ -137,28 +139,26 @@ def run_backtest(
                     }
                 else:
                     fill = filler.fill(side, window_ts, kalshi_ticks)
-                    if fill is None:
-                        # Maker limit order not filled this window; skip
-                        continue
 
-                fp = fill["fill_price"]
-                pnl = (label - fp) if side == "yes" else ((1 - label) - fp)
+                if fill is not None:
+                    fp = fill["fill_price"]
+                    pnl = (label - fp) if side == "yes" else ((1 - label) - fp)
 
-                records.append({
-                    "entry_time": window_ts,
-                    "exit_time": exit_time,
-                    "asset": asset,
-                    "strategy": "strategy_a",
-                    "side": side,
-                    "p_model": p_model,
-                    "p_market": p_market,
-                    "edge": edge,
-                    "regime": regime,
-                    "fill_price": fp,
-                    "pnl": pnl,
-                    "fee": fill["fee"],
-                    "label": int(label),
-                })
+                    records.append({
+                        "entry_time": window_ts,
+                        "exit_time": exit_time,
+                        "asset": asset,
+                        "strategy": "strategy_a",
+                        "side": side,
+                        "p_model": p_model,
+                        "p_market": p_market,
+                        "edge": edge,
+                        "regime": regime,
+                        "fill_price": fp,
+                        "pnl": pnl,
+                        "fee": fill["fee"],
+                        "label": int(label),
+                    })
 
         # ── Strategy B ────────────────────────────────────────────────────────
         if strategy in ("strategy_b", "both") and model_b is not None:
@@ -202,28 +202,26 @@ def run_backtest(
                     }
                 else:
                     fill = filler.fill(side, window_ts, kalshi_ticks)
-                    if fill is None:
-                        # Maker limit order not filled this window; skip
-                        continue
 
-                fp = fill["fill_price"]
-                pnl = (label - fp) if side == "yes" else ((1 - label) - fp)
+                if fill is not None:
+                    fp = fill["fill_price"]
+                    pnl = (label - fp) if side == "yes" else ((1 - label) - fp)
 
-                records.append({
-                    "entry_time": window_ts,
-                    "exit_time": exit_time,
-                    "asset": asset,
-                    "strategy": "strategy_b",
-                    "side": side,
-                    "p_model": signal_b.confidence,
-                    "p_market": p_market,
-                    "edge": signal_b.residual_magnitude,
-                    "regime": regime,
-                    "fill_price": fp,
-                    "pnl": pnl,
-                    "fee": fill["fee"],
-                    "label": int(label),
-                })
+                    records.append({
+                        "entry_time": window_ts,
+                        "exit_time": exit_time,
+                        "asset": asset,
+                        "strategy": "strategy_b",
+                        "side": side,
+                        "p_model": signal_b.confidence,
+                        "p_market": p_market,
+                        "edge": signal_b.residual_magnitude,
+                        "regime": regime,
+                        "fill_price": fp,
+                        "pnl": pnl,
+                        "fee": fill["fee"],
+                        "label": int(label),
+                    })
 
     if records:
         return pd.DataFrame(records, columns=_RESULT_COLUMNS)
@@ -231,7 +229,7 @@ def run_backtest(
 
 
 def _ensure_strategies_importable() -> None:
-    strategies_path = os.path.abspath("strategies")
+    strategies_path = os.path.normpath(os.path.join(_THIS_DIR, "..", "..", "strategies"))
     if strategies_path not in sys.path:
         sys.path.insert(0, strategies_path)
 
