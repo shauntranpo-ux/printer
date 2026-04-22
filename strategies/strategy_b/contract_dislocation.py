@@ -31,7 +31,7 @@ class ContractDislocationDetector:
         self._threshold: float = float(raw_thresh) if raw_thresh else 2.0
         self._staleness_sec: int = int(dc["signal_staleness_seconds"])
         self._asset: str = config["asset"]["symbol"]
-        self._recent_sigma: float = 0.001  # annualized vol; overridden by update_vol()
+        self._recent_sigma: float = 0.0  # uninitialized; update_vol() must be called before signals fire
 
     def update_vol(self, sigma_forecast: float) -> None:
         """Inject annualized sigma-hat from Strategy A's HAR-RS-J module."""
@@ -51,12 +51,14 @@ class ContractDislocationDetector:
         """
         if not contract_stream or not underlying_stream:
             return None
+        if self._recent_sigma <= 0:
+            return None  # vol estimate not yet injected via update_vol()
 
-        now_ts = pd.Timestamp(contract_stream[-1]["timestamp"])
+        now_ts = self._to_utc(contract_stream[-1]["timestamp"])
         cutoff = now_ts - pd.Timedelta(seconds=self._lookback_sec)
 
-        old_ticks = [t for t in contract_stream if pd.Timestamp(t["timestamp"]) <= cutoff]
-        old_prices = [p for p in underlying_stream if pd.Timestamp(p["timestamp"]) <= cutoff]
+        old_ticks  = [t for t in contract_stream  if self._to_utc(t["timestamp"]) <= cutoff]
+        old_prices = [p for p in underlying_stream if self._to_utc(p["timestamp"]) <= cutoff]
 
         if not old_ticks or not old_prices:
             return None
@@ -98,12 +100,22 @@ class ContractDislocationDetector:
     def _mid(tick: dict) -> float:
         return (float(tick.get("yes_bid", 0.0)) + float(tick.get("yes_ask", 100.0))) / 2.0
 
+    @staticmethod
+    def _to_utc(ts) -> pd.Timestamp:
+        t = pd.Timestamp(ts)
+        return t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
+
     def _implied_dp(self, log_return: float, time_to_expiry_sec: float) -> float:
-        """Delta-P(up) implied by the underlying log-return over the remaining horizon."""
+        """ΔP(up) implied by the underlying log-return over the remaining horizon.
+
+        Annualizes log_return over the lookback window (not TTE), then projects
+        the forward probability using the remaining time-to-expiry.
+        """
         if time_to_expiry_sec <= 0:
             return 0.0
-        dt_years = time_to_expiry_sec / (365.0 * 24.0 * 3600.0)
-        p_before = drift_vol_to_prob(0.0, self._recent_sigma, dt_years)
-        mu_annual = log_return / dt_years  # annualize the realized return
-        p_after = drift_vol_to_prob(mu_annual, self._recent_sigma, dt_years)
+        dt_lookback_years = self._lookback_sec / (365.0 * 24.0 * 3600.0)
+        dt_tte_years = time_to_expiry_sec / (365.0 * 24.0 * 3600.0)
+        p_before = drift_vol_to_prob(0.0, self._recent_sigma, dt_tte_years)
+        mu_annual = log_return / dt_lookback_years
+        p_after = drift_vol_to_prob(mu_annual, self._recent_sigma, dt_tte_years)
         return p_after - p_before

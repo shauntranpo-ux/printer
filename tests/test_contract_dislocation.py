@@ -83,9 +83,9 @@ def test_fade_up_yields_no_side():
     d.update_vol(0.80)
     now = pd.Timestamp.now("UTC")
     old = now - pd.Timedelta(seconds=40)
-    # Contract moved UP more than implied → fade by buying NO
+    # Contract moved UP more than implied (underlying flat) → fade by buying NO
     ticks  = [_tick(old, 60, 62), _tick(now, 65, 67)]
-    prices = [_price(old, 50000), _price(now, 50010)]
+    prices = [_price(old, 50000), _price(now, 50000)]
     sig = d.detect_dislocation(ticks, prices)
     assert sig is not None
     assert sig.direction == "fade_up"
@@ -97,10 +97,20 @@ def test_fade_down_yields_yes_side():
     d.update_vol(0.80)
     now = pd.Timestamp.now("UTC")
     old = now - pd.Timedelta(seconds=40)
-    # Contract dropped more than implied → buy YES (it will revert up)
+    # Contract dropped more than implied (underlying flat) → buy YES (it will revert up)
     ticks  = [_tick(old, 60, 62), _tick(now, 55, 57)]
-    prices = [_price(old, 50000), _price(now, 49990)]
+    prices = [_price(old, 50000), _price(now, 50000)]
     sig = d.detect_dislocation(ticks, prices)
     assert sig is not None
     assert sig.direction == "fade_down"
     assert sig.side == "yes"
+
+
+def test_no_signal_before_vol_injection():
+    d = ContractDislocationDetector(_CFG)  # no update_vol()
+    now = pd.Timestamp.now("UTC")
+    old = now - pd.Timedelta(seconds=40)
+    # Would trigger with bad default sigma; should return None with sentinel guard
+    ticks  = [_tick(old, 60, 62), _tick(now, 65, 67)]
+    prices = [_price(old, 50000), _price(now, 50010)]
+    assert d.detect_dislocation(ticks, prices) is None
