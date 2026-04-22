@@ -1,0 +1,8 @@
+# Conservative flat-rate approximation used for edge threshold computation.
+# Actual Kalshi taker fee formula: ceil(0.07 * C * p * (1-p)) in dollars,
+# which peaks at ~3.5% at p=0.50. This 3% flat is used only for pre-trade
+# threshold checks; the execution layer calls src/strategies/fees.py directly.
+kalshi:
+  taker_fee_rate: 0.03
+  maker_fee_rate: 0.00
+safety_margin: 0.005
