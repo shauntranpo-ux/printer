@@ -19,6 +19,10 @@ class FundingFeatures:
         self._cl_thresh  = float(fc["crowded_long_threshold"])
         self._cs_thresh  = float(fc["crowded_short_threshold"])
         self._oi_thresh  = float(fc["oi_crowded_threshold"])
+        if self._cs_thresh >= 0:
+            raise ValueError(
+                f"crowded_short_threshold must be negative, got {self._cs_thresh}"
+            )
 
     @staticmethod
     def _zscore(buf: deque, val: float) -> float:
@@ -35,12 +39,13 @@ class FundingFeatures:
           open_interest: float  — latest OI in base currency units
           timestamp: (optional; not consumed, kept for interface uniformity)
         """
-        fr = float(data_window.get("funding_rate", 0.0))
-        oi = float(data_window.get("open_interest", 0.0))
-        self._fr_buf.append(fr)
-        self._oi_buf.append(oi)
+        fr = float(data_window.get("funding_rate", 0.0) or 0.0)
+        oi = float(data_window.get("open_interest", 0.0) or 0.0)
+        # Score against prior window before appending (prevents self-contamination)
         fr_z = self._zscore(self._fr_buf, fr)
         oi_z = self._zscore(self._oi_buf, oi)
+        self._fr_buf.append(fr)
+        self._oi_buf.append(oi)
         return {
             "funding_rate_zscore": fr_z,
             "oi_zscore":           oi_z,

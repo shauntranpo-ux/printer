@@ -2,6 +2,18 @@ import numpy as np
 import pytest
 from strategy_a.features.funding import FundingFeatures
 
+_RNG = np.random.default_rng(42)
+
+
+def _varied_baseline(f: FundingFeatures, n: int = 25) -> None:
+    """Feed n slightly-varied observations so the buffer has non-zero std."""
+    rng = np.random.default_rng(0)
+    for _ in range(n):
+        f.compute({
+            "funding_rate": float(0.0001 + rng.normal(0, 1e-5)),
+            "open_interest": float(1e9 + rng.normal(0, 1e7)),
+        })
+
 _CFG = {
     "funding": {
         "zscore_window_days": 7,
@@ -44,16 +56,30 @@ def test_crowded_flags_binary():
 
 
 def test_crowded_long_fires_on_high_fr_and_oi():
-    """crowded_long should fire when both funding z-score and OI z-score exceed thresholds."""
+    """crowded_long fires when both funding z-score AND OI z-score exceed thresholds."""
     f = FundingFeatures(_CFG)
-    # Build a baseline of normal values
-    for _ in range(20):
-        f.compute({"funding_rate": 0.0001, "open_interest": 1e9})
-    # Inject extreme positive funding + high OI
-    result = f.compute({"funding_rate": 10.0, "open_interest": 1e12})
-    # z-scores should be very large positive — crowded_long may or may not fire
-    # depending on how many baseline obs we have, but fr_z should be > 0
-    assert result["funding_rate_zscore"] > 0.0
+    # Build a varied baseline so std > 0
+    _varied_baseline(f, 25)
+    # Inject extreme positive funding + high OI — both z-scores should exceed 2.0 and 1.5
+    result = f.compute({"funding_rate": 10.0, "open_interest": 1e13})
+    assert result["crowded_long"] == 1.0
+
+
+def test_crowded_short_fires_on_low_fr_and_high_oi():
+    """crowded_short fires when funding z-score is very negative AND OI z-score is high."""
+    f = FundingFeatures(_CFG)
+    _varied_baseline(f, 25)
+    result = f.compute({"funding_rate": -10.0, "open_interest": 1e13})
+    assert result["crowded_short"] == 1.0
+
+
+def test_crowded_long_requires_both_conditions():
+    """High funding alone (low OI) must NOT trigger crowded_long."""
+    f = FundingFeatures(_CFG)
+    _varied_baseline(f, 25)
+    # Only funding is extreme; OI stays at baseline (low OI z-score)
+    result = f.compute({"funding_rate": 10.0, "open_interest": 1e9})
+    assert result["crowded_long"] == 0.0
 
 
 def test_single_observation_returns_zero_zscore():
