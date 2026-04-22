@@ -21,6 +21,19 @@ _EXPECTED_KEYS = {
     "sigma_forecast",
 }
 
+_TRAINED_CFG = {
+    "returns": {"granularity_seconds": 10},
+    "har_rs_j": {
+        "timescales_minutes": [15, 60, 240],
+        "coefficients": {
+            "const": 1e-8, "rv_15m_pos": 0.3, "rv_15m_neg": 0.1,
+            "rv_1h_pos": 0.2, "rv_1h_neg": 0.05,
+            "rv_4h_pos": 0.1, "rv_4h_neg": 0.02, "jump": 0.05,
+        },
+    },
+}
+
+
 def _returns(n=300):
     rng = np.random.default_rng(42)
     return rng.normal(0, 0.001, n)
@@ -78,3 +91,13 @@ def test_rv_plus_rv_neg_sum_to_rv():
             f"{scale}: RV+={res[f'{scale}_rv_pos']} + RV-={res[f'{scale}_rv_neg']} "
             f"!= RV={res[f'{scale}_rv']}"
         )
+
+
+def test_trained_forecast():
+    f = HARRSJForecaster(_TRAINED_CFG)
+    f.fit(_returns())
+    res = f.compute()
+    assert res["sigma_forecast"] >= 0.0
+    # Verify the trained path was taken (result differs from sqrt(RV_15m) fallback)
+    fallback = float(np.sqrt(max(res["15m_rv"], 0.0)))
+    assert abs(res["sigma_forecast"] - fallback) > 1e-10
