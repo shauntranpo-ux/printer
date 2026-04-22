@@ -26,7 +26,7 @@ _DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
 def _minutes_until(ts: pd.Timestamp, h: int, m: int) -> float:
     candidate = ts.floor("D") + pd.Timedelta(hours=h, minutes=m)
-    if candidate <= ts:
+    if candidate < ts:
         candidate += pd.Timedelta(days=1)
     return min((candidate - ts).total_seconds() / 60.0, 120.0)
 
@@ -39,6 +39,8 @@ def compute(data_window) -> dict[str, float]:
     ts = pd.Timestamp(data_window)
     if ts.tzinfo is None:
         ts = ts.tz_localize("UTC")
+    else:
+        ts = ts.tz_convert("UTC")
 
     out: dict[str, float] = {}
     hour = ts.hour

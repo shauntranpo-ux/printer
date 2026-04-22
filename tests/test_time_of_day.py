@@ -70,3 +70,31 @@ def test_dow_one_hot_sum():
     result = compute(pd.Timestamp("2026-04-22 10:30:00", tz="UTC"))
     dow_values = [v for k, v in result.items() if k.startswith("dow_")]
     assert sum(dow_values) == 1.0
+
+
+def test_non_utc_tz_converted_correctly():
+    # 06:30 America/New_York = 10:30 UTC = eu_open
+    ts = pd.Timestamp("2026-04-22 06:30:00", tz="America/New_York")
+    result = compute(ts)
+    assert result["session_eu_open"] == 1.0, "Non-UTC input should be converted to UTC first"
+
+
+def test_proximity_zero_at_exact_event():
+    # At exactly 08:00 UTC, minutes_until_0800 should be 0.0
+    ts = pd.Timestamp("2026-04-22 08:00:00", tz="UTC")
+    result = compute(ts)
+    assert result["minutes_until_0800"] == pytest.approx(0.0)
+
+
+def test_monday_asia_open_boundary_sun_2300():
+    # Sun 23:00 exactly should be True
+    ts = pd.Timestamp("2026-04-26 23:00:00", tz="UTC")  # 2026-04-26 is Sunday
+    result = compute(ts)
+    assert result["monday_asia_open"] == 1.0
+
+
+def test_monday_asia_open_boundary_sun_2259():
+    # Sun 22:59 should be False
+    ts = pd.Timestamp("2026-04-26 22:59:00", tz="UTC")
+    result = compute(ts)
+    assert result["monday_asia_open"] == 0.0
