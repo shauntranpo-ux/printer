@@ -1,4 +1,4 @@
-import numpy as np
+import math
 import pytest
 from strategy_a.features.cross_asset import compute, _SENTINEL
 
@@ -43,7 +43,14 @@ def test_not_degraded_when_present():
     assert compute(d)["btc_degraded"] == 0.0
 
 
+def test_sentinel_jump_flag_is_nan():
+    """When degraded, btc_jump_flag must be NaN (not 0.0)."""
+    result = compute({})
+    assert math.isnan(result["btc_jump_flag"]), f"Expected NaN, got {result['btc_jump_flag']}"
+
+
 def test_jump_flag_binary():
+    """On non-degraded path, btc_jump_flag is binary (0.0 or 1.0)."""
     d = {"btc_features": _btc_feats(), "btc_returns": {"1m": 0.001, "5m": 0.002, "15m": 0.003}, "config": {}}
     v = compute(d)["btc_jump_flag"]
     assert v in (0.0, 1.0)
