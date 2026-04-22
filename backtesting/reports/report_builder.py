@@ -73,8 +73,9 @@ def build_asset_report(
     from backtesting.metrics.calibration import calibration_summary
     if len(y_true) > 0 and len(p_hat) > 0:
         cal = calibration_summary(y_true, p_hat)
+        cal = {k: v for k, v in cal.items() if k != "regime"}
     else:
-        cal = {"regime": "all", "brier": None, "log_loss": None, "ece": None, "n": 0}
+        cal = {"brier": None, "log_loss": None, "ece": None, "n": 0}
     cal_path = os.path.join(asset_dir, "calibration_summary.json")
     with open(cal_path, "w", encoding="utf-8") as f:
         json.dump(_make_json_safe(cal), f, indent=2)
@@ -82,7 +83,10 @@ def build_asset_report(
 
     # 7. Trading summary JSON
     from backtesting.metrics.trading import trading_summary
-    ts = trading_summary(trade_log) if not trade_log.empty else {"n_trades": 0}
+    ts = trading_summary(trade_log) if not trade_log.empty else {
+        "n_trades": 0, "sharpe": None, "win_rate": None,
+        "total_pnl": None, "max_drawdown": None, "fee_drag": None,
+    }
     ts_path = os.path.join(asset_dir, "trading_summary.json")
     with open(ts_path, "w", encoding="utf-8") as f:
         json.dump(_make_json_safe(ts), f, indent=2)

@@ -157,21 +157,22 @@ def test_all_json_files_created_and_valid(tmp_path):
 def test_empty_trade_log_no_crash(tmp_path):
     from backtesting.reports.report_builder import build_asset_report
 
-    empty_log = pd.DataFrame(columns=[
-        "entry_time", "exit_time", "asset", "strategy", "side",
-        "p_model", "p_market", "edge", "regime", "fill_price",
-        "pnl", "fee", "label",
-    ])
-    y_true, p_hat = _make_p_arrays()
+    trade_log = pd.DataFrame()
+    y_true = np.array([1, 0, 1])
+    p_hat = np.array([0.7, 0.3, 0.8])
 
     artifacts = build_asset_report(
-        "btc", empty_log, y_true, p_hat,
-        output_dir=str(tmp_path / "reports"),
+        "btc", trade_log, y_true, p_hat,
+        output_dir=str(tmp_path)
     )
-
-    with open(artifacts["trading_summary"], encoding="utf-8") as f:
+    ts_path = artifacts["trading_summary"]
+    with open(ts_path) as f:
         ts = json.load(f)
-    assert ts.get("n_trades") == 0
+
+    assert ts["n_trades"] == 0
+    # All 6 keys must be present
+    for key in ("n_trades", "sharpe", "win_rate", "total_pnl", "max_drawdown", "fee_drag"):
+        assert key in ts, f"Missing key: {key}"
 
 
 # ---------------------------------------------------------------------------

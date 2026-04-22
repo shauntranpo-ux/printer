@@ -5,7 +5,6 @@ Aggregates per-asset summaries into a single comparison table and Markdown repor
 from __future__ import annotations
 import json
 import os
-import pandas as pd
 import numpy as np
 
 
@@ -34,13 +33,11 @@ def build_comparison_report(
             "psr":       ov.get("psr"),
         })
 
-    table = pd.DataFrame(rows)
-
     import jinja2
     template_dir = os.path.join(os.path.dirname(__file__), "templates")
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(template_dir))
     template = env.get_template("comparison_report.md.j2")
-    md = template.render(table=table.to_dict("records"), assets=list(asset_artifacts.keys()))
+    md = template.render(table=rows, assets=list(asset_artifacts.keys()))
 
     os.makedirs(output_dir, exist_ok=True)
     out_path = os.path.join(output_dir, "comparison_report.md")
