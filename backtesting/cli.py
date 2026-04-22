@@ -6,7 +6,6 @@ Usage:
 
 Commands:
     train       Run the training pipeline for one or more assets.
-    validate    Run CPCV validation for one asset.
     backtest    Run the backtest engine for one asset and strategy.
     report      Generate reports for one asset.
     all         Run train → backtest → report for one asset.
@@ -190,7 +189,7 @@ def cmd_dry_run(args) -> None:
         logger.info(f"  {name}: {path} ({size} bytes)")
 
 
-def main() -> None:
+def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Kalshi 15-min crypto strategy backtesting CLI"
     )
@@ -225,6 +224,11 @@ def main() -> None:
     p_dry.add_argument("--strategy", default="a", choices=["a", "b"])
     p_dry.set_defaults(func=cmd_dry_run)
 
+    return parser
+
+
+def main() -> None:
+    parser = _build_parser()
     args = parser.parse_args()
     args.func(args)
 

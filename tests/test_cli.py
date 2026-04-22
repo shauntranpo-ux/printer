@@ -126,18 +126,8 @@ def test_load_global_config():
 
 
 def test_argparse_dry_run():
-    """CLI should parse 'dry-run --asset btc --strategy a' without I/O."""
-    import argparse
-
-    # Rebuild the parser the same way main() does
-    parser = argparse.ArgumentParser()
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    p_dry = sub.add_parser("dry-run")
-    p_dry.add_argument("--asset", default="btc")
-    p_dry.add_argument("--strategy", default="a", choices=["a", "b"])
-    p_dry.set_defaults(func=cli.cmd_dry_run)
-
+    """CLI should parse 'dry-run --asset btc --strategy a' using the real parser."""
+    parser = cli._build_parser()
     args = parser.parse_args(["dry-run", "--asset", "btc", "--strategy", "a"])
     assert args.command == "dry-run"
     assert args.asset == "btc"
