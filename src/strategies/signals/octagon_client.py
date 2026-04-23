@@ -246,7 +246,7 @@ def query(
                 log.warning(
                     "Octagon: no table row within 1%% of strike %d for %s", strike_int, ticker
                 )
-                return _FALLTHROUGH
+                return (None, None, None, cache_hit)
             row = table[closest]
 
         market_prob, model_prob = row
