@@ -1,0 +1,90 @@
+{
+  "ETH": {
+    "A": [
+      {
+        "params": [
+          90,
+          360,
+          0.8,
+          70.0
+        ],
+        "train": {
+          "n": 9891,
+          "wr": 99.22,
+          "ev": 0.391,
+          "pnl": 3872.02,
+          "avg_entry": 97.5,
+          "max_dd": 90.42,
+          "sharpe": 0.1681,
+          "trades_per_week": 95.3
+        },
+        "test": {
+          "n": 5871,
+          "wr": 99.0,
+          "ev": 0.487,
+          "pnl": 2860.7,
+          "avg_entry": 97.0,
+          "max_dd": 106.99,
+          "sharpe": 0.179,
+          "trades_per_week": 49.5
+        }
+      },
+      {
+        "params": [
+          90,
+          300,
+          0.8,
+          70.0
+        ],
+        "train": {
+          "n": 9445,
+          "wr": 99.4,
+          "ev": 0.401,
+          "pnl": 3785.44,
+          "avg_entry": 97.7,
+          "max_dd": 105.52,
+          "sharpe": 0.1964,
+          "trades_per_week": 91.0
+        },
+        "test": {
+          "n": 5609,
+          "wr": 99.23,
+          "ev": 0.484,
+          "pnl": 2717.03,
+          "avg_entry": 97.2,
+          "max_dd": 101.08,
+          "sharpe": 0.2038,
+          "trades_per_week": 47.3
+        }
+      },
+      {
+        "params": [
+          90,
+          360,
+          0.8,
+          75.0
+        ],
+        "train": {
+          "n": 9889,
+          "wr": 99.22,
+          "ev": 0.385,
+          "pnl": 3806.92,
+          "avg_entry": 97.6,
+          "max_dd": 92.79,
+          "sharpe": 0.1663,
+          "trades_per_week": 95.2
+        },
+        "test": {
+          "n": 5870,
+          "wr": 98.99,
+          "ev": 0.48,
+          "pnl": 2816.53,
+          "avg_entry": 97.0,
+          "max_dd": 106.99,
+          "sharpe": 0.1772,
+          "trades_per_week": 49.5
+        }
+      }
+    ]
+  }
+}

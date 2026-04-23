@@ -59,8 +59,14 @@ def cmd_train(args) -> None:
     """Run training pipeline."""
     config = _load_global_config()
     assets = [args.asset] if args.asset else None
-    from backtesting.training.pipeline import run_training_pipeline
-    summaries = run_training_pipeline(config, assets=assets)
+    strategy = getattr(args, "strategy", "both")
+
+    if strategy == "c":
+        from backtesting.training.pipeline import run_strategy_c_training_pipeline
+        summaries = run_strategy_c_training_pipeline(config, assets=assets)
+    else:
+        from backtesting.training.pipeline import run_training_pipeline
+        summaries = run_training_pipeline(config, assets=assets)
     for asset, summary in summaries.items():
         logger.info(f"{asset.upper()}: {summary}")
 
@@ -77,13 +83,77 @@ def cmd_validate(args) -> None:
 
     all_assets = ["btc", "eth", "sol", "xrp"]
     assets_to_run = all_assets if args.asset == "all" else [args.asset]
-    strategies_to_run = ["a", "b"] if args.strategy == "both" else [args.strategy]
+    strategy_arg = getattr(args, "strategy", "both")
+
+    if strategy_arg == "c":
+        # Strategy C uses event-level CPCV only
+        for asset in assets_to_run:
+            if asset.lower() not in ("btc", "eth"):
+                logger.warning("[%s] Strategy C only supports BTC and ETH; skipping.", asset.upper())
+                continue
+            _run_strategy_c_validation(config, asset)
+        return
+
+    strategies_to_run = ["a", "b"] if strategy_arg == "both" else [strategy_arg]
     methods_to_run = ["cpcv", "wfa", "mc"] if args.method == "all" else [args.method]
 
     for asset in assets_to_run:
         for strategy in strategies_to_run:
             for method in methods_to_run:
                 _run_single_validation(config, asset, strategy, method)
+
+
+def _run_strategy_c_validation(config: dict, asset: str) -> None:
+    """Run Strategy C event-level CPCV and write JSON output."""
+    output_dir = os.path.join("backtesting", "output", "validation", asset, "c")
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, "cpcv.json")
+
+    from backtesting.data.loaders import load_bars, load_strike_ladder_history
+    from backtesting.data.label_builder import build_strike_ladder_labels
+
+    try:
+        bars = load_bars(asset)
+    except (FileNotFoundError, ValueError) as exc:
+        logger.warning("[%s] Strategy C validation: skipping bars — %s", asset.upper(), exc)
+        return
+
+    try:
+        ladder_df = load_strike_ladder_history(asset)
+    except FileNotFoundError as exc:
+        logger.warning("[%s] Strategy C validation: skipping ladder — %s", asset.upper(), exc)
+        return
+
+    labels_df = build_strike_ladder_labels(bars, ladder_df)
+    if labels_df.empty:
+        logger.warning("[%s] Strategy C validation: no labels built.", asset.upper())
+        return
+
+    strategy_c_cfg_path = os.path.join("strategies", "strategy_c", "config", f"{asset.lower()}.yaml")
+    strategy_c_config: dict = {}
+    if os.path.exists(strategy_c_cfg_path):
+        with open(strategy_c_cfg_path, encoding="utf-8") as f:
+            strategy_c_config = yaml.safe_load(f) or {}
+
+    val_cfg = config.get("validation", {}).get("strategy_c", {}).get("cpcv", {})
+    from backtesting.validation.strategy_c_cpcv_adapter import run_strategy_c_cpcv
+    try:
+        result_df = run_strategy_c_cpcv(
+            ladder_df=ladder_df,
+            labels_df=labels_df,
+            underlying_bars=bars,
+            strategy_c_config=strategy_c_config,
+            n_groups=val_cfg.get("n_groups", 6),
+            k_test_groups=val_cfg.get("k_test_groups", 2),
+            embargo_hours=val_cfg.get("embargo_hours", 1),
+        )
+    except Exception as exc:
+        logger.warning("[%s] Strategy C CPCV failed: %s", asset.upper(), exc)
+        return
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(result_df.to_dict("records"), f, indent=2, default=str)
+    logger.info("[%s] Strategy C CPCV -> %s", asset.upper(), output_path)
 
 
 def _run_single_validation(config: dict, asset: str, strategy: str, method: str) -> None:
@@ -182,6 +252,72 @@ def _run_single_validation(config: dict, asset: str, strategy: str, method: str)
         logger.info("[%s] MC complete -> %s", asset.upper(), output_path)
 
 
+def cmd_backtest_c(args) -> pd.DataFrame:
+    """Run Strategy C backtest simulation and return trade log."""
+    config = _load_global_config()
+
+    asset = args.asset.lower()
+    if asset not in ("btc", "eth"):
+        logger.error("Strategy C only supports btc and eth; got '%s'.", asset)
+        return pd.DataFrame()
+
+    from backtesting.data.loaders import load_bars, load_strike_ladder_history
+    from backtesting.data.label_builder import build_strike_ladder_labels
+    from backtesting.simulation.strategy_c_adapter import run_strategy_c_backtest
+    from backtesting.training.strategy_c_fitter import load_fitted_strategy_c
+
+    data_cfg = config.get("data", {})
+    try:
+        bars = load_bars(asset, start_date=data_cfg.get("start_date"), end_date=data_cfg.get("end_date"))
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("[%s] Cannot load bars: %s", asset.upper(), exc)
+        return pd.DataFrame()
+
+    try:
+        ladder_df = load_strike_ladder_history(asset)
+    except FileNotFoundError as exc:
+        logger.error("[%s] Cannot load ladder: %s", asset.upper(), exc)
+        return pd.DataFrame()
+
+    labels_df = build_strike_ladder_labels(bars, ladder_df)
+    if labels_df.empty:
+        logger.warning("[%s] No Strategy C labels built.", asset.upper())
+        return pd.DataFrame()
+
+    strategy_c_cfg_path = os.path.join("strategies", "strategy_c", "config", f"{asset}.yaml")
+    strategy_c_config: dict = {}
+    if os.path.exists(strategy_c_cfg_path):
+        with open(strategy_c_cfg_path, encoding="utf-8") as f:
+            strategy_c_config = yaml.safe_load(f) or {}
+
+    fitted_config = load_fitted_strategy_c(asset)
+
+    sim_cfg = config.get("strategy_c", {}).get("simulation", {})
+    run_c1 = sim_cfg.get("run_c1", True)
+    run_c2 = sim_cfg.get("run_c2", True)
+    max_pos = sim_cfg.get("max_positions_per_event", 2)
+
+    trade_log = run_strategy_c_backtest(
+        asset=asset,
+        ladder_df=ladder_df,
+        labels_df=labels_df,
+        underlying_bars=bars,
+        strategy_c_config=strategy_c_config,
+        fitted_config=fitted_config,
+        run_c1=run_c1,
+        run_c2=run_c2,
+        max_positions_per_event=max_pos,
+    )
+
+    logger.info("[%s] Strategy C: %d trades", asset.upper(), len(trade_log))
+    trade_log_dir = os.path.join("backtesting", "output", "trade_logs")
+    os.makedirs(trade_log_dir, exist_ok=True)
+    out_path = os.path.join(trade_log_dir, f"{asset}_c.parquet")
+    if not trade_log.empty:
+        trade_log.to_parquet(out_path, index=False)
+    return trade_log
+
+
 def cmd_backtest(args) -> pd.DataFrame:
     """Run backtest engine and return trade log."""
     config = _load_global_config()
@@ -260,11 +396,22 @@ def cmd_report(args, trade_log: pd.DataFrame | None = None) -> None:
     """Generate per-asset report. trade_log may be passed in from cmd_backtest."""
     config = _load_global_config()
     output_dir = config.get("reports", {}).get("output_dir", "backtesting/output/reports")
+    strategy = getattr(args, "strategy", "a")
+
+    if strategy == "c":
+        from backtesting.reports.report_builder import build_strategy_c_report, render_strategy_c_report
+        if trade_log is None:
+            tl_path = os.path.join("backtesting", "output", "trade_logs", f"{args.asset}_c.parquet")
+            trade_log = pd.read_parquet(tl_path) if os.path.exists(tl_path) else pd.DataFrame()
+        artifacts = build_strategy_c_report(args.asset, trade_log, output_dir=output_dir)
+        render_strategy_c_report(args.asset, artifacts, output_dir=output_dir)
+        logger.info(f"Strategy C report written to {output_dir}/{args.asset}/strategy_c_report.md")
+        return
 
     from backtesting.reports.report_builder import build_asset_report, render_asset_report
 
     if trade_log is None:
-        trade_log_path = os.path.join("backtesting", "output", "trade_logs", f"{args.asset}_{args.strategy}.parquet")
+        trade_log_path = os.path.join("backtesting", "output", "trade_logs", f"{args.asset}_{strategy}.parquet")
         trade_log = pd.read_parquet(trade_log_path) if os.path.exists(trade_log_path) else pd.DataFrame()
 
     y_true = trade_log["label"].values if "label" in trade_log.columns and not trade_log.empty else np.array([])
@@ -279,18 +426,22 @@ def cmd_report(args, trade_log: pd.DataFrame | None = None) -> None:
 
 def cmd_all(args) -> None:
     """Run train -> validate -> backtest -> report sequentially."""
-    logger.info(f"Running full pipeline for {args.asset.upper()} strategy_{args.strategy}")
+    strategy = getattr(args, "strategy", "a")
+    logger.info(f"Running full pipeline for {args.asset.upper()} strategy_{strategy}")
     cmd_train(args)
 
     validate_args = SimpleNamespace(
         asset=args.asset,
-        strategy=args.strategy,
+        strategy=strategy,
         method="all",
         config=CONFIG_PATH,
     )
     cmd_validate(validate_args)
 
-    trade_log = cmd_backtest(args)
+    if strategy == "c":
+        trade_log = cmd_backtest_c(args)
+    else:
+        trade_log = cmd_backtest(args)
     cmd_report(args, trade_log=trade_log)
 
 
@@ -381,8 +532,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_train = sub.add_parser("train", help="Run training pipeline")
     p_train.add_argument("--asset", default=None, help="Asset to train (default: all)")
     p_train.add_argument(
-        "--strategy", default="both", choices=["a", "b", "both"],
-        help="Strategy to train (default: both; pipeline trains strategy A only)",
+        "--strategy", default="both", choices=["a", "b", "c", "both"],
+        help="Strategy to train (default: both; 'c' trains Strategy C for BTC/ETH only)",
     )
     p_train.set_defaults(func=cmd_train)
 
@@ -394,12 +545,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Asset to validate (use 'all' to iterate btc, eth, sol, xrp sequentially)",
     )
     p_val.add_argument(
-        "--strategy", default="both", choices=["a", "b", "both"],
-        help="Strategy to validate (default: both)",
+        "--strategy", default="both", choices=["a", "b", "c", "both"],
+        help="Strategy to validate (default: both; 'c' runs event-level CPCV for BTC/ETH)",
     )
     p_val.add_argument(
         "--method", default="all", choices=["cpcv", "wfa", "mc", "all"],
-        help="Validation method (default: all — runs cpcv, wfa, mc sequentially)",
+        help="Validation method for strategies a/b (default: all); ignored for strategy c",
     )
     p_val.add_argument(
         "--config", default=CONFIG_PATH,
@@ -410,19 +561,19 @@ def _build_parser() -> argparse.ArgumentParser:
     # backtest
     p_bt = sub.add_parser("backtest", help="Run backtest engine")
     p_bt.add_argument("--asset", required=True)
-    p_bt.add_argument("--strategy", default="a", choices=["a", "b"])
-    p_bt.set_defaults(func=lambda args: cmd_backtest(args))
+    p_bt.add_argument("--strategy", default="a", choices=["a", "b", "c"])
+    p_bt.set_defaults(func=lambda args: cmd_backtest_c(args) if args.strategy == "c" else cmd_backtest(args))
 
     # report
     p_rpt = sub.add_parser("report", help="Generate reports")
     p_rpt.add_argument("--asset", required=True)
-    p_rpt.add_argument("--strategy", default="a", choices=["a", "b"])
+    p_rpt.add_argument("--strategy", default="a", choices=["a", "b", "c"])
     p_rpt.set_defaults(func=lambda args: cmd_report(args))
 
     # all
     p_all = sub.add_parser("all", help="Run train -> validate -> backtest -> report")
     p_all.add_argument("--asset", required=True)
-    p_all.add_argument("--strategy", default="a", choices=["a", "b"])
+    p_all.add_argument("--strategy", default="a", choices=["a", "b", "c"])
     p_all.set_defaults(func=cmd_all)
 
     # dry-run

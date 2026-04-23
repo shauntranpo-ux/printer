@@ -112,12 +112,11 @@ def _mini_mc(windows, price_lookup, n_sims: int,
     best_sharpe  = -math.inf
     best_result  = None
 
-    for min_ev, min_confidence, kelly_cap in combos:
+    for min_ev, min_confidence in combos:
         r = run_backtest(
             min_ev         = min_ev,
             trade_amount   = trade_amount,
             min_confidence = min_confidence,
-            kelly_cap      = kelly_cap,
             verbose        = False,
             _windows       = windows,
             _price_lookup  = price_lookup,
@@ -131,7 +130,6 @@ def _mini_mc(windows, price_lookup, n_sims: int,
             best_params = {
                 "min_ev":         min_ev,
                 "min_confidence": min_confidence,
-                "kelly_cap":      kelly_cap,
             }
 
     return best_params, _metrics(best_result)
@@ -236,14 +234,13 @@ def run_walk_forward(
             continue
 
         print(f"     Best params  : ev={best_params['min_ev']:.0%}  "
-              f"conf={best_params['min_confidence']}  kelly={best_params.get('kelly_cap', 0.25):.2f}")
+              f"conf={best_params['min_confidence']}")
 
         # -- Run forward period with best params -------------------------------
         fwd_r = run_backtest(
             min_ev         = best_params["min_ev"],
             trade_amount   = trade_amount,
             min_confidence = best_params["min_confidence"],
-            kelly_cap      = best_params.get("kelly_cap", 0.25),
             verbose        = False,
             _windows       = fwd_w,
             _price_lookup  = fwd_pl,
@@ -360,8 +357,7 @@ def _print_summary(results, efficiency, eff_pt,
     if len(valid_params) >= 2:
         unique_ev   = len({p["min_ev"]         for p in valid_params})
         unique_conf = len({p["min_confidence"] for p in valid_params})
-        unique_kel  = len({p.get("kelly_cap", 0.25) for p in valid_params})
-        if unique_ev == 1 and unique_conf == 1 and unique_kel == 1:
+        if unique_ev == 1 and unique_conf == 1:
             print()
             print("  NOTE: Walk-forward: params converged to same values in all windows.")
             print("  Strategy may be insensitive to these parameters — edge (if any)")

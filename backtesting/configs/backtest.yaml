@@ -52,5 +52,23 @@ reports:
 
 execution:
   assets: [btc, eth, sol, xrp]
-  strategies: [a, b]
+  strategies: [a, b, c]
   sequential_only: true
+
+strategy_c:
+  # Kalshi hourly ladder data root
+  ladder_data_root: data/kalshi/hourly
+
+  simulation:
+    run_c1: true
+    run_c2: true
+    max_positions_per_event: 2
+
+  validation:
+    cpcv:
+      n_groups: 6
+      k_test_groups: 2
+      embargo_hours: 1
+
+  reports:
+    output_subdir: strategy_c

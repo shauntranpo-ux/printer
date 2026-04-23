@@ -115,6 +115,104 @@ def _validate_bars(bars: pd.DataFrame) -> None:
         raise ValueError("bars['timestamp'] must be UTC-aware. Call _enforce_utc first.")
 
 
+def build_strike_ladder_labels(
+    underlying_df: pd.DataFrame,
+    ladder_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Build binary labels for Kalshi hourly strike-ladder contracts (Strategy C).
+
+    For each (event_id, strike), label = 1 if underlying close >= strike at
+    event_close_time, else 0.
+
+    Args:
+        underlying_df: OHLCV bars DataFrame with UTC-aware 'timestamp' column.
+        ladder_df:     Output of load_strike_ladder_history() — one row per
+                       (event_id, strike, snapshot_timestamp).
+
+    Returns:
+        DataFrame with columns:
+            event_id, strike, event_close_time (UTC),
+            label (0/1), reference_price_close
+        One row per (event_id, strike). Events where the underlying close
+        price is unavailable are dropped entirely (all ~40 rows).
+    """
+    if underlying_df.empty or ladder_df.empty:
+        return pd.DataFrame(columns=[
+            "event_id", "strike", "event_close_time", "label", "reference_price_close"
+        ])
+
+    _validate_bars(underlying_df)
+
+    bars = underlying_df.copy().sort_values("timestamp").set_index("timestamp")
+
+    # One row per (event_id, event_close_time)
+    events = (
+        ladder_df[["event_id", "event_close_time"]]
+        .drop_duplicates("event_id")
+        .sort_values("event_close_time")
+        .reset_index(drop=True)
+    )
+
+    # For each event, look up the underlying close at event_close_time
+    # using backward-fill at the nearest bar at or before close_time.
+    close_prices: dict[str, float] = {}
+    dropped_events: list[str] = []
+
+    last_bar_ts = bars.index.max()
+    for _, ev_row in events.iterrows():
+        eid = ev_row["event_id"]
+        close_time = ev_row["event_close_time"]
+        # Require the event close to be within the observed bar range;
+        # otherwise we'd fabricate a "close" from stale data.
+        if close_time > last_bar_ts:
+            logger.warning(
+                "Event %s: close_time %s beyond last bar %s — dropping event.",
+                eid, close_time, last_bar_ts,
+            )
+            dropped_events.append(eid)
+            continue
+        # Find the latest bar at or before close_time
+        candidates = bars.loc[bars.index <= close_time, "close"]
+        if candidates.empty:
+            logger.warning(
+                "Event %s: no underlying bar at or before close_time %s — dropping event.",
+                eid, close_time,
+            )
+            dropped_events.append(eid)
+            continue
+        close_prices[eid] = float(candidates.iloc[-1])
+
+    if dropped_events:
+        logger.warning("Dropped %d event(s) with missing underlying close.", len(dropped_events))
+
+    # Build one row per (event_id, strike) for events that have a close price
+    # Take the unique (event_id, strike) pairs from the ladder
+    per_strike = (
+        ladder_df[["event_id", "event_close_time", "strike"]]
+        .drop_duplicates(subset=["event_id", "strike"])
+        .copy()
+    )
+
+    # Filter to events with a valid close price
+    per_strike = per_strike[per_strike["event_id"].isin(close_prices)].copy()
+
+    if per_strike.empty:
+        logger.warning("No valid labeled rows after filtering dropped events.")
+        return pd.DataFrame(columns=[
+            "event_id", "strike", "event_close_time", "label", "reference_price_close"
+        ])
+
+    per_strike["reference_price_close"] = per_strike["event_id"].map(close_prices)
+    per_strike["label"] = (
+        per_strike["reference_price_close"] >= per_strike["strike"]
+    ).astype(int)
+
+    return per_strike[
+        ["event_id", "strike", "event_close_time", "label", "reference_price_close"]
+    ].reset_index(drop=True)
+
+
 def align_labels_to_signals(
     labels: pd.DataFrame,
     signal_times: pd.DatetimeIndex,

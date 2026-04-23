@@ -53,33 +53,12 @@ class SOLStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
+            is_15m=True,
         )
         self.beta = load_beta("SOL")
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
-        """
-        Override BaseStrategy.decide() to inject Solana network health check
-        into the skip layer before any signal computation.
-        """
-        is_healthy, health_reason = check_solana_health()
-
-        skip_reason = check_skip_with_asset_hook(
-            features, self.skip_config, macro_event_active,
-            asset_hook_result=(is_healthy, health_reason),
-        )
-        if skip_reason:
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=0.5,
-                reason=f"skip_layer: {skip_reason}",
-                contributing_signals={
-                    "solana_healthy": is_healthy,
-                    "solana_health_reason": health_reason,
-                },
-            )
-
-        return self._decide_after_skip(features)
+        return super().decide(features, macro_event_active)
 
     def _decide_after_skip(self, features: MarketFeatures) -> Decision:
         """Full decision pipeline after the skip layer has passed."""

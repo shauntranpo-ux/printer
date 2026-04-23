@@ -52,3 +52,13 @@ class JumpFlag:
     is_jump: bool
     magnitude: float      # |J| = max(RV - BV, 0)
     direction: str        # "up" or "down"
+
+
+@dataclass
+class ArbitrageSignal:
+    """Output of Strategy C2's ladder no-arbitrage scanner."""
+    violation_type: str                         # "monotonicity" | "convexity" | "bounds"
+    strikes_involved: list                      # strike prices involved in the violation
+    recommended_legs: list                      # list of (strike, side, quantity) tuples
+    theoretical_profit_per_contract: float      # gross edge before fees
+    timestamp: pd.Timestamp

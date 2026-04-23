@@ -201,3 +201,106 @@ def run_training_pipeline(
         logger.info(f"[{asset}] Training complete.")
 
     return summaries
+
+
+_STRATEGY_C_ASSETS = ["btc", "eth"]
+
+
+def run_strategy_c_training_pipeline(
+    global_config: dict,
+    assets: Optional[list[str]] = None,
+    per_asset_config_dir: str = "backtesting/configs/per_asset",
+) -> dict[str, dict]:
+    """
+    Fit Strategy C artifacts (HAR-RS-J, calibrators, sidecar config) for BTC and ETH.
+
+    Requires Kalshi hourly ladder data at:
+        data/kalshi/hourly/{ASSET_UPPERCASE}/
+
+    Returns dict of fit summaries keyed by asset name.
+    """
+    strategies_path = os.path.abspath("strategies")
+    if strategies_path not in sys.path:
+        sys.path.insert(0, strategies_path)
+
+    if assets is None:
+        assets = list(_STRATEGY_C_ASSETS)
+    else:
+        assets = [a.lower() for a in assets if a.lower() in _STRATEGY_C_ASSETS]
+
+    train_cfg = global_config.get("training", {})
+    output_dir = train_cfg.get("output_dir", "backtesting/output/models")
+
+    summaries: dict[str, dict] = {}
+
+    for asset in assets:
+        logger.info("[%s] Starting Strategy C training.", asset.upper())
+
+        strategy_c_cfg_path = os.path.join(
+            "strategies", "strategy_c", "config", f"{asset.lower()}.yaml"
+        )
+        if not os.path.exists(strategy_c_cfg_path):
+            logger.warning("[%s] Strategy C config not found: %s", asset.upper(), strategy_c_cfg_path)
+            summaries[asset] = {"status": "skipped", "reason": f"missing {strategy_c_cfg_path}"}
+            continue
+
+        strategy_c_config = _load_yaml(strategy_c_cfg_path)
+
+        # Load underlying bars
+        try:
+            from backtesting.data.loaders import load_bars
+            data_cfg = global_config.get("data", {})
+            bars = load_bars(
+                asset=asset,
+                start_date=data_cfg.get("start_date"),
+                end_date=data_cfg.get("end_date"),
+                check_min_history=True,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            logger.warning("[%s] Strategy C: skipping — bars unavailable: %s", asset.upper(), exc)
+            summaries[asset] = {"status": "skipped", "reason": str(exc)}
+            continue
+
+        # Load ladder history
+        try:
+            from backtesting.data.loaders import load_strike_ladder_history
+            data_cfg = global_config.get("data", {})
+            ladder_df = load_strike_ladder_history(
+                asset=asset,
+                start_date=data_cfg.get("start_date"),
+                end_date=data_cfg.get("end_date"),
+            )
+        except FileNotFoundError as exc:
+            logger.warning("[%s] Strategy C: skipping — ladder data unavailable: %s", asset.upper(), exc)
+            summaries[asset] = {"status": "skipped", "reason": str(exc)}
+            continue
+
+        # Build strike-ladder labels
+        try:
+            from backtesting.data.label_builder import build_strike_ladder_labels
+            labels_df = build_strike_ladder_labels(bars, ladder_df)
+        except Exception as exc:
+            logger.warning("[%s] Strategy C: label build failed: %s", asset.upper(), exc)
+            summaries[asset] = {"status": "error", "reason": str(exc)}
+            continue
+
+        # Fit
+        from backtesting.training.strategy_c_fitter import fit_strategy_c
+        try:
+            result = fit_strategy_c(
+                asset=asset,
+                underlying_bars=bars,
+                ladder_df=ladder_df,
+                labels_df=labels_df,
+                config=strategy_c_config,
+                output_dir=output_dir,
+            )
+        except Exception as exc:
+            logger.error("[%s] Strategy C fit failed: %s", asset.upper(), exc)
+            summaries[asset] = {"status": "error", "reason": str(exc)}
+            continue
+
+        summaries[asset] = result
+        logger.info("[%s] Strategy C training complete.", asset.upper())
+
+    return summaries

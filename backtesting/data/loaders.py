@@ -306,3 +306,116 @@ def load_kalshi_ticks(
     if missing:
         raise ValueError(f"[{asset}] kalshi_ticks missing columns: {missing}")
     return _enforce_utc(df)
+
+
+# ---------------------------------------------------------------------------
+# Strategy C — Kalshi hourly strike-ladder loader
+# ---------------------------------------------------------------------------
+
+_LADDER_REQUIRED = {
+    "event_id", "event_close_time", "timestamp", "strike",
+    "yes_bid", "yes_ask", "no_bid", "no_ask", "mid_price", "volume", "market_id",
+}
+
+
+def load_strike_ladder_history(
+    asset: str,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    base_path: Optional[str] = None,
+) -> pd.DataFrame:
+    """
+    Load Kalshi hourly strike-ladder history for Strategy C backtesting.
+
+    Returns one row per (event_id, strike, snapshot_timestamp).
+
+    # TODO: Verify exact path convention once live Kalshi ladder data pipeline is built.
+    Expected layout:
+        data/kalshi/hourly/{ASSET_UPPERCASE}/
+            one parquet file per event OR one merged parquet for the full history
+
+    Required columns per row:
+        event_id, event_close_time (UTC), timestamp (UTC), strike,
+        yes_bid, yes_ask, no_bid, no_ask, mid_price, volume, market_id
+
+    Incomplete individual events (missing strikes) are dropped with a warning.
+    Missing directory raises FileNotFoundError immediately.
+    """
+    ladder_dir = base_path or os.path.join("data", "kalshi", "hourly", asset.upper())
+
+    if not os.path.exists(ladder_dir):
+        raise FileNotFoundError(
+            f"[{asset}] Kalshi hourly ladder directory not found: {ladder_dir}\n"
+            f"Expected per-event parquet files at data/kalshi/hourly/{asset.upper()}/\n"
+            f"# TODO: populate with live Kalshi ladder history before running Strategy C."
+        )
+
+    parquet_files = sorted(
+        f for f in os.listdir(ladder_dir) if f.endswith(".parquet")
+    )
+    if not parquet_files:
+        raise FileNotFoundError(
+            f"[{asset}] No parquet files found in {ladder_dir}"
+        )
+
+    dfs: list[pd.DataFrame] = []
+    for fname in parquet_files:
+        fpath = os.path.join(ladder_dir, fname)
+        try:
+            df = pd.read_parquet(fpath)
+        except Exception as exc:
+            warnings.warn(
+                f"[{asset}] Skipping malformed parquet '{fname}': {exc}",
+                stacklevel=2,
+            )
+            continue
+
+        missing = _LADDER_REQUIRED - set(df.columns)
+        if missing:
+            warnings.warn(
+                f"[{asset}] Dropping '{fname}' — missing columns: {missing}",
+                stacklevel=2,
+            )
+            continue
+        dfs.append(df)
+
+    if not dfs:
+        raise FileNotFoundError(f"[{asset}] No valid ladder files loaded from {ladder_dir}")
+
+    combined = pd.concat(dfs, ignore_index=True)
+
+    # Enforce UTC on the snapshot timestamp
+    combined = _enforce_utc(combined, ts_col="timestamp")
+
+    # Enforce UTC on event_close_time separately (may be string or datetime)
+    raw_ect = combined["event_close_time"]
+    if pd.api.types.is_float_dtype(raw_ect) or pd.api.types.is_integer_dtype(raw_ect):
+        combined["event_close_time"] = pd.to_datetime(raw_ect, unit="s", utc=True)
+    else:
+        ect = pd.to_datetime(raw_ect)
+        if ect.dt.tz is None:
+            combined["event_close_time"] = ect.dt.tz_localize("UTC")
+        else:
+            combined["event_close_time"] = ect.dt.tz_convert("UTC")
+
+    combined = _filter_date_range(combined, start_date, end_date)
+
+    # Drop events whose ladder is incomplete (< 5 distinct strikes)
+    strike_counts = combined.groupby("event_id")["strike"].nunique()
+    incomplete = strike_counts[strike_counts < 5].index
+    if len(incomplete) > 0:
+        logger.warning(
+            "[%s] Dropping %d event(s) with < 5 distinct strikes (incomplete ladders): %s",
+            asset.upper(), len(incomplete), list(incomplete)[:5],
+        )
+        combined = combined[~combined["event_id"].isin(incomplete)]
+
+    logger.info(
+        "[%s] Loaded %s ladder rows | %d events | %s → %s",
+        asset.upper(),
+        f"{len(combined):,}",
+        combined["event_id"].nunique(),
+        combined["event_close_time"].min().date(),
+        combined["event_close_time"].max().date(),
+    )
+    return combined.reset_index(drop=True)

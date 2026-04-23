@@ -509,7 +509,6 @@ def run_backtest(
     verbose: bool = True,
     min_confidence: int = 65,
     vol_threshold: float = 1.50,   # skip if expected_move / abs_pct >= this
-    kelly_cap: float    = 0.25,    # quarter-Kelly cap; matches bot.py default
     asset: str          = "BTC",   # which asset to backtest
     max_entry_price_cents: float = 100.0,
     min_reward_cents: float = 0.0,
@@ -695,13 +694,8 @@ def run_backtest(
             win_prob   = brain["win_prob"]
             ev         = brain["ev"]
 
-            # Kelly sizing (matches bot.py calculate_contracts with kelly_cap)
-            _b = (100 - entry_c) / entry_c
-            _kf = max(0.0, (win_prob * _b - (1.0 - win_prob)) / _b) if _b > 0 else 0.0
-            _kf = min(_kf, kelly_cap)
-            _typical_kelly = 0.2125
-            _mult = max(0.5, min(3.0, _kf / _typical_kelly)) if _typical_kelly > 0 else 1.0
-            contracts = max(1, int(trade_amount * _mult * 100 / entry_c))
+            # Fixed position sizing (matches bot.py calculate_contracts)
+            contracts = max(1, int(trade_amount * 100 / entry_c))
 
             exit_reason = "expiry"
 
@@ -1007,8 +1001,7 @@ def print_reality_check(r: dict) -> None:
             if len(_all_params) >= 2:
                 _u_ev   = len({p.get("min_ev")          for p in _all_params})
                 _u_conf = len({p.get("min_confidence")  for p in _all_params})
-                _u_kel  = len({p.get("kelly_cap", 0.25) for p in _all_params})
-                wfv_varied = (_u_ev > 1 or _u_conf > 1 or _u_kel > 1)
+                wfv_varied = (_u_ev > 1 or _u_conf > 1)
         except Exception:
             pass
 
@@ -1134,14 +1127,12 @@ MONTE_CARLO_OUT = os.path.join(_BASE_DIR, "monte_carlo_results.json")
 PARAM_SPACE = {
     "min_ev":         [0.03, 0.05, 0.08, 0.10, 0.12, 0.15],
     "min_confidence": [60, 65, 70, 75, 80, 85],
-    "kelly_cap":      [0.10, 0.15, 0.20, 0.25],
 }
 
-# Pre-computed pool of all unique combinations (6 x 6 x 4 = 144)
+# Pre-computed pool of all unique combinations (6 x 6 = 36)
 _ALL_COMBOS = list(itertools.product(
     PARAM_SPACE["min_ev"],
     PARAM_SPACE["min_confidence"],
-    PARAM_SPACE["kelly_cap"],
 ))
 
 
@@ -1183,13 +1174,12 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
     combos_to_run = combo_pool[:effective_n]
 
     t0 = time.time()
-    for i, (min_ev, min_confidence, kelly_cap) in enumerate(combos_to_run, 1):
+    for i, (min_ev, min_confidence) in enumerate(combos_to_run, 1):
 
         r = run_backtest(
             min_ev         = min_ev,
             trade_amount   = trade_amount,
             min_confidence = min_confidence,
-            kelly_cap      = kelly_cap,
             verbose        = False,
             _windows       = windows,
             _price_lookup  = price_lookup,
@@ -1201,7 +1191,6 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
         r["params"] = {
             "min_ev":         min_ev,
             "min_confidence": min_confidence,
-            "kelly_cap":      kelly_cap,
         }
         all_results.append(r)
 
@@ -1269,7 +1258,7 @@ def _print_mc_summary(top20: list) -> None:
     print("-" * W)
     for rank, r in enumerate(top20, 1):
         p = r["params"]
-        param_str = f"ev={p['min_ev']:.0%} conf={p['min_confidence']} kelly={p.get('kelly_cap', 0.25):.2f}"
+        param_str = f"ev={p['min_ev']:.0%} conf={p['min_confidence']}"
         print(f"  {rank:>4}  {r['sharpe_ratio']:>7.3f}  "
               f"{r['win_rate']*100:>7.1f}%  "
               f"${r['total_pnl_dollars']:>7.2f}  "
@@ -1280,7 +1269,6 @@ def _print_mc_summary(top20: list) -> None:
     bp = best["params"]
     print(f"    min_ev          = {bp['min_ev']:.0%}")
     print(f"    min_confidence  = {bp['min_confidence']}")
-    print(f"    kelly_cap       = {bp.get('kelly_cap', 0.25):.2f}")
     print(f"\n  Expected win rate     : {best['win_rate']*100:.1f}%")
     ann_return = (best["total_pnl_dollars"] / (best["total_trades"] * 5.0) *
                   35_040 * 5.0) if best["total_trades"] else 0
@@ -1318,7 +1306,7 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
     print("  OOS EVALUATION")
     print("=" * 70)
     src = "custom" if (custom_ev is not None or custom_confidence is not None) else "MC best"
-    print(f"  Params ({src})  :  ev={params['min_ev']:.0%}  conf={params['min_confidence']}  kelly={params.get('kelly_cap', 0.25):.2f}")
+    print(f"  Params ({src})  :  ev={params['min_ev']:.0%}  conf={params['min_confidence']}")
     print(f"  Train period :  {split_cfg['train_start_date']} -> "
           f"{split_cfg['train_end_date']}  ({split_cfg['train_windows']:,} windows)")
     print(f"  OOS period   :  {split_cfg['oos_start_date']} -> "
@@ -1331,14 +1319,11 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
     train_w, train_pl = _filter_to(all_windows, all_pl, "train", split_cfg)
     oos_w,   oos_pl   = _filter_to(all_windows, all_pl, "oos",   split_cfg)
 
-    kelly_cap = params.get("kelly_cap", 0.25)
-
     print(f"\n  Running in-sample backtest  ({len(train_w):,} windows) ...")
     train_r = run_backtest(
         min_ev         = params["min_ev"],
         trade_amount   = trade_amount,
         min_confidence = params["min_confidence"],
-        kelly_cap      = kelly_cap,
         watch_minutes  = custom_watch,
         verbose        = False,
         _windows       = train_w,
@@ -1350,7 +1335,6 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
         min_ev         = params["min_ev"],
         trade_amount   = trade_amount,
         min_confidence = params["min_confidence"],
-        kelly_cap      = kelly_cap,
         watch_minutes  = custom_watch,
         verbose        = False,
         _windows       = oos_w,

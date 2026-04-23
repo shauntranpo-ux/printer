@@ -115,3 +115,82 @@ Extend or override any `backtest.yaml` key for a specific asset.
 4. **Embargo on label windows.** CPCV purges samples within 30 minutes of a test boundary to prevent leakage from overlapping 15-minute windows.
 
 5. **Dry-run is the acceptance gate.** Before any live deployment, `python backtesting/cli.py dry-run` must complete without assertion errors and produce all 8 report artifacts.
+
+---
+
+## Strategy C — Kalshi Hourly Strike-Ladder (BTC + ETH only)
+
+Strategy C models Kalshi hourly binary options as a strike ladder forming an empirical risk-neutral CDF. Two sub-strategies run independently per event:
+
+- **C1**: Per-strike probability surface model (HAR-RS-J volatility forecast + N(d₂) digital call + per-moneyness IsotonicRegression calibration)
+- **C2**: Model-free ladder no-arbitrage scanner (monotonicity, convexity, bounds violations)
+
+### Additional directory structure
+
+```
+backtesting/
+├── training/
+│   └── strategy_c_fitter.py          # fit_strategy_c() — HAR + calibrators + fitted.yaml
+├── validation/
+│   └── strategy_c_cpcv_adapter.py    # event-level CPCV (all strikes per event in same fold)
+├── metrics/
+│   └── strike_ladder_metrics.py      # per-moneyness calibration, per-event P&L, C2 summary
+├── simulation/
+│   └── strategy_c_adapter.py         # run_strategy_c_backtest() — event-driven C1+C2 loop
+└── reports/
+    └── templates/
+        ├── strategy_c_asset_report.md.j2
+        └── strategy_c_comparison.md.j2
+```
+
+Strategies and per-asset configs live under `strategies/strategy_c/` (not in the backtesting layer).
+
+### Data requirements
+
+Kalshi hourly ladder history must exist at:
+```
+data/kalshi/hourly/BTC/   ← one or more parquet files per event
+data/kalshi/hourly/ETH/
+```
+
+Required columns per row: `event_id`, `event_close_time` (UTC), `timestamp` (UTC), `strike`, `yes_bid`, `yes_ask`, `no_bid`, `no_ask`, `mid_price`, `volume`, `market_id`.
+
+### Strategy C CLI commands
+
+```bash
+# Train Strategy C for BTC
+python backtesting/cli.py train --asset btc --strategy c
+
+# Event-level CPCV validation
+python backtesting/cli.py validate --asset btc --strategy c
+
+# Run simulation
+python backtesting/cli.py backtest --asset btc --strategy c
+
+# Generate reports
+python backtesting/cli.py report --asset btc --strategy c
+
+# Full pipeline
+python backtesting/cli.py all --asset btc --strategy c
+```
+
+### Key differences from Strategies A/B
+
+| Property | Strategies A/B | Strategy C |
+|----------|---------------|------------|
+| Market | 15-min binary up/down | Hourly strike-ladder (40 strikes/event) |
+| Assets | BTC, ETH, SOL, XRP | BTC, ETH only |
+| CPCV split unit | 15-min bar | Kalshi event (all strikes together) |
+| Embargo | 30 minutes | 1 hour |
+| Position cap | 1 per window | 2 per event (C1+C2 combined) |
+| Fee model | 3% taker | 3% taker |
+
+### Hard constraints (in addition to global constraints)
+
+6. **BTC and ETH only.** Strategy C never runs for SOL or XRP. The code raises `ValueError` if another asset is passed.
+
+7. **Event-level CPCV.** All ~40 strikes for a single Kalshi event must be assigned to the same fold. Row-level splits are forbidden.
+
+8. **2-position cap per event.** C1 and C2 combined may not exceed 2 positions per event. The simulation adapter enforces this cap in `run_strategy_c_backtest()`.
+
+9. **Sidecar config only.** Fitted artifacts are written to `strategies/strategy_c/config/{asset}.fitted.yaml`. The original `{asset}.yaml` is never modified.

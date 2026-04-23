@@ -1,0 +1,97 @@
+{
+  "settings": {
+    "strategy": "lead_lag (BTC 15-min lead)",
+    "window_minutes": 60,
+    "eval_interval_seconds": 300,
+    "strike_increment_eth": 10.0,
+    "min_entry_price_cents": 35,
+    "max_spread_cents": 4.0,
+    "min_seconds_left": 120,
+    "vol_gate_thresh": 4.0,
+    "vol_confirm_mult": 1.25,
+    "vol_oppose_mult": 0.7,
+    "mom_lock_enabled": true,
+    "mom_lock_neutral_tighten": 1.0,
+    "mom_accel_scale": 3.0,
+    "eth_min_ev": 0.02,
+    "eth_calibration": "identity (no calibration)",
+    "btc_status": "disabled",
+    "eth_signals": [
+      "btc_15min_lead_x_beta",
+      "btc_5min_accel",
+      "corr_stability",
+      "rsi_confirm",
+      "bollinger_confirm"
+    ],
+    "stake_dollars": 25.0
+  },
+  "results": {
+    "ETH": {
+      "metrics": {
+        "total_trades": 1601,
+        "total_windows": 20038,
+        "trade_rate_pct": 8.0,
+        "wins": 1240,
+        "losses": 361,
+        "win_rate_pct": 77.5,
+        "total_pnl": 1215.59,
+        "avg_pnl": 0.759,
+        "max_drawdown": 664.39,
+        "sharpe": 0.048,
+        "avg_ev_at_entry": 0.035
+      },
+      "quarterly": {
+        "2024Q1": {
+          "trades": 248,
+          "win_rate": 75.4,
+          "pnl": 88.77
+        },
+        "2024Q2": {
+          "trades": 175,
+          "win_rate": 72.0,
+          "pnl": -447.53
+        },
+        "2024Q3": {
+          "trades": 228,
+          "win_rate": 79.4,
+          "pnl": 196.9
+        },
+        "2024Q4": {
+          "trades": 212,
+          "win_rate": 78.3,
+          "pnl": 133.01
+        },
+        "2025Q1": {
+          "trades": 216,
+          "win_rate": 74.5,
+          "pnl": 399.28
+        },
+        "2025Q2": {
+          "trades": 96,
+          "win_rate": 83.3,
+          "pnl": 156.13
+        },
+        "2025Q3": {
+          "trades": 30,
+          "win_rate": 83.3,
+          "pnl": 80.02
+        },
+        "2025Q4": {
+          "trades": 155,
+          "win_rate": 76.8,
+          "pnl": 343.95
+        },
+        "2026Q1": {
+          "trades": 225,
+          "win_rate": 80.9,
+          "pnl": 292.95
+        },
+        "2026Q2": {
+          "trades": 16,
+          "win_rate": 81.2,
+          "pnl": -27.89
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,92 @@
+asset:
+  symbol: BTC
+  kalshi_event_prefix: KXBTCD   # TODO: verify exact Kalshi hourly ladder market prefix for BTC
+  reference_source: spot
+  reference_exchange: binance
+  strike_spacing_usd: 100
+
+returns:
+  granularity_seconds: 60
+
+probability:
+  risk_free_rate: 0.0
+  drift_adjustment_enabled: true
+  drift_adjustment_weight: null   # fit during training
+
+vol_term_structure:
+  sub_interval_minutes: 15
+  regime_multipliers:
+    asia_deep_night: null
+    asia_active: null
+    eu_open: null
+    eu_us_overlap: null
+    us_afternoon: null
+    us_late: null
+
+moneyness:
+  deep_itm_log_moneyness_cutoff: -0.02
+  itm_log_moneyness_cutoff: -0.005
+  atm_log_moneyness_cutoff: 0.005
+  otm_log_moneyness_cutoff: 0.02
+  # beyond otm_log_moneyness_cutoff → deep_otm
+  deep_otm_implied_prob_cutoff: 0.15
+  deep_itm_implied_prob_cutoff: 0.85
+
+calibration:
+  per_bucket:
+    deep_itm: isotonic
+    itm: isotonic
+    atm: isotonic
+    otm: isotonic
+    deep_otm: platt
+  artifact_paths:
+    deep_itm: null
+    itm: null
+    atm: null
+    otm: null
+    deep_otm: null
+
+cross_asset:
+  enabled: false   # BTC is the upstream predictor; it does not consume cross-asset features
+  jump_lookback_minutes: 5
+
+funding:
+  sources: [binance, bybit]
+  zscore_window_days: 7
+  crowded_long_threshold: 2.0
+  crowded_short_threshold: -2.0
+  oi_crowded_threshold: 1.5
+
+model:
+  type: logistic_regression
+  weights_path: null
+
+thresholds:
+  # Edge required above the fee hurdle, per regime.  null → 0.02 default until tuned.
+  base_edge_above_fee:
+    asia_deep_night: null
+    asia_active: null
+    eu_open: null
+    eu_us_overlap: null
+    us_afternoon: null
+    us_late: null
+    weekend: null
+  moneyness_multiplier:
+    deep_itm: 2.0
+    itm: 1.0
+    atm: 1.0
+    otm: 1.0
+    deep_otm: 2.0
+  longshot_buy_penalty: 0.02
+
+selection:
+  max_positions_per_event: 2
+  min_strike_spacing_count: 3
+
+c2_scanner:
+  monotonicity_tolerance: 0.002
+  convexity_tolerance: 0.002
+  bounds_epsilon: 0.005
+
+volatility_reference:
+  annualized: 0.43

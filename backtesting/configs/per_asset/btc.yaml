@@ -8,3 +8,10 @@ min_samples: 26000
 volatility_reference_annualized: 0.43
 
 granularity_seconds: 60
+
+# Strategy C overrides for BTC
+strategy_c:
+  kalshi_market_prefix: KXBTCH
+  strike_spacing_usd: 100
+  volatility_reference_annualized: 0.43
+  min_events_for_calibration: 30

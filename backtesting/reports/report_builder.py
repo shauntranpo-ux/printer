@@ -296,3 +296,99 @@ def _load_json_safe(path: Optional[str]) -> dict:
         return {}
     with open(path, encoding="utf-8") as f:
         return json.load(f)
+
+
+# ---------------------------------------------------------------------------
+# Strategy C report
+# ---------------------------------------------------------------------------
+
+def build_strategy_c_report(
+    asset: str,
+    trade_log: pd.DataFrame,
+    labels_df: Optional[pd.DataFrame] = None,
+    cpcv_results: Optional[pd.DataFrame] = None,
+    output_dir: str = "backtesting/output/reports",
+) -> dict[str, str]:
+    """
+    Generate Strategy C per-asset report artifacts.
+    Returns dict mapping artifact_name -> file_path.
+    """
+    from backtesting.metrics.strike_ladder_metrics import (
+        per_moneyness_calibration,
+        c2_arbitrage_summary,
+        strategy_c_full_summary,
+    )
+
+    asset_dir = os.path.join(output_dir, asset)
+    os.makedirs(asset_dir, exist_ok=True)
+    artifacts: dict[str, str] = {}
+
+    # Equity curve
+    path = _plot_equity_curve(trade_log, asset_dir, asset)
+    artifacts["equity_curve"] = path
+
+    # Summary JSONs
+    full_summary = strategy_c_full_summary(trade_log, labels_df)
+    sum_path = os.path.join(asset_dir, "strategy_c_summary.json")
+    with open(sum_path, "w", encoding="utf-8") as f:
+        json.dump(_make_json_safe(full_summary), f, indent=2)
+    artifacts["strategy_c_summary"] = sum_path
+
+    c2_sum = c2_arbitrage_summary(trade_log)
+    c2_path = os.path.join(asset_dir, "strategy_c2_summary.json")
+    with open(c2_path, "w", encoding="utf-8") as f:
+        json.dump(_make_json_safe(c2_sum), f, indent=2)
+    artifacts["strategy_c2_summary"] = c2_path
+
+    # Per-moneyness calibration table
+    mono_df = per_moneyness_calibration(trade_log)
+    mono_path = os.path.join(asset_dir, "strategy_c_moneyness_cal.json")
+    with open(mono_path, "w", encoding="utf-8") as f:
+        json.dump(_make_json_safe(mono_df.to_dict("records")), f, indent=2)
+    artifacts["strategy_c_moneyness_cal"] = mono_path
+
+    # CPCV results
+    if cpcv_results is not None and not cpcv_results.empty:
+        cpcv_path = os.path.join(asset_dir, "strategy_c_cpcv.json")
+        with open(cpcv_path, "w", encoding="utf-8") as f:
+            json.dump(_make_json_safe(cpcv_results.to_dict("records")), f, indent=2, default=str)
+        artifacts["strategy_c_cpcv"] = cpcv_path
+
+    return artifacts
+
+
+def render_strategy_c_report(
+    asset: str,
+    artifacts: dict[str, str],
+    output_dir: str = "backtesting/output/reports",
+) -> str:
+    """Render the Strategy C Jinja2 Markdown report."""
+    import jinja2
+    template_dir = os.path.join(os.path.dirname(__file__), "templates")
+    env = jinja2.Environment(loader=jinja2.FileSystemLoader(template_dir))
+    template = env.get_template("strategy_c_asset_report.md.j2")
+
+    summary = _load_json_safe(artifacts.get("strategy_c_summary"))
+    c2 = _load_json_safe(artifacts.get("strategy_c2_summary"))
+    moneyness_cal = _load_json_safe(artifacts.get("strategy_c_moneyness_cal"))
+    if not isinstance(moneyness_cal, list):
+        moneyness_cal = []
+    cpcv_rows = _load_json_safe(artifacts.get("strategy_c_cpcv"))
+    if not isinstance(cpcv_rows, list):
+        cpcv_rows = []
+
+    md = template.render(
+        asset=asset.upper(),
+        summary=summary,
+        c2=c2,
+        moneyness_cal=moneyness_cal,
+        cpcv_rows=cpcv_rows,
+        artifacts=artifacts,
+    )
+
+    asset_dir = os.path.join(output_dir, asset)
+    os.makedirs(asset_dir, exist_ok=True)
+    out_path = os.path.join(asset_dir, "strategy_c_report.md")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(md)
+    return md

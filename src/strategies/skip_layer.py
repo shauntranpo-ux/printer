@@ -209,3 +209,25 @@ def check_entry_price_cap(entry_cents: float, side: str, cfg: SkipConfig) -> Opt
             f">= {cfg.max_entry_price_cents:.0f}c (fee drag)"
         )
     return None
+
+
+def check_skip_15m(
+    features: MarketFeatures,
+    min_price_cents: float = 10.0,
+) -> Optional[str]:
+    """
+    Minimal pre-EV gate for 15-minute markets.
+
+    Only enforces the deep-OTM floor (10c). The 76c ceiling is enforced
+    post-EV by check_entry_price_cap() using cfg.max_entry_price_cents.
+    All other hourly gates (spread, cold_start, macro_event, min_seconds_left,
+    buffer_too_thin, momentum_lock) are intentionally absent for 15m markets.
+    """
+    cheap = min(features.yes_ask, features.no_ask)
+    if cheap < min_price_cents:
+        cheap_side = "yes" if features.yes_ask < features.no_ask else "no"
+        return (
+            f"price_floor_15m: {cheap_side}_ask={cheap:.0f}c "
+            f"below {min_price_cents:.0f}c floor"
+        )
+    return None

@@ -56,6 +56,7 @@ class ETHStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
+            is_15m=True,
         )
         self.beta = load_beta("ETH")
 

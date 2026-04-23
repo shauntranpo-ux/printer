@@ -56,17 +56,18 @@ def test_sol_decides_trade_or_skip_when_healthy(mock_health):
     assert d.action in ("trade", "skip")
 
 
-@patch("strategies.sol_strategy.check_solana_health",
-       return_value=(False, "rpc_timeout"))
-def test_sol_skips_when_network_unhealthy(mock_health):
+def test_sol_network_health_no_longer_gates():
+    # Solana health check has been removed from the 15m gate stack.
+    # The strategy should proceed to EV evaluation regardless of network state.
     strat = SOLStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.05,
         stake_dollars=5.0,
     )
     d = strat.decide(_sol_features(above_strike=True))
-    assert d.action == "skip"
-    assert "rpc_timeout" in d.reason or "asset_hook" in d.reason
+    # Decision should be based on EV/price gates, not the health check.
+    assert "asset_hook" not in d.reason
+    assert "rpc_timeout" not in d.reason
 
 
 @patch("strategies.sol_strategy.check_solana_health", return_value=(True, "ok"))
