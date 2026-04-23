@@ -1,14 +1,14 @@
-"""
-asset_manager.py — Asset configuration, BV3 lookup, and Binance price feeds.
+﻿"""
+asset_manager.py â€” Asset configuration, BV3 lookup, and Binance price feeds.
 
 Provides:
-  ASSET_CONFIG        — per-asset metadata (strike increment, Kalshi series, Binance symbol)
-  load_bv3_tables()   — loads JSON tables from bv3_tables/
-  empirical_win_prob  — per-asset BV3 probability lookup
-  bv3_bucket_indices  — (dist_idx, time_idx) for recording outcomes
-  binance_feed_task() — async coroutine maintaining per-asset price deques
-  get_price(asset)    — latest price for an asset
-  price_age_seconds   — seconds since last update
+  ASSET_CONFIG        â€” per-asset metadata (strike increment, Kalshi series, Binance symbol)
+  load_bv3_tables()   â€” loads JSON tables from bv3_tables/
+  empirical_win_prob  â€” per-asset BV3 probability lookup
+  bv3_bucket_indices  â€” (dist_idx, time_idx) for recording outcomes
+  binance_feed_task() â€” async coroutine maintaining per-asset price deques
+  get_price(asset)    â€” latest price for an asset
+  price_age_seconds   â€” seconds since last update
 """
 
 import asyncio
@@ -27,10 +27,10 @@ BV3_DIR  = os.path.join(BASE_DIR, "bv3_tables")
 
 BINANCE_WS = "wss://stream.binance.com:9443/stream"
 
-# ── Asset registry ─────────────────────────────────────────────────────────────
+# â”€â”€ Asset registry â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # kalshi_series: ordered list to try (first match wins).
 #   Named after the pattern observed for BTC (KXBTCD active as of 2026).
-#   ETH/SOL/XRP/DOGE series names are guessed from the BTC pattern;
+#   ETH/SOL/XRP series names are guessed from the BTC pattern;
 #   if Kalshi uses different tickers, fetch_market_for_asset() will return None
 #   and the bot will silently skip that asset (logged as WARNING).
 # strike_increment: rounding unit for nearest-strike computation.
@@ -38,12 +38,12 @@ ASSET_CONFIG = {
     "BTC": {
         "binance_symbol":   "btcusdt",
         "strike_increment": 1000.0,
-        "kalshi_series":    ("KXBTCD", "BTCD-B"),  # hourly above/below only — no 15-min (no validated edge)
+        "kalshi_series":    ("KXBTCD", "BTCD-B"),  # hourly above/below only â€” no 15-min (no validated edge)
     },
     "ETH": {
         "binance_symbol":   "ethusdt",
         "strike_increment": 25.0,
-        "kalshi_series":    ("KXETHD", "ETHD-B"),  # hourly above/below only — validated Mid+Dwell+Late edge
+        "kalshi_series":    ("KXETHD", "ETHD-B"),  # hourly above/below only â€” validated Mid+Dwell+Late edge
     },
     "SOL": {
         "binance_symbol":   "solusdt",
@@ -55,14 +55,9 @@ ASSET_CONFIG = {
         "strike_increment": 0.01,
         "kalshi_series":    ("KXXRPD", "XRPD-B", "KXXRP15M", "KXXRP15", "KXXRP", "XRP"),
     },
-    "DOGE": {
-        "binance_symbol":   "dogeusdt",
-        "strike_increment": 0.001,
-        "kalshi_series":    ("KXDOGED", "DOGED-B", "KXDOGE15M", "KXDOGE15", "KXDOGE", "DOGE"),
-    },
 }
 
-# ── Hardcoded BTC fallback table (original, used when no JSON file is present) ─
+# â”€â”€ Hardcoded BTC fallback table (original, used when no JSON file is present) â”€
 # Rows = distance buckets, Cols = minutes remaining (1-13)
 _BV3_TABLE_FALLBACK = [
     [0.850, 0.796, 0.758, 0.727, 0.705, 0.686, 0.672, 0.656, 0.639, 0.624, 0.606, 0.595, 0.578],
@@ -78,16 +73,16 @@ _BV3_TABLE_FALLBACK = [
 ]
 _BV3_DIST_BOUNDS_FALLBACK = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.0075, 0.010, 0.0125]
 
-# ── Per-asset BV3 tables (populated by load_bv3_tables) ───────────────────────
+# â”€â”€ Per-asset BV3 tables (populated by load_bv3_tables) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # _bv3[asset] = {"table": [...], "dist_bounds": [...], "loaded": bool, "label": str}
 _bv3: dict[str, dict] = {}
 
-# ── Per-asset price deques ─────────────────────────────────────────────────────
-# asset → deque[(unix_ts, price)]
+# â”€â”€ Per-asset price deques â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# asset â†’ deque[(unix_ts, price)]
 _prices: dict[str, deque] = {asset: deque(maxlen=500) for asset in ASSET_CONFIG}
 
 
-# ═══════════════════════════════ BV3 loading ═══════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• BV3 loading â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _fallback_entry() -> dict:
     return {
@@ -102,8 +97,8 @@ def load_bv3_tables(use_pre2023: bool = False) -> None:
     """
     Load BV3 JSON tables from bv3_tables/ for all known assets.
 
-    use_pre2023=True  → load *_bv3_pre2023.json (for backtesting)
-    use_pre2023=False → load *_bv3_full.json     (for live trading)
+    use_pre2023=True  â†’ load *_bv3_pre2023.json (for backtesting)
+    use_pre2023=False â†’ load *_bv3_full.json     (for live trading)
 
     Falls back to the hardcoded BTC table if no JSON file exists for an asset.
     """
@@ -126,20 +121,20 @@ def load_bv3_tables(use_pre2023: bool = False) -> None:
                     f"label={data.get('label', suffix)}, path={path})"
                 )
             except Exception as exc:
-                log.warning(f"BV3 [{asset}] failed to load {path}: {exc} — using fallback")
+                log.warning(f"BV3 [{asset}] failed to load {path}: {exc} â€” using fallback")
                 _bv3[asset] = _fallback_entry()
         else:
             if asset == "BTC":
-                log.warning(f"BV3 [BTC] not found at {path} — using hardcoded fallback")
+                log.warning(f"BV3 [BTC] not found at {path} â€” using hardcoded fallback")
             else:
                 log.info(
-                    f"BV3 [{asset}] no table at {path} — using BTC fallback "
+                    f"BV3 [{asset}] no table at {path} â€” using BTC fallback "
                     f"(volatility may differ; generate with: python generate_bv3_table.py --asset {asset})"
                 )
             _bv3[asset] = _fallback_entry()
 
 
-# ═══════════════════════════════ BV3 lookup ════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• BV3 lookup â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def empirical_win_prob(asset: str, abs_pct: float, mins_left: float) -> float:
     """
@@ -198,7 +193,7 @@ def bv3_bucket_indices(asset: str, abs_pct: float, mins_left: float) -> tuple[in
     return bidx, t_low
 
 
-# ═══════════════════════════════ Price feeds ═══════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• Price feeds â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def get_price(asset: str) -> float | None:
     """Return the most recent price for an asset, or None if no data."""
@@ -216,10 +211,10 @@ def price_age_seconds(asset: str) -> float | None:
     return time.time() - dq[-1][0]
 
 
-# Coinbase public REST URL for spot prices — no auth, works globally
+# Coinbase public REST URL for spot prices â€” no auth, works globally
 _COINBASE_SPOT_URL = "https://api.coinbase.com/v2/prices/{asset}-USD/spot"
 
-# Consecutive Binance-451 counter — switch to Coinbase fallback after this many
+# Consecutive Binance-451 counter â€” switch to Coinbase fallback after this many
 _binance_451_streak: int = 0
 _BINANCE_451_THRESHOLD = 5   # switch after 5 consecutive 451s
 
@@ -245,7 +240,7 @@ async def coinbase_price_task(enabled_assets: list[str]) -> None:
                     for asset in valid_assets:
                         try:
                             age = price_age_seconds(asset)
-                            # Only fill in when Binance has been silent ≥5s
+                            # Only fill in when Binance has been silent â‰¥5s
                             if age is not None and age < 5:
                                 continue
                             url = _COINBASE_SPOT_URL.format(asset=asset)
@@ -281,14 +276,14 @@ async def binance_feed_task(enabled_assets: list[str]) -> None:
       wss://stream.binance.com:9443/stream?streams=btcusdt@aggTrade/ethusdt@aggTrade/...
 
     On environments where Binance is geo-blocked (HTTP 451), the coinbase_price_task
-    coroutine provides prices as a fallback — start both tasks in parallel.
+    coroutine provides prices as a fallback â€” start both tasks in parallel.
     """
     global _binance_451_streak
 
     # Build stream list
     valid_assets = [a for a in enabled_assets if a in ASSET_CONFIG]
     if not valid_assets:
-        log.warning("binance_feed_task: no valid assets — price feed not started")
+        log.warning("binance_feed_task: no valid assets â€” price feed not started")
         return
 
     streams = "/".join(
@@ -297,7 +292,7 @@ async def binance_feed_task(enabled_assets: list[str]) -> None:
     )
     url = f"{BINANCE_WS}?streams={streams}"
 
-    # Map "BTCUSDT" → "BTC" for fast lookup
+    # Map "BTCUSDT" â†’ "BTC" for fast lookup
     sym_to_asset = {
         ASSET_CONFIG[a]["binance_symbol"].upper(): a
         for a in valid_assets
@@ -332,7 +327,7 @@ async def binance_feed_task(enabled_assets: list[str]) -> None:
                 if _binance_451_streak == 1:
                     log.warning(
                         "Binance feed geo-blocked (HTTP 451). "
-                        "coinbase_price_task will supply prices — trading continues."
+                        "coinbase_price_task will supply prices â€” trading continues."
                     )
                 elif _binance_451_streak % 20 == 0:
                     log.debug(f"Binance 451 streak: {_binance_451_streak}")
@@ -341,3 +336,5 @@ async def binance_feed_task(enabled_assets: list[str]) -> None:
                 log.error(f"Binance feed disconnected ({exc}). Reconnecting in 3s...")
                 _binance_451_streak = 0
                 await asyncio.sleep(3)
+
+

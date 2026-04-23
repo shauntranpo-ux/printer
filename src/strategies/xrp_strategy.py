@@ -67,6 +67,7 @@ class XRPStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
+            is_15m=True,
         )
         self.beta = load_beta("XRP")
         self.event_calendar = event_calendar or EventCalendar()

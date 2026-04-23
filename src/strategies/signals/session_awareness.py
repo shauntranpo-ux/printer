@@ -1,14 +1,13 @@
-"""
+﻿"""
 Session awareness for elevated skip thresholds on specific trading
 windows where idiosyncratic volatility is historically higher.
 
-For DOGE specifically:
 - Weekend (Saturday/Sunday UTC): retail-heavy, lower institutional
   liquidity, more meme-driven moves
 - US afternoon (18:00-22:00 UTC, roughly 1-5pm ET): post-lunch retail
   activity, Robinhood-style flow peaks
 
-During these sessions, DOGE's idiosyncratic variance is higher. Rather
+During these sessions, variance is higher during these sessions. Rather
 than trying to predict direction, we raise Min EV so only the clearest
 setups trigger.
 """
@@ -48,3 +47,4 @@ def session_min_ev_multiplier(session: str) -> float:
     if session in ("weekend", "us_afternoon"):
         return 1.25
     return 1.0
+

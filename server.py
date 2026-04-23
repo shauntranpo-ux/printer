@@ -1,5 +1,5 @@
-"""
-server.py — Flask backend for the Kalshi BTC bot dashboard.
+﻿"""
+server.py â€” Flask backend for the Kalshi BTC bot dashboard.
 
 Reads from kalshi_bot.db and bot_state.json (written by bot.py).
 Writes to config.json when the user changes settings.
@@ -73,13 +73,13 @@ if not os.path.exists("config.json"):
 
 app = Flask(__name__)
 
-# ── Bot subprocess tracking ──
+# â”€â”€ Bot subprocess tracking â”€â”€
 _bot_process: subprocess.Popen | None = None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Helpers
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _safe_json_read(path: str, default):
     """Read a JSON file and return default on any error (missing, corrupt, etc)."""
@@ -169,9 +169,9 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  API endpoints
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 @app.route("/api/state")
 def api_state():
@@ -356,10 +356,10 @@ def api_config():
     action = data.get("action")
     if action in ("enable_asset", "disable_asset", "set_asset_ev"):
         asset = data.get("asset", "").upper()
-        valid_assets = {"BTC", "ETH", "SOL", "XRP", "DOGE"}
+        valid_assets = {"BTC", "ETH", "SOL", "XRP"}
         if asset not in valid_assets:
             return jsonify({"error": f"Unknown asset {asset!r}"}), 400
-        enabled = config.setdefault("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"])
+        enabled = config.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
         if action == "enable_asset":
             if asset not in enabled:
                 enabled.append(asset)
@@ -412,12 +412,12 @@ def api_config():
     new_mode    = config.get("mode", "paper")
 
     if "bot_enabled" in data and new_enabled != prev_enabled:
-        icon = "▶️" if new_enabled else "⏹"
-        _telegram_notify(f"{icon} <b>Bot {'ENABLED' if new_enabled else 'DISABLED'}</b>  —  {now_str}\nMode: {new_mode.upper()}")
+        icon = "â–¶ï¸" if new_enabled else "â¹"
+        _telegram_notify(f"{icon} <b>Bot {'ENABLED' if new_enabled else 'DISABLED'}</b>  â€”  {now_str}\nMode: {new_mode.upper()}")
 
     if "mode" in data and new_mode != prev_mode:
-        icon = "💵" if new_mode == "live" else "📄"
-        _telegram_notify(f"{icon} <b>Mode switched to {new_mode.upper()}</b>  —  {now_str}")
+        icon = "ðŸ’µ" if new_mode == "live" else "ðŸ“„"
+        _telegram_notify(f"{icon} <b>Mode switched to {new_mode.upper()}</b>  â€”  {now_str}")
 
     return jsonify(config)
 
@@ -535,7 +535,7 @@ def api_pnl():
 
         # Per-asset today
         cfg = read_config()
-        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP"])
         today_by_asset = {}
         for asset in enabled_assets:
             a_trades = [t for t in today_trades if t.get("asset") == asset]
@@ -587,7 +587,7 @@ def api_markets():
     try:
         state = read_state()
         cfg   = read_config()
-        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP"])
 
         assets = state.get("assets", {})
 
@@ -622,7 +622,7 @@ def api_market_state():
     try:
         state = read_state()
         cfg   = read_config()
-        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP"])
         assets = state.get("assets", {})
 
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -657,7 +657,7 @@ def api_market_state():
         log.error(f"api_market_state error: {exc}", exc_info=True)
         # Return OFFLINE placeholder for all known assets so the JS grid always renders
         _default_assets = {a: {"phase": "OFFLINE", "price": None, "daily": {"wins": 0, "losses": 0, "pnl": 0.0}}
-                           for a in ["BTC", "ETH", "SOL", "XRP", "DOGE"]}
+                           for a in ["BTC", "ETH", "SOL", "XRP"]}
         return jsonify({"assets": _default_assets, "ts": None, "bot_enabled": False})
 
 
@@ -778,7 +778,7 @@ def api_bot_stop():
                 _bot_process.terminate()
             _bot_process.wait(timeout=5)
         except subprocess.TimeoutExpired:
-            log.warning(f"Bot process {pid} did not stop in 5s — killing")
+            log.warning(f"Bot process {pid} did not stop in 5s â€” killing")
             _bot_process.kill()
             _bot_process.wait(timeout=3)
         except Exception as kill_exc:
@@ -797,9 +797,9 @@ def health():
     return '{"status":"ok"}', 200, {"Content-Type": "application/json"}
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  AI Analysis endpoints
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _latest_analysis_file() -> str | None:
     files = sorted(glob.glob("daily_analysis/*.json"))
@@ -899,9 +899,9 @@ def api_weekly():
 
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Entry point
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -909,3 +909,4 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     log.info(f"Starting Flask on 0.0.0.0:{port}")
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False, threaded=True)
+

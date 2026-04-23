@@ -1,8 +1,8 @@
-"""
-bot.py — Core trading logic for the Kalshi 15-minute prediction market bot.
+﻿"""
+bot.py â€” Core trading logic for the Kalshi 15-minute prediction market bot.
 
 Connects to Binance WebSocket for live crypto prices, polls Kalshi for the
-soonest-expiring 15-minute markets (ETH, SOL, XRP, DOGE), evaluates
+soonest-expiring 15-minute markets (ETH, SOL, XRP), evaluates
 evidence-based strategy signals, places paper or live orders, and enforces
 daily loss / profit limits. Writes bot_state.json every cycle for server.py.
 
@@ -45,7 +45,7 @@ from asset_manager import (
     coinbase_price_task,
 )
 
-# ─────────────────────────── logging ──────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
@@ -53,7 +53,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("bot")
 
-# Separate logger for Brain v3 decisions — writes to brain.log only
+# Separate logger for Brain v3 decisions â€” writes to brain.log only
 brain_log = logging.getLogger("brain")
 brain_log.setLevel(logging.INFO)
 brain_log.propagate = False   # don't bleed into the main bot log
@@ -61,7 +61,7 @@ _brain_fh = logging.FileHandler("brain.log", encoding="utf-8")
 _brain_fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
 brain_log.addHandler(_brain_fh)
 
-# ─────────────────────────── constants ────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 KALSHI_LIVE_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 KALSHI_DEMO_BASE_URL = "https://demo-api.kalshi.co/trade-api/v2"
 KALSHI_BASE_URL      = KALSHI_LIVE_BASE_URL  # overwritten at startup based on mode
@@ -71,26 +71,26 @@ MARKET_CACHE_TTL = 30     # seconds to cache the active market
 WATCH_PHASE_SECONDS = 30   # wait 30s into each 15-min session before evaluating
 
 # Kalshi platform fee: ~7c per $1 contract, subtracted from gross EV.
-# Without this, every EV calculation was 7% optimistic — trades that looked
+# Without this, every EV calculation was 7% optimistic â€” trades that looked
 # +5% edge were actually -2% after fees.
 KALSHI_FEE = 0.07
 
 
-# ── Telegram notifications (optional — set env vars to enable) ────────────────
+# â”€â”€ Telegram notifications (optional â€” set env vars to enable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID",   "")
 
-# ─────────────────────────── file paths (env-overridable for multi-strategy) ──
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ file paths (env-overridable for multi-strategy) â”€â”€
 _CONFIG_FILE = os.environ.get("BOT_CONFIG_FILE", "config.json")
 _DB_FILE     = os.environ.get("BOT_DB_FILE",     "kalshi_bot.db")
 _STATE_FILE  = os.environ.get("BOT_STATE_FILE",  "bot_state.json")
 
 # Derive data directory from DB path so all persistent files land together.
-# On Railway: BOT_DB_FILE=/app/data/kalshi_bot.db  → _DATA_DIR=/app/data (volume).
-# Local dev:  BOT_DB_FILE not set, DB at cwd/kalshi_bot.db → _DATA_DIR=cwd.
+# On Railway: BOT_DB_FILE=/app/data/kalshi_bot.db  â†’ _DATA_DIR=/app/data (volume).
+# Local dev:  BOT_DB_FILE not set, DB at cwd/kalshi_bot.db â†’ _DATA_DIR=cwd.
 _DATA_DIR = os.path.dirname(os.path.abspath(_DB_FILE))
 
-# ─────────────────────────── global state ─────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ global state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # btc_prices is an alias to asset_manager's BTC price deque.
 # All existing code that reads btc_prices (momentum, vol, feed) works unchanged.
 btc_prices: deque = asset_manager._prices["BTC"]
@@ -111,7 +111,7 @@ _market_cache_ts: float = 0.0
 _all_markets_cache: list = []
 _all_markets_cache_ts: float = 0.0
 
-# Live BV3 correction table — tracks actual win rates per (dist_idx, time_idx) bucket
+# Live BV3 correction table â€” tracks actual win rates per (dist_idx, time_idx) bucket
 # Updated after every resolved trade. Blended into _empirical_win_prob().
 _bv3_corrections: dict = {}  # (dist_idx, time_idx) -> [wins, total]
 _BV3_CORRECTIONS_FILE = os.path.join(_DATA_DIR, "bv3_corrections.json")
@@ -122,7 +122,7 @@ limit_reason: str = ""
 pre_limit_mode: str | None = None
 daily_reset_date = None
 
-# Price-validator CSV — counts rows collected and running totals for summary
+# Price-validator CSV â€” counts rows collected and running totals for summary
 _PRICE_VAL_CSV = os.path.join(_DATA_DIR, "price_validation_log.csv")
 _price_val_count: int = 0
 _price_val_gap_n: int = 0      # rows where real_yes is not None (valid gap count)
@@ -140,10 +140,10 @@ last_reversal_reason: str = ""   # most recent reversal signal evaluation (pass/
 # Per-asset eval snapshots for dashboard market cards (keyed by asset ticker)
 _asset_eval: dict = {}
 
-# Contract price history — tracks YES ask over time per ticker for velocity signal
-_contract_price_history: dict = {}   # ticker → deque[(ts, price)]
+# Contract price history â€” tracks YES ask over time per ticker for velocity signal
+_contract_price_history: dict = {}   # ticker â†’ deque[(ts, price)]
 
-# Adaptive weights — updated every 20 completed trades from DB analysis
+# Adaptive weights â€” updated every 20 completed trades from DB analysis
 _adaptive: dict = {
     "last_calibrated_count": 0,
     "low_price_wins":    False,
@@ -151,7 +151,7 @@ _adaptive: dict = {
     "threshold_adjust":  0,
 }
 
-# Brain self-calibration — updated every 5 completed trades
+# Brain self-calibration â€” updated every 5 completed trades
 _brain_cal: dict = {
     "last_count":        0,
     "prob_scale":        1.0,   # multiplies our true_prob estimate (learned correction)
@@ -159,14 +159,14 @@ _brain_cal: dict = {
     "confidence_bonus":  0,     # added to confidence score as a reward
     "reward_tier":       0,     # 0=none 1=good(>50%) 2=great(>75%) 3=max(>85%)
     "overall_wr":        0.0,   # tracked for dashboard display
-    # condition win rates: key = "dist_time_mom" → [wins, total]
+    # condition win rates: key = "dist_time_mom" â†’ [wins, total]
     "condition_wr":      {},
     # momentum direction performance
     "bullish_wr":        0.5,
     "bearish_wr":        0.5,
 }
 
-# Config cache — fallback if config.json is corrupt mid-write
+# Config cache â€” fallback if config.json is corrupt mid-write
 _last_good_config: dict | None = None
 
 # Consecutive-loss circuit breaker
@@ -177,9 +177,9 @@ _consecutive_loss_pause_until: float | None = None  # unix ts; None = not paused
 _consecutive_price_skips: int = 0
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Atomic JSON write utility
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def atomic_write_json(data: dict, path: str) -> None:
     """
@@ -204,23 +204,23 @@ def atomic_write_json(data: dict, path: str) -> None:
         raise
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Price-validator CSV logger
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 import csv as _csv_module  # import here to keep top-level imports clean
 
 
 def _simulated_amm_midpoint(btc_price: float, strike: float) -> tuple[float, float]:
     """
-    Deterministic midpoint of simulate_amm_prices() — same distance bands as
+    Deterministic midpoint of simulate_amm_prices() â€” same distance bands as
     backtest.py but without random noise, so each call is reproducible.
     Used to record what the backtest *expects* vs what Kalshi actually quotes.
     """
     pct   = (btc_price - strike) / strike
     ap    = abs(pct) * 100
     above = pct > 0
-    spread = 4.5  # midpoint of backtest's 3.0–6.0 spread
+    spread = 4.5  # midpoint of backtest's 3.0â€“6.0 spread
 
     if ap < 0.10:
         yes_ask = 51.5 if above else 48.5
@@ -293,9 +293,9 @@ def _log_price_validation(
         avg_sim  = _price_val_sim_sum / n
         avg_real = _price_val_real_sum / _price_val_gap_n if _price_val_gap_n > 0 else 0.0
         avg_gap  = _price_val_gap_sum  / _price_val_gap_n if _price_val_gap_n > 0 else 0.0
-        verdict  = ("✓ within 3c" if abs(avg_gap) < 3
-                    else "⚠ 3-7c gap — edge marginal" if abs(avg_gap) < 7
-                    else "✗ >7c gap — strategy likely unprofitable")
+        verdict  = ("âœ“ within 3c" if abs(avg_gap) < 3
+                    else "âš  3-7c gap â€” edge marginal" if abs(avg_gap) < 7
+                    else "âœ— >7c gap â€” strategy likely unprofitable")
         log.info(
             f"Price validation: {n} samples collected. "
             f"Avg price gap: {avg_gap:+.1f}c. "
@@ -304,9 +304,9 @@ def _log_price_validation(
         )
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Config helpers
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def read_config() -> dict:
     """Read and return the contents of the config file.
@@ -318,7 +318,7 @@ def read_config() -> dict:
     try:
         with open(_CONFIG_FILE, "r") as fh:
             cfg = json.load(fh)
-        cfg.setdefault("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"])
+        cfg.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
         _last_good_config = cfg
         return cfg
     except json.JSONDecodeError as exc:
@@ -339,7 +339,7 @@ def write_config(data: dict) -> None:
 
 
 def get_asset_config(config: dict, asset: str, field: str, default=None):
-    """Get config value — asset override if present, else global value, else default."""
+    """Get config value â€” asset override if present, else global value, else default."""
     overrides = config.get("asset_overrides", {}).get(asset, {})
     if field in overrides:
         return overrides[field]
@@ -352,7 +352,7 @@ def _init_config() -> None:
 
     Set BOT_MODE=live and BOT_ENABLED=true in Railway environment variables
     so live mode survives every redeploy without manual editing.
-    Daily loss limits still work — they set limit_triggered in memory which
+    Daily loss limits still work â€” they set limit_triggered in memory which
     is checked independently of the mode flag.
     """
     # Build defaults
@@ -361,13 +361,13 @@ def _init_config() -> None:
         "trade_amount_dollars": 25,
         "mode": "paper",
         "confidence_threshold": 72,
-        "daily_loss_limit_dollars": 50,          # 2× trade size — real guard, not $5M decoration
+        "daily_loss_limit_dollars": 50,          # 2Ã— trade size â€” real guard, not $5M decoration
         "daily_profit_target_dollars": 200,
         "max_consecutive_losses": 5,             # pause 15 min after this many losses in a row
-        "enable_reversal_signal": False,         # disabled by default — no backtested evidence yet
+        "enable_reversal_signal": False,         # disabled by default â€” no backtested evidence yet
         "min_ev_base": 8,                        # raised from 3 to 8 after adding fee accounting
         "kalshi_fee_per_contract_cents": 7,      # Kalshi platform fee; update if pricing changes
-        "preflight_override": False,             # set true ONLY to bypass pre-flight hard stop — not recommended
+        "preflight_override": False,             # set true ONLY to bypass pre-flight hard stop â€” not recommended
     }
 
     # Load existing config or start from defaults
@@ -380,7 +380,7 @@ def _init_config() -> None:
     else:
         cfg = defaults.copy()
 
-    # Persistent bot_enabled from Railway volume — survives redeploys
+    # Persistent bot_enabled from Railway volume â€” survives redeploys
     # (written by server.py whenever the dashboard toggle changes)
     _data_dir = os.path.dirname(os.path.abspath(_DB_FILE))
     _be_state = os.path.join(_data_dir, "bot_enabled.state")
@@ -390,7 +390,7 @@ def _init_config() -> None:
         except Exception:
             pass
 
-    # Railway env var overrides — highest priority, set once, persist forever
+    # Railway env var overrides â€” highest priority, set once, persist forever
     if "BOT_MODE" in os.environ:
         cfg["mode"] = os.environ["BOT_MODE"].strip().lower()
     if "BOT_ENABLED" in os.environ:
@@ -404,9 +404,9 @@ def _init_config() -> None:
     log.info(f"Config ready: mode={cfg['mode']} enabled={cfg['bot_enabled']}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Database
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def init_db() -> None:
     """Create the database and all required tables if they do not exist."""
@@ -495,7 +495,7 @@ def init_db() -> None:
             )
         """)
 
-        # Migrate existing DB — add new columns if not present
+        # Migrate existing DB â€” add new columns if not present
         for col, typedef in (
             ("order_id",          "TEXT"),
             ("asset",             "TEXT DEFAULT 'BTC'"),  # multi-asset support
@@ -542,7 +542,7 @@ def test_db_write() -> None:
     except Exception as exc:
         log.error(f"DB self-test FAILED: {exc}")
         log.error(f"DB path: {os.path.abspath(_DB_FILE)}")
-        log.error("Cannot write trades — halting to prevent silent data loss.")
+        log.error("Cannot write trades â€” halting to prevent silent data loss.")
         sys.exit(2)
 
 
@@ -637,9 +637,9 @@ async def db_get_today_pnl(mode: str) -> float:
         return 0.0
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Kalshi auth
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _phase_for_eth(asset, elapsed_seconds):
     """Return ETH hourly window-phase label ('Mid'/'Dwell'/'Late') or None.
@@ -689,7 +689,7 @@ async def _maybe_fill_verification_notify(
       - Posted:     the price actually sent to Kalshi (may differ via retry drift).
       - Filled:     the price Kalshi returned on fill.
 
-    Warns with ⚠️ when abs(filled - target) > 3¢. Silently skips for 15m
+    Warns with âš ï¸ when abs(filled - target) > 3Â¢. Silently skips for 15m
     markets or when fill_yes_price is None.
     """
     # Derive elapsed_seconds / duration from `market` (the function's local).
@@ -707,19 +707,19 @@ async def _maybe_fill_verification_notify(
     _ask = market_ask_at_post_c
     _posted = price_this_attempt
     _filled = fill_yes_price
-    _target_str = f"{int(round(_target))}¢" if _target is not None else "—"
-    _ask_str    = f"{int(round(_ask))}¢"    if _ask    is not None else "—"
-    _posted_str = f"{int(round(_posted))}¢" if _posted is not None else "—"
-    _filled_str = f"{int(round(_filled))}¢"
+    _target_str = f"{int(round(_target))}Â¢" if _target is not None else "â€”"
+    _ask_str    = f"{int(round(_ask))}Â¢"    if _ask    is not None else "â€”"
+    _posted_str = f"{int(round(_posted))}Â¢" if _posted is not None else "â€”"
+    _filled_str = f"{int(round(_filled))}Â¢"
     if _target is not None:
         _slip_target = int(round(_filled - _target))
-        _slip_target_str = f"{_slip_target:+d}¢ vs target"
-        _warn = "⚠️ " if abs(_slip_target) > 3 else "🎯 "
+        _slip_target_str = f"{_slip_target:+d}Â¢ vs target"
+        _warn = "âš ï¸ " if abs(_slip_target) > 3 else "ðŸŽ¯ "
     else:
         _slip_target_str = "n/a vs target"
-        _warn = "🎯 "
+        _warn = "ðŸŽ¯ "
     _slip_market_str = (
-        f"{int(round(_filled - _ask)):+d}¢ vs market" if _ask is not None else "n/a vs market"
+        f"{int(round(_filled - _ask)):+d}Â¢ vs market" if _ask is not None else "n/a vs market"
     )
     _ctx = _notify_ctx(asset, ticker, _duration_min, _phase_for_eth(asset, _elapsed_sec))
     await send_telegram(
@@ -735,11 +735,11 @@ async def _maybe_fill_verification_notify(
 async def send_telegram(text: str) -> None:
     """Send a Telegram notification with up to 3 retries on failure."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        return  # silently skip — Telegram is optional
+        return  # silently skip â€” Telegram is optional
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     for attempt in range(1, 4):
         try:
-            log.info(f"Telegram: sending (attempt {attempt}/3)…")
+            log.info(f"Telegram: sending (attempt {attempt}/3)â€¦")
             async with aiohttp.ClientSession() as tg:
                 async with tg.post(
                     url,
@@ -751,24 +751,24 @@ async def send_telegram(text: str) -> None:
                         log.info("Telegram: sent OK")
                         return
                     elif resp.status == 429:
-                        log.warning(f"Telegram: rate-limited (429) — attempt {attempt}/3, retrying…")
+                        log.warning(f"Telegram: rate-limited (429) â€” attempt {attempt}/3, retryingâ€¦")
                     else:
-                        log.warning(f"Telegram: HTTP {resp.status} — {body}")
+                        log.warning(f"Telegram: HTTP {resp.status} â€” {body}")
                         return  # non-retryable HTTP error
         except Exception as exc:
-            log.warning(f"Telegram: error on attempt {attempt}/3 — {exc}")
+            log.warning(f"Telegram: error on attempt {attempt}/3 â€” {exc}")
         if attempt < 3:
             await asyncio.sleep(2)
-    log.error("Telegram: failed after 3 attempts — notification dropped")
+    log.error("Telegram: failed after 3 attempts â€” notification dropped")
 
 
 def load_credentials(mode: str = "paper") -> None:
     """
     Load Kalshi API credentials from environment variables based on active mode.
 
-    paper — skips credential loading (no API calls needed)
-    live  — loads KALSHI_API_KEY + KALSHI_PRIVATE_KEY, routes to live endpoint
-    demo  — loads KALSHI_DEMO_API_KEY + KALSHI_DEMO_PRIVATE_KEY, routes to demo endpoint
+    paper â€” skips credential loading (no API calls needed)
+    live  â€” loads KALSHI_API_KEY + KALSHI_PRIVATE_KEY, routes to live endpoint
+    demo  â€” loads KALSHI_DEMO_API_KEY + KALSHI_DEMO_PRIVATE_KEY, routes to demo endpoint
 
     Credential values may be a PEM string or a path to a PEM file.
     Exits with a clear error message if required variables are missing.
@@ -778,7 +778,7 @@ def load_credentials(mode: str = "paper") -> None:
     if mode == "paper":
         # Paper mode simulates fills but still reads real Kalshi market data.
         # Load live credentials if present so market fetch/orderbook calls work.
-        # Non-fatal if missing — bot runs fully simulated without them.
+        # Non-fatal if missing â€” bot runs fully simulated without them.
         _key = os.environ.get("KALSHI_API_KEY", "").strip()
         _pem = os.environ.get("KALSHI_PRIVATE_KEY", "").strip()
         if _key and _pem:
@@ -788,7 +788,7 @@ def load_credentials(mode: str = "paper") -> None:
                 private_key = serialization.load_pem_private_key(pem_bytes, password=None)
                 log.info("Paper mode: Kalshi credentials loaded for market data access.")
             except Exception as exc:
-                log.warning(f"Paper mode: credential load failed ({exc}) — market data unavailable.")
+                log.warning(f"Paper mode: credential load failed ({exc}) â€” market data unavailable.")
         return
 
     if mode == "demo":
@@ -808,11 +808,11 @@ def load_credentials(mode: str = "paper") -> None:
     if not api_key or not pem_val:
         missing = key_id_var if not api_key else pem_var
         if mode == "demo":
-            # Demo creds not set in environment — degrade gracefully to paper mode
+            # Demo creds not set in environment â€” degrade gracefully to paper mode
             # so the bot doesn't crash-loop. Set KALSHI_DEMO_API_KEY and
             # KALSHI_DEMO_PRIVATE_KEY in Railway to enable demo trading.
             log.warning(
-                f"{missing} not set — DEMO mode requires demo credentials. "
+                f"{missing} not set â€” DEMO mode requires demo credentials. "
                 f"Falling back to paper mode. Add the env vars in Railway to enable demo."
             )
             try:
@@ -840,7 +840,7 @@ def load_credentials(mode: str = "paper") -> None:
             print(f"ERROR: {missing} is not set (required for {label} mode).")
             sys.exit(1)
 
-    # Safety assertions — fail loudly rather than silently routing to the wrong endpoint
+    # Safety assertions â€” fail loudly rather than silently routing to the wrong endpoint
     if mode == "demo" and KALSHI_BASE_URL != KALSHI_DEMO_BASE_URL:
         print(f"SAFETY ERROR: demo mode must use demo URL; got {KALSHI_BASE_URL}")
         sys.exit(1)
@@ -873,7 +873,7 @@ def kalshi_headers(method: str, path: str) -> dict:
         path:   URL path without the base URL (e.g. '/markets').
 
     Returns:
-        Dict of header name → value.
+        Dict of header name â†’ value.
     """
     ts = str(int(time.time() * 1000))
     # Kalshi signs the full URL path including the /trade-api/v2 prefix
@@ -897,18 +897,18 @@ def kalshi_headers(method: str, path: str) -> dict:
     }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  BTC price feed
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def get_btc_price() -> float | None:
     """Return the most recent BTC price, or None if no data received yet."""
     return _am_get_price("BTC")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Market fetching
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool = False) -> dict | None | list:
     """
@@ -930,7 +930,7 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         return _all_markets_cache if return_all else _market_cache
 
     path = "/markets"
-    # Hourly above/below markets only. KXBTC15M (15-min directional) is excluded —
+    # Hourly above/below markets only. KXBTC15M (15-min directional) is excluded â€”
     # no validated edge; paper trading showed 50/50 win rate from legacy strategy.
     _SERIES_SEARCH_ORDER = ("KXBTCD", "BTCD-B")
     all_markets = []
@@ -1018,7 +1018,7 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
             )
         ]
         if soon:
-            log.info(f"No short-duration match by open→close — using {len(soon)} markets closing within 60 min.")
+            log.info(f"No short-duration match by openâ†’close â€” using {len(soon)} markets closing within 60 min.")
             pool = soon
         else:
             log.warning("No short-duration markets found. Waiting for next window.")
@@ -1026,7 +1026,7 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
 
     pool.sort(key=lambda m: m.get("close_time", ""))
 
-    # Filter out markets that have already closed — sort picks earliest close_time
+    # Filter out markets that have already closed â€” sort picks earliest close_time
     # first, which can be an expired market when multiple windows are returned.
     def _is_open(m):
         ct = m.get("close_time")
@@ -1053,7 +1053,7 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         focused = [m for m, d in zip(pool, durations) if d is not None and d <= min_dur + 5]
         if focused and len(focused) < len(pool):
             log.info(f"Focusing pool from {len(pool)} to {len(focused)} markets "
-                     f"(duration ≤ {min_dur + 5:.0f}m, dropping {len(pool) - len(focused)} longer-duration markets)")
+                     f"(duration â‰¤ {min_dur + 5:.0f}m, dropping {len(pool) - len(focused)} longer-duration markets)")
             pool = focused
 
     _market_cache    = pool[0]
@@ -1117,7 +1117,7 @@ async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> 
         except Exception:
             return -1.0
 
-    # Accept up to 75 minutes — covers hourly markets (KXETHD) at window open.
+    # Accept up to 75 minutes â€” covers hourly markets (KXETHD) at window open.
     # The old 20-minute cap was designed for 15-min markets only and blocked all
     # hourly windows at entry time.
     valid = [m for m in all_markets if 0 < secs_to_close(m) < 75 * 60]
@@ -1130,9 +1130,9 @@ async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> 
     return chosen
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Strike parsing
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def parse_strike(market: dict) -> float | None:
     """
@@ -1171,9 +1171,9 @@ def parse_strike(market: dict) -> float | None:
     return None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Timing helpers
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def seconds_remaining(market: dict) -> float:
     """Seconds until the market closes. Returns 0 if already expired."""
@@ -1203,9 +1203,9 @@ def seconds_elapsed(market: dict) -> float:
     return max(0.0, 15 * 60 - seconds_remaining(market))
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Orderbook fetching
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def fetch_orderbook(
     session: aiohttp.ClientSession,
@@ -1216,7 +1216,7 @@ async def fetch_orderbook(
     Fetch live prices for one market ticker.
 
     For AMM markets (KXBTC15M) the /orderbook endpoint returns empty arrays.
-    We call GET /markets/{ticker} directly for fresh AMM prices — never using
+    We call GET /markets/{ticker} directly for fresh AMM prices â€” never using
     the 30-second-cached market object, which can be stale enough to produce
     completely wrong prices after a BTC move.
 
@@ -1231,7 +1231,7 @@ async def fetch_orderbook(
         except (TypeError, ValueError):
             return None
 
-    # ── Step 1: try the orderbook endpoint (populated for limit-order markets)
+    # â”€â”€ Step 1: try the orderbook endpoint (populated for limit-order markets)
     ob_path = f"/markets/{ticker}/orderbook"
     try:
         async with session.get(
@@ -1259,7 +1259,7 @@ async def fetch_orderbook(
     best_no_ask  = min(p for p, _ in no_asks)  if no_asks  else None
     best_yes_bid = (100 - max(p for p, _ in no_asks)) if no_asks else None
 
-    # ── Step 2: AMM fallback — fetch the individual market fresh (not cached).
+    # â”€â”€ Step 2: AMM fallback â€” fetch the individual market fresh (not cached).
     #    The market cache TTL is 30s which is too stale for AMM price fields.
     #    A direct GET /markets/{ticker} gives real-time yes_ask/no_ask dollars.
     if best_yes_ask is None or best_no_ask is None:
@@ -1314,12 +1314,12 @@ async def fetch_orderbook(
         if best_yes_ask is not None or best_no_ask is not None:
             log.info(
                 f"AMM prices for {ticker}: "
-                f"yes_ask={best_yes_ask}¢  no_ask={best_no_ask}¢  yes_bid={best_yes_bid}¢"
+                f"yes_ask={best_yes_ask}Â¢  no_ask={best_no_ask}Â¢  yes_bid={best_yes_bid}Â¢"
             )
 
     if best_yes_ask is None or best_no_ask is None:
         # Diagnostic: dump the raw market fields so we can see what Kalshi actually returned.
-        # On demo, non-BTC markets sometimes return no AMM fields at all — this log tells us
+        # On demo, non-BTC markets sometimes return no AMM fields at all â€” this log tells us
         # whether the field is missing vs. present but zero vs. present but filtered out.
         _diag_keys = ("yes_ask_dollars", "no_ask_dollars", "yes_bid_dollars", "no_bid_dollars",
                       "last_price", "status", "volume", "liquidity")
@@ -1331,28 +1331,28 @@ async def fetch_orderbook(
         )
         return None
 
-    # Sanity check — reject prices outside [1, 100]. 0c is impossible; >100c is data corruption.
+    # Sanity check â€” reject prices outside [1, 100]. 0c is impossible; >100c is data corruption.
     # One side at 100c is valid at window open (e.g. yes_ask=12c, no_ask=100c).
-    # Both at 100c means the market hasn't opened yet — reject.
+    # Both at 100c means the market hasn't opened yet â€” reject.
     if not (1 <= best_yes_ask <= 100 and 1 <= best_no_ask <= 100):
         log.warning(
             f"Orderbook prices out of range for {ticker}: "
-            f"yes_ask={best_yes_ask}c no_ask={best_no_ask}c — skipping"
+            f"yes_ask={best_yes_ask}c no_ask={best_no_ask}c â€” skipping"
         )
         return None
     if best_yes_ask == 100 and best_no_ask == 100:
-        log.debug(f"Both sides at ceiling for {ticker} — market not ready yet")
+        log.debug(f"Both sides at ceiling for {ticker} â€” market not ready yet")
         return None
     if best_yes_ask + best_no_ask < 100:
         log.warning(
             f"Orderbook sum below 100 for {ticker}: "
-            f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c — skipping"
+            f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c â€” skipping"
         )
         return None
     if best_yes_ask + best_no_ask > 150:
         log.warning(
             f"Orderbook sum very wide for {ticker}: "
-            f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c — thin market, passing through"
+            f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c â€” thin market, passing through"
         )
 
     # For AMM markets use the reported size; fall back to generous default
@@ -1381,9 +1381,9 @@ async def fetch_orderbook(
     }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  BTC position vs strike
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def btc_position(btc_price: float, strike: float) -> str:
     """
@@ -1400,9 +1400,9 @@ def btc_position(btc_price: float, strike: float) -> str:
     return "at_strike"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Momentum
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def calculate_momentum(prices=None) -> tuple[float, str]:
     """
@@ -1484,7 +1484,7 @@ def btc_realized_vol(prices=None) -> float | None:
     Args:
         prices: deque of (timestamp, price) tuples. Defaults to global btc_prices.
 
-    Used to gate entries — if the asset is moving fast enough to plausibly cross
+    Used to gate entries â€” if the asset is moving fast enough to plausibly cross
     the strike before expiry, the empirical win-prob table understates the risk.
     """
     prices = prices or btc_prices
@@ -1513,9 +1513,9 @@ def btc_realized_vol(prices=None) -> float | None:
     return variance ** 0.5  # std dev of 1-min returns (as decimal)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Contract price velocity tracking
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def track_contract_price(ticker: str, price: float) -> None:
     """Record the latest contract ask price for velocity and lag analysis."""
@@ -1542,7 +1542,7 @@ def contract_velocity(ticker: str, side: str) -> str:
     change = (newest - oldest) / oldest if oldest else 0
 
     if side == "yes":
-        # YES ask falling toward us (e.g. 91¢ → 65¢) = great opportunity
+        # YES ask falling toward us (e.g. 91Â¢ â†’ 65Â¢) = great opportunity
         if change < -0.05:  return "favorable"
         if change > 0.05:   return "unfavorable"
     else:
@@ -1552,9 +1552,9 @@ def contract_velocity(ticker: str, side: str) -> str:
     return "neutral"
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Adaptive calibration from trade history
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def calibrate_from_history() -> None:
     """
@@ -1578,7 +1578,7 @@ async def calibrate_from_history() -> None:
 
         overall_wr = sum(1 for r in rows if r[2] == "win") / total
 
-        # Did cheap contracts (< 60¢) win?
+        # Did cheap contracts (< 60Â¢) win?
         cheap = [r for r in rows if r[0] is not None and r[0] < 60]
         if len(cheap) >= 5:
             _adaptive["low_price_wins"] = (
@@ -1592,11 +1592,11 @@ async def calibrate_from_history() -> None:
                 sum(1 for r in near if r[2] == "win") / len(near) > 0.50
             )
 
-        # Overall performance → shift threshold
+        # Overall performance â†’ shift threshold
         if overall_wr > 0.65:
-            _adaptive["threshold_adjust"] = -8   # winning a lot → be more aggressive
+            _adaptive["threshold_adjust"] = -8   # winning a lot â†’ be more aggressive
         elif overall_wr < 0.40:
-            _adaptive["threshold_adjust"] = +8   # losing a lot → tighten up
+            _adaptive["threshold_adjust"] = +8   # losing a lot â†’ tighten up
         else:
             _adaptive["threshold_adjust"] = 0
 
@@ -1616,12 +1616,12 @@ async def calibrate_brain() -> None:
     Self-calibration for the printer brain. Runs every 5 completed trades.
 
     Learns:
-      1. prob_scale  — were our probability estimates too high or too low?
-                       If we said 70% but only won 40% → scale down future estimates.
-      2. min_edge    — auto-tune the edge threshold based on overall win rate.
-      3. condition_wr — win rate per (distance, time, momentum) bucket so the
+      1. prob_scale  â€” were our probability estimates too high or too low?
+                       If we said 70% but only won 40% â†’ scale down future estimates.
+      2. min_edge    â€” auto-tune the edge threshold based on overall win rate.
+      3. condition_wr â€” win rate per (distance, time, momentum) bucket so the
                         brain knows which setups actually work.
-      4. directional  — are bullish/bearish/neutral momentum trades working?
+      4. directional  â€” are bullish/bearish/neutral momentum trades working?
     """
     global _brain_cal
     try:
@@ -1643,9 +1643,9 @@ async def calibrate_brain() -> None:
         wins = sum(1 for r in rows if r[5] == "win")
         overall_wr = wins / total
 
-        # ── 1. Probability scale factor ───────────────────────────────────────
+        # â”€â”€ 1. Probability scale factor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         # Compare avg model_prob (our estimate) to actual win rate.
-        # Only update gently — 5-20 trades is far too small a sample to
+        # Only update gently â€” 5-20 trades is far too small a sample to
         # conclude the table is wrong; 0.05 weight prevents overreaction.
         probs = [r[6] for r in rows if r[6] is not None]
         if probs:
@@ -1653,18 +1653,18 @@ async def calibrate_brain() -> None:
             if avg_predicted > 0:
                 raw_scale = overall_wr / avg_predicted
                 _brain_cal["prob_scale"] = 0.95 * _brain_cal["prob_scale"] + 0.05 * raw_scale
-                # Floor at 0.85 — the table is built on 4.5M rows; trust it
+                # Floor at 0.85 â€” the table is built on 4.5M rows; trust it
                 _brain_cal["prob_scale"] = max(0.85, min(1.5, _brain_cal["prob_scale"]))
 
-        # ── 2. Win-rate reward tiers (priority = win rate, not profit) ───────────
-        #   Tier 3 (≥85%) — MAX reward: lowest edge bar, biggest confidence bonus
-        #   Tier 2 (≥75%) — HUGE reward: very low bar, large bonus
-        #   Tier 1 (≥50%) — reward: lower bar, small bonus
-        #   Below 50%     — tighten up, no bonus
+        # â”€â”€ 2. Win-rate reward tiers (priority = win rate, not profit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        #   Tier 3 (â‰¥85%) â€” MAX reward: lowest edge bar, biggest confidence bonus
+        #   Tier 2 (â‰¥75%) â€” HUGE reward: very low bar, large bonus
+        #   Tier 1 (â‰¥50%) â€” reward: lower bar, small bonus
+        #   Below 50%     â€” tighten up, no bonus
         _brain_cal["overall_wr"] = overall_wr
         if overall_wr >= 0.85:
             _brain_cal["reward_tier"]       = 3
-            _brain_cal["min_edge_override"] = 0.20   # backtested optimum — never go lower
+            _brain_cal["min_edge_override"] = 0.20   # backtested optimum â€” never go lower
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "TIER 3 MAX REWARD"
         elif overall_wr >= 0.75:
@@ -1684,11 +1684,11 @@ async def calibrate_brain() -> None:
             tier_label = "no reward (learning)"
         else:
             _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.30   # losing — tighten hard
+            _brain_cal["min_edge_override"] = 0.30   # losing â€” tighten hard
             _brain_cal["confidence_bonus"]  = 0
             tier_label = "no reward (rebuild)"
 
-        # ── 3. Directional performance ────────────────────────────────────────
+        # â”€â”€ 3. Directional performance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         yes_rows = [r for r in rows if r[0] == "yes"]
         no_rows  = [r for r in rows if r[0] == "no"]
         if len(yes_rows) >= 10:
@@ -1705,7 +1705,7 @@ async def calibrate_brain() -> None:
             f"yes_wr={_brain_cal['bullish_wr']:.0%} no_wr={_brain_cal['bearish_wr']:.0%}"
         )
         log.info(
-            f"[Brain] calibrated — WR={overall_wr:.0%} {tier_label} | "
+            f"[Brain] calibrated â€” WR={overall_wr:.0%} {tier_label} | "
             f"scale={_brain_cal['prob_scale']:.2f}"
         )
 
@@ -1722,7 +1722,7 @@ async def recalibrate_asset_strategies() -> None:
     per asset to fit (AssetCalibrator's own minimum).
     """
     if not _STRATEGY_SINGLETONS:
-        log.debug("recalibrate_asset_strategies: no active strategy singletons — skipping")
+        log.debug("recalibrate_asset_strategies: no active strategy singletons â€” skipping")
         return
     try:
         async with aiosqlite.connect(_DB_FILE) as db:
@@ -1741,7 +1741,7 @@ async def recalibrate_asset_strategies() -> None:
                 if len(rows) < 15:
                     continue
 
-                # Calibrator maps raw_p_yes → better P(YES wins).
+                # Calibrator maps raw_p_yes â†’ better P(YES wins).
                 # actual_yes_won = 1 if YES resolved True regardless of which
                 # side we took: YES trade won, or NO trade lost.
                 raw_probs = [r[0] for r in rows]
@@ -1753,7 +1753,7 @@ async def recalibrate_asset_strategies() -> None:
                 ]
                 strat.calibrator.refit(raw_probs, outcomes)
                 log.info(
-                    f"[Calibration] {asset}: {len(rows)} trades → "
+                    f"[Calibration] {asset}: {len(rows)} trades â†’ "
                     f"method={strat.calibrator._method} "
                     f"n={strat.calibrator.sample_count}"
                 )
@@ -1761,9 +1761,9 @@ async def recalibrate_asset_strategies() -> None:
         log.error(f"recalibrate_asset_strategies error: {exc}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Printer Brain v3 — Empirically Calibrated from 4.5M rows of BTC 1-min data
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+#  Printer Brain v3 â€” Empirically Calibrated from 4.5M rows of BTC 1-min data
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 # Empirical win-probability table: P(BTC stays on same side at window close)
 # Derived from backtest of 4.5M rows binance_api_BTCUSDT_1m.csv (2017-2026 regime)
@@ -1823,13 +1823,13 @@ def _empirical_win_prob(abs_pct: float, mins_left: float) -> float:
 
     bv3_val = row[t_low] + (row[t_high] - row[t_low]) * frac
 
-    # ── Blend with live corrections if we have enough samples ─────────────────
+    # â”€â”€ Blend with live corrections if we have enough samples â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     key = (bidx, min(t_low, 12))
     if key in _bv3_corrections:
         wins, total = _bv3_corrections[key]
         if total >= 5:
             live_wr = wins / total
-            # alpha grows 0→0.40 as samples grow 5→50; table always dominates early on
+            # alpha grows 0â†’0.40 as samples grow 5â†’50; table always dominates early on
             alpha = min(0.40, (total - 5) / 45 * 0.40)
             return bv3_val * (1.0 - alpha) + live_wr * alpha
 
@@ -1837,7 +1837,7 @@ def _empirical_win_prob(abs_pct: float, mins_left: float) -> float:
 
 
 def _bv3_bucket_indices(abs_pct: float, mins_left: float) -> tuple[int, int]:
-    """Return (dist_idx, time_idx) for a given trade — used to record outcomes."""
+    """Return (dist_idx, time_idx) for a given trade â€” used to record outcomes."""
     bidx = len(_BV3_DIST_BOUNDS)
     for i, bound in enumerate(_BV3_DIST_BOUNDS):
         if abs_pct < bound:
@@ -1919,7 +1919,7 @@ def _session_ev_adjustment() -> float:
     return 0.0
 
 
-# ── Feature-flagged routing to new-foundation strategies (refactor) ──────
+# â”€â”€ Feature-flagged routing to new-foundation strategies (refactor) â”€â”€â”€â”€â”€â”€
 # Routes any asset through strategies/ pipeline when config
 # use_new_strategies.<ASSET> is True. Default: False (legacy path unchanged).
 
@@ -2007,13 +2007,6 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 min_ev=min_ev,
                 stake_dollars=stake,
             )
-        elif asset == "DOGE":
-            from strategies.doge_strategy import DOGEStrategy
-            strat = DOGEStrategy(
-                skip_config=skip_cfg,
-                min_ev=min_ev,
-                stake_dollars=stake,
-            )
         elif asset == "BTC" and not is_hourly:
             from strategies.btc_15m_strategy import BTC15mStrategy
             strat = BTC15mStrategy(
@@ -2074,7 +2067,7 @@ def printer_brain_routed(
         # and produces random-confidence outputs (observed 50/50 win rate in paper trading).
         log.info(
             f"No strategy for {asset} at {market_duration_min:.0f}min "
-            f"(use_new_strategies=True) — skipping"
+            f"(use_new_strategies=True) â€” skipping"
         )
         _above = btc_price > strike if strike > 0 else False
         return {
@@ -2123,7 +2116,7 @@ def printer_brain_routed(
             btc_prices_deque=btc_prices,
         )
     except Exception as exc:
-        log.warning(f"{asset} feature_builder failed — skipping (not falling back to legacy): {exc}")
+        log.warning(f"{asset} feature_builder failed â€” skipping (not falling back to legacy): {exc}")
         _above = current_price > strike if strike > 0 else False
         return {
             "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
@@ -2138,7 +2131,7 @@ def printer_brain_routed(
     try:
         decision = strat.decide(features)
     except Exception as exc:
-        log.warning(f"{asset} strat.decide() failed — skipping (not falling back to legacy): {exc}")
+        log.warning(f"{asset} strat.decide() failed â€” skipping (not falling back to legacy): {exc}")
         _above = current_price > strike if strike > 0 else False
         return {
             "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
@@ -2190,7 +2183,7 @@ def printer_brain_routed(
     }
 
 
-# ── End feature-flagged routing ──────────────────────────────────────────
+# â”€â”€ End feature-flagged routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 def printer_brain(
@@ -2215,18 +2208,18 @@ def printer_brain(
     mom_accel_scale: float = 3.0,
 ) -> dict:
     """
-    Printer Brain v3 — empirically calibrated from 4.5M rows BTC 1-min data.
+    Printer Brain v3 â€” empirically calibrated from 4.5M rows BTC 1-min data.
 
     Key findings from backtest (2020-2026 regime):
       - Even within 0.1% of strike BTC stays on same side ~70% of the time
-        (momentum / continuation effect — NOT a coin flip)
+        (momentum / continuation effect â€” NOT a coin flip)
       - At 0.2% distance with 5 min left: 93% win rate
       - At 0.5% distance with 5 min left: 97% win rate
-      - Old Brain v2 was estimating 52-70% for these — massively underconfident
+      - Old Brain v2 was estimating 52-70% for these â€” massively underconfident
 
     Decision logic: trade when expected value (EV) is positive.
       EV = P(win) - contract_cost
-      e.g. 90% win rate, contract at 80c → EV = +10c per $1 payout
+      e.g. 90% win rate, contract at 80c â†’ EV = +10c per $1 payout
     """
     _asset_prices = asset_manager._prices.get(asset, btc_prices)
     mom_pct, mom_label = calculate_momentum(prices=_asset_prices)
@@ -2236,14 +2229,14 @@ def printer_brain(
     abs_pct   = abs(pct_above)
     above     = pct_above > 0
 
-    # ── 0. Buffer durability gate ─────────────────────────────────────────────
-    # vol_ratio = (rv * sqrt(mins_left)) / buffer_pct  — how many times larger
+    # â”€â”€ 0. Buffer durability gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # vol_ratio = (rv * sqrt(mins_left)) / buffer_pct  â€” how many times larger
     # the expected move is vs. the current buffer. Skip when ratio is too high.
     #
-    # Adaptive threshold: we ALWAYS bet continuation (above→YES, below→NO).
-    # Momentum confirms trade direction (price moving away from strike) → buffer
+    # Adaptive threshold: we ALWAYS bet continuation (aboveâ†’YES, belowâ†’NO).
+    # Momentum confirms trade direction (price moving away from strike) â†’ buffer
     # is effectively widening, so relax threshold by 25%.
-    # Momentum opposes (price moving toward strike) → buffer is eroding, so
+    # Momentum opposes (price moving toward strike) â†’ buffer is eroding, so
     # tighten threshold by 30%.
     _mom_confirms = (mom_label == "bullish" and above) or (mom_label == "bearish" and not above)
     _mom_opposes  = (mom_label == "bullish" and not above) or (mom_label == "bearish" and above)
@@ -2269,18 +2262,18 @@ def printer_brain(
         if _vol_ratio >= _eff_thresh:
             _vol_skip = True
 
-    # ── 0b. Momentum direction lock ───────────────────────────────────────────
+    # â”€â”€ 0b. Momentum direction lock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Hard skip when BTC momentum opposes the continuation trade. Vol gate
     # already tightens the threshold when opposing; this blocks the remainder.
     if mom_lock_enabled and _mom_opposes and not _vol_skip:
         _vol_skip = True
         _mom_lock_skip = True
 
-    # ── 1. Empirical win probability from backtest table ──────────────────────
+    # â”€â”€ 1. Empirical win probability from backtest table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     win_prob_raw = _win_prob_for_asset(asset, abs_pct, mins_left)
 
-    # ── 2. Momentum adjustment (empirical: confirms avg 87% vs opposes 76%) ──────
-    # Flat adjustment — no strength multiplier to prevent direction flips.
+    # â”€â”€ 2. Momentum adjustment (empirical: confirms avg 87% vs opposes 76%) â”€â”€â”€â”€â”€â”€
+    # Flat adjustment â€” no strength multiplier to prevent direction flips.
     # Confirms: BTC moving away from strike (+5%). Opposes: toward strike (-5%).
     if mom_label == "bullish":
         mom_adj = +0.05 if above else -0.05
@@ -2289,23 +2282,23 @@ def printer_brain(
     else:
         mom_adj = 0.0
 
-    # ── 2b. Momentum acceleration (second derivative) ─────────────────────────
+    # â”€â”€ 2b. Momentum acceleration (second derivative) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Scale mom_adj up when momentum is strengthening, down when it's fading.
-    # Only applies when momentum confirms the trade — opposing momentum is
+    # Only applies when momentum confirms the trade â€” opposing momentum is
     # already blocked by the direction lock (Priority 2).
     _accel, _accel_label = calculate_momentum_acceleration(prices=_asset_prices)
     accel_adj = 0.0
     if _mom_confirms and _accel_label != "flat":
         # mom_sign: +1 for YES (above), -1 for NO (below).
-        # Bullish accel confirms YES → positive adj. Bearish accel confirms NO
-        # (accel is negative) → flip sign so the adj is still positive.
+        # Bullish accel confirms YES â†’ positive adj. Bearish accel confirms NO
+        # (accel is negative) â†’ flip sign so the adj is still positive.
         _mom_sign = 1.0 if above else -1.0
         accel_adj = float(max(-0.03, min(0.03, _mom_sign * _accel * mom_accel_scale)))
 
-    # ── 3. Contract velocity ──────────────────────────────────────────────────
+    # â”€â”€ 3. Contract velocity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     vel_adj = +0.01 if vel_signal == "favorable" else (-0.01 if vel_signal == "unfavorable" else 0.0)
 
-    # ── 3b. AMM lag detector ──────────────────────────────────────────────────
+    # â”€â”€ 3b. AMM lag detector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # If BTC has moved >= 0.3% in the last 45 seconds but the contract price
     # hasn't repriced proportionally, the contract is temporarily mispriced.
     # We capture this edge before the AMM catches up.
@@ -2318,16 +2311,16 @@ def printer_brain(
     if (_lag_sig == "lag_yes" and above) or (_lag_sig == "lag_no" and not above):
         lag_adj = _lag_mag * 0.04   # max +4% probability boost for a fully unpriced lag
 
-    # ── 4. Combined probability + learned calibration scale ──────────────────
+    # â”€â”€ 4. Combined probability + learned calibration scale â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     win_prob = win_prob_raw + mom_adj + accel_adj + vel_adj + lag_adj
     win_prob = 0.50 + (win_prob - 0.50) * _brain_cal["prob_scale"]
     win_prob = max(0.10, min(0.997, win_prob))
 
-    # ── 5. YES / NO win probabilities ────────────────────────────────────────
+    # â”€â”€ 5. YES / NO win probabilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     prob_yes = win_prob if above else (1.0 - win_prob)
     prob_no  = 1.0 - prob_yes
 
-    # ── 5b. Market-implied probability anchor ────────────────────────────────
+    # â”€â”€ 5b. Market-implied probability anchor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # The BV3 model uses historical average BTC behavior. In volatile/trending
     # regimes (crash days, news spikes) the market's live pricing is more
     # accurate than the backtest table. When our model and the market disagree
@@ -2339,7 +2332,7 @@ def printer_brain(
     model_side_prob = prob_yes if above else prob_no
     divergence = model_side_prob - mkt_implied   # positive = model more optimistic
     if divergence > 0.25:
-        # Blend weight grows from 0→0.5 as divergence goes from 25%→65%
+        # Blend weight grows from 0â†’0.5 as divergence goes from 25%â†’65%
         blend = min(0.50, (divergence - 0.25) / 0.40 * 0.50)
         blended = model_side_prob * (1 - blend) + mkt_implied * blend
         if above:
@@ -2350,10 +2343,10 @@ def printer_brain(
             prob_yes = 1.0 - blended
         brain_log.debug(
             f"Market-anchor: model={model_side_prob:.1%} mkt={mkt_implied:.1%} "
-            f"div={divergence:.1%} blend={blend:.2f} → {blended:.1%}"
+            f"div={divergence:.1%} blend={blend:.2f} â†’ {blended:.1%}"
         )
 
-    # ── 6. Expected value vs actual contract price ────────────────────────────
+    # â”€â”€ 6. Expected value vs actual contract price â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # yes_ask / no_ask are in cents (0-100). $1 payout.
     # Fee deducted here: Kalshi charges ~7c per contract, reducing net EV by 0.07.
     # A "5% edge" trade before this fix was actually -2% after fees.
@@ -2364,7 +2357,7 @@ def printer_brain(
     if _brain_cal["bullish_wr"] < 0.35: yes_ev -= 0.04
     if _brain_cal["bearish_wr"] < 0.35: no_ev  -= 0.04
 
-    # ── 7. Pick side — always bet with BTC's position (continuation) ────────
+    # â”€â”€ 7. Pick side â€” always bet with BTC's position (continuation) â”€â”€â”€â”€â”€â”€â”€â”€
     # Best-EV switching caused confidence gate failures: contrarian contracts
     # have 20-35% win prob and always fail the 65% floor. Continuation side
     # naturally has 65-85% win prob; EV gate (3%) handles negative-EV skips.
@@ -2373,7 +2366,7 @@ def printer_brain(
     else:
         side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
 
-    # ── 7b. Entry price hard filters ─────────────────────────────────────────
+    # â”€â”€ 7b. Entry price hard filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Prevent pathological trades: max_entry_price_cents=82 means we never risk
     # $0.83 to make $0.10. min_reward_cents=15 ensures minimum upside. These are
     # applied BEFORE EV so bad-price opportunities are rejected immediately.
@@ -2405,10 +2398,10 @@ def printer_brain(
             f"entry={entry_c:.0f}c reward={100-entry_c:.0f}c"
         )
 
-    # ── 8. EV filter ──────────────────────────────────────────────────────────
+    # â”€â”€ 8. EV filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Base 3% floor + session adjustment: US session (13-20 UTC) lowers bar by
-    # 2% to 1% — clearest trends, most liquid. Asian dead hours (00-06 UTC)
-    # raise bar by 2% to 5% — choppy/rangebound, need stronger edge to justify.
+    # 2% to 1% â€” clearest trends, most liquid. Asian dead hours (00-06 UTC)
+    # raise bar by 2% to 5% â€” choppy/rangebound, need stronger edge to justify.
     min_ev = (min_ev_base / 100.0) + _session_ev_adjustment()
 
     skip_reason = _price_filter_reason if _price_filter_skip else ""
@@ -2438,7 +2431,7 @@ def printer_brain(
 
     action = "skip" if skip_reason else "trade"
 
-    # ── 9. Confidence = win probability 0-100 ────────────────────────────────
+    # â”€â”€ 9. Confidence = win probability 0-100 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     confidence = min(99, max(0, int(true_p * 100) + _brain_cal["confidence_bonus"]))
 
     _rv_str = f"{_rv*100:.3f}%/min" if _rv is not None else "n/a"
@@ -2480,9 +2473,9 @@ def printer_brain(
 
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Reversal signal
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _reversal_signal(
     abs_pct: float,
@@ -2500,9 +2493,9 @@ def _reversal_signal(
 
     Fires when:
       - BTC has made a strong directional move (momentum in current direction)
-      - The opposing contract is very cheap (≤ 20¢) — market prices reversal unlikely
+      - The opposing contract is very cheap (â‰¤ 20Â¢) â€” market prices reversal unlikely
       - Deceleration signals present (velocity unfavorable for current side)
-      - Time window optimal (3–12 min remaining)
+      - Time window optimal (3â€“12 min remaining)
 
     Returns a dict: {signal, side, ask, prob, ev, reason}
     """
@@ -2510,15 +2503,15 @@ def _reversal_signal(
     rev_side = "no" if above else "yes"
     rev_ask  = no_ask if above else yes_ask
 
-    # Gate 1: contract must be cheap — this is what makes reversal bets worth taking
+    # Gate 1: contract must be cheap â€” this is what makes reversal bets worth taking
     if rev_ask > 20:
-        return {"signal": False, "reason": f"reversal contract {rev_ask:.0f}¢ > 20¢, not cheap enough"}
+        return {"signal": False, "reason": f"reversal contract {rev_ask:.0f}Â¢ > 20Â¢, not cheap enough"}
 
-    # Gate 2: time window — needs 3–12 min for the reversal to play out
+    # Gate 2: time window â€” needs 3â€“12 min for the reversal to play out
     if mins_left < 3 or mins_left > 12:
-        return {"signal": False, "reason": f"time {mins_left:.1f}m outside 3–12m reversal window"}
+        return {"signal": False, "reason": f"time {mins_left:.1f}m outside 3â€“12m reversal window"}
 
-    # Gate 3: momentum must be strongly WITH BTC's current side — need exhaustion to reverse.
+    # Gate 3: momentum must be strongly WITH BTC's current side â€” need exhaustion to reverse.
     # 0.007 = 0.7% move in 3 min. calculate_momentum() labels anything > 0.5% as bullish/bearish,
     # so this adds a small extra bar above the label threshold to confirm the move is meaningful.
     mom_in_current = (mom_label == "bullish" and above) or (mom_label == "bearish" and not above)
@@ -2528,18 +2521,18 @@ def _reversal_signal(
             "reason": f"insufficient exhaustion signal (mom={mom_label} {mom_pct*100:+.2f}%, above={above})",
         }
 
-    # Gate 4: distance not too extreme — hard to reverse when BTC is far from strike.
+    # Gate 4: distance not too extreme â€” hard to reverse when BTC is far from strike.
     # 0.010 = 1.0%. At 1%+ distance the BV3 continuation rate is 97-100%; even a
     # cheap opposing contract can't generate enough reversal probability to beat the EV bar.
     if abs_pct > 0.010:
         return {"signal": False, "reason": f"BTC too far from strike ({abs_pct*100:.2f}%) for reliable reversal"}
 
-    # ── Reversal probability ──────────────────────────────────────────────────
+    # â”€â”€ Reversal probability â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Base: complement of the BV3 continuation probability
     bv3_cont = _empirical_win_prob(abs_pct, mins_left)
     rev_prob  = 1.0 - bv3_cont
 
-    # Exhaustion boost: stronger momentum → more likely to have exhausted, mean-revert.
+    # Exhaustion boost: stronger momentum â†’ more likely to have exhausted, mean-revert.
     # Grows from 0 at the gate threshold (0.7%) to the 0.08 cap at ~2.7% move.
     # Formula rescaled to match corrected gate: was (pct - 0.10) * 0.30, which was
     # permanently zero because pct never reaches 10%.
@@ -2549,7 +2542,7 @@ def _reversal_signal(
     vel_boost = 0.04 if vel_signal == "unfavorable" else 0.0
 
     # High-vol penalty: unpredictable in wild markets.
-    # Threshold 1.00 aligns with the main strategy vol gate (skip ≥1.50) —
+    # Threshold 1.00 aligns with the main strategy vol gate (skip â‰¥1.50) â€”
     # reversal setups are inherently riskier, so penalty starts earlier,
     # but below 1.00 (main gate considers safe) we apply no penalty.
     vol_penalty = 0.0
@@ -2558,7 +2551,7 @@ def _reversal_signal(
 
     rev_prob = max(0.05, min(0.45, rev_prob + exhaust_boost + vel_boost - vol_penalty))
 
-    # ── Reversal EV ──────────────────────────────────────────────────────────
+    # â”€â”€ Reversal EV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     rev_ev = rev_prob - (rev_ask / 100)
 
     # Lower EV bar than main strategy (8%) since we're buying cheap contrarian contracts
@@ -2567,13 +2560,13 @@ def _reversal_signal(
             "signal": False,
             "reason": (
                 f"reversal EV {rev_ev:+.1%} below 8% minimum "
-                f"(prob={rev_prob:.1%} vs market {rev_ask:.0f}¢)"
+                f"(prob={rev_prob:.1%} vs market {rev_ask:.0f}Â¢)"
             ),
         }
 
     reason = (
-        f"REVERSAL {rev_side.upper()} @ {rev_ask:.0f}¢ | "
-        f"prob={rev_prob:.1%} (base={bv3_cont:.1%} cont → {1-bv3_cont:.1%} rev, "
+        f"REVERSAL {rev_side.upper()} @ {rev_ask:.0f}Â¢ | "
+        f"prob={rev_prob:.1%} (base={bv3_cont:.1%} cont â†’ {1-bv3_cont:.1%} rev, "
         f"+exhaust={exhaust_boost:.1%} +vel={vel_boost:.1%} -vol={vol_penalty:.1%}) | "
         f"EV={rev_ev:+.1%} | exhaustion: {mom_label} {mom_pct*100:+.2f}%"
     )
@@ -2588,9 +2581,9 @@ def _reversal_signal(
     }
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Position sizing
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def calculate_contracts(
     trade_amount_dollars: float,
@@ -2598,7 +2591,7 @@ def calculate_contracts(
     liquidity: int,
 ) -> tuple[int, float]:
     """
-    Fixed position sizing — always spend exactly trade_amount_dollars.
+    Fixed position sizing â€” always spend exactly trade_amount_dollars.
 
     Returns:
         (contracts, dollars_used)
@@ -2618,19 +2611,19 @@ def calculate_contracts(
     return contracts, dollars_used
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Probability helpers
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def implied_prob(contract_price_cents: float) -> float:
-    """Convert contract price in cents to implied probability (0–1)."""
+    """Convert contract price in cents to implied probability (0â€“1)."""
     return contract_price_cents / 100.0
 
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Order placement
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def _verify_order_fill(
     session: aiohttp.ClientSession,
@@ -2652,7 +2645,7 @@ async def _verify_order_fill(
             timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
         ) as resp:
             if resp.status != 200:
-                log.warning(f"_verify_order_fill: GET {order_id} HTTP {resp.status} — assuming filled")
+                log.warning(f"_verify_order_fill: GET {order_id} HTTP {resp.status} â€” assuming filled")
                 return True
             chk = await resp.json()
         order = chk.get("order") or chk
@@ -2665,7 +2658,7 @@ async def _verify_order_fill(
         elif remaining is not None:
             confirmed_filled = total - remaining
         else:
-            # Can't determine — trust the POST response
+            # Can't determine â€” trust the POST response
             confirmed_filled = expected_filled
         log.info(
             f"_verify_order_fill: {order_id} status={status!r} "
@@ -2673,7 +2666,7 @@ async def _verify_order_fill(
         )
         return confirmed_filled > 0
     except Exception as exc:
-        log.warning(f"_verify_order_fill error for {order_id}: {exc} — assuming filled")
+        log.warning(f"_verify_order_fill error for {order_id}: {exc} â€” assuming filled")
         return True
 
 
@@ -2700,7 +2693,7 @@ async def place_order(
         order_id (str|None).
     """
     if contracts <= 0:
-        log.error(f"place_order called with contracts={contracts} — refusing to send invalid order")
+        log.error(f"place_order called with contracts={contracts} â€” refusing to send invalid order")
         return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
 
     # Preserve the strategy-chosen entry price for fill-verification telemetry.
@@ -2738,7 +2731,7 @@ async def place_order(
 
     price_this_attempt = entry_price_cents
 
-    # ── Demo mode: post + poll ────────────────────────────────────────────────────────────────────────────
+    # â”€â”€ Demo mode: post + poll â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Demo API behaviour is unpredictable with order types; poll for a fill
     # rather than relying on an immediate response.
     if mode == "demo":
@@ -2798,7 +2791,7 @@ async def place_order(
                 log.warning(f"[demo] Poll error: {pe}")
 
         if filled_order is None:
-            log.info(f"[demo] No fill after {_poll_timeout:.0f}s — cancelling {order_id}")
+            log.info(f"[demo] No fill after {_poll_timeout:.0f}s â€” cancelling {order_id}")
             try:
                 del_path = f"/portfolio/orders/{order_id}"
                 async with session.delete(
@@ -2830,8 +2823,8 @@ async def place_order(
         )
         return {"fill_confirmed": cc > 0, "fill_price_cents": fp, "order_id": order_id, "filled_contracts": cc}
 
-    # ── Live mode: single market order ─────────────────────────────────────────────────────────────────────
-    # Notify for late-window entries (<5 min) — user watches Telegram closely here.
+    # â”€â”€ Live mode: single market order â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # Notify for late-window entries (<5 min) â€” user watches Telegram closely here.
     if secs_left < 300.0:
         _placed_mins = int(secs_left // 60)
         _placed_secs = int(secs_left % 60)
@@ -2841,8 +2834,8 @@ async def place_order(
             _phase_for_eth(asset, _placed_elapsed),
         )
         asyncio.create_task(send_telegram(
-            f"📋 <b>{_placed_ctx} ORDER PLACED</b>\n"
-            f"{'⬆' if side == 'yes' else '⬇'} <b>{side.upper()}</b>  {contracts} contracts\n"
+            f"ðŸ“‹ <b>{_placed_ctx} ORDER PLACED</b>\n"
+            f"{'â¬†' if side == 'yes' else 'â¬‡'} <b>{side.upper()}</b>  {contracts} contracts\n"
             f"Expires in {_placed_mins}m {_placed_secs}s"
         ))
 
@@ -2888,14 +2881,14 @@ async def place_order(
                         held = p.get("position", 0)
                         if (side == "yes" and held > 0) or (side == "no" and held < 0):
                             held_count = abs(held)
-                            log.info(f"POST exception but portfolio shows {held_count}x — treating as filled")
+                            log.info(f"POST exception but portfolio shows {held_count}x â€” treating as filled")
                             return {"fill_confirmed": True, "fill_price_cents": price_this_attempt, "order_id": None, "filled_contracts": held_count}
             except Exception as chk_exc:
                 log.error(f"Portfolio check after POST exception failed: {chk_exc}")
             continue
 
         if http_status == 429:
-            log.warning(f"[live] Rate-limited (429) on attempt {attempt} — waiting 2s")
+            log.warning(f"[live] Rate-limited (429) on attempt {attempt} â€” waiting 2s")
             await asyncio.sleep(2.0)
             continue
 
@@ -2916,7 +2909,7 @@ async def place_order(
                     _phase_for_eth(asset, _failed_elapsed),
                 )
                 await send_telegram(
-                    f"{_failed_ctx} <b>ORDER FAILED</b>  —  {err_code}\n"
+                    f"{_failed_ctx} <b>ORDER FAILED</b>  â€”  {err_code}\n"
                     f"{side.upper()}  {contracts}x"
                 )
                 break
@@ -2933,7 +2926,7 @@ async def place_order(
 
         # Market orders should not rest, but poll briefly as a safety net
         if post_status in ("resting", "pending"):
-            log.warning(f"[live] Market order {order_id} returned {post_status!r} — polling 5s")
+            log.warning(f"[live] Market order {order_id} returned {post_status!r} â€” polling 5s")
             for _pi in range(5):
                 await asyncio.sleep(1.0)
                 try:
@@ -3012,8 +3005,8 @@ async def place_order(
         _verified = await _verify_order_fill(session, order_id, filled_count)
         return {"fill_confirmed": _verified, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
 
-    # Portfolio check — ground truth after all attempts exhausted
-    log.warning(f"Market order not confirmed for {ticker} — checking portfolio")
+    # Portfolio check â€” ground truth after all attempts exhausted
+    log.warning(f"Market order not confirmed for {ticker} â€” checking portfolio")
     try:
         pos_path = f"/portfolio/positions?ticker={ticker}"
         async with session.get(
@@ -3027,11 +3020,11 @@ async def place_order(
             if p.get("ticker") == ticker:
                 held = p.get("position", 0)
                 if side == "yes" and held > 0:
-                    log.info(f"Portfolio check: found YES position {held}x on {ticker} — order DID fill")
+                    log.info(f"Portfolio check: found YES position {held}x on {ticker} â€” order DID fill")
                     return {"fill_confirmed": True, "fill_price_cents": entry_price_cents, "order_id": None, "filled_contracts": held}
                 if side == "no" and held < 0:
                     held_no = abs(held)
-                    log.info(f"Portfolio check: found NO position {held_no}x on {ticker} — order DID fill")
+                    log.info(f"Portfolio check: found NO position {held_no}x on {ticker} â€” order DID fill")
                     return {"fill_confirmed": True, "fill_price_cents": entry_price_cents, "order_id": None, "filled_contracts": held_no}
         log.info(f"Portfolio check: no position found for {ticker}")
     except Exception as exc:
@@ -3044,7 +3037,7 @@ async def place_order(
         _phase_for_eth(asset, _nofill_elapsed),
     )
     await send_telegram(
-        f"⚠️ <b>{_nofill_ctx} ORDER NOT FILLED</b>  —  no liquidity\n"
+        f"âš ï¸ <b>{_nofill_ctx} ORDER NOT FILLED</b>  â€”  no liquidity\n"
         f"{side.upper()}  {contracts}x"
     )
     return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
@@ -3100,20 +3093,20 @@ async def sell_position(
         except Exception as exc:
             log.error(f"Sell order error (attempt {attempt}): {exc}")
 
-    log.error(f"Sell failed after 3 attempts — using bid price {current_bid}c for PnL")
+    log.error(f"Sell failed after 3 attempts â€” using bid price {current_bid}c for PnL")
     return current_bid
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Daily limits
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def check_daily_limits(config: dict) -> tuple[bool, str]:
     """
     Check daily loss limit and profit target for live/demo mode.
 
-    live  — DLL/profit target flips mode to 'paper' in config.json
-    demo  — DLL disables bot entirely and fires Telegram; profit target flips to paper
+    live  â€” DLL/profit target flips mode to 'paper' in config.json
+    demo  â€” DLL disables bot entirely and fires Telegram; profit target flips to paper
 
     Returns:
         (triggered: bool, reason: str)
@@ -3137,7 +3130,7 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
                 write_config(cfg)
                 log.warning(f"Demo DLL hit (${pnl:.2f}). Bot disabled.")
                 await send_telegram(
-                    f"🛑 <b>[DEMO] Daily loss limit triggered</b>\n"
+                    f"ðŸ›‘ <b>[DEMO] Daily loss limit triggered</b>\n"
                     f"PnL today: <b>${pnl:.2f}</b>\n"
                     f"Bot has been disabled. Re-enable manually in config."
                 )
@@ -3186,9 +3179,9 @@ def midnight_reset() -> None:
         pre_limit_mode = None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  State file
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 _STRIKE_RE_T_SUFFIX = re.compile(r"-T(\d+)$")
 _STRIKE_RE_NUMERIC_SUFFIX = re.compile(r"-(\d+)$")
@@ -3252,7 +3245,7 @@ async def write_state_file(
 
     # Per-asset snapshot for multi-asset dashboard display
     assets_snap: dict = {}
-    # Non-BTC assets — pulled from the in-memory _asset_states dict
+    # Non-BTC assets â€” pulled from the in-memory _asset_states dict
     for _a, _st in _asset_states.items():
         _m  = _st.get("market")
         _sl = seconds_remaining(_m) if _m else 0
@@ -3299,7 +3292,7 @@ async def write_state_file(
             "phase_label":  _a_window_phase,
             "window_phase": _a_window_phase,
         }
-    # BTC — uses separate globals; _asset_eval["BTC"] holds last eval snapshot
+    # BTC â€” uses separate globals; _asset_eval["BTC"] holds last eval snapshot
     _btc_ev = _asset_eval.get("BTC", {})
     _btc_status = "TRADING" if phase == "LOCKED" else (_btc_ev.get("status") or phase)
     _btc_ticker = market.get("ticker", "") if market else ""
@@ -3347,9 +3340,9 @@ async def write_state_file(
         log.error(f"State file write error: {exc}")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Phase handlers
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def _log_entry(
     market: dict,
@@ -3407,20 +3400,20 @@ async def handle_ready_phase(
     _use_state = state is not None
     mode = config.get("mode", "paper")
 
-    # Hard expiry gate — truly nothing to do in the last 90 seconds
+    # Hard expiry gate â€” truly nothing to do in the last 90 seconds
     if secs_left < 90:
         log.info(f"{ticker}: < 90s remaining. Moving to DONE.")
         if _use_state: state["phase"] = "DONE"
         else: current_phase = "DONE"
         return
 
-    # Early-window gate — skip first 90s while price is still anchoring
+    # Early-window gate â€” skip first 90s while price is still anchoring
     _elapsed = seconds_elapsed(market)
     if _elapsed < 90:
-        log.debug(f"{ticker}: {_elapsed:.0f}s elapsed — price anchoring, skipping")
+        log.debug(f"{ticker}: {_elapsed:.0f}s elapsed â€” price anchoring, skipping")
         return
 
-    # ── Multi-window best-pick (BTC only) ────────────────────────────────────
+    # â”€â”€ Multi-window best-pick (BTC only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # If multiple 15-min windows are open simultaneously, evaluate all of them
     # and trade the one with the highest EV. Falls back to primary market if
     # only one window is open or fetching alternatives fails.
@@ -3430,7 +3423,7 @@ async def handle_ready_phase(
         try:
             all_windows = await fetch_current_market(session, return_all=True)
             if isinstance(all_windows, list) and len(all_windows) > 1:
-                log.info(f"Multi-window: {len(all_windows)} open windows — evaluating all for best EV.")
+                log.info(f"Multi-window: {len(all_windows)} open windows â€” evaluating all for best EV.")
                 best_market  = market
                 best_ticker  = ticker
                 best_ev      = None
@@ -3442,14 +3435,14 @@ async def handle_ready_phase(
                         c_strike   = parse_strike(candidate)
                         if c_strike is None:
                             continue
-                        # Use each window's own timing — they may have different close times
+                        # Use each window's own timing â€” they may have different close times
                         c_secs_left = seconds_remaining(candidate)
                         c_elapsed   = seconds_elapsed(candidate)
-                        # Skip windows that are too close to expiry — same gate as primary market.
+                        # Skip windows that are too close to expiry â€” same gate as primary market.
                         # Without this, the multi-window picker can select a market with 40s left
                         # AFTER the 90s gate already passed for the primary market.
                         if c_secs_left < 90:
-                            log.info(f"  Window {c_ticker}: skipping — only {c_secs_left:.0f}s left")
+                            log.info(f"  Window {c_ticker}: skipping â€” only {c_secs_left:.0f}s left")
                             continue
                         c_ob = await fetch_orderbook(session, c_ticker, candidate)
                         if c_ob is None:
@@ -3501,7 +3494,7 @@ async def handle_ready_phase(
     else:
         ob = None  # non-BTC: no multi-window, orderbook fetched below
 
-    # Orderbook — retry next cycle if temporarily unavailable
+    # Orderbook â€” retry next cycle if temporarily unavailable
     def _no_data_eval(reason: str) -> dict:
         return {
             "strike":       strike,
@@ -3527,17 +3520,17 @@ async def handle_ready_phase(
             return
 
     if ob is None:
-        log.warning(f"[{asset}] {ticker}: orderbook returned no price data — retrying next cycle")
-        _snap = _no_data_eval("no orderbook data — retrying")
+        log.warning(f"[{asset}] {ticker}: orderbook returned no price data â€” retrying next cycle")
+        _snap = _no_data_eval("no orderbook data â€” retrying")
         if _use_state: state["eval"] = _snap
         else: _asset_eval[asset] = _snap
-        last_action, last_skip_reason = "watching", "no price data — retrying"
+        last_action, last_skip_reason = "watching", "no price data â€” retrying"
         return
 
     yes_ask = ob["best_yes_ask"]
     no_ask  = ob["best_no_ask"]   # fetched directly from no_ask_dollars, not derived
 
-    # ── Price validation: compare simulated vs real prices ───────────────────
+    # â”€â”€ Price validation: compare simulated vs real prices â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Logs to price_validation_log.csv so we can audit whether the backtest's
     # AMM simulation matches live Kalshi prices (reviewer flagged 8-15c gap risk).
     try:
@@ -3559,7 +3552,7 @@ async def handle_ready_phase(
     # Track YES price for velocity signal
     track_contract_price(ticker, yes_ask)
 
-    # ── Printer Brain — primary decision engine (always runs, no API needed) ──
+    # â”€â”€ Printer Brain â€” primary decision engine (always runs, no API needed) â”€â”€
     brain = printer_brain_routed(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
                           min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
                           vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
@@ -3578,20 +3571,20 @@ async def handle_ready_phase(
     do_trade = brain["action"] == "trade"
     skip_reason_ai = brain["reasoning"]
 
-    # ── allowed_sides gate — disable NO side when model is uncalibrated ──────
+    # â”€â”€ allowed_sides gate â€” disable NO side when model is uncalibrated â”€â”€â”€â”€â”€â”€
     _allowed_sides = config.get("allowed_sides")
     if do_trade and _allowed_sides is not None and side not in _allowed_sides:
         skip_reason_ai = f"side={side} not in allowed_sides={_allowed_sides}"
         do_trade = False
 
-    # ── Consecutive price-filter skip tracking ────────────────────────────────
+    # â”€â”€ Consecutive price-filter skip tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     global _consecutive_price_skips
     if brain.get("price_filter_skip"):
         _consecutive_price_skips += 1
         if _consecutive_price_skips == 20:
             _max_ep = get_asset_config(config, asset, "max_entry_price_cents", 82)
             log.warning(
-                f"Price filter: {_consecutive_price_skips} consecutive skips — "
+                f"Price filter: {_consecutive_price_skips} consecutive skips â€” "
                 f"all entry prices > {_max_ep}c"
             )
     else:
@@ -3602,7 +3595,7 @@ async def handle_ready_phase(
     brain_ev = brain.get("win_prob", 0.5) - (entry_price_cents / 100) - _fee
     brain_win_prob = brain.get("win_prob", 0.5)
 
-    # Dashboard eval snapshot — updated at every exit point below
+    # Dashboard eval snapshot â€” updated at every exit point below
     _eval_snap = {
         "strike":       strike,
         "distance_pct": round(abs(btc_price - strike) / strike * 100, 3) if strike else None,
@@ -3623,9 +3616,9 @@ async def handle_ready_phase(
     _mom_label  = brain.get("mom_label",  "neutral")
     _vel_signal = brain.get("vel_signal", "neutral")
     _abs_pct    = brain.get("abs_pct", abs((btc_price - strike) / strike))
-    # Time score: less time remaining = outcome more certain = higher score (0→20)
+    # Time score: less time remaining = outcome more certain = higher score (0â†’20)
     _time_score = round(max(0.0, min(20.0, 20.0 * (1.0 - secs_left / (13 * 60)))), 1)
-    # Distance score: farther from strike = higher score (0→30, caps at 0.5%)
+    # Distance score: farther from strike = higher score (0â†’30, caps at 0.5%)
     _dist_score = round(min(30.0, _abs_pct * 100.0 / 0.5 * 30.0), 1)
     _brain_rv       = brain.get("_rv")
     _brain_vol_ratio = brain.get("_vol_ratio")
@@ -3655,10 +3648,10 @@ async def handle_ready_phase(
         skip_reason_ai = f"win prob {raw_win_pct}% below floor {conf_threshold}%"
         do_trade = False
 
-    # ── Reversal model — runs whenever main strategy skips ───────────────────
+    # â”€â”€ Reversal model â€” runs whenever main strategy skips â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     # Evaluates exhaustion-reversal setups independent of the continuation model.
     # Uses 50% of configured trade amount. Never fires when main strategy trades.
-    # Disabled by default (enable_reversal_signal=false) — no backtested evidence.
+    # Disabled by default (enable_reversal_signal=false) â€” no backtested evidence.
     _rev = None
     if not do_trade and config.get("enable_reversal_signal", False):
         _rev = _reversal_signal(
@@ -3673,13 +3666,13 @@ async def handle_ready_phase(
             vol_ratio     = brain.get("_vol_ratio"),
         )
         if _rev and _rev["signal"]:
-            # Re-check allowed_sides — reversal may pick a side the gate blocked above
+            # Re-check allowed_sides â€” reversal may pick a side the gate blocked above
             _rev_side = _rev["side"]
             if _allowed_sides is not None and _rev_side not in _allowed_sides:
                 _rev = None  # treat as no signal
                 rev_reason = f"reversal side={_rev_side} not in allowed_sides={_allowed_sides}"
                 last_reversal_reason = rev_reason
-                log.info(f"{ticker}: reversal blocked — {rev_reason}")
+                log.info(f"{ticker}: reversal blocked â€” {rev_reason}")
             else:
                 log.info(f"{ticker}: {_rev['reason']}")
                 side              = _rev_side
@@ -3692,7 +3685,7 @@ async def handle_ready_phase(
         else:
             rev_reason = _rev["reason"] if _rev else "reversal not evaluated"
             last_reversal_reason = rev_reason
-            log.info(f"{ticker}: watching — {skip_reason_ai} | reversal: {rev_reason}")
+            log.info(f"{ticker}: watching â€” {skip_reason_ai} | reversal: {rev_reason}")
             await _log_entry(market, "READY", secs_left, btc_price, strike,
                              int(entry_price_cents), score, "skip", skip_reason_ai, mode)
             _eval_snap.update({"status": "SKIPPED", "skip_reason": skip_reason_ai})
@@ -3704,7 +3697,7 @@ async def handle_ready_phase(
         _is_reversal = False
 
     if not do_trade:
-        log.info(f"{ticker}: watching — {skip_reason_ai}")
+        log.info(f"{ticker}: watching â€” {skip_reason_ai}")
         await _log_entry(market, "READY", secs_left, btc_price, strike,
                          int(entry_price_cents), score, "skip", skip_reason_ai, mode)
         _eval_snap.update({"status": "SKIPPED", "skip_reason": skip_reason_ai})
@@ -3713,15 +3706,15 @@ async def handle_ready_phase(
         last_action, last_skip_reason = "watching", skip_reason_ai
         return
 
-    # Daily limits — may flip mode to paper
+    # Daily limits â€” may flip mode to paper
     limit_hit, _ = await check_daily_limits(config)
     if limit_hit:
         config = read_config()
         mode = config.get("mode", "paper")
 
-    # Cooldown disabled — trade every session regardless of prior outcome
+    # Cooldown disabled â€” trade every session regardless of prior outcome
 
-    # Position sizing — flat fixed amount
+    # Position sizing â€” flat fixed amount
     # Reversal trades use 50% of configured amount (contrarian = smaller size)
     trade_amount = config.get("trade_amount_dollars", 20)
     if _is_reversal:
@@ -3741,7 +3734,7 @@ async def handle_ready_phase(
         last_action, last_skip_reason = "skip", reason
         return
 
-    # Place order — mark ticker as attempted BEFORE placing so re-entry is blocked
+    # Place order â€” mark ticker as attempted BEFORE placing so re-entry is blocked
     # even if the bot crashes or fill_confirmed comes back False
     if _use_state: state["order_attempted"].add(ticker)
     else: _order_attempted_tickers.add(ticker)
@@ -3753,7 +3746,7 @@ async def handle_ready_phase(
     fill_price = _fp if _fp is not None else int(entry_price_cents)
     order_id = result.get("order_id")
     # Use actual filled contract count (IOC may fill fewer than requested).
-    # Must use explicit None check — 0 is falsy but a valid (unfilled) count.
+    # Must use explicit None check â€” 0 is falsy but a valid (unfilled) count.
     _fc = result.get("filled_contracts")
     contracts = _fc if _fc is not None else contracts
 
@@ -3856,8 +3849,8 @@ async def handle_ready_phase(
     else: _asset_eval[asset] = dict(_eval_snap)
     last_action, last_skip_reason = "trade", ""
     log.info(f"{ticker}: LOCKED.")
-    mode_icon  = "📄" if mode == "paper" else "💵"
-    dir_icon   = "⬆" if side == "yes" else "⬇"
+    mode_icon  = "ðŸ“„" if mode == "paper" else "ðŸ’µ"
+    dir_icon   = "â¬†" if side == "yes" else "â¬‡"
     _win_prob_used = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0)
     _win_pct   = int(_win_prob_used * 100)
     _ev        = round((_win_prob_used - fill_price / 100 - _fee) * 100, 1)
@@ -3867,18 +3860,18 @@ async def handle_ready_phase(
     _time_str  = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
     _expiry_dt = datetime.now(timezone(timedelta(hours=-7))) + timedelta(seconds=secs_left)
     _expiry_str = _expiry_dt.strftime("%I:%M %p PST")
-    _strat_tag = "🔄 REVERSAL" if _is_reversal else "ORDER FILLED"
+    _strat_tag = "ðŸ”„ REVERSAL" if _is_reversal else "ORDER FILLED"
     _fill_ctx = _notify_ctx(
         asset, ticker, (elapsed + secs_left) / 60.0,
         _phase_for_eth(asset, elapsed),
     )
     await send_telegram(
-        f"{mode_icon} <b>{_fill_ctx} {_strat_tag}</b>  —  {_time_str}\n"
-        f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
+        f"{mode_icon} <b>{_fill_ctx} {_strat_tag}</b>  â€”  {_time_str}\n"
+        f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}Â¢</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
-        f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s → {_expiry_str}"
+        f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s â†’ {_expiry_str}"
     )
 
 
@@ -3891,7 +3884,7 @@ async def handle_locked_phase(
     state: dict | None = None,
 ) -> None:
     """
-    Hold an open position to expiry — exit at settlement.
+    Hold an open position to expiry â€” exit at settlement.
     Exit only when the market settles and fetch the official Kalshi result.
     secs_left is passed as a fallback; the position's stored close_time is
     used when available so market rollovers don't break expiry detection.
@@ -3915,7 +3908,7 @@ async def handle_locked_phase(
     strike = pos["strike"]
 
     # Compute secs_left from the position's stored market close time.
-    # This is immune to market rollovers — the passed secs_left can be stale
+    # This is immune to market rollovers â€” the passed secs_left can be stale
     # (from a new market) when the old market has already expired.
     _stored_close = pos.get("market_close_time", "")
     if _stored_close:
@@ -3927,7 +3920,7 @@ async def handle_locked_phase(
 
     # Expiry check
     if secs_left <= 0:
-        # Ask Kalshi for the official settlement result — retry up to 6x (30s)
+        # Ask Kalshi for the official settlement result â€” retry up to 6x (30s)
         # to give the exchange time to settle the market.
         market_result = None
         for _attempt in range(6):
@@ -3951,14 +3944,14 @@ async def handle_locked_phase(
         elif market_result == "no":
             outcome = "win" if pos["side"] == "no" else "loss"
         else:
-            # Kalshi didn't settle in time — fall back to BTC price comparison
+            # Kalshi didn't settle in time â€” fall back to BTC price comparison
             log.warning(f"{ticker}: settlement result unavailable, falling back to BTC price check")
             outcome = "win" if (
                 (pos["side"] == "yes" and btc_price > pos["strike"]) or
                 (pos["side"] == "no"  and btc_price <= pos["strike"])
             ) else "loss"
 
-        log.info(f"{ticker}: result={market_result!r} → {outcome}")
+        log.info(f"{ticker}: result={market_result!r} â†’ {outcome}")
         exit_price = 100 if outcome == "win" else 0
         fee = pos["contracts"] * config.get("kalshi_fee_per_contract_cents", 7) / 100
         pnl = (exit_price - pos["entry_price_cents"]) * pos["contracts"] / 100 - fee
@@ -3990,7 +3983,7 @@ async def handle_locked_phase(
             max_cl = config.get("max_consecutive_losses", 5)
             if _consecutive_losses >= max_cl:
                 _consecutive_loss_pause_until = time.time() + 15 * 60
-                log.warning(f"{_consecutive_losses} consecutive losses — pausing trading for 15 min.")
+                log.warning(f"{_consecutive_losses} consecutive losses â€” pausing trading for 15 min.")
                 _resume_str = datetime.fromtimestamp(
                     _consecutive_loss_pause_until,
                     tz=timezone(timedelta(hours=-7))
@@ -4006,14 +3999,14 @@ async def handle_locked_phase(
                     _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
                 )
                 await send_telegram(
-                    f"⚠️ <b>{_cl_ctx} {_consecutive_losses} consecutive losses</b> — pausing for 15 min.\n"
+                    f"âš ï¸ <b>{_cl_ctx} {_consecutive_losses} consecutive losses</b> â€” pausing for 15 min.\n"
                     f"Resumes at {_resume_str}"
                 )
 
-        result_icon = "✅" if outcome == "win" else "❌"
+        result_icon = "âœ…" if outcome == "win" else "âŒ"
         pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
-        mode_icon = "📄" if pos["mode"] == "paper" else "💵"
+        mode_icon = "ðŸ“„" if pos["mode"] == "paper" else "ðŸ’µ"
         _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
         _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
         _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
@@ -4026,9 +4019,9 @@ async def handle_locked_phase(
             _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
         )
         await send_telegram(
-            f"{result_icon} <b>{_close_ctx} {'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"{result_icon} <b>{_close_ctx} {'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}  ({pct_str})</b>  â€”  {_time_str}\n"
             f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
-            f"Entry: {pos['entry_price_cents']}¢  →  Expiry: {exit_price}¢\n"
+            f"Entry: {pos['entry_price_cents']}Â¢  â†’  Expiry: {exit_price}Â¢\n"
             f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}"
         )
 
@@ -4040,16 +4033,16 @@ async def handle_locked_phase(
             current_phase = "DONE"
         return
 
-    # Still in the market — just hold and log
+    # Still in the market â€” just hold and log
     log.info(
         f"[HOLDING] {ticker} | side={pos['side'].upper()} | entry={pos['entry_price_cents']}c "
         f"| price=${btc_price:,.4g} | strike=${pos['strike']:,.4g} | {secs_left:.0f}s left"
     )
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Non-BTC asset processing
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _init_asset_state(asset: str) -> dict:
     """Return a fresh per-asset state dict."""
@@ -4079,11 +4072,11 @@ async def _process_asset(
     # Price check
     price = _am_get_price(asset)
     if price is None:
-        log.debug(f"[{asset}] no price yet — skipping")
+        log.debug(f"[{asset}] no price yet â€” skipping")
         return
     age = _am_price_age(asset)
     if age is not None and age > 60:
-        log.warning(f"[{asset}] price stale ({age:.0f}s) — skipping")
+        log.warning(f"[{asset}] price stale ({age:.0f}s) â€” skipping")
         return
 
     # Market fetch
@@ -4099,9 +4092,9 @@ async def _process_asset(
         if st["phase"] == "LOCKED" and st.get("position") is not None:
             _close_time = st["position"].get("market_close_time", "")
             if not _close_time:
-                log.error(f"[{asset}] LOCKED position missing market_close_time — cannot safely settle without market. Skipping.")
+                log.error(f"[{asset}] LOCKED position missing market_close_time â€” cannot safely settle without market. Skipping.")
             else:
-                log.warning(f"[{asset}] no active market — still processing open LOCKED position.")
+                log.warning(f"[{asset}] no active market â€” still processing open LOCKED position.")
                 try:
                     await handle_locked_phase(session, price, 0, config, asset=asset, state=st)
                 except Exception as exc:
@@ -4127,12 +4120,12 @@ async def _process_asset(
         if "TBD" in yes_sub:
             strike = _am_get_price(asset)
             if strike:
-                log.info(f"[{asset}] strike TBD — using live price {strike:.2f}")
+                log.info(f"[{asset}] strike TBD â€” using live price {strike:.2f}")
             else:
-                log.warning(f"[{asset}] cannot parse strike — skipping")
+                log.warning(f"[{asset}] cannot parse strike â€” skipping")
                 return
         else:
-            log.warning(f"[{asset}] cannot parse strike — skipping")
+            log.warning(f"[{asset}] cannot parse strike â€” skipping")
             return
 
     # Ticker rollover detection
@@ -4144,7 +4137,7 @@ async def _process_asset(
             log.info(f"[{asset}] First market: {ticker}. Starting WATCH.")
     elif ticker != prev_ticker:
         if st["phase"] == "LOCKED":
-            log.info(f"[{asset}] Market rolled to {ticker} but position still open on {prev_ticker} — staying LOCKED.")
+            log.info(f"[{asset}] Market rolled to {ticker} but position still open on {prev_ticker} â€” staying LOCKED.")
             ticker = prev_ticker
             market = st.get("market") or market
         else:
@@ -4157,7 +4150,7 @@ async def _process_asset(
     # WATCH
     if st["phase"] == "WATCH":
         if elapsed > WATCH_PHASE_SECONDS:
-            log.info(f"[{asset}] {ticker}: elapsed {elapsed:.0f}s → READY.")
+            log.info(f"[{asset}] {ticker}: elapsed {elapsed:.0f}s â†’ READY.")
             st["phase"] = "READY"
         else:
             log.info(f"[{asset}] {ticker}: WATCH ({elapsed:.0f}s elapsed).")
@@ -4174,10 +4167,10 @@ async def _process_asset(
     # DONE
     if st["phase"] == "DONE":
         if secs_left > 3 * 60 and ticker not in st["order_attempted"]:
-            log.info(f"[{asset}] DONE → READY re-entry: {ticker} has {secs_left:.0f}s left.")
+            log.info(f"[{asset}] DONE â†’ READY re-entry: {ticker} has {secs_left:.0f}s left.")
             st["phase"] = "READY"
         else:
-            log.info(f"[{asset}] DONE. {secs_left:.0f}s left — waiting for next market.")
+            log.info(f"[{asset}] DONE. {secs_left:.0f}s left â€” waiting for next market.")
             return
 
     # READY
@@ -4185,7 +4178,7 @@ async def _process_asset(
         # Global consecutive-loss pause applies to ALL assets
         if _consecutive_loss_pause_until and time.time() < _consecutive_loss_pause_until:
             _resume_in = int(_consecutive_loss_pause_until - time.time())
-            log.info(f"[{asset}] Consecutive-loss pause active — {_resume_in}s remaining. Skipping.")
+            log.info(f"[{asset}] Consecutive-loss pause active â€” {_resume_in}s remaining. Skipping.")
             return
         try:
             await handle_ready_phase(
@@ -4207,7 +4200,7 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
             config = read_config()
             if not config.get("bot_enabled", False):
                 # Populate PAUSED state so dashboard shows prices instead of OFFLINE
-                for _pa in config.get("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"]):
+                for _pa in config.get("enabled_assets", ["ETH", "SOL", "XRP"]):
                     if _pa == "BTC":
                         continue
                     if _pa not in _asset_states:
@@ -4216,7 +4209,7 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
                         _asset_states[_pa]["phase"] = "PAUSED"
                 await asyncio.sleep(10)
                 continue
-            for asset in config.get("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"]):
+            for asset in config.get("enabled_assets", ["ETH", "SOL", "XRP"]):
                 if asset == "BTC":
                     continue
                 try:
@@ -4228,9 +4221,9 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
         await asyncio.sleep(10)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Main loop
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def main_loop() -> None:
     """
@@ -4245,7 +4238,7 @@ async def main_loop() -> None:
 
     prev_ticker: str | None = None
 
-    # ── Recover open position and consecutive-loss state after a crash/restart ─
+    # â”€â”€ Recover open position and consecutive-loss state after a crash/restart â”€
     try:
         with open(_STATE_FILE, "r") as _sf:
             _saved = json.load(_sf)
@@ -4337,7 +4330,7 @@ async def main_loop() -> None:
                 _btc_age = _am_price_age("BTC")
                 if _btc_age is not None and _btc_age > 60:
                     age = int(_btc_age)
-                    log.warning(f"BTC price stale ({age}s old) — skipping cycle.")
+                    log.warning(f"BTC price stale ({age}s old) â€” skipping cycle.")
                     await write_state_file(config, current_market, current_phase, 0,
                                            btc_price, last_confidence_score,
                                            last_confidence_breakdown, "skip", f"btc_stale_{age}s")
@@ -4356,13 +4349,13 @@ async def main_loop() -> None:
                     # If we have an open position with a stored close time, still run the
                     # locked-phase handler so the trade can settle even when no new market
                     # is visible. Repeated warnings each cycle until close_time elapses
-                    # are expected — not errors.
+                    # are expected â€” not errors.
                     if current_phase == "LOCKED" and current_position is not None:
                         _close_time = current_position.get("market_close_time", "")
                         if not _close_time:
-                            log.error("LOCKED position missing market_close_time — cannot safely settle without market. Skipping.")
+                            log.error("LOCKED position missing market_close_time â€” cannot safely settle without market. Skipping.")
                         else:
-                            log.warning("No active BTC markets — still processing open LOCKED position.")
+                            log.warning("No active BTC markets â€” still processing open LOCKED position.")
                             try:
                                 await handle_locked_phase(session, btc_price, 0, config)
                             except Exception as exc:
@@ -4390,8 +4383,8 @@ async def main_loop() -> None:
                 elif ticker != prev_ticker:
                     if current_phase == "LOCKED":
                         # Never reset a live position when the market rolls over.
-                        # The position is on the OLD ticker — keep monitoring it.
-                        log.info(f"Market rolled to {ticker} but position still open on {prev_ticker} — staying LOCKED.")
+                        # The position is on the OLD ticker â€” keep monitoring it.
+                        log.info(f"Market rolled to {ticker} but position still open on {prev_ticker} â€” staying LOCKED.")
                         # Keep using the old market object for SL monitoring this cycle
                         ticker = prev_ticker
                         market = _market_cache if _market_cache and _market_cache.get("ticker") == prev_ticker else market
@@ -4417,7 +4410,7 @@ async def main_loop() -> None:
                     if "TBD" in yes_sub:
                         strike = _am_get_price("BTC")
                         if strike:
-                            log.info(f"{ticker}: strike TBD — using live price {strike:.2f}")
+                            log.info(f"{ticker}: strike TBD â€” using live price {strike:.2f}")
                         else:
                             log.warning(f"{ticker}: cannot parse strike. Skipping cycle.")
                             await asyncio.sleep(10)
@@ -4427,10 +4420,10 @@ async def main_loop() -> None:
                         await asyncio.sleep(10)
                         continue
 
-                # ── WATCH ──────────────────────────────────────────────────
+                # â”€â”€ WATCH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if current_phase == "WATCH":
                     if elapsed > WATCH_PHASE_SECONDS:
-                        log.info(f"{ticker}: elapsed {elapsed:.0f}s → READY.")
+                        log.info(f"{ticker}: elapsed {elapsed:.0f}s â†’ READY.")
                         current_phase = "READY"
                     else:
                         log.info(f"{ticker}: WATCH ({elapsed:.0f}s elapsed).")
@@ -4442,7 +4435,7 @@ async def main_loop() -> None:
                         await asyncio.sleep(10)
                         continue
 
-                # ── LOCKED ─────────────────────────────────────────────────
+                # â”€â”€ LOCKED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if current_phase == "LOCKED":
                     try:
                         await handle_locked_phase(
@@ -4456,31 +4449,31 @@ async def main_loop() -> None:
                     await asyncio.sleep(10)
                     continue
 
-                # ── DONE ───────────────────────────────────────────────────
+                # â”€â”€ DONE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if current_phase == "DONE":
                     # Re-enter READY only if no order was attempted for this ticker.
                     # This prevents duplicate orders when fill_confirmed=False but
                     # the order actually went through on Kalshi.
                     if secs_left > 3 * 60 and ticker not in _order_attempted_tickers:
                         log.info(
-                            f"DONE → READY re-entry: {ticker} has {secs_left:.0f}s left."
+                            f"DONE â†’ READY re-entry: {ticker} has {secs_left:.0f}s left."
                         )
                         current_phase = "READY"
                         # Fall through to READY handler below
                     else:
-                        log.info(f"DONE phase. {secs_left:.0f}s left — waiting for next market.")
+                        log.info(f"DONE phase. {secs_left:.0f}s left â€” waiting for next market.")
                         await write_state_file(config, market, current_phase, secs_left, btc_price,
                                                last_confidence_score, last_confidence_breakdown,
                                                last_action, last_skip_reason)
                         await asyncio.sleep(10)
                         continue
 
-                # ── READY ──────────────────────────────────────────────────
+                # â”€â”€ READY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if current_phase == "READY":
                     # Consecutive-loss pause check
                     if _consecutive_loss_pause_until and time.time() < _consecutive_loss_pause_until:
                         _resume_in = int(_consecutive_loss_pause_until - time.time())
-                        log.info(f"Consecutive-loss pause active — {_resume_in}s remaining. Skipping READY.")
+                        log.info(f"Consecutive-loss pause active â€” {_resume_in}s remaining. Skipping READY.")
                         await write_state_file(config, market, current_phase, secs_left, btc_price,
                                                last_confidence_score, last_confidence_breakdown,
                                                "skip", f"consecutive_loss_pause ({_resume_in}s left)")
@@ -4508,13 +4501,13 @@ async def main_loop() -> None:
             await asyncio.sleep(10)
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Entry point
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
     """Verify Kalshi credentials work and log all available BTC market series."""
-    # Auth check via /portfolio/balance — avoids market query-exchange service entirely
+    # Auth check via /portfolio/balance â€” avoids market query-exchange service entirely
     balance_path = "/portfolio/balance"
     try:
         async with session.get(
@@ -4524,10 +4517,10 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
         ) as resp:
             data = await resp.json()
             if resp.status == 401:
-                log.error("KALSHI AUTH FAILED (401) — check KALSHI_API_KEY and KALSHI_PRIVATE_KEY")
+                log.error("KALSHI AUTH FAILED (401) â€” check KALSHI_API_KEY and KALSHI_PRIVATE_KEY")
                 sys.exit(1)
             if resp.status != 200:
-                log.error(f"Kalshi connection check failed: HTTP {resp.status} — {data}")
+                log.error(f"Kalshi connection check failed: HTTP {resp.status} â€” {data}")
                 sys.exit(1)
             balance = data.get("balance", "?")
             log.info(f"Kalshi auth OK. Account balance: {balance} cents")
@@ -4539,11 +4532,11 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
 
     path = "/markets"
 
-    # ── Market discovery: log everything BTC-related so we can find the right ticker ──
+    # â”€â”€ Market discovery: log everything BTC-related so we can find the right ticker â”€â”€
     now_utc = datetime.now(timezone.utc)
     log.info("=== KALSHI MARKET DISCOVERY START ===")
 
-    # 1. Try every known series ticker (KXBTCD / BTCD-B first — the active "above/below" BTC markets)
+    # 1. Try every known series ticker (KXBTCD / BTCD-B first â€” the active "above/below" BTC markets)
     for series in ("KXBTCD", "BTCD-B", "KXBTC15M", "KXBTC", "BTC15M", "BTC", "BTCUSD", "KXBTCUSD", "KXBTCUSD15M"):
         try:
             async with session.get(
@@ -4594,7 +4587,7 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
         except Exception as exc:
             log.info(f"  scan series={scan_series!r} ERROR: {exc}")
 
-    # 3. /series endpoint — find any BTC-related series
+    # 3. /series endpoint â€” find any BTC-related series
     try:
         async with session.get(
             KALSHI_BASE_URL + "/series",
@@ -4625,17 +4618,17 @@ async def run_preflight_checks(config: dict) -> None:
     Runs before first trade. Prints warnings and blocks live trading
     if critical validations haven't been completed.
 
-    LIVE mode + unresolved issues  → sys.exit(1). Hard stop.
-    PAPER mode + unresolved issues → warn and continue (bot must run to collect data).
-    preflight_override: true in config.json  → skip the live-mode block (NOT RECOMMENDED).
+    LIVE mode + unresolved issues  â†’ sys.exit(1). Hard stop.
+    PAPER mode + unresolved issues â†’ warn and continue (bot must run to collect data).
+    preflight_override: true in config.json  â†’ skip the live-mode block (NOT RECOMMENDED).
     """
     issues: list[str] = []
     W = 60
 
-    # ── Check 1: Price validation data ────────────────────────────────────────
+    # â”€â”€ Check 1: Price validation data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if not os.path.isfile(_PRICE_VAL_CSV):
         issues.append(
-            "NO PRICE VALIDATION DATA — price_validation_log.csv does not exist. "
+            "NO PRICE VALIDATION DATA â€” price_validation_log.csv does not exist. "
             "Run paper mode for 200+ cycles first."
         )
     else:
@@ -4646,34 +4639,34 @@ async def run_preflight_checks(config: dict) -> None:
             row_count = 0
         if row_count < 200:
             issues.append(
-                f"INSUFFICIENT PRICE VALIDATION — only {row_count}/200 samples collected. "
+                f"INSUFFICIENT PRICE VALIDATION â€” only {row_count}/200 samples collected. "
                 "Keep running paper mode."
             )
 
-    # ── Check 2: Fee constant is set and > 0 ──────────────────────────────────
+    # â”€â”€ Check 2: Fee constant is set and > 0 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     fee = config.get("kalshi_fee_per_contract_cents", 0)
     if not (isinstance(fee, (int, float)) and fee > 0):
         issues.append(
-            f"FEE NOT CONFIGURED — kalshi_fee_per_contract_cents={fee!r}. "
+            f"FEE NOT CONFIGURED â€” kalshi_fee_per_contract_cents={fee!r}. "
             "Set to 7 (Kalshi charges 7c/contract)."
         )
 
-    # ── Check 3: Daily loss limit is real ─────────────────────────────────────
+    # â”€â”€ Check 3: Daily loss limit is real â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     dll = config.get("daily_loss_limit_dollars", 999999)
     if dll > 500:
         issues.append(
-            f"DAILY LOSS LIMIT TOO HIGH — currently ${dll}. "
+            f"DAILY LOSS LIMIT TOO HIGH â€” currently ${dll}. "
             "Set to a realistic value (e.g. $50)."
         )
 
-    # ── Check 4: mode gate ────────────────────────────────────────────────────
+    # â”€â”€ Check 4: mode gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     mode      = config.get("mode", "paper")
-    is_live   = mode == "live"   # demo uses simulated funds — only block for real-money live
+    is_live   = mode == "live"   # demo uses simulated funds â€” only block for real-money live
     override  = bool(config.get("preflight_override", False))
 
     if is_live and issues:
         print("=" * W)
-        print("LIVE TRADING BLOCKED — PRE-FLIGHT CHECK FAILED")
+        print("LIVE TRADING BLOCKED â€” PRE-FLIGHT CHECK FAILED")
         print("=" * W)
         for issue in issues:
             print(f"  [FAIL] {issue}")
@@ -4682,24 +4675,24 @@ async def run_preflight_checks(config: dict) -> None:
         print("To override (NOT RECOMMENDED): set preflight_override: true in config.json")
         print("=" * W)
         await send_telegram(
-            "\U0001f6a8 <b>LIVE TRADING BLOCKED — pre-flight failed</b>\n"
-            + "\n".join(f"• {i}" for i in issues)
+            "\U0001f6a8 <b>LIVE TRADING BLOCKED â€” pre-flight failed</b>\n"
+            + "\n".join(f"â€¢ {i}" for i in issues)
             + "\nResolve all issues before retrying live mode."
         )
         if not override:
             sys.exit(2)
         else:
-            log.warning("PRE-FLIGHT OVERRIDE ACTIVE — proceeding into live mode despite failures. "
+            log.warning("PRE-FLIGHT OVERRIDE ACTIVE â€” proceeding into live mode despite failures. "
                         "This is NOT recommended.")
             print()
-            print("  *** OVERRIDE ACTIVE — LIVE MODE STARTING ANYWAY ***")
+            print("  *** OVERRIDE ACTIVE â€” LIVE MODE STARTING ANYWAY ***")
             print("  *** THIS IS NOT RECOMMENDED. YOU WERE WARNED.   ***")
             print("=" * W)
 
     elif issues:
-        # Paper mode — warn but continue; the bot must run to collect validation data.
+        # Paper mode â€” warn but continue; the bot must run to collect validation data.
         print("=" * W)
-        print("PRE-FLIGHT WARNINGS (paper mode — not blocking)")
+        print("PRE-FLIGHT WARNINGS (paper mode â€” not blocking)")
         print("=" * W)
         for issue in issues:
             print(f"  [WARN] {issue}")
@@ -4707,7 +4700,7 @@ async def run_preflight_checks(config: dict) -> None:
 
     else:
         log.info("=" * W)
-        log.info(f"  Pre-flight: PASS — {mode.upper()} mode.  "
+        log.info(f"  Pre-flight: PASS â€” {mode.upper()} mode.  "
                  f"fee={fee}c  dll=${dll}  "
                  f"reversal={'ON' if config.get('enable_reversal_signal') else 'OFF'}")
         log.info("=" * W)
@@ -4721,7 +4714,7 @@ async def main() -> None:
     test_db_write()
 
     # Clean up zombie "pending" trades from prior crashed sessions.
-    # Any trade still pending after 30+ minutes never settled — mark it as expired.
+    # Any trade still pending after 30+ minutes never settled â€” mark it as expired.
     try:
         conn = sqlite3.connect(_DB_FILE)
         cleaned = conn.execute(
@@ -4743,7 +4736,7 @@ async def main() -> None:
     _load_bv3_corrections()
 
     # Verify Kalshi credentials and log account balance before doing anything.
-    # Skipped in paper mode — no real credentials are loaded there.
+    # Skipped in paper mode â€” no real credentials are loaded there.
     if read_config().get("mode", "paper") != "paper":
         async with aiohttp.ClientSession() as verify_session:
             await verify_kalshi_connection(verify_session)
@@ -4753,8 +4746,8 @@ async def main() -> None:
 
     # Start Binance multi-asset price feed
     _startup_config = read_config()
-    _enabled = _startup_config.get("enabled_assets", ["ETH", "SOL", "XRP", "DOGE"])
-    # Always subscribe BTC regardless of enabled_assets — other strategies use
+    _enabled = _startup_config.get("enabled_assets", ["ETH", "SOL", "XRP"])
+    # Always subscribe BTC regardless of enabled_assets â€” other strategies use
     # btc_prices_60m for correlation signals and the deque must stay populated.
     _feed_assets = list(dict.fromkeys(["BTC"] + _enabled))
     asyncio.create_task(binance_feed_task(_feed_assets))
@@ -4771,15 +4764,15 @@ async def main() -> None:
             log.warning(f"Still waiting for {_first_asset} price feed ({waited}s elapsed)...")
     _first_price = _am_get_price(_first_asset)
     if _first_price is None:
-        log.warning("Price feed not available after 120s — continuing anyway; prices will populate shortly.")
+        log.warning("Price feed not available after 120s â€” continuing anyway; prices will populate shortly.")
     else:
         log.info(f"Price feed ready after {waited}s. {_first_asset}: ${_first_price:,.2f}")
     _startup_cfg = read_config()
     _btc_display = f"${get_btc_price():,.2f}" if get_btc_price() is not None else f"{_first_asset}: ${_first_price:,.2f}" if _first_price else "price N/A"
-    await send_telegram(f"🤖 <b>Printer bot started</b>\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
+    await send_telegram(f"ðŸ¤– <b>Printer bot started</b>\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
 
     # Pre-flight check runs once before trading begins.
-    # LIVE mode with unresolved issues → sys.exit(1). Paper mode → warn and continue.
+    # LIVE mode with unresolved issues â†’ sys.exit(1). Paper mode â†’ warn and continue.
     await run_preflight_checks(_startup_cfg)
 
     await main_loop()
@@ -4787,3 +4780,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
+

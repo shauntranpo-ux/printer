@@ -1,4 +1,4 @@
-"""
+﻿"""
 Per-asset beta cache.
 
 Betas refit weekly from historical 1-min returns in data/historical/.
@@ -28,7 +28,6 @@ ASSET_DEFAULT_BETAS = {
     "ETH": 1.10,   # historically 1.0-1.2 vs BTC on intraday
     "SOL": 1.70,   # higher beta (section 5)
     "XRP": 0.80,   # lower, more idiosyncratic
-    "DOGE": 1.30,  # retail-flow driven
 }
 
 
@@ -57,7 +56,7 @@ def refit_all_betas(data_dir: str = "data/historical") -> dict:
 
     Note on data/split_config.json: betas intentionally use the most recent
     data (data/historical/*_1m_2026.parquet), NOT the pre-2024 training set.
-    Betas are correlation estimates — they should reflect the current market
+    Betas are correlation estimates â€” they should reflect the current market
     regime. The split config applies to BV3 win-rate tables (where leakage
     is a model-validity concern), not to rolling correlation parameters.
 
@@ -80,7 +79,7 @@ def refit_all_betas(data_dir: str = "data/historical") -> dict:
 
     cache = {"BTC": {"beta": 1.00, "computed_at": time.time()}}
 
-    for asset in ["ETH", "SOL", "XRP", "DOGE"]:
+    for asset in ["ETH", "SOL", "XRP"]:
         path = data_path / f"{asset}_1m_2026.parquet"
         if not path.exists():
             cache[asset] = {
@@ -121,3 +120,4 @@ def refit_all_betas(data_dir: str = "data/historical") -> dict:
     with open(BETA_CACHE_PATH, "w") as f:
         json.dump(cache, f, indent=2)
     return cache
+

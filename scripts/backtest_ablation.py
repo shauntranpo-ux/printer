@@ -1,4 +1,4 @@
-"""
+﻿"""
 Component ablation study.
 
 For each asset, disable each strategy signal in turn and re-run a
@@ -40,9 +40,8 @@ ABLATION_TARGETS = [
     ("XRP",  "news_mode",      "strategies.xrp_strategy",  "NEWS_MODE_CONTINUATION_ADJ"),
     ("XRP",  "ratio_adj",      "strategies.xrp_strategy",  "RATIO_ADJ_MAX"),
     ("XRP",  "velocity_adj",   "strategies.xrp_strategy",  "VELOCITY_ADJ"),
-    ("DOGE", "beta_adj",       "strategies.doge_strategy", "BETA_ADJ_MAX"),
-    ("DOGE", "momentum_bias",  "strategies.doge_strategy", "MOMENTUM_BIAS"),
-    ("DOGE", "velocity_adj",   "strategies.doge_strategy", "VELOCITY_ADJ"),
+
+
 ]
 
 
@@ -140,3 +139,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

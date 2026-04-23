@@ -1,4 +1,4 @@
-import math
+﻿import math
 import pytest
 
 from strategies.signals.rolling_beta import (
@@ -13,7 +13,7 @@ from strategies.signals.kalshi_velocity import (
 )
 
 
-# ── Rolling beta ──────────────────────────────────────────────────────────
+# â”€â”€ Rolling beta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_beta_perfect_correlation_equals_one():
     rets = [0.01, -0.02, 0.005, 0.003, -0.015] * 30
@@ -45,7 +45,7 @@ def test_log_returns_from_prices():
     assert abs(rets[0] - math.log(1.01)) < 1e-9
 
 
-# ── Variance ratio ────────────────────────────────────────────────────────
+# â”€â”€ Variance ratio â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_vr_iid_random_walk_near_one():
     import random
@@ -79,7 +79,7 @@ def test_vr_regime_classification():
     assert variance_ratio_to_regime(None) == "neutral"
 
 
-# ── Kalshi velocity ───────────────────────────────────────────────────────
+# â”€â”€ Kalshi velocity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_velocity_rising_detected():
     hist = [(i, 50 + i) for i in range(40)]
@@ -109,7 +109,7 @@ def test_velocity_adjustment_signs():
     assert velocity_adjustment_for_side("flat", "yes") == 0.0
 
 
-# ── Ratio divergence ──────────────────────────────────────────────────────
+# â”€â”€ Ratio divergence â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def test_ratio_z_score_stable_ratio_is_none():
     eth = [(i * 60, 2000.0) for i in range(60)]
@@ -133,7 +133,7 @@ def test_ratio_z_score_insufficient_data_returns_none():
     assert ratio_z_score(eth, btc) is None
 
 
-# ── Solana health check ───────────────────────────────────────────────────
+# â”€â”€ Solana health check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 import time as _time
 from unittest.mock import patch, MagicMock
@@ -210,7 +210,7 @@ def test_solana_health_caches_within_ttl():
         assert mock_urlopen.call_count == 1
 
 
-# ── Exhaustion fade ───────────────────────────────────────────────────────
+# â”€â”€ Exhaustion fade â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 from strategies.signals.exhaustion_fade import exhaustion_fade_adjustment
 
@@ -254,7 +254,7 @@ def test_exhaustion_inactive_on_small_move():
     assert sig["exhaustion_active"] is False
 
 
-# ── Correlation monitor ───────────────────────────────────────────────────
+# â”€â”€ Correlation monitor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 from strategies.signals.correlation_monitor import (
     rolling_correlation, btc_signal_weight_from_correlation
@@ -296,7 +296,7 @@ def test_btc_weight_none_returns_middle():
     assert w == 0.15
 
 
-# ── Volume spike + extreme velocity ───────────────────────────────────────
+# â”€â”€ Volume spike + extreme velocity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 from strategies.signals.volume_spike import detect_volume_spike
 from strategies.signals.kalshi_velocity import extreme_velocity_event
@@ -334,7 +334,7 @@ def test_extreme_velocity_inactive_on_small_move():
     assert is_extreme is False
 
 
-# ── Event calendar ────────────────────────────────────────────────────────
+# â”€â”€ Event calendar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 from strategies.signals.event_calendar import EventCalendar
 import json
@@ -405,7 +405,7 @@ def test_event_calendar_corrupt_file_ok(tmp_path):
     assert active is False
 
 
-# ── Session awareness ─────────────────────────────────────────────────────
+# â”€â”€ Session awareness â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 from strategies.signals.session_awareness import (
     current_session, session_min_ev_multiplier
@@ -436,62 +436,10 @@ def test_session_multipliers():
     assert session_min_ev_multiplier("us_afternoon") == 1.25
 
 
-# ── Idiosyncratic detector ────────────────────────────────────────────────
-
-from strategies.signals.idiosyncratic_detector import detect_idiosyncratic_mode
 
 
-def test_idiosyncratic_insufficient_data():
-    doge = [(0, 0.1)]
-    btc = [(0, 50000.0)]
-    is_idio, sig = detect_idiosyncratic_mode(doge, btc, beta=1.3)
-    assert is_idio is False
-    assert "insufficient" in sig["reason"]
 
-
-def test_idiosyncratic_normal_move_not_flagged():
-    now = _time.time()
-    doge_prices = []
-    btc_prices = []
-    doge_price = 0.10
-    btc_price = 50000.0
-    for i in range(90):
-        ts = now - (90 - i) * 60
-        btc_ret = 0.0005 * (1 if i % 2 == 0 else -1)
-        btc_price = btc_price * (1 + btc_ret)
-        doge_ret = 1.3 * btc_ret
-        doge_price = doge_price * (1 + doge_ret)
-        btc_prices.append((ts, btc_price))
-        doge_prices.append((ts, doge_price))
-    is_idio, sig = detect_idiosyncratic_mode(doge_prices, btc_prices, beta=1.3)
-    assert is_idio is False
-
-
-def test_idiosyncratic_divergent_move_flagged():
-    import random
-    random.seed(42)
-    now = _time.time()
-    doge_prices = []
-    btc_prices = []
-    doge_price = 0.10
-    btc_price = 50000.0
-    for i in range(90):
-        ts = now - (90 - i) * 60
-        btc_ret = random.gauss(0, 0.0001)
-        btc_price = btc_price * (1 + btc_ret)
-        if i < 75:
-            doge_ret = 1.3 * btc_ret + random.gauss(0, 0.0001)
-        else:
-            doge_ret = 0.003  # +0.3%/min with BTC flat
-        doge_price = doge_price * (1 + doge_ret)
-        btc_prices.append((ts, btc_price))
-        doge_prices.append((ts, doge_price))
-    is_idio, sig = detect_idiosyncratic_mode(doge_prices, btc_prices, beta=1.3)
-    assert is_idio is True
-    assert sig["divergence_sigma"] > 2.5
-
-
-# ── BV3 lookup ────────────────────────────────────────────────────────────
+# â”€â”€ BV3 lookup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 from unittest.mock import patch as _patch
 from strategies.signals.bv3_lookup import bv3_p_yes
@@ -520,3 +468,4 @@ def test_bv3_p_yes_returns_none_when_lookup_fails(mock_bv3):
 def test_bv3_p_yes_invalid_strike_returns_none():
     p = bv3_p_yes("BTC", 100500.0, 0.0, 600.0)
     assert p is None
+

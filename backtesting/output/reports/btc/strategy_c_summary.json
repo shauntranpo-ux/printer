@@ -1,0 +1,17 @@
+{
+  "n_events_seen": 87,
+  "n_events_traded": 87,
+  "n_total_trades": 174,
+  "c1_trades": 0,
+  "c1_net_pnl": 0.0,
+  "c1_win_rate": null,
+  "c2_trades": 174,
+  "c2_net_pnl": 8.619999999999996,
+  "c2_win_rate": 0.10344827586206896,
+  "combined_sharpe": 17.464013035761123,
+  "combined_win_rate": 0.10344827586206896,
+  "combined_net_pnl": 8.619999999999996,
+  "gross_pnl": 15.789999999999996,
+  "total_fee": 7.17,
+  "fee_drag_pct": 45.40848638378721
+}

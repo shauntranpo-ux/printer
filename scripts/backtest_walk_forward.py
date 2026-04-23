@@ -1,4 +1,4 @@
-"""
+﻿"""
 Walk-forward backtest for all 5 markets.
 
 Training/test windows:
@@ -58,12 +58,6 @@ def make_strategy(asset: str, calibrator=None):
     elif asset == "XRP":
         from strategies.xrp_strategy import XRPStrategy
         return XRPStrategy(
-            skip_config=skip_cfg, min_ev=0.03, stake_dollars=stake,
-            calibrator=calibrator,
-        )
-    elif asset == "DOGE":
-        from strategies.doge_strategy import DOGEStrategy
-        return DOGEStrategy(
             skip_config=skip_cfg, min_ev=0.03, stake_dollars=stake,
             calibrator=calibrator,
         )
@@ -255,7 +249,7 @@ def walk_forward_one_asset(
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--assets", nargs="+", default=["ETH", "SOL", "XRP", "DOGE"])
+    parser.add_argument("--assets", nargs="+", default=["ETH", "SOL", "XRP"])
     parser.add_argument("--train-days", type=int, default=90)
     parser.add_argument("--test-days", type=int, default=30)
     parser.add_argument("--purge-days", type=int, default=1)
@@ -289,7 +283,7 @@ def main():
 
     btc_df = load_btc_prices()
     if btc_df is None:
-        print("WARNING: BTC price history not found — non-BTC strategies will lack BTC context signals")
+        print("WARNING: BTC price history not found â€” non-BTC strategies will lack BTC context signals")
 
     for asset in args.assets:
         try:
@@ -331,3 +325,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
