@@ -192,6 +192,13 @@ canvas.equity-chart{display:block;width:100%;height:90px;}
 .mv-kpi-val.g{color:var(--up);}
 .mv-kpi-val.r{color:var(--down);}
 .mv-body{padding:14px;}
+.mv-section-hdr{display:flex;align-items:center;gap:8px;padding:8px 18px 6px;background:var(--bg);border-bottom:1px solid var(--line);border-top:1px solid var(--line);}
+.mv-section-hdr-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);}
+.mv-section-hdr-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:4px;text-transform:uppercase;letter-spacing:.06em;}
+.mv-section-hdr-badge.active-15m{background:rgba(16,185,129,.15);color:#10b981;}
+.mv-section-hdr-badge.active-hourly{background:rgba(99,102,241,.15);color:#6366f1;}
+.mv-section-hdr-badge.inactive{background:var(--line);color:var(--ink-3);}
+.mv-section-waiting{padding:18px;color:var(--ink-3);font-size:12px;font-style:italic;}
 .mv-row{display:grid;grid-template-columns:3fr 2fr;gap:12px;margin-bottom:12px;}
 
 /* ── Limit badge ── */
@@ -720,15 +727,41 @@ function renderMarketView(sym) {
   const phaseCls = 'phase-'+(a.phase||'DONE');
 
   const isHourlyAsset = (sym === 'BTC' || sym === 'ETH');
-  const hourlySubTabs = isHourlyAsset ? `
-    <div style="display:flex;gap:6px;padding:10px 14px 0;border-bottom:1px solid var(--line-1);margin-bottom:4px;">
-      <button class="chart-tab ${_mvStratTab==='hourly'?'active':''}" id="mv-stab-hourly" onclick="setMvStratTab('hourly')" style="font-size:11px;">Hourly</button>
-      <button class="chart-tab ${_mvStratTab==='15min'?'active':''}" id="mv-stab-15min" onclick="setMvStratTab('15min')" style="font-size:11px;">Signals</button>
+
+  // For BTC/ETH: determine which section is currently active
+  const live15m    = isHourlyAsset && a.session_type === '15m';
+  const liveHourly = isHourlyAsset && a.session_type === 'hourly';
+
+  // KPIs for each section — only populated when that section is active
+  const _ev15    = live15m ? ev : null,    _evH    = liveHourly ? ev : null;
+  const _wp15    = live15m ? wp : null,    _wpH    = liveHourly ? wp : null;
+  const _yask15  = live15m ? yask : null,  _yaskH  = liveHourly ? yask : null;
+  const _nask15  = live15m ? nask : null,  _naskH  = liveHourly ? nask : null;
+  const _dist15  = live15m ? dist : null,  _distH  = liveHourly ? dist : null;
+  const _str15   = live15m ? strike : null,_strH   = liveHourly ? strike : null;
+  const _secs15  = live15m ? secs : 0,     _secsH  = liveHourly ? secs : 0;
+  const _skip15  = live15m ? a.skip_reason : null;
+  const _skipH   = liveHourly ? a.skip_reason : null;
+  const _st15    = live15m ? effectiveStatus : 'OFFLINE';
+  const _stH     = liveHourly ? effectiveStatus : 'OFFLINE';
+  const _bc15    = `mc-badge ${_st15==='TRADING'?'trading':_st15==='WATCHING'?'watching':_st15==='SKIPPED'?'skipped':'offline'}`;
+  const _bcH     = `mc-badge ${_stH==='TRADING'?'trading':_stH==='WATCHING'?'watching':_stH==='SKIPPED'?'skipped':'offline'}`;
+
+  const sectionHdr15m = isHourlyAsset ? `
+    <div class="mv-section-hdr">
+      <span class="mv-section-hdr-lbl">15-Minute Markets</span>
+      <span class="mv-section-hdr-badge ${live15m ? 'active-15m' : 'inactive'}">${live15m ? 'ACTIVE' : 'WAITING'}</span>
+    </div>` : '';
+  const sectionHdrHourly = isHourlyAsset ? `
+    <div class="mv-section-hdr" style="margin-top:8px;">
+      <span class="mv-section-hdr-lbl">Hourly Markets</span>
+      <span class="mv-section-hdr-badge ${liveHourly ? 'active-hourly' : 'inactive'}">${liveHourly ? 'ACTIVE' : 'WAITING'}</span>
     </div>` : '';
 
   const html = `
-    ${hourlySubTabs}
-    <div id="mv-15min-view" style="${isHourlyAsset&&_mvStratTab==='hourly'?'display:none':''}">
+    ${sectionHdr15m}
+    <div id="mv-15min-view">
+    ${!isHourlyAsset || live15m ? `
     <div class="mv-hero">
       ${cryptoLogoHtml(sym, 36)}
       <div>
@@ -737,20 +770,20 @@ function renderMarketView(sym) {
       </div>
       <div style="margin-left:8px;">${arrowHtml}</div>
       <div class="mv-badges">
-        <span class="mc-badge ${badgeCls}">${effectiveStatus}</span>
+        <span class="${isHourlyAsset ? _bc15 : `mc-badge ${badgeCls}`}">${isHourlyAsset ? _st15 : effectiveStatus}</span>
         <span class="phase-badge ${phaseCls}">${a.phase||'DONE'}</span>
-        ${secs>0?`<span style="font-size:12px;color:var(--ink-3);">⏱ ${_fmtSecs(secs)}</span>`:''}
+        ${(isHourlyAsset?_secs15:secs)>0?`<span style="font-size:12px;color:var(--ink-3);">⏱ ${_fmtSecs(isHourlyAsset?_secs15:secs)}</span>`:''}
       </div>
-      ${a.skip_reason?`<div style="font-size:11px;color:var(--down);margin-top:4px;width:100%;">${escHtml(a.skip_reason)}</div>`:''}
+      ${(isHourlyAsset?_skip15:a.skip_reason)?`<div style="font-size:11px;color:var(--down);margin-top:4px;width:100%;">${escHtml(isHourlyAsset?_skip15:a.skip_reason)}</div>`:''}
     </div>
     <div class="mv-kpi-grid">
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Strike</div><div class="mv-kpi-val">${strike!=null?_fmtPrice(sym,strike):'—'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Dist</div><div class="mv-kpi-val">${dist!=null?dist.toFixed(2)+'%':'—'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">YES Ask</div><div class="mv-kpi-val">${yask!=null?yask+'¢':'—'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${nask!=null?nask+'¢':'—'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">EV</div><div class="mv-kpi-val ${ev!=null&&ev>0?'g':ev!=null&&ev<0?'r':''}">${ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Win Prob</div><div class="mv-kpi-val">${wp!=null?wp.toFixed(1)+'%':'—'}</div></div>
-    </div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Strike</div><div class="mv-kpi-val">${(isHourlyAsset?_str15:strike)!=null?_fmtPrice(sym,isHourlyAsset?_str15:strike):'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Dist</div><div class="mv-kpi-val">${(isHourlyAsset?_dist15:dist)!=null?(isHourlyAsset?_dist15:dist).toFixed(2)+'%':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">YES Ask</div><div class="mv-kpi-val">${(isHourlyAsset?_yask15:yask)!=null?(isHourlyAsset?_yask15:yask)+'¢':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${(isHourlyAsset?_nask15:nask)!=null?(isHourlyAsset?_nask15:nask)+'¢':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">EV</div><div class="mv-kpi-val ${(isHourlyAsset?_ev15:ev)!=null&&(isHourlyAsset?_ev15:ev)>0?'g':(isHourlyAsset?_ev15:ev)!=null&&(isHourlyAsset?_ev15:ev)<0?'r':''}">${(isHourlyAsset?_ev15:ev)!=null?((isHourlyAsset?_ev15:ev)>=0?'+':'')+(isHourlyAsset?_ev15:ev).toFixed(1)+'%':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Win Prob</div><div class="mv-kpi-val">${(isHourlyAsset?_wp15:wp)!=null?(isHourlyAsset?_wp15:wp).toFixed(1)+'%':'—'}</div></div>
+    </div>` : `<div class="mv-section-waiting">Next 15-minute window not yet open.</div>`}
     <div class="mv-body">
       <div class="mv-row">
         <div class="card chart-card">
@@ -773,14 +806,16 @@ function renderMarketView(sym) {
       </div>
     </div>
     </div>
-    ${isHourlyAsset ? `<div id="mv-hourly-view" style="${_mvStratTab==='hourly'?'':'display:none'}">
+    ${sectionHdrHourly}
+    ${isHourlyAsset ? `<div id="mv-hourly-view">
+    ${liveHourly ? `
     <div class="mv-hero">
       ${cryptoLogoHtml(sym, 36)}
       <div>
         <div class="mv-asset-name">
-          ${sym} ${a.session_type === 'hourly' ? 'Hourly' : '15m'}
+          ${sym}
           ${a.ticker ? `<span style="color:var(--ink-3);font-size:11px;font-weight:400;">| ${a.ticker}</span>` : ''}
-          ${a.strike != null ? `<span style="color:var(--ink-3);font-size:11px;font-weight:400;">| Strike $${Number(a.strike).toLocaleString()}</span>` : ''}
+          ${_strH != null ? `<span style="color:var(--ink-3);font-size:11px;font-weight:400;">| Strike $${Number(_strH).toLocaleString()}</span>` : ''}
           ${a.strategy_name ? `<span style="color:var(--accent);font-size:11px;font-weight:600;margin-left:8px;">${a.strategy_name}</span>` : ''}
         </div>
         <div class="mv-price-big">${_fmtPrice(sym, a.price)}</div>
@@ -789,15 +824,15 @@ function renderMarketView(sym) {
       </div>
       <div style="margin-left:8px;">${arrowHtml}</div>
       <div class="mv-badges">
-        <span class="mc-badge ${badgeCls}">${effectiveStatus}</span>
-        ${secs>0?`<span style="font-size:12px;color:var(--ink-3);">⏱ ${_fmtSecs(secs)}</span>`:''}
+        <span class="${_bcH}">${_stH}</span>
+        ${_secsH>0?`<span style="font-size:12px;color:var(--ink-3);">⏱ ${_fmtSecs(_secsH)}</span>`:''}
       </div>
     </div>
     <div class="mv-kpi-grid">
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Strike</div><div class="mv-kpi-val">${strike!=null?_fmtPrice(sym,strike):'—'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Dist</div><div class="mv-kpi-val">${dist!=null?dist.toFixed(2)+'%':'—'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">YES Ask</div><div class="mv-kpi-val">${yask!=null?yask+'¢':'—'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${nask!=null?nask+'¢':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Strike</div><div class="mv-kpi-val">${_strH!=null?_fmtPrice(sym,_strH):'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Dist</div><div class="mv-kpi-val">${_distH!=null?_distH.toFixed(2)+'%':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">YES Ask</div><div class="mv-kpi-val">${_yaskH!=null?_yaskH+'¢':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${_naskH!=null?_naskH+'¢':'—'}</div></div>
     </div>
     <div class="mv-body">
       <div class="card brain-card" style="min-height:100px;">
@@ -807,7 +842,7 @@ function renderMarketView(sym) {
         </div>
         <div id="mv-hourly-sig-rows">${_buildHourlyViewHtml(a)}</div>
       </div>
-    </div>
+    </div>` : `<div class="mv-section-waiting">Next hourly window not yet open.</div>`}
     </div>` : ''}`;
 
   const card = document.getElementById('mv-card');
@@ -841,7 +876,7 @@ function renderMarketView(sym) {
   if (wrEl) {
     const done = allTrades.filter(t => t.outcome !== 'pending' && t.pnl_dollars != null);
     if (done.length) {
-      const wins = done.filter(t => t.outcome === 'win').length;
+      const wins = done.filter(t => t.pnl_dollars > 0).length;
       wrEl.textContent = `${Math.round(wins/done.length*100)}% WR (${done.length})`;
     } else wrEl.textContent = '';
   }
