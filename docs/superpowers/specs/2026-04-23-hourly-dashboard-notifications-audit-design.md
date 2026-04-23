@@ -98,9 +98,25 @@ The dashboard reads `session_type` and `strategy_name` from the per-asset state 
    - `best_yes_ask` / `best_no_ask` fallback chain (L1 book → L2 scan → `yes_ask_dollars` → derived).
    - Check hourly markets aren't hitting a stale/degenerate path.
 
-### 5.2 Findings section (filled during implementation)
+### 5.2 Findings
 
-TBD — filled in during implementation pass. Each finding: file:line, description, fix applied.
+Audit date: 2026-04-23. Test file: `tests/strategies/test_hourly_entry_price.py` (7 tests, all PASS).
+
+**No bugs found.** The invariant `decision.side == "yes" → entry_cents == features.yes_ask`
+(and analogous for NO) holds for every trade path exercised:
+
+- `src/strategies/mid_window_strategy.py:170` — `entry_cents = features.yes_ask if eth_itm else features.no_ask`. Verified via MidWindow NO path (`test_mid_window_no_side_uses_no_ask`). See note (a) below for YES path.
+- `src/strategies/dwell_window_strategy.py:170-175` — explicit side/ask branches. Verified via Dwell YES and NO paths.
+- `src/strategies/late_window_strategy.py:92-99` — explicit side/ask branches. Verified via Late YES and NO paths.
+- `src/strategies/btc_hourly_strategy.py` — routes through `BaseStrategy.decide` (see note (b)).
+
+Two audit observations (neither is a bug):
+
+(a) **MidWindowStrategy YES path is structurally unreachable under synthetic flat-start BTC fixtures.** `_btc_window_prices_and_strike` derives the BTC strike from the *first* sample in the in-window deque and `_cross_count` uses strict `>` comparison, so `btc_cross == 0 AND btc_itm == True` is mathematically impossible for any series starting at the strike value. In live data the strategy still fires when real BTC hovers fractionally on one side before diverging; the test treats the YES path as best-effort (invariant is still checked if it happens to trade). This does not indicate a production bug — it's a property of the strike-derivation approach.
+
+(b) **Coverage gap (not a bug): `BTCHourlyStrategy` does not emit `entry_cents` in `contributing_signals`.** It uses the default `BaseStrategy.decide` pipeline (EV-driven) which never populates `entry_cents`. When the dashboard renders a BTC signal panel (Task 9), the Entry row will show `—`. If future work needs a BTC fill-verification notification (Task 5) to quote target vs market ask, a follow-up would add `entry_cents = features.yes_ask if ev.best_side == "yes" else features.no_ask` into `BaseStrategy.decide`'s trade branch at `src/strategies/base.py:208-215`.
+
+No strategy files were modified in this audit.
 
 ### 5.3 Fix policy
 
