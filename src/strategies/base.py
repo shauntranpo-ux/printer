@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import check_skip, check_entry_price_cap, SkipConfig, _momentum_label, _momentum_acceleration
+from strategies.skip_layer import check_skip, check_skip_15m, check_entry_price_cap, SkipConfig, _momentum_label, _momentum_acceleration
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
 from strategies.lag_detector import amm_lag_signal
@@ -42,6 +42,7 @@ class BaseStrategy(ABC):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
+        is_15m: bool = False,
     ):
         self.asset = asset
         self.skip_config = skip_config
@@ -49,6 +50,7 @@ class BaseStrategy(ABC):
         self.stake_dollars = stake_dollars
         self.calibrator = calibrator or AssetCalibrator(asset)
         self.maker = maker
+        self.is_15m = is_15m
 
     @abstractmethod
     def compute_raw_p_model(
@@ -76,7 +78,14 @@ class BaseStrategy(ABC):
         Full decision pipeline. Strategies don't override this.
         """
         # Step 1: skip layer
-        skip_reason = check_skip(features, self.skip_config, macro_event_active)
+        # 15m markets use a minimal gate (price floor only); hourly uses full stack.
+        if self.is_15m:
+            skip_reason = check_skip_15m(
+                features,
+                min_price_cents=self.skip_config.min_entry_price_cents,
+            )
+        else:
+            skip_reason = check_skip(features, self.skip_config, macro_event_active)
         if skip_reason:
             return Decision(
                 action="skip",
@@ -166,11 +175,10 @@ class BaseStrategy(ABC):
                 expected_value=ev.best_ev,
             )
 
-        # Step 6.5: momentum direction lock
-        # Block trades where BTC momentum opposes the chosen side. Bullish
-        # momentum → only YES; bearish → only NO; neutral passes but the vol
-        # gate was already tightened via mom_lock_neutral_tighten.
-        if self.skip_config.mom_lock_enabled:
+        # Step 6.5: momentum direction lock (hourly only)
+        # Block trades where BTC momentum opposes the chosen side.
+        # Disabled for 15m markets — the gate stack for 15m is price + EV only.
+        if not self.is_15m and self.skip_config.mom_lock_enabled:
             _mom = _momentum_label(features.prices_60m)
             if _mom != "neutral":
                 _mom_opposes_side = (
@@ -215,6 +223,57 @@ class BaseStrategy(ABC):
                 },
                 expected_value=ev.best_ev,
             )
+
+        # Step 6.8: Octagon AI confirmation gate
+        # Falls through (allows trade) on API error, timeout, or missing key.
+        from strategies.signals import octagon_client as _octagon
+        _oct_prob, _oct_agrees, _oct_conf, _oct_hit = _octagon.query(
+            features.ticker, features.strike,
+            features.yes_ask, features.no_ask,
+            ev.best_side, self.is_15m,
+        )
+        features.octagon_model_prob       = _oct_prob
+        features.octagon_direction_agrees = _oct_agrees
+        features.octagon_confidence       = _oct_conf
+        features.octagon_cache_hit        = _oct_hit
+        signals.update({
+            "octagon_model_prob":       _oct_prob,
+            "octagon_direction_agrees": _oct_agrees,
+            "octagon_confidence":       _oct_conf,
+            "octagon_cache_hit":        _oct_hit,
+        })
+
+        if _oct_prob is not None:
+            _oct_signals = {
+                **signals,
+                "baseline_p_above": baseline_p_above,
+                "raw_p_yes": raw_p_yes,
+                "calibrated_p_yes": calibrated_p_yes,
+                "yes_ev": ev.yes_ev,
+                "no_ev": ev.no_ev,
+            }
+            if self.is_15m:
+                # Skip only when direction disagrees AND confidence is meaningful
+                if _oct_agrees is False and _oct_conf != "low":
+                    return Decision(
+                        action="skip",
+                        side=None,
+                        p_model=calibrated_p_yes,
+                        reason=f"octagon_veto: conf={_oct_conf} direction_disagrees",
+                        contributing_signals=_oct_signals,
+                        expected_value=ev.best_ev,
+                    )
+            else:
+                # Hourly: only trade on high/very_high confidence + direction agrees
+                if not (_oct_agrees is True and _oct_conf in ("high", "very_high")):
+                    return Decision(
+                        action="skip",
+                        side=None,
+                        p_model=calibrated_p_yes,
+                        reason=f"octagon_veto: conf={_oct_conf} agrees={_oct_agrees}",
+                        contributing_signals=_oct_signals,
+                        expected_value=ev.best_ev,
+                    )
 
         # Step 7: trade decision
         return Decision(

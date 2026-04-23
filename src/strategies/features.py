@@ -55,6 +55,12 @@ class MarketFeatures:
     # Realized volatility (computed from prices_60m)
     realized_vol_1min: Optional[float] = None  # std of 1-min returns over last 60 min
 
+    # Octagon AI confirmation gate — populated inside BaseStrategy.decide() at Step 6.8
+    octagon_model_prob: Optional[float] = None       # Octagon's P(YES)
+    octagon_direction_agrees: Optional[bool] = None  # True = Octagon agrees with bot's side
+    octagon_confidence: Optional[str] = None         # "high"/"medium"/"low"; None = not evaluated
+    octagon_cache_hit: bool = False                  # True if served from TTL cache
+
     def window_fraction_remaining(self) -> float:
         """Tau = fraction of 15-min window remaining. Range (0, 1]."""
         total = self.seconds_left + self.elapsed_seconds
