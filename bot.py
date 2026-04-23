@@ -3993,6 +3993,17 @@ async def handle_ready_phase(
     _abs_pct_at_entry = abs(btc_price - strike) / strike
     _mins_left_at_entry = secs_left / 60
     _bv3_dist_idx, _bv3_time_idx = _bv3_bucket_indices_for_asset(asset, _abs_pct_at_entry, _mins_left_at_entry)
+    # Record the market's total duration (elapsed + remaining at entry) so
+    # exit-side notifications label the session by market type, not hold time.
+    # A quickly-exited hourly trade is still hourly regardless of hold length.
+    try:
+        _market_elapsed_at_entry = seconds_elapsed(market) if market else 0.0
+    except Exception:
+        _market_elapsed_at_entry = 0.0
+    try:
+        _market_duration_min = (_market_elapsed_at_entry + float(secs_left)) / 60.0
+    except (TypeError, ValueError):
+        _market_duration_min = 0.0
     _new_position = {
         "trade_id": trade_id,
         "ticker": ticker,
@@ -4002,6 +4013,7 @@ async def handle_ready_phase(
         "mode": mode,
         "strike": strike,
         "entry_ts": _entry_ts,
+        "market_duration_min": _market_duration_min,
         "market_close_time": market.get("close_time", ""),
         "order_id": order_id,
         "asset": asset,
@@ -4158,7 +4170,12 @@ async def handle_locked_phase(
                     _consecutive_loss_pause_until,
                     tz=timezone(timedelta(hours=-7))
                 ).strftime("%I:%M %p PST")
-                _cl_dur_min = (time.time() - pos.get("entry_ts", time.time())) / 60.0
+                # Prefer the stored market duration so the session label is
+                # stable regardless of how long the trade was held. Falls back
+                # to held-time for any positions created before this field.
+                _cl_dur_min = pos.get("market_duration_min") or (
+                    (time.time() - pos.get("entry_ts", time.time())) / 60.0
+                )
                 _cl_ctx = _notify_ctx(
                     asset, pos.get("ticker", "?"), _cl_dur_min,
                     _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
@@ -4175,7 +4192,10 @@ async def handle_locked_phase(
         _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
         _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
         _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
-        _close_dur_min = _dur_secs / 60.0
+        # Prefer the stored market duration so the session label is stable
+        # regardless of hold length; fall back to held-time for backward
+        # compat with positions created before this field existed.
+        _close_dur_min = pos.get("market_duration_min") or (_dur_secs / 60.0)
         _close_ctx = _notify_ctx(
             asset, pos.get("ticker", ticker), _close_dur_min,
             _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
