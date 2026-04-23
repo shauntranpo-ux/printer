@@ -776,7 +776,12 @@ function renderMarketView(sym) {
     <div class="mv-hero">
       ${cryptoLogoHtml(sym, 36)}
       <div>
-        <div class="mv-asset-name">${sym} Hourly</div>
+        <div class="mv-asset-name">
+          ${sym} ${a.session_type === 'hourly' ? 'Hourly' : '15m'}
+          ${a.market_ticker ? `<span style="color:var(--ink-3);font-size:11px;font-weight:400;">| ${a.market_ticker}</span>` : ''}
+          ${a.strike != null ? `<span style="color:var(--ink-3);font-size:11px;font-weight:400;">| Strike $${Number(a.strike).toLocaleString()}</span>` : ''}
+          ${a.strategy_name ? `<span style="color:var(--accent);font-size:11px;font-weight:600;margin-left:8px;">${a.strategy_name}</span>` : ''}
+        </div>
         <div class="mv-price-big">${_fmtPrice(sym, a.price)}</div>
         ${a.ticker ? `<div style="font-size:10px;color:var(--ink-3);margin-top:2px;font-family:monospace;">${escHtml(a.ticker)}</div>` : ''}
         ${a.market_title ? `<div style="font-size:10px;color:var(--ink-3);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(a.market_title)}</div>` : ''}
@@ -1283,15 +1288,22 @@ function setMvStratTab(mode) {
 }
 
 function _buildHourlyViewHtml(a) {
+  if (a.strategy_name === 'BTCHourly V3') return _buildBTCHourlyViewHtml(a);
   const s = a.signals || {};
   const elMin = s.elapsed_min != null ? s.elapsed_min : (a.elapsed_min != null ? a.elapsed_min : null);
   const secsLeft = a.secs_left || 0;
-  // Determine window phase from elapsed minutes
-  let phase = 'between', phaseColor = 'var(--ink-3)';
-  if (elMin != null) {
-    if (elMin >= 9 && elMin <= 11)        { phase = 'Mid (t=10min)';  phaseColor = 'var(--up)'; }
-    else if (elMin >= 30 && elMin <= 42)  { phase = 'Dwell (t=35min)'; phaseColor = '#f59e0b'; }
-    else if (elMin >= 45)                 { phase = 'Late (t=45+min)'; phaseColor = '#6366f1'; }
+
+  // Prefer explicit phase_label from bot state, else infer from elapsed.
+  let phase = a.phase_label || a.window_phase || 'between';
+  let phaseColor = 'var(--ink-3)';
+  if (phase === 'Mid' || (phase === 'between' && elMin != null && elMin >= 9 && elMin <= 11)) {
+    phase = 'Mid (t=10min)'; phaseColor = 'var(--up)';
+  } else if (phase === 'Dwell' || (phase === 'between' && elMin != null && elMin >= 30 && elMin <= 42)) {
+    phase = 'Dwell (t=35min)'; phaseColor = '#f59e0b';
+  } else if (phase === 'Late' || (phase === 'between' && elMin != null && elMin >= 45)) {
+    phase = 'Late (t=45+min)'; phaseColor = '#6366f1';
+  } else {
+    phase = 'between';
   }
 
   const rows = [
@@ -1310,6 +1322,44 @@ function _buildHourlyViewHtml(a) {
   if (!rows.length) return '<div style="color:var(--ink-3);font-size:12px;padding:8px 0;">No hourly data — strategy fires at t=9-11min, t=30-42min, or t≥45min</div>';
 
   return rows.map(([k,v]) => `<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">${k}</span><span class="cf-val">${v}</span></div>`).join('');
+}
+
+function _buildBTCHourlyViewHtml(a) {
+  const s = a.signals || {};
+  const session = s.session || 'unknown';
+  const sessionDisplay = session === 'asian'
+    ? '<span style="color:var(--down);font-weight:700;">Asian — SKIPPED</span>'
+    : '<span style="color:var(--up);font-weight:700;">Active</span>';
+
+  const vwapZ = s.vwap_z != null ? (s.vwap_z >= 0 ? '+' : '') + Number(s.vwap_z).toFixed(2) : '—';
+  const rsi   = s.rsi != null ? Number(s.rsi).toFixed(0) : '—';
+  const boll  = s.bollinger || '—';
+  const mom   = s.momentum_reversal || '—';
+  const totalAdj = s.total_adj_before_taper != null
+    ? (s.total_adj_before_taper >= 0 ? '+' : '') + Number(s.total_adj_before_taper).toFixed(3)
+    : '—';
+  const pYes = s.final_p_yes != null
+    ? Number(s.final_p_yes).toFixed(2) + (s.baseline_p_above != null
+        ? ` <span style="color:var(--ink-3)">(baseline ${Number(s.baseline_p_above).toFixed(2)})</span>`
+        : '')
+    : '—';
+  const entry = s.entry_cents != null ? Number(s.entry_cents).toFixed(0) + '¢' : '—';
+
+  const rows = [
+    ['Session',   sessionDisplay],
+    ['VWAP z',    vwapZ],
+    ['RSI',       rsi],
+    ['Bollinger', boll],
+    ['Momentum',  mom],
+    ['Total adj', totalAdj],
+    ['p_yes',     pYes],
+    ['Entry',     entry],
+  ].filter(([, v]) => v !== '—' || true);  // keep all rows for BTC V3 panel — '—' is informative
+
+  if (!rows.length) {
+    return '<div style="color:var(--ink-3);font-size:12px;padding:8px 0;">No BTC V3 data — strategy skipped or mid-signal-build.</div>';
+  }
+  return rows.map(([k, v]) => `<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">${k}</span><span class="cf-val">${v}</span></div>`).join('');
 }
 function _fmtSigVal(k, v) {
   if (v===null||v===undefined) return null;

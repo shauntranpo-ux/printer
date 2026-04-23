@@ -1,0 +1,57 @@
+{
+  "ts": "2026-04-23T17:05:00+00:00",
+  "mode": "paper",
+  "assets": [
+    {
+      "asset": "ETH",
+      "ticker": "KXETHD-26APR23-17:00-T3500",
+      "market_ticker": "KXETHD-26APR23-17:00-T3500",
+      "market_title": "ETH above $3,500 at 5pm?",
+      "session_type": "hourly",
+      "strategy_name": "ETHHourlyCombined",
+      "strike": 3500,
+      "phase": "READY",
+      "phase_label": "Dwell",
+      "window_phase": "Dwell",
+      "signals": {
+        "elapsed_min": 32.5,
+        "eth_cross": 0,
+        "btc_cross": 0,
+        "eth_dist_pct": 0.42,
+        "eth_itm": true,
+        "btc_itm": true,
+        "dwell_itm": 0.85,
+        "streak_frac": 0.68,
+        "entry_cents": 82
+      },
+      "secs_left": 1650
+    },
+    {
+      "asset": "BTC",
+      "ticker": "KXBTCD-26APR23-17:00-T94000",
+      "market_ticker": "KXBTCD-26APR23-17:00-T94000",
+      "market_title": "BTC above $94,000 at 5pm?",
+      "session_type": "hourly",
+      "strategy_name": "BTCHourly V3",
+      "strike": 94000,
+      "phase": "READY",
+      "phase_label": null,
+      "window_phase": null,
+      "signals": {
+        "session": "other",
+        "vwap_z": 1.42,
+        "rsi": 28,
+        "bollinger": "below",
+        "momentum_reversal": "fade_down",
+        "vwap_adj": -0.04,
+        "rsi_adj": -0.02,
+        "bb_adj": -0.02,
+        "mom_adj": 0.0,
+        "total_adj_before_taper": -0.08,
+        "final_p_yes": 0.47,
+        "baseline_p_above": 0.55
+      },
+      "secs_left": 1650
+    }
+  ]
+}
