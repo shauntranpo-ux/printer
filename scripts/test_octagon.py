@@ -22,6 +22,29 @@ url = oc._build_market_url(TICKER)
 print(f"URL    : {url}")
 print()
 
+# ── Raw response dump (helps debug parser) ──────────────────────────────────
+if url:
+    import httpx
+    api_key = os.environ.get("OCTAGON_API_KEY", "")
+    print("── Raw Octagon response (first 80 lines) " + "─" * 15)
+    try:
+        r = httpx.post(
+            oc.OCTAGON_API_URL,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": oc.OCTAGON_MODEL, "input": url},
+            timeout=30.0,
+        )
+        raw = r.json()["output"][0]["content"][0]["text"]
+        for i, line in enumerate(raw.splitlines()):
+            print(f"  {line}")
+            if i >= 79:
+                print("  ... (truncated)")
+                break
+        print()
+    except Exception as e:
+        print(f"  [raw dump failed: {e}]")
+        print()
+
 print("── Call 1 (expect cache MISS) " + "─" * 30)
 prob, agrees, conf, hit = oc.query(TICKER, STRIKE, 55.0, 47.0, "yes", is_15m=True)
 print(f"  model_prob          = {prob}")
