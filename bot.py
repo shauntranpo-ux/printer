@@ -1921,6 +1921,18 @@ def _session_ev_adjustment() -> float:
 _STRATEGY_SINGLETONS: dict = {}  # keyed by "ASSET" or "ASSET_hourly"
 
 
+def _strategy_name_for(asset, duration_min):
+    """Human-readable strategy name for the dashboard per-asset card."""
+    is_hourly = duration_min > 25.0
+    if asset == "ETH" and is_hourly:
+        return "ETHHourlyCombined"
+    if asset == "BTC" and is_hourly:
+        return "BTCHourly V3"
+    if is_hourly:
+        return f"{asset}Hourly"
+    return f"{asset}15m"
+
+
 def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):
     """Lazily construct per-asset strategy singleton. Returns None on failure."""
     is_hourly = market_duration_min > 25.0
@@ -3417,14 +3429,31 @@ async def write_state_file(
         _ev = _st.get("eval", {})
         _a_phase = _st.get("phase", "DONE")
         _a_status = "TRADING" if _a_phase == "LOCKED" else (_ev.get("status") or _a_phase)
+        # Dashboard-extension fields (session_type / strategy_name / strike / phase).
+        # Market duration is derived from open_time/close_time when available, and
+        # falls back to elapsed+remaining when the timestamps are missing.
+        _a_ticker = _m.get("ticker", "") if _m else ""
+        try:
+            _a_elapsed_sec = seconds_elapsed(_m) if _m else 0.0
+        except Exception:
+            _a_elapsed_sec = 0.0
+        _a_duration_min = (float(_a_elapsed_sec) + float(_sl)) / 60.0 if _m else 0.0
+        _a_session_type = "hourly" if _a_duration_min > 25.0 else "15m"
+        _a_strategy_name = _strategy_name_for(_a, _a_duration_min)
+        _a_strike = _parse_strike_from_ticker(_a_ticker)
+        if _a_strike is None:
+            _a_strike = _ev.get("strike")
+            if _a_strike is None and _m:
+                _a_strike = _m.get("strike_price")
+        _a_window_phase = _phase_for_eth(_a, _a_elapsed_sec)
         assets_snap[_a] = {
             "price":        _am_get_price(_a),
             "phase":        _a_phase,
-            "ticker":       _m.get("ticker", "") if _m else "",
+            "ticker":       _a_ticker,
             "market_title": _m.get("title",  "") if _m else "",
             "secs_left":    _sl,
             "price_age":    _am_price_age(_a),
-            "strike":       _ev.get("strike"),
+            "strike":       _a_strike,
             "distance_pct": _ev.get("distance_pct"),
             "direction":    _ev.get("direction"),
             "yes_ask":      _ev.get("yes_ask"),
@@ -3435,18 +3464,36 @@ async def write_state_file(
             "skip_reason":  _ev.get("skip_reason"),
             "signals":      _ev.get("signals", {}),
             "position":     _st.get("position"),
+            "session_type": _a_session_type,
+            "strategy_name": _a_strategy_name,
+            "phase_label":  _a_window_phase,
+            "window_phase": _a_window_phase,
         }
     # BTC — uses separate globals; _asset_eval["BTC"] holds last eval snapshot
     _btc_ev = _asset_eval.get("BTC", {})
     _btc_status = "TRADING" if phase == "LOCKED" else (_btc_ev.get("status") or phase)
+    _btc_ticker = market.get("ticker", "") if market else ""
+    try:
+        _btc_elapsed_sec = seconds_elapsed(market) if market else 0.0
+    except Exception:
+        _btc_elapsed_sec = 0.0
+    _btc_duration_min = (float(_btc_elapsed_sec) + float(secs_left)) / 60.0 if market else 0.0
+    _btc_session_type = "hourly" if _btc_duration_min > 25.0 else "15m"
+    _btc_strategy_name = _strategy_name_for("BTC", _btc_duration_min)
+    _btc_strike = _parse_strike_from_ticker(_btc_ticker)
+    if _btc_strike is None:
+        _btc_strike = _btc_ev.get("strike")
+        if _btc_strike is None and market:
+            _btc_strike = market.get("strike_price")
+    _btc_window_phase = _phase_for_eth("BTC", _btc_elapsed_sec)  # always None for BTC
     assets_snap["BTC"] = {
         "price":        btc_price,
         "phase":        phase,
-        "ticker":       market.get("ticker", "") if market else "",
+        "ticker":       _btc_ticker,
         "market_title": market.get("title",  "") if market else "",
         "secs_left":    secs_left,
         "price_age":    _am_price_age("BTC"),
-        "strike":       _btc_ev.get("strike"),
+        "strike":       _btc_strike,
         "distance_pct": _btc_ev.get("distance_pct"),
         "direction":    _btc_ev.get("direction"),
         "yes_ask":      _btc_ev.get("yes_ask"),
@@ -3457,6 +3504,10 @@ async def write_state_file(
         "skip_reason":  skip_reason or _btc_ev.get("skip_reason", ""),
         "signals":      _btc_ev.get("signals", {}),
         "position":     current_position,
+        "session_type": _btc_session_type,
+        "strategy_name": _btc_strategy_name,
+        "phase_label":  _btc_window_phase,
+        "window_phase": _btc_window_phase,
     }
     state["assets"] = assets_snap
 
