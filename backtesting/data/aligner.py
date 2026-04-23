@@ -62,6 +62,9 @@ def build_event_stream(
     return events
 
 
+_MAX_LOOKBACK_EVENTS = 1500  # 240 bars (4h @ 1m) + buffer for kalshi/trade events
+
+
 def iter_windows(
     events: list[Event],
     label_timestamps: pd.DatetimeIndex,
@@ -78,4 +81,6 @@ def iter_windows(
         while event_idx < n and events[event_idx].timestamp < window_ts:
             events_seen.append(events[event_idx])
             event_idx += 1
-        yield window_ts, list(events_seen)
+            if len(events_seen) > _MAX_LOOKBACK_EVENTS * 2:
+                events_seen = events_seen[-_MAX_LOOKBACK_EVENTS:]
+        yield window_ts, events_seen[-_MAX_LOOKBACK_EVENTS:]

@@ -1,0 +1,15 @@
+asset: XRP
+fitted_by: backtesting.training.har_fitter
+har_rs_j:
+  coefficients:
+    const: 7.88014444865805e-05
+    jump: 8.844165531985256
+    rv_15m_neg: -3.926372938441265
+    rv_15m_pos: -11.408653058513842
+    rv_1h_neg: 0.040053967686639755
+    rv_1h_pos: -0.032851645541028804
+    rv_4h_neg: 0.008323126944993242
+    rv_4h_pos: 0.006146308144018128
+meta:
+  n_feature_rows: 142302
+  n_training_bars: 2134781

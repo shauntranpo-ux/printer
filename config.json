@@ -7,8 +7,6 @@
   "daily_profit_target_dollars": 200,
   "max_consecutive_losses": 5,
   "enable_reversal_signal": false,
-  "use_fixed_sizing": false,
-  "kelly_cap": 0.25,
   "min_ev_base": 8,
   "_note_min_ev_base": "in percent, e.g. 8 = 0.08 minimum EV threshold",
   "kalshi_fee_per_contract_cents": 7,
@@ -35,32 +33,6 @@
       "confidence_threshold": 80,
       "vol_confirm_mult": 1.25,
       "vol_oppose_mult": 0.70,
-      "mom_lock_enabled": true,
-      "mom_lock_neutral_tighten": 0.90,
-      "mom_accel_scale": 3.0
-    },
-    "ETH": {
-      "min_ev_base": 8,
-      "vol_confirm_mult": 1.30,
-      "vol_oppose_mult": 0.65,
-      "mom_lock_enabled": true,
-      "mom_lock_neutral_tighten": 0.90,
-      "mom_accel_scale": 3.0
-    },
-    "SOL": {
-      "min_ev_base": 5,
-      "vol_gate_thresh": 1.50,
-      "vol_confirm_mult": 1.35,
-      "vol_oppose_mult": 0.60,
-      "mom_lock_enabled": true,
-      "mom_lock_neutral_tighten": 0.85,
-      "mom_accel_scale": 2.5
-    },
-    "XRP": {
-      "min_ev_base": 5,
-      "max_spread_cents": 3,
-      "vol_confirm_mult": 1.20,
-      "vol_oppose_mult": 0.75,
       "mom_lock_enabled": true,
       "mom_lock_neutral_tighten": 0.90,
       "mom_accel_scale": 3.0

@@ -2,7 +2,10 @@ data:
   start_date: null              # null = use all available history; otherwise YYYY-MM-DD
   end_date: null                # null = now minus 24 hours
   min_history_days: 180
-  base_path: data/historical   # TODO: adjust to actual data path
+  historical_root: data/historical
+  bars_filename_pattern: "{asset_upper}_1m_extended.parquet"
+  granularity_seconds: 60
+  bars_per_15min_window: 15
 
 training:
   har_training_window_days: 90

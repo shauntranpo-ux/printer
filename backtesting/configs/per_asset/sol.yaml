@@ -6,3 +6,5 @@ reference_exchange: binance
 data_path: null
 min_samples: 26000
 volatility_reference_annualized: 0.87
+
+granularity_seconds: 60

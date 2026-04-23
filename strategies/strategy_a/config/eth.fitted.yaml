@@ -1,0 +1,15 @@
+asset: ETH
+fitted_by: backtesting.training.har_fitter
+har_rs_j:
+  coefficients:
+    const: 2.807761280981079e-06
+    jump: 0.6795895803807694
+    rv_15m_neg: 0.23680768109582484
+    rv_15m_pos: 0.1449552926042418
+    rv_1h_neg: 0.1401529791200503
+    rv_1h_pos: -0.07811873891870007
+    rv_4h_neg: 0.0032456487998534576
+    rv_4h_pos: 0.028275754955240623
+meta:
+  n_feature_rows: 230251
+  n_training_bars: 3454009

@@ -8,12 +8,14 @@ Does NOT modify the original config under strategies/.
 Reference: Patton & Sheppard (2015) — separate RV+/RV- for crypto.
 """
 from __future__ import annotations
+import logging
 import os
 import numpy as np
 import pandas as pd
 import yaml
 from typing import Optional
 
+logger = logging.getLogger(__name__)
 
 _FITTED_CONFIG_DIR = os.path.join("strategies", "strategy_a", "config")
 TIMESCALES_MINUTES = [15, 60, 240]
@@ -55,6 +57,12 @@ def build_har_features(
     Each row is one 15-min window. Columns:
         rv_{t}_pos, rv_{t}_neg for each timescale t, jump_15m, rv_target
     """
+    if granularity_seconds >= 60:
+        logger.warning(
+            "HAR-RS-J fitting on %d-second bars; microstructure noise may inflate RV estimates. "
+            "Consider acquiring higher-frequency data when available.",
+            granularity_seconds,
+        )
     rows = []
     step = _bars_in_window(granularity_seconds, timescales_minutes[0])  # 15-min step
     max_lookback = _bars_in_window(granularity_seconds, max(timescales_minutes))

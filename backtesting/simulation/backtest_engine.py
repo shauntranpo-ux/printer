@@ -241,14 +241,23 @@ def _build_features_from_bars(bar_events: list[Event]) -> dict:
     Feature keys follow FeatureVector.to_flat_dict() convention:
     "har_rv__rv_15m_pos", etc.
     """
-    if len(bar_events) < 1440:  # need at least 240 minutes of 10-second bars
-        return {}
-
     from backtesting.training.har_fitter import _rv_components, _bars_in_window
 
-    closes = np.array(
-        [e.payload.get("close", 0.0) for e in sorted(bar_events, key=lambda e: e.timestamp)]
-    )
+    # Detect granularity from median inter-bar gap (same pattern as pipeline/label_builder)
+    if len(bar_events) > 1:
+        sorted_ts = sorted(e.timestamp for e in bar_events)
+        diffs = [(sorted_ts[i + 1] - sorted_ts[i]).total_seconds()
+                 for i in range(min(20, len(sorted_ts) - 1))]
+        granularity_s = max(1, int(round(sorted(diffs)[len(diffs) // 2])))
+    else:
+        granularity_s = 60
+
+    min_bars = _bars_in_window(granularity_s, 240)  # 4h lookback
+    if len(bar_events) < min_bars:
+        return {}
+
+    sorted_bars = sorted(bar_events, key=lambda e: e.timestamp)
+    closes = np.array([e.payload.get("close", 0.0) for e in sorted_bars])
     closes = closes[closes > 0]
     if len(closes) < 2:
         return {}
@@ -257,14 +266,14 @@ def _build_features_from_bars(bar_events: list[Event]) -> dict:
 
     features: dict[str, float] = {}
     for t_min, alias in [(15, "rv_15m"), (60, "rv_1h"), (240, "rv_4h")]:
-        n_bars = _bars_in_window(10, t_min)
+        n_bars = _bars_in_window(granularity_s, t_min)
         if len(log_rets) < n_bars:
             return {}
         comps = _rv_components(log_rets[-n_bars:])
         features[f"har_rv__{alias}_pos"] = comps["rv_pos"]
         features[f"har_rv__{alias}_neg"] = comps["rv_neg"]
 
-    jump_n = _bars_in_window(10, 15)
+    jump_n = _bars_in_window(granularity_s, 15)
     features["har_rv__jump_15m"] = _rv_components(log_rets[-jump_n:])["jump"]
 
     return features

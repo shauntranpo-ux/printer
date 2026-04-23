@@ -6,9 +6,10 @@ Usage:
 
 Commands:
     train       Run the training pipeline for one or more assets.
+    validate    Run validation (CPCV, WFA, MC) for one or more assets.
     backtest    Run the backtest engine for one asset and strategy.
     report      Generate reports for one asset.
-    all         Run train → backtest → report for one asset.
+    all         Run train -> validate -> backtest -> report for one asset.
     dry-run     Run a quick end-to-end test on synthetic data (no real data needed).
 
 Hard constraints:
@@ -18,11 +19,13 @@ Hard constraints:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
+from types import SimpleNamespace
 
 # Ensure project root is on sys.path so `backtesting.*` is importable
-# when the script is run directly (python backtesting/cli.py …).
+# when the script is run directly (python backtesting/cli.py ...).
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
@@ -43,6 +46,15 @@ def _load_global_config() -> dict:
         return yaml.safe_load(f)
 
 
+def _detect_granularity(bars: pd.DataFrame) -> int:
+    """Detect bar granularity in seconds from median inter-bar interval."""
+    if len(bars) < 2:
+        return 10
+    ts = pd.to_datetime(bars["timestamp"])
+    diffs = ts.sort_values().diff().dropna()
+    return max(1, int(round(diffs.dt.total_seconds().median())))
+
+
 def cmd_train(args) -> None:
     """Run training pipeline."""
     config = _load_global_config()
@@ -51,6 +63,123 @@ def cmd_train(args) -> None:
     summaries = run_training_pipeline(config, assets=assets)
     for asset, summary in summaries.items():
         logger.info(f"{asset.upper()}: {summary}")
+
+
+def cmd_validate(args) -> None:
+    """
+    Run validation (CPCV, WFA, MC) for one or all assets.
+
+    Outputs per-method JSON to backtesting/output/validation/{asset}/{strategy}/{method}.json
+    """
+    config_path = getattr(args, "config", None) or CONFIG_PATH
+    with open(config_path, encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    all_assets = ["btc", "eth", "sol", "xrp"]
+    assets_to_run = all_assets if args.asset == "all" else [args.asset]
+    strategies_to_run = ["a", "b"] if args.strategy == "both" else [args.strategy]
+    methods_to_run = ["cpcv", "wfa", "mc"] if args.method == "all" else [args.method]
+
+    for asset in assets_to_run:
+        for strategy in strategies_to_run:
+            for method in methods_to_run:
+                _run_single_validation(config, asset, strategy, method)
+
+
+def _run_single_validation(config: dict, asset: str, strategy: str, method: str) -> None:
+    """Run one (asset, strategy, method) validation pass and write JSON output."""
+    output_dir = os.path.join("backtesting", "output", "validation", asset, strategy)
+    os.makedirs(output_dir, exist_ok=True)
+    output_path = os.path.join(output_dir, f"{method}.json")
+
+    if method == "cpcv":
+        from backtesting.data.loaders import load_bars
+        from backtesting.data.label_builder import build_labels
+        from backtesting.training.har_fitter import build_har_features
+        from backtesting.validation.cpcv import run_cpcv
+
+        try:
+            bars = load_bars(asset)
+        except (FileNotFoundError, ValueError) as exc:
+            logger.warning("[%s] Skipping CPCV — %s", asset.upper(), exc)
+            return
+
+        labels_df = build_labels(bars)
+        if labels_df.empty:
+            logger.warning("[%s] No labels built; skipping CPCV.", asset.upper())
+            return
+
+        log_rets = np.log(
+            bars["close"].clip(lower=1e-10) / bars["open"].clip(lower=1e-10)
+        ).values
+        granularity = _detect_granularity(bars)
+        feat_df = build_har_features(log_rets, granularity_seconds=granularity)
+        if len(feat_df) < 50:
+            logger.warning("[%s] Insufficient feature rows for CPCV.", asset.upper())
+            return
+
+        feature_cols = [c for c in feat_df.columns if c != "rv_target"]
+        n = min(len(feat_df), len(labels_df))
+        X = feat_df[feature_cols].values[-n:].astype(float)
+        y = labels_df["label"].values[-n:]
+        timestamps_idx = pd.DatetimeIndex(labels_df["timestamp"].values[-n:])
+
+        strategy_cfg_path = os.path.join(
+            "strategies", "strategy_a", "config", f"{asset.lower()}.yaml"
+        )
+        model_config: dict = {}
+        if os.path.exists(strategy_cfg_path):
+            with open(strategy_cfg_path, encoding="utf-8") as f:
+                model_config = yaml.safe_load(f) or {}
+
+        fees_cfg_path = os.path.join("strategies", "shared", "fees.yaml")
+        fees_config: dict = {}
+        if os.path.exists(fees_cfg_path):
+            with open(fees_cfg_path, encoding="utf-8") as f:
+                fees_config = yaml.safe_load(f) or {}
+
+        val_cfg = config.get("validation", {}).get("cpcv", {})
+        try:
+            result_df = run_cpcv(
+                timestamps=timestamps_idx,
+                labels=y,
+                features=X,
+                feature_names=feature_cols,
+                model_config=model_config,
+                fees_config=fees_config,
+                n_groups=val_cfg.get("n_groups", 6),
+                k_test_groups=val_cfg.get("k_test_groups", 2),
+                embargo_minutes=val_cfg.get("embargo_minutes", 30),
+            )
+        except Exception as exc:
+            logger.warning("[%s] CPCV failed: %s", asset.upper(), exc)
+            return
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(result_df.to_dict("records"), f, indent=2, default=str)
+        logger.info("[%s] CPCV complete -> %s", asset.upper(), output_path)
+
+    elif method == "wfa":
+        from backtesting.validation.wfa_adapter import run_wfa
+        try:
+            result_df = run_wfa(config, asset)
+        except Exception as exc:
+            logger.warning("[%s] WFA failed: %s", asset.upper(), exc)
+            return
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(result_df.to_dict("records"), f, indent=2, default=str)
+        logger.info("[%s] WFA complete -> %s", asset.upper(), output_path)
+
+    elif method == "mc":
+        from backtesting.validation.monte_carlo_adapter import run_monte_carlo
+        try:
+            result_df = run_monte_carlo(config, asset)
+        except Exception as exc:
+            logger.warning("[%s] MC failed: %s", asset.upper(), exc)
+            return
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(result_df.to_dict("records"), f, indent=2, default=str)
+        logger.info("[%s] MC complete -> %s", asset.upper(), output_path)
 
 
 def cmd_backtest(args) -> pd.DataFrame:
@@ -63,6 +192,42 @@ def cmd_backtest(args) -> pd.DataFrame:
     from backtesting.data.label_builder import build_labels
     from backtesting.data.aligner import build_event_stream
     from backtesting.simulation.backtest_engine import run_backtest
+
+    fees_cfg_path = os.path.join("strategies", "shared", "fees.yaml")
+    fees_config: dict = {}
+    if os.path.exists(fees_cfg_path):
+        with open(fees_cfg_path, encoding="utf-8") as f:
+            fees_config = yaml.safe_load(f) or {}
+
+    model_a = None
+    model_b = None
+    model_config: dict = {}
+
+    if args.strategy == "a":
+        strategy_cfg_path = os.path.join(
+            "strategies", "strategy_a", "config", f"{args.asset.lower()}.yaml"
+        )
+        if os.path.exists(strategy_cfg_path):
+            with open(strategy_cfg_path, encoding="utf-8") as f:
+                model_config = yaml.safe_load(f) or {}
+        from backtesting.training.model_fitter import load_model
+        try:
+            model_a = load_model(args.asset, model_config, fees_config)
+        except Exception as exc:
+            logger.warning("[%s] Could not load Strategy A model: %s", args.asset.upper(), exc)
+
+    elif args.strategy == "b":
+        strategy_cfg_path = os.path.join(
+            "strategies", "strategy_b", "config", f"{args.asset.lower()}.yaml"
+        )
+        if os.path.exists(strategy_cfg_path):
+            with open(strategy_cfg_path, encoding="utf-8") as f:
+                model_config = yaml.safe_load(f) or {}
+        _strat_path = os.path.join(_PROJECT_ROOT, "strategies")
+        if _strat_path not in sys.path:
+            sys.path.insert(0, _strat_path)
+        from strategy_b.contract_dislocation import ContractDislocationDetector
+        model_b = ContractDislocationDetector(model_config)
 
     bars = load_bars(args.asset)
     labels = build_labels(bars)
@@ -78,9 +243,16 @@ def cmd_backtest(args) -> pd.DataFrame:
     trade_log = run_backtest(
         events, labels, args.asset,
         strategy=f"strategy_{args.strategy}",
+        model_a=model_a,
+        model_b=model_b,
+        model_config=model_config,
+        fees_config=fees_config,
         latency_ms=latency_ms,
     )
     logger.info(f"{args.asset.upper()}: {len(trade_log)} trades")
+    trade_log_dir = os.path.join("backtesting", "output", "trade_logs")
+    os.makedirs(trade_log_dir, exist_ok=True)
+    trade_log.to_parquet(os.path.join(trade_log_dir, f"{args.asset}_{args.strategy}.parquet"), index=False)
     return trade_log
 
 
@@ -92,7 +264,8 @@ def cmd_report(args, trade_log: pd.DataFrame | None = None) -> None:
     from backtesting.reports.report_builder import build_asset_report, render_asset_report
 
     if trade_log is None:
-        trade_log = pd.DataFrame()
+        trade_log_path = os.path.join("backtesting", "output", "trade_logs", f"{args.asset}_{args.strategy}.parquet")
+        trade_log = pd.read_parquet(trade_log_path) if os.path.exists(trade_log_path) else pd.DataFrame()
 
     y_true = trade_log["label"].values if "label" in trade_log.columns and not trade_log.empty else np.array([])
     p_hat  = trade_log["p_model"].values if "p_model" in trade_log.columns and not trade_log.empty else np.array([])
@@ -105,9 +278,18 @@ def cmd_report(args, trade_log: pd.DataFrame | None = None) -> None:
 
 
 def cmd_all(args) -> None:
-    """Run train → backtest → report sequentially."""
+    """Run train -> validate -> backtest -> report sequentially."""
     logger.info(f"Running full pipeline for {args.asset.upper()} strategy_{args.strategy}")
     cmd_train(args)
+
+    validate_args = SimpleNamespace(
+        asset=args.asset,
+        strategy=args.strategy,
+        method="all",
+        config=CONFIG_PATH,
+    )
+    cmd_validate(validate_args)
+
     trade_log = cmd_backtest(args)
     cmd_report(args, trade_log=trade_log)
 
@@ -117,7 +299,7 @@ def cmd_dry_run(args) -> None:
     End-to-end dry run using synthetic data. No real data files needed.
 
     Generates 7 days of synthetic 10-second BTC bars, builds labels,
-    runs the backtest engine (no fitted model; predict_proba returns 0.5 → no trades),
+    runs the backtest engine (no fitted model; predict_proba returns 0.5 -> no trades),
     and generates a report. Verifies the report artifact exists.
 
     This is the acceptance test for the entire backtesting pipeline.
@@ -133,7 +315,7 @@ def cmd_dry_run(args) -> None:
     from backtesting.reports.report_builder import build_asset_report, render_asset_report
 
     # Generate 7 days of synthetic 10-second bars
-    n_bars = 7 * 24 * 360  # 7 days × 24h × 360 bars/h (10-second bars)
+    n_bars = 7 * 24 * 360  # 7 days x 24h x 360 bars/h (10-second bars)
     rng = np.random.default_rng(42)
 
     start = pd.Timestamp("2024-01-01", tz="UTC")
@@ -198,7 +380,32 @@ def _build_parser() -> argparse.ArgumentParser:
     # train
     p_train = sub.add_parser("train", help="Run training pipeline")
     p_train.add_argument("--asset", default=None, help="Asset to train (default: all)")
+    p_train.add_argument(
+        "--strategy", default="both", choices=["a", "b", "both"],
+        help="Strategy to train (default: both; pipeline trains strategy A only)",
+    )
     p_train.set_defaults(func=cmd_train)
+
+    # validate
+    p_val = sub.add_parser("validate", help="Run validation (CPCV, WFA, MC)")
+    p_val.add_argument(
+        "--asset", required=True,
+        choices=["btc", "eth", "sol", "xrp", "all"],
+        help="Asset to validate (use 'all' to iterate btc, eth, sol, xrp sequentially)",
+    )
+    p_val.add_argument(
+        "--strategy", default="both", choices=["a", "b", "both"],
+        help="Strategy to validate (default: both)",
+    )
+    p_val.add_argument(
+        "--method", default="all", choices=["cpcv", "wfa", "mc", "all"],
+        help="Validation method (default: all — runs cpcv, wfa, mc sequentially)",
+    )
+    p_val.add_argument(
+        "--config", default=CONFIG_PATH,
+        help=f"Path to backtest config YAML (default: {CONFIG_PATH})",
+    )
+    p_val.set_defaults(func=cmd_validate)
 
     # backtest
     p_bt = sub.add_parser("backtest", help="Run backtest engine")
@@ -213,7 +420,7 @@ def _build_parser() -> argparse.ArgumentParser:
     p_rpt.set_defaults(func=lambda args: cmd_report(args))
 
     # all
-    p_all = sub.add_parser("all", help="Run train → backtest → report")
+    p_all = sub.add_parser("all", help="Run train -> validate -> backtest -> report")
     p_all.add_argument("--asset", required=True)
     p_all.add_argument("--strategy", default="a", choices=["a", "b"])
     p_all.set_defaults(func=cmd_all)

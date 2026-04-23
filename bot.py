@@ -361,8 +361,6 @@ def _init_config() -> None:
         "daily_profit_target_dollars": 200,
         "max_consecutive_losses": 5,             # pause 15 min after this many losses in a row
         "enable_reversal_signal": False,         # disabled by default — no backtested evidence yet
-        "use_fixed_sizing": False,               # when True, bypasses Kelly and uses fixed trade_amount
-        "kelly_cap": 0.25,                       # quarter-Kelly cap; Kelly fraction never exceeds this
         "min_ev_base": 8,                        # raised from 3 to 8 after adding fee accounting
         "kalshi_fee_per_contract_cents": 7,      # Kalshi platform fee; update if pricing changes
         "preflight_override": False,             # set true ONLY to bypass pre-flight hard stop — not recommended
@@ -2479,77 +2477,26 @@ def calculate_contracts(
     trade_amount_dollars: float,
     entry_price_cents: int,
     liquidity: int,
-    win_prob: float = 0.85,
-    kelly_cap: float = 0.25,
-    use_fixed_sizing: bool = False,
 ) -> tuple[int, float]:
     """
-    Kelly Criterion position sizing with quarter-Kelly cap.
-
-    Kelly fraction f* = (p*b - (1-p)) / b
-      where b = (100 - price) / price  (decimal payout odds on a $1 contract)
-
-    Normalized so that a "typical" trade (85% win, 80c) = 1.0x base bet.
-    Capped at 3x, floored at 0.5x to prevent overbetting and underbetting.
-
-    WARNING: Kelly sizing assumes the probability estimates (from BV3 table) and
-    the price estimates (from simulate_amm_prices) are accurate. The quant review
-    flagged that simulated prices may be 8-15c cheaper than real Kalshi prices.
-    Until price_validation_log.csv confirms pricing accuracy over 200+ samples,
-    consider using fixed sizing (use_fixed_sizing=true in config) instead.
+    Fixed position sizing — always spend exactly trade_amount_dollars.
 
     Returns:
-        (contracts, kelly_dollars_used)
+        (contracts, dollars_used)
     """
     if entry_price_cents <= 0:
         return 0, 0.0
 
-    if use_fixed_sizing:
-        # Fixed sizing: ignore Kelly entirely, use the configured amount directly
-        kelly_dollars = trade_amount_dollars
-        contracts = int(kelly_dollars * 100 / entry_price_cents)
-        contracts = min(contracts, liquidity)
-        contracts = max(contracts, 0)
-        log.info(
-            f"Fixed sizing: price={entry_price_cents}c "
-            f"bet=${kelly_dollars:.2f} -> {contracts} contracts"
-        )
-        return contracts, kelly_dollars
-
-    # Kelly fraction
-    b = (100 - entry_price_cents) / entry_price_cents   # payout odds
-    if b <= 0:
-        kelly_f = 0.0
-    else:
-        kelly_f = max(0.0, (win_prob * b - (1.0 - win_prob)) / b)
-
-    # Quarter-Kelly cap: even full Kelly is too aggressive with uncertain probability estimates.
-    # Caps the raw fraction before normalization so the relative sizing still scales with edge.
-    kelly_f = min(kelly_f, kelly_cap)
-
-    # Normalize to typical trade (85% win, 80c → kelly_f ≈ 0.2125)
-    _typical_kelly = 0.2125
-    multiplier = kelly_f / _typical_kelly if _typical_kelly > 0 else 1.0
-    multiplier = max(0.5, min(3.0, multiplier))
-
-    # Hard cap: Kelly can scale up but never beyond trade_amount_dollars.
-    # trade_amount_dollars is the maximum spend per trade, not just a base.
-    kelly_dollars = min(trade_amount_dollars, trade_amount_dollars * multiplier)
-    trade_cents   = kelly_dollars * 100
-    contracts = int(trade_cents / entry_price_cents)
+    contracts = int(trade_amount_dollars * 100 / entry_price_cents)
     contracts = min(contracts, liquidity)
     contracts = max(contracts, 0)
-
-    actual_cost = contracts * entry_price_cents / 100
-    if actual_cost > kelly_dollars + 0.01:
-        contracts = max(0, contracts - 1)
+    dollars_used = contracts * entry_price_cents / 100.0
 
     log.info(
-        f"Kelly sizing: win_prob={win_prob:.0%} price={entry_price_cents}c "
-        f"f*={kelly_f:.3f} (cap={kelly_cap:.2f}) mult={multiplier:.2f}x "
-        f"bet=${kelly_dollars:.2f} (base=${trade_amount_dollars}) -> {contracts} contracts"
+        f"Fixed sizing: price={entry_price_cents}c "
+        f"bet=${dollars_used:.2f} -> {contracts} contracts"
     )
-    return contracts, kelly_dollars
+    return contracts, dollars_used
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -3709,17 +3656,14 @@ async def handle_ready_phase(
 
     # Cooldown disabled — trade every session regardless of prior outcome
 
-    # Position sizing — Kelly Criterion
+    # Position sizing — flat fixed amount
     # Reversal trades use 50% of configured amount (contrarian = smaller size)
     trade_amount = config.get("trade_amount_dollars", 20)
     if _is_reversal:
         trade_amount = trade_amount * 0.50
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
-    win_prob_for_kelly = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0.85)
-    contracts, kelly_dollars = calculate_contracts(
-        trade_amount, int(entry_price_cents), avail_liquidity, win_prob_for_kelly,
-        kelly_cap=get_asset_config(config, asset, "kelly_cap", 0.25),
-        use_fixed_sizing=config.get("use_fixed_sizing", False),
+    contracts, dollars_used = calculate_contracts(
+        trade_amount, int(entry_price_cents), avail_liquidity,
     )
     if contracts == 0:
         reason = "trade amount too small for current contract price"
@@ -3777,7 +3721,7 @@ async def handle_ready_phase(
         "side": side,
         "contracts": contracts,
         "entry_price_cents": fill_price,
-        "trade_amount_dollars": round(kelly_dollars, 2),
+        "trade_amount_dollars": round(dollars_used, 2),
         "confidence_score": score,
         "model_prob": brain.get("win_prob", 0.5),
         "implied_prob": implied_prob(entry_price_cents),

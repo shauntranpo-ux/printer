@@ -1,0 +1,15 @@
+asset: BTC
+fitted_by: backtesting.training.har_fitter
+har_rs_j:
+  coefficients:
+    const: 3.7804577234272812e-06
+    jump: 0.06773005033907167
+    rv_15m_neg: 0.3460457523609631
+    rv_15m_pos: 0.428829864830238
+    rv_1h_neg: 0.10377093714256265
+    rv_1h_pos: -0.04199101990333877
+    rv_4h_neg: 0.027451415723062658
+    rv_4h_pos: 0.005596653350532441
+meta:
+  n_feature_rows: 303520
+  n_training_bars: 4553049

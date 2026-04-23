@@ -5,13 +5,27 @@ y = 1 if reference_price_close > reference_price_open (underlying CLOSE > OPEN a
 y = 0 otherwise
 
 Missing data in a window: window is DROPPED, not imputed.
+Granularity is auto-detected from the bars' median inter-bar interval.
 """
 from __future__ import annotations
+import logging
 import pandas as pd
 import numpy as np
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 WINDOW_MINUTES = 15
+
+
+def _detect_bar_granularity(bars: pd.DataFrame, ts_col: str = "timestamp") -> int:
+    """Detect bar granularity in seconds from the median inter-bar interval."""
+    if len(bars) < 2:
+        return 10  # default: assume 10-second bars if we can't detect
+    ts = pd.to_datetime(bars[ts_col])
+    diffs = ts.sort_values().diff().dropna()
+    median_s = diffs.dt.total_seconds().median()
+    return max(1, int(round(median_s)))
 
 
 def build_labels(
@@ -19,6 +33,7 @@ def build_labels(
     reference_source: str = "spot",
     window_minutes: int = WINDOW_MINUTES,
     drop_incomplete: bool = True,
+    bars_per_window: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Build binary labels from OHLCV bars.
@@ -28,7 +43,9 @@ def build_labels(
               Timestamp must be UTC-aware.
         reference_source: "spot" or "perp" — informational, caller ensures correct bars.
         window_minutes: length of each binary window (default 15).
-        drop_incomplete: if True, drop windows with fewer than expected bars.
+        drop_incomplete: if True, drop windows with fewer than the tolerance floor.
+        bars_per_window: expected bars per window. If None, auto-detected from bar granularity.
+                         Auto-detection: median inter-bar interval → window_minutes * 60 // granularity.
 
     Returns:
         DataFrame with columns: timestamp (UTC), label (0/1),
@@ -43,14 +60,20 @@ def build_labels(
     bars = bars.copy().sort_values("timestamp")
     _validate_bars(bars)
 
+    # Determine expected bars per window
+    if bars_per_window is None:
+        granularity_s = _detect_bar_granularity(bars)
+        bars_per_window = window_minutes * 60 // granularity_s
+
+    # Tolerance floor: allow 1 missing bar per window (e.g. occasional missing minute)
+    min_bars = max(1, bars_per_window - 1)
+
     bars = bars.set_index("timestamp")
     freq = f"{window_minutes}min"
 
     open_prices  = bars["open"].resample(freq, label="left", closed="left").first()
     close_prices = bars["close"].resample(freq, label="left", closed="left").last()
     bar_counts   = bars["close"].resample(freq, label="left", closed="left").count()
-
-    expected_bars = window_minutes * 60 // 10  # 10-second bars
 
     result = pd.DataFrame({
         "timestamp":             open_prices.index,
@@ -60,7 +83,16 @@ def build_labels(
     })
 
     if drop_incomplete:
-        result = result[result["bar_count"] == expected_bars].copy()
+        at_floor = result[
+            (result["bar_count"] >= min_bars) & (result["bar_count"] < bars_per_window)
+        ]
+        if not at_floor.empty:
+            logger.warning(
+                "%d window(s) at tolerance floor (%d bars; expected %d). "
+                "Keeping with warning — check for missing data.",
+                len(at_floor), min_bars, bars_per_window,
+            )
+        result = result[result["bar_count"] >= min_bars].copy()
 
     result = result[result["reference_price_open"] > 0].copy()
     result = result[result["reference_price_close"] > 0].copy()

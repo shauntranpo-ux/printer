@@ -20,6 +20,16 @@ logger = logging.getLogger(__name__)
 _ASSET_ORDER = ["btc", "eth", "sol", "xrp"]  # BTC must come first
 
 
+def _detect_granularity(bars) -> int:
+    """Detect bar granularity in seconds from median inter-bar interval."""
+    if len(bars) < 2:
+        return 10
+    import pandas as pd
+    ts = pd.to_datetime(bars["timestamp"])
+    diffs = ts.sort_values().diff().dropna()
+    return max(1, int(round(diffs.dt.total_seconds().median())))
+
+
 def _load_yaml(path: str) -> dict:
     with open(path) as f:
         return yaml.safe_load(f)
@@ -43,7 +53,8 @@ def _build_feature_matrix(
         bars["close"].clip(lower=1e-10) / bars["open"].clip(lower=1e-10)
     ).values
 
-    feat_df = build_har_features(log_rets)
+    granularity = _detect_granularity(bars)
+    feat_df = build_har_features(log_rets, granularity_seconds=granularity)
     if feat_df.empty or len(feat_df) < 50:
         raise ValueError(f"[{asset}] Insufficient feature rows: {len(feat_df)}")
 
@@ -155,7 +166,22 @@ def run_training_pipeline(
         log_rets = np.log(
             bars["close"].clip(lower=1e-10) / bars["open"].clip(lower=1e-10)
         ).values
-        coefficients = fit_har_rsj(log_rets)
+        granularity_s = _detect_granularity(bars)
+
+        # Check order_flow.enabled from sidecar config; log if disabled
+        fitted_cfg_path = os.path.join(
+            "strategies", "strategy_a", "config", f"{asset.lower()}.fitted.yaml"
+        )
+        if os.path.exists(fitted_cfg_path):
+            fitted_cfg = _load_yaml(fitted_cfg_path)
+            if not fitted_cfg.get("order_flow", {}).get("enabled", True):
+                logger.info(
+                    "[%s] order_flow features disabled (order_flow.enabled=false in sidecar config); "
+                    "running on reduced feature set (HAR-RS-J only).",
+                    asset.upper(),
+                )
+
+        coefficients = fit_har_rsj(log_rets, granularity_seconds=granularity_s)
         fitted_path = write_fitted_config(
             asset=asset,
             coefficients=coefficients,

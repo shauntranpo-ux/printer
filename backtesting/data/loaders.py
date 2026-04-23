@@ -2,49 +2,119 @@
 Data loaders for the backtesting layer.
 
 Each loader returns a pandas DataFrame with a UTC-indexed DatetimeIndex.
-Fails loudly when data is missing, malformed, or insufficient.
+Bars are loaded from flat files: data/historical/{ASSET}_1m_extended.parquet
 
-# TODO: Adjust base_path and file naming conventions to match actual disk layout.
-# Current assumption: data/historical/{asset}/bars_10s.parquet or .csv
+Path and filename pattern are configurable via backtesting/configs/backtest.yaml:
+    data.historical_root: data/historical
+    data.bars_filename_pattern: "{asset_upper}_1m_extended.parquet"
+
+Non-bars loaders (L2, trades, funding, kalshi_ticks) return empty DataFrames with
+a warning when data files are not found, allowing the pipeline to continue without them.
 """
 from __future__ import annotations
+import logging
 import os
 import warnings
 import pandas as pd
 import numpy as np
 from typing import Optional
 
-_BASE_PATH = os.environ.get("KALSHI_DATA_PATH", "data/historical")
+logger = logging.getLogger(__name__)
+
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_CONFIG_PATH = os.path.normpath(os.path.join(_THIS_DIR, "..", "configs", "backtest.yaml"))
+
 MIN_HISTORY_DAYS = 180
 
+# Alternate column names found in various data sources → canonical lowercase
+_COLUMN_ALIASES: dict[str, str] = {
+    "open_time": "timestamp", "time": "timestamp",
+    "Open": "open", "High": "high", "Low": "low",
+    "Close": "close", "Volume": "volume",
+    "vol": "volume",
+    "o": "open", "h": "high", "l": "low", "c": "close", "v": "volume",
+}
 
-def _resolve_path(asset: str, filename: str, base_path: str = _BASE_PATH) -> str:
-    return os.path.join(base_path, asset.lower(), filename)
+
+def _load_data_config() -> dict:
+    """Load data section from backtest.yaml; fall back to empty dict if unavailable."""
+    try:
+        import yaml
+        with open(_CONFIG_PATH, encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+        return cfg.get("data", {})
+    except Exception:
+        return {}
+
+
+def _get_historical_root() -> str:
+    cfg = _load_data_config()
+    return cfg.get("historical_root", os.environ.get("KALSHI_DATA_PATH", "data/historical"))
+
+
+def _get_filename_pattern() -> str:
+    cfg = _load_data_config()
+    return cfg.get("bars_filename_pattern", "{asset_upper}_1m_extended.parquet")
+
+
+def _resolve_bars_path(asset: str, base_path: Optional[str] = None) -> str:
+    """Return the full file path for the bars parquet.
+
+    If base_path is given, builds legacy-style path: base_path/{ASSET}_1m_extended.parquet
+    Otherwise reads historical_root and bars_filename_pattern from config.
+    """
+    if base_path is not None:
+        return os.path.join(base_path, f"{asset.upper()}_1m_extended.parquet")
+    root = _get_historical_root()
+    pattern = _get_filename_pattern()
+    filename = pattern.format(asset_upper=asset.upper(), asset_lower=asset.lower())
+    return os.path.join(root, filename)
+
+
+def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename known column aliases to canonical lowercase names."""
+    rename = {col: _COLUMN_ALIASES[col] for col in df.columns if col in _COLUMN_ALIASES}
+    return df.rename(columns=rename) if rename else df
 
 
 def _load_parquet_or_csv(path: str) -> pd.DataFrame:
     """Load parquet if available, fall back to CSV. Raises FileNotFoundError if neither."""
     parquet_path = path if path.endswith(".parquet") else path + ".parquet"
-    csv_path = path if path.endswith(".csv") else path + ".csv"
+    csv_path = (
+        os.path.splitext(path)[0] + ".csv" if path.endswith(".parquet") else path + ".csv"
+    )
     if os.path.exists(parquet_path):
         return pd.read_parquet(parquet_path)
     if os.path.exists(csv_path):
-        return pd.read_csv(csv_path, parse_dates=["timestamp"])
+        return pd.read_csv(csv_path)
     raise FileNotFoundError(
-        f"No data file found at {parquet_path} or {csv_path}. "
-        f"# TODO: Verify data path matches actual disk layout."
+        f"No data file found at:\n  {parquet_path}\n  {csv_path}\n"
+        f"Check data.historical_root and data.bars_filename_pattern in backtest.yaml."
     )
 
 
 def _enforce_utc(df: pd.DataFrame, ts_col: str = "timestamp") -> pd.DataFrame:
-    """Ensure timestamp column is UTC-aware. Raises if column is missing."""
+    """Ensure timestamp column is UTC-aware Timestamp.
+
+    Handles three source formats:
+    - float/int (epoch seconds, e.g. 1502942400.0)
+    - string (ISO-8601 or similar)
+    - datetime / Timestamp (already parsed)
+    """
     if ts_col not in df.columns:
         raise ValueError(f"Missing '{ts_col}' column in DataFrame")
-    col = pd.to_datetime(df[ts_col])
-    if col.dt.tz is None:
-        col = col.dt.tz_localize("UTC")
+    raw = df[ts_col]
+    if pd.api.types.is_float_dtype(raw) or pd.api.types.is_integer_dtype(raw):
+        if raw.dropna().median() > 1e10:
+            col = pd.to_datetime(raw, unit="ms", utc=True)
+        else:
+            col = pd.to_datetime(raw, unit="s", utc=True)
     else:
-        col = col.dt.tz_convert("UTC")
+        col = pd.to_datetime(raw)
+        if col.dt.tz is None:
+            col = col.dt.tz_localize("UTC")
+        else:
+            col = col.dt.tz_convert("UTC")
     df = df.copy()
     df[ts_col] = col
     return df.sort_values(ts_col).reset_index(drop=True)
@@ -75,28 +145,54 @@ def _filter_date_range(
     return df.reset_index(drop=True)
 
 
+def _detect_granularity_seconds(df: pd.DataFrame, ts_col: str = "timestamp") -> Optional[int]:
+    """Estimate bar granularity from median inter-bar gap in seconds."""
+    if len(df) < 2:
+        return None
+    diffs = df[ts_col].diff().dropna()
+    median_s = diffs.dt.total_seconds().median()
+    return max(1, int(round(median_s)))
+
+
 def load_bars(
     asset: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    base_path: str = _BASE_PATH,
+    base_path: Optional[str] = None,
     check_min_history: bool = True,
 ) -> pd.DataFrame:
     """
-    Load underlying price bars (10-second granularity by default).
+    Load underlying price bars (1-minute granularity by default).
+
     Returns DataFrame with columns: timestamp (UTC), open, high, low, close, volume
-    # TODO: Adjust filename 'bars_10s' to match actual disk layout.
+
+    Path is resolved from backtest.yaml (data.historical_root + data.bars_filename_pattern).
+    Pass base_path to override (legacy: looks for {base_path}/{ASSET}_1m_extended.parquet).
     """
-    path = _resolve_path(asset, "bars_10s", base_path)
+    path = _resolve_bars_path(asset, base_path)
     df = _load_parquet_or_csv(path)
+    df = _normalize_columns(df)
+
     required = {"timestamp", "open", "high", "low", "close", "volume"}
     missing = required - set(df.columns)
     if missing:
         raise ValueError(f"[{asset}] bars missing columns: {missing}")
+
     df = _enforce_utc(df)
     df = _filter_date_range(df, start_date, end_date)
+
     if check_min_history:
         _check_history_length(df, asset)
+
+    granularity = _detect_granularity_seconds(df)
+    logger.info(
+        "[%s] Loaded %s bars | %s → %s | granularity=%ss",
+        asset.upper(),
+        f"{len(df):,}",
+        df["timestamp"].min().date(),
+        df["timestamp"].max().date(),
+        granularity,
+    )
     return df
 
 
@@ -104,15 +200,22 @@ def load_l2_snapshots(
     asset: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    base_path: str = _BASE_PATH,
+    base_path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Load L2 book snapshots.
-    Returns DataFrame with columns: timestamp (UTC), bids, asks
-    # TODO: Adjust filename 'l2_snapshots' to match actual disk layout.
+    Load L2 book snapshots. Returns empty DataFrame if data is not available.
+    Expected columns: timestamp (UTC), bids, asks
     """
-    path = _resolve_path(asset, "l2_snapshots", base_path)
-    df = _load_parquet_or_csv(path)
+    root = base_path or _get_historical_root()
+    path = os.path.join(root, f"{asset.upper()}_l2_snapshots")
+    try:
+        df = _load_parquet_or_csv(path)
+    except FileNotFoundError:
+        warnings.warn(
+            f"[{asset}] L2 snapshot data not found. Returning empty DataFrame.",
+            stacklevel=2,
+        )
+        return pd.DataFrame(columns=["timestamp", "bids", "asks"])
     required = {"timestamp", "bids", "asks"}
     missing = required - set(df.columns)
     if missing:
@@ -124,15 +227,22 @@ def load_trades(
     asset: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    base_path: str = _BASE_PATH,
+    base_path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Load trade tape.
-    Returns DataFrame with columns: timestamp (UTC), price, size, aggressor_side
-    # TODO: Adjust filename 'trades' to match actual disk layout.
+    Load trade tape. Returns empty DataFrame if data is not available.
+    Expected columns: timestamp (UTC), price, size, aggressor_side
     """
-    path = _resolve_path(asset, "trades", base_path)
-    df = _load_parquet_or_csv(path)
+    root = base_path or _get_historical_root()
+    path = os.path.join(root, f"{asset.upper()}_trades")
+    try:
+        df = _load_parquet_or_csv(path)
+    except FileNotFoundError:
+        warnings.warn(
+            f"[{asset}] Trade tape data not found. Returning empty DataFrame.",
+            stacklevel=2,
+        )
+        return pd.DataFrame(columns=["timestamp", "price", "size", "aggressor_side"])
     required = {"timestamp", "price", "size", "aggressor_side"}
     missing = required - set(df.columns)
     if missing:
@@ -148,15 +258,22 @@ def load_funding(
     asset: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    base_path: str = _BASE_PATH,
+    base_path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Load funding rate and open interest data.
-    Returns DataFrame with columns: timestamp (UTC), funding_rate, open_interest
-    # TODO: Adjust filename 'funding' to match actual disk layout.
+    Load funding rate and open interest data. Returns empty DataFrame if not available.
+    Expected columns: timestamp (UTC), funding_rate, open_interest
     """
-    path = _resolve_path(asset, "funding", base_path)
-    df = _load_parquet_or_csv(path)
+    root = base_path or _get_historical_root()
+    path = os.path.join(root, f"{asset.upper()}_funding")
+    try:
+        df = _load_parquet_or_csv(path)
+    except FileNotFoundError:
+        warnings.warn(
+            f"[{asset}] Funding rate data not found. Returning empty DataFrame.",
+            stacklevel=2,
+        )
+        return pd.DataFrame(columns=["timestamp", "funding_rate", "open_interest"])
     required = {"timestamp", "funding_rate", "open_interest"}
     missing = required - set(df.columns)
     if missing:
@@ -168,21 +285,19 @@ def load_kalshi_ticks(
     asset: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    base_path: str = _BASE_PATH,
+    base_path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Load Kalshi contract tick data.
-    Returns DataFrame with columns: timestamp (UTC), yes_bid, yes_ask, no_bid, no_ask[, seconds_to_expiry]
-    If data is not available, returns empty DataFrame with schema columns (logs a warning).
-    # TODO: Adjust filename 'kalshi_ticks' to match actual disk layout.
+    Load Kalshi contract tick data. Returns empty DataFrame if not available.
+    Expected columns: timestamp (UTC), yes_bid, yes_ask, no_bid, no_ask[, seconds_to_expiry]
     """
-    path = _resolve_path(asset, "kalshi_ticks", base_path)
+    root = base_path or _get_historical_root()
+    path = os.path.join(root, f"{asset.upper()}_kalshi_ticks")
     try:
         df = _load_parquet_or_csv(path)
     except FileNotFoundError:
         warnings.warn(
-            f"[{asset}] No Kalshi tick data found at {path}. "
-            f"Windows without tick data will be skipped.",
+            f"[{asset}] No Kalshi tick data found. Windows without tick data will be skipped.",
             stacklevel=2,
         )
         return pd.DataFrame(columns=["timestamp", "yes_bid", "yes_ask", "no_bid", "no_ask"])
