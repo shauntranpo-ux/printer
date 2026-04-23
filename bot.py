@@ -25,7 +25,6 @@ from datetime import datetime, timezone, timedelta
 import aiosqlite
 
 import aiohttp
-import websockets
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
