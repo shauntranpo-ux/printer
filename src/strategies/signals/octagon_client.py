@@ -11,6 +11,7 @@ error or timeout so the caller can fall through (allow trade) without blocking.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -166,12 +167,16 @@ def _fetch_report(market_url: str, event_ticker: str, ttl: int) -> Optional[dict
         )
         resp.raise_for_status()
         data = resp.json()
-        # Octagon native format: {"latest_report": {"markdown_report": "..."}}
-        # Fall back to OpenAI-style output wrapper if native key absent
-        if "latest_report" in data and isinstance(data.get("latest_report"), dict):
-            text = data["latest_report"].get("markdown_report", "")
-        else:
-            text = data["output"][0]["content"][0]["text"]
+        # Octagon uses an OpenAI responses envelope.
+        # output[0]["content"][0]["text"] contains the Octagon native JSON
+        # serialized as a string (double-encoded); parse it to get markdown_report.
+        raw_text = data["output"][0]["content"][0]["text"]
+        try:
+            inner = json.loads(raw_text)
+            lr = inner.get("latest_report")
+            text = (lr.get("markdown_report") or "") if isinstance(lr, dict) else ""
+        except (json.JSONDecodeError, AttributeError):
+            text = raw_text
     except httpx.TimeoutException:
         log.warning("Octagon: timeout fetching report for %s (3s limit)", event_ticker)
         return None

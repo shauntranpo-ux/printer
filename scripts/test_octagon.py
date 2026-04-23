@@ -35,17 +35,19 @@ if url:
             timeout=30.0,
         )
         data = r.json()
-        print(f"  top-level keys : {list(data.keys())}")
-        lr = data.get("latest_report")
-        print(f"  latest_report  : {type(lr).__name__}  keys={list(lr.keys()) if isinstance(lr, dict) else 'N/A'}")
+        import json as _json
+        raw_text = data["output"][0]["content"][0]["text"]
+        inner = _json.loads(raw_text)
+        lr = inner.get("latest_report")
+        print(f"  inner latest_report : {type(lr).__name__}  keys={list(lr.keys()) if isinstance(lr, dict) else 'N/A'}")
         if isinstance(lr, dict):
             raw = lr.get("markdown_report") or ""
-            print(f"  markdown len   : {len(raw)} chars")
+            print(f"  markdown len        : {len(raw)} chars")
             lines = raw.splitlines()
             table_lines = [ln for ln in lines if ln.count("|") >= 3]
-            print(f"  table_lines    : {len(table_lines)} rows with ≥3 pipes")
+            print(f"  table_lines         : {len(table_lines)} rows with ≥3 pipes")
             print(f"  first 40 lines of markdown:")
-            for i, ln in enumerate(lines[:40]):
+            for ln in lines[:40]:
                 print(f"    {ln}")
         print()
     except Exception as e:
