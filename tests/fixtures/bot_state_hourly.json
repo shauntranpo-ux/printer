@@ -5,7 +5,6 @@
     {
       "asset": "ETH",
       "ticker": "KXETHD-26APR23-17:00-T3500",
-      "market_ticker": "KXETHD-26APR23-17:00-T3500",
       "market_title": "ETH above $3,500 at 5pm?",
       "session_type": "hourly",
       "strategy_name": "ETHHourlyCombined",
@@ -29,7 +28,6 @@
     {
       "asset": "BTC",
       "ticker": "KXBTCD-26APR23-17:00-T94000",
-      "market_ticker": "KXBTCD-26APR23-17:00-T94000",
       "market_title": "BTC above $94,000 at 5pm?",
       "session_type": "hourly",
       "strategy_name": "BTCHourly V3",
