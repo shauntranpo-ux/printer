@@ -1,8 +1,8 @@
 {
   "ts": "2026-04-23T17:05:00+00:00",
   "mode": "paper",
-  "assets": [
-    {
+  "assets": {
+    "ETH": {
       "asset": "ETH",
       "ticker": "KXETHD-26APR23-17:00-T3500",
       "market_title": "ETH above $3,500 at 5pm?",
@@ -25,7 +25,7 @@
       },
       "secs_left": 1650
     },
-    {
+    "BTC": {
       "asset": "BTC",
       "ticker": "KXBTCD-26APR23-17:00-T94000",
       "market_title": "BTC above $94,000 at 5pm?",
@@ -51,5 +51,5 @@
       },
       "secs_left": 1650
     }
-  ]
+  }
 }
