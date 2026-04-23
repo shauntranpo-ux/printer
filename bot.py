@@ -4014,6 +4014,7 @@ async def handle_ready_phase(
         "strike": strike,
         "entry_ts": _entry_ts,
         "market_duration_min": _market_duration_min,
+        "elapsed_at_entry": _market_elapsed_at_entry,  # used by exit-side _phase_for_eth
         "market_close_time": market.get("close_time", ""),
         "order_id": order_id,
         "asset": asset,
