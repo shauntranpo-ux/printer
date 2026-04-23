@@ -23,8 +23,11 @@ from collections import deque
 from datetime import datetime, timezone, timedelta
 
 import aiosqlite
-from dotenv import load_dotenv
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 import aiohttp
 from cryptography.hazmat.primitives import hashes, serialization

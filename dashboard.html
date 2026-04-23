@@ -356,19 +356,19 @@ tr:last-child td{border-bottom:none;}
 
     <!-- Perf bar -->
     <div class="card" id="perf-bar">
-      <div class="pf-stat">
+      <div class="pf-stat" id="pb-stat-live-pnl">
         <div class="pf-lbl">Live P&amp;L · All-Time</div>
         <div class="pf-val" id="pb-live-pnl">—</div>
       </div>
-      <div class="pf-stat">
+      <div class="pf-stat" id="pb-stat-live-wr">
         <div class="pf-lbl">Live WR · All-Time</div>
         <div class="pf-val" id="pb-live-wr">—</div>
       </div>
-      <div class="pf-stat">
+      <div class="pf-stat" id="pb-stat-demo-pnl">
         <div class="pf-lbl">Demo P&amp;L · All-Time</div>
         <div class="pf-val" id="pb-demo-pnl">—</div>
       </div>
-      <div class="pf-stat">
+      <div class="pf-stat" id="pb-stat-demo-wr">
         <div class="pf-lbl">Demo WR · All-Time</div>
         <div class="pf-val" id="pb-demo-wr">—</div>
       </div>
@@ -675,8 +675,9 @@ function selectTab(tab) {
     const btn = document.getElementById('tbtab-'+tab);
     if (btn) btn.classList.add('active');
     _currentMarketSym = tab;
-    // BTC and ETH only trade hourly markets — default to hourly sub-tab
-    if (tab === 'BTC' || tab === 'ETH') _mvStratTab = 'hourly';
+    // ETH trades both 15m and hourly; default to hourly for ETH only
+    if (tab === 'ETH') _mvStratTab = 'hourly';
+    else if (tab === 'BTC') _mvStratTab = '15min';
     renderMarketView(tab);
   } else if (tab === 'trades') {
     document.getElementById('panel-trades').classList.add('active');
@@ -1583,10 +1584,19 @@ async function pollPnl() {
     renderPnlValues();
     const _fmtWr = (obj, elId) => {
       const el = document.getElementById(elId); if (!el) return;
-      if (obj.trades > 0) { const wr=obj.win_rate; el.textContent=wr.toFixed(0)+'% ('+obj.trades+')'; el.className='pf-val '+(wr>=75?'green':wr>=60?'':'red'); }
+      if (obj.trades > 0) { const wr=obj.win_rate; el.textContent=wr.toFixed(0)+'% ('+obj.trades+')'; el.className='pf-val '+(wr>=50?'green':wr>=35?'':'red'); }
       else { el.textContent='—'; el.className='pf-val'; }
     };
     _fmtWr(al, 'pb-live-wr'); _fmtWr(ad, 'pb-demo-wr'); _fmtWr(ap, 'pb-paper-wr');
+    // Hide live/demo stat columns when no trades — avoid cluttering the bar with dashes
+    const _showStatPair = (prefix, hasData) => {
+      ['pnl','wr'].forEach(s => {
+        const el = document.getElementById('pb-stat-'+prefix+'-'+s);
+        if (el) el.style.display = hasData ? '' : 'none';
+      });
+    };
+    _showStatPair('live', al.trades > 0);
+    _showStatPair('demo', ad.trades > 0);
   } catch(e) { console.error('PnL poll:', e); }
 }
 
@@ -1645,7 +1655,7 @@ async function pollAll() { await Promise.all([pollState(), pollTrades(), pollMar
 // Restore tab from last session (guard against old saved values)
 (function(){
   const savedTab = localStorage.getItem('mp_tab');
-  const valid = ['overview','ETH','SOL','XRP','trades','settings'];
+  const valid = ['overview','BTC','ETH','SOL','XRP','trades','settings'];
   if (savedTab && valid.includes(savedTab) && savedTab !== 'overview') selectTab(savedTab);
 })();
 

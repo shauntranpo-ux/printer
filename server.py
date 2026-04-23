@@ -526,7 +526,7 @@ def api_pnl():
         def _pnl(trades):
             resolved = [t for t in trades if t.get("outcome") not in ("pending", None) and t.get("pnl_dollars") is not None]
             total = round(sum(t["pnl_dollars"] for t in resolved), 2)
-            wins  = sum(1 for t in resolved if t.get("outcome") == "win")
+            wins  = sum(1 for t in resolved if t["pnl_dollars"] > 0)
             count = len(resolved)
             win_rate = round(wins / count * 100, 1) if count else 0.0
             return {"pnl": total, "trades": count, "wins": wins, "win_rate": win_rate}
