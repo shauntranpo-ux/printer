@@ -212,6 +212,7 @@ class BaseStrategy(ABC):
                 "calibrated_p_yes": calibrated_p_yes,
                 "yes_ev": ev.yes_ev,
                 "no_ev": ev.no_ev,
+                "entry_cents": features.yes_ask if ev.best_side == "yes" else features.no_ask,
             },
             expected_value=ev.best_ev,
         )

@@ -12,10 +12,9 @@ Covers the hourly strategies:
   - LateWindowStrategy  (ETH, t>=45min)
   - BTCHourlyStrategy   (V3 mean-reversion)
 
-BTCHourlyStrategy routes through BaseStrategy.decide which does NOT emit
-entry_cents in contributing_signals — the audit will observe this as a
-coverage gap (test skips gracefully rather than failing). This is documented
-in the design spec §5.2.
+BTCHourlyStrategy routes through BaseStrategy.decide which now emits
+entry_cents in contributing_signals on the trade path, so the audit
+asserts the invariant just like the other hourly strategies.
 """
 from __future__ import annotations
 
@@ -264,11 +263,11 @@ def test_late_window_no_side_uses_no_ask():
     )
 
 
-# -- BTCHourlyStrategy: may or may not emit entry_cents ----------------------
-# BTCHourly routes through BaseStrategy.decide which does NOT set entry_cents
-# in contributing_signals. Audit this explicitly: either the strategy doesn't
-# trade (skip is fine), or it trades and the test detects the coverage gap.
-def test_btc_hourly_entry_matches_side_or_coverage_gap():
+# -- BTCHourlyStrategy: BaseStrategy.decide now emits entry_cents ------------
+# BTCHourly routes through BaseStrategy.decide which puts entry_cents in
+# contributing_signals on the trade path. Audit the full invariant: if the
+# strategy trades, entry_cents MUST match the chosen side's ask.
+def test_btc_hourly_entry_matches_side():
     strat = BTCHourlyStrategy(
         skip_config=SkipConfig(),
         min_ev=0.0,
@@ -285,8 +284,8 @@ def test_btc_hourly_entry_matches_side_or_coverage_gap():
     )
     decision = strat.decide(features)
     status = _assert_entry_matches_side(decision, features, strategy_name="BTCHourly")
-    # Any of three outcomes is acceptable; the assert inside
-    # _assert_entry_matches_side handles the real-bug case.
-    assert status in {"traded_and_verified", "traded_but_no_entry_cents"} or status.startswith("skipped:"), (
-        f"Unexpected status from BTCHourly audit: {status}"
+    # Coverage gap (traded_but_no_entry_cents) is no longer acceptable — the
+    # base decide() must emit entry_cents on every trade decision.
+    assert status == "traded_and_verified" or status.startswith("skipped:"), (
+        f"BTCHourly must either skip or trade with entry_cents set; got: {status}"
     )
