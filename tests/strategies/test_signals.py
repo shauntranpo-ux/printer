@@ -145,13 +145,23 @@ def _reset_solana_cache():
     sh_module._cache.update({"ts": 0.0, "healthy": False, "reason": "reset"})
 
 
+def _make_urlopen_mock(status: int = 200, body: dict | None = None):
+    """Return a MagicMock configured as a urllib.request.urlopen context manager."""
+    import json as _json
+    resp = MagicMock()
+    resp.status = status
+    resp.read.return_value = _json.dumps(body or {}).encode("utf-8")
+    cm = MagicMock()
+    cm.__enter__.return_value = resp
+    cm.__exit__.return_value = False
+    return cm
+
+
 def test_solana_health_happy_path():
     _reset_solana_cache()
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"result": "ok"}
-    with patch("strategies.signals.solana_health.httpx.post",
-               return_value=mock_resp):
+    cm = _make_urlopen_mock(200, {"result": "ok"})
+    with patch("strategies.signals.solana_health.urllib.request.urlopen",
+               return_value=cm):
         is_healthy, reason = check_solana_health(force=True)
         assert is_healthy is True
         assert reason == "ok"
@@ -159,11 +169,9 @@ def test_solana_health_happy_path():
 
 def test_solana_health_degraded():
     _reset_solana_cache()
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"result": "behind"}
-    with patch("strategies.signals.solana_health.httpx.post",
-               return_value=mock_resp):
+    cm = _make_urlopen_mock(200, {"result": "behind"})
+    with patch("strategies.signals.solana_health.urllib.request.urlopen",
+               return_value=cm):
         is_healthy, reason = check_solana_health(force=True)
         assert is_healthy is False
         assert "unhealthy" in reason
@@ -171,35 +179,35 @@ def test_solana_health_degraded():
 
 def test_solana_health_timeout_fails_safe():
     _reset_solana_cache()
-    import httpx as rq
-    with patch("strategies.signals.solana_health.httpx.post",
-               side_effect=rq.TimeoutException("timeout")):
+    with patch("strategies.signals.solana_health.urllib.request.urlopen",
+               side_effect=TimeoutError("timeout")):
         is_healthy, reason = check_solana_health(force=True)
         assert is_healthy is False
-        assert reason == "rpc_timeout"
+        assert "TimeoutError" in reason
 
 
 def test_solana_health_http_error_fails_safe():
     _reset_solana_cache()
-    mock_resp = MagicMock()
-    mock_resp.status_code = 503
-    with patch("strategies.signals.solana_health.httpx.post",
-               return_value=mock_resp):
+    import urllib.error
+    err = urllib.error.HTTPError(
+        url="http://x", code=503, msg="Service Unavailable",
+        hdrs=None, fp=None,
+    )
+    with patch("strategies.signals.solana_health.urllib.request.urlopen",
+               side_effect=err):
         is_healthy, reason = check_solana_health(force=True)
         assert is_healthy is False
 
 
 def test_solana_health_caches_within_ttl():
     _reset_solana_cache()
-    mock_resp = MagicMock()
-    mock_resp.status_code = 200
-    mock_resp.json.return_value = {"result": "ok"}
-    with patch("strategies.signals.solana_health.httpx.post",
-               return_value=mock_resp) as mock_post:
+    cm = _make_urlopen_mock(200, {"result": "ok"})
+    with patch("strategies.signals.solana_health.urllib.request.urlopen",
+               return_value=cm) as mock_urlopen:
         check_solana_health(force=True)
-        assert mock_post.call_count == 1
+        assert mock_urlopen.call_count == 1
         check_solana_health(force=False)
-        assert mock_post.call_count == 1
+        assert mock_urlopen.call_count == 1
 
 
 # ── Exhaustion fade ───────────────────────────────────────────────────────

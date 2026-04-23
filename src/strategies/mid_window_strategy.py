@@ -27,7 +27,7 @@ from typing import Optional
 from strategies.base import BaseStrategy
 from strategies.calibration import AssetCalibrator
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import SkipConfig
+from strategies.skip_layer import SkipConfig, check_entry_price_cap
 
 
 MIN_ELAPSED_SEC  = 550     # fire at ~t=9.2min (catch 10-min eval point)
@@ -168,6 +168,14 @@ class MidWindowStrategy(BaseStrategy):
 
         side        = "yes" if eth_itm else "no"
         entry_cents = features.yes_ask if eth_itm else features.no_ask
+
+        # Entry price cap — reject at 80c+ (fee drag)
+        cap_reason = check_entry_price_cap(entry_cents, side, self.skip_config)
+        if cap_reason:
+            return Decision(
+                action="skip", side=None, p_model=0.5,
+                reason=cap_reason,
+            )
 
         signals = {
             "eth_cross":    eth_cross,

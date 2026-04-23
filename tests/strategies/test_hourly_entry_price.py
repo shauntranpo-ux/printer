@@ -47,8 +47,8 @@ def _make_features(
     asset: str = "ETH",
     current_price: float = 3510.0,
     strike: float = 3500.0,
-    yes_ask: float = 80.0,
-    no_ask: float = 21.0,
+    yes_ask: float = 75.0,
+    no_ask: float = 26.0,
     elapsed_seconds: float = 600.0,
     seconds_left: float = 3000.0,
     n_price_samples: int = 70,
@@ -187,7 +187,7 @@ def test_mid_window_no_side_uses_no_ask():
     strat = MidWindowStrategy("ETH", skip_config=SkipConfig(), stake_dollars=25.0, calibrator=None)
     features = _make_features(
         current_price=3480.0, strike=3500.0,  # -0.57% below strike → NO
-        yes_ask=21.0, no_ask=80.0,
+        yes_ask=21.0, no_ask=75.0,
         elapsed_seconds=600.0, seconds_left=3000.0,
         direction="no",
     )
@@ -218,7 +218,7 @@ def test_dwell_window_no_side_uses_no_ask():
     strat = DwellWindowStrategy("ETH", skip_config=SkipConfig(), stake_dollars=25.0, calibrator=None)
     features = _make_features(
         current_price=3490.0, strike=3500.0,
-        yes_ask=21.0, no_ask=80.0,
+        yes_ask=21.0, no_ask=75.0,
         elapsed_seconds=35 * 60.0, seconds_left=25 * 60.0,
         direction="no",
     )
@@ -235,7 +235,7 @@ def test_late_window_yes_side_uses_yes_ask():
     strat = LateWindowStrategy("ETH", skip_config=SkipConfig(), stake_dollars=25.0, calibrator=None)
     features = _make_features(
         current_price=3520.0, strike=3500.0,  # +0.57% → YES, dist ok
-        yes_ask=92.0, no_ask=9.0,              # yes_ask >= 85c (min entry)
+        yes_ask=75.0, no_ask=26.0,             # yes_ask in [60c, 80c) band
         elapsed_seconds=46 * 60.0, seconds_left=14 * 60.0,
         direction="yes",
         n_price_samples=80,                    # >= cold_start_samples=60
@@ -251,7 +251,7 @@ def test_late_window_no_side_uses_no_ask():
     strat = LateWindowStrategy("ETH", skip_config=SkipConfig(), stake_dollars=25.0, calibrator=None)
     features = _make_features(
         current_price=3480.0, strike=3500.0,  # -0.57% → NO
-        yes_ask=9.0, no_ask=92.0,              # no_ask >= 85c
+        yes_ask=26.0, no_ask=75.0,             # no_ask in [60c, 80c) band
         elapsed_seconds=46 * 60.0, seconds_left=14 * 60.0,
         direction="no",
         n_price_samples=80,

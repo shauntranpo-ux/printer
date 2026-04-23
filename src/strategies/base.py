@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import check_skip, SkipConfig, _momentum_label, _momentum_acceleration
+from strategies.skip_layer import check_skip, check_entry_price_cap, SkipConfig, _momentum_label, _momentum_acceleration
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
 from strategies.lag_detector import amm_lag_signal
@@ -194,6 +194,27 @@ class BaseStrategy(ABC):
                         },
                         expected_value=ev.best_ev,
                     )
+
+        # Step 6.75: entry price cap — reject trades at or above max_entry_price_cents (fee drag)
+        _entry_cents = features.yes_ask if ev.best_side == "yes" else features.no_ask
+        _cap_reason = check_entry_price_cap(_entry_cents, ev.best_side, self.skip_config)
+        if _cap_reason:
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=calibrated_p_yes,
+                reason=_cap_reason,
+                contributing_signals={
+                    **signals,
+                    "baseline_p_above": baseline_p_above,
+                    "raw_p_yes": raw_p_yes,
+                    "calibrated_p_yes": calibrated_p_yes,
+                    "yes_ev": ev.yes_ev,
+                    "no_ev": ev.no_ev,
+                    "entry_cents": _entry_cents,
+                },
+                expected_value=ev.best_ev,
+            )
 
         # Step 7: trade decision
         return Decision(

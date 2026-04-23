@@ -6,13 +6,16 @@ times out, or returns non-"ok" status, we treat the network as UNHEALTHY
 and skip SOL trades. Fail-safe: silence = unhealthy.
 
 Results are cached for 30 seconds to avoid hammering the RPC endpoint.
+
+Uses urllib from the stdlib to avoid an httpx runtime dependency.
 """
 
 from __future__ import annotations
+import json
 import os
 import time
-
-import httpx
+import urllib.error
+import urllib.request
 
 
 SOLANA_RPC_URL = os.environ.get(
@@ -36,25 +39,30 @@ def check_solana_health(force: bool = False) -> tuple[bool, str]:
     if not force and (now - _cache["ts"]) < _CACHE_TTL_SECONDS:
         return _cache["healthy"], _cache["reason"]
 
+    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "getHealth"}).encode("utf-8")
+    req = urllib.request.Request(
+        SOLANA_RPC_URL,
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+
     try:
-        resp = httpx.post(
-            SOLANA_RPC_URL,
-            json={"jsonrpc": "2.0", "id": 1, "method": "getHealth"},
-            timeout=_REQUEST_TIMEOUT_SECONDS,
-        )
-        if resp.status_code != 200:
-            reason = f"http_{resp.status_code}"
-            _cache.update({"ts": now, "healthy": False, "reason": reason})
-            return False, reason
-        data = resp.json()
+        with urllib.request.urlopen(req, timeout=_REQUEST_TIMEOUT_SECONDS) as resp:
+            if resp.status != 200:
+                reason = f"http_{resp.status}"
+                _cache.update({"ts": now, "healthy": False, "reason": reason})
+                return False, reason
+            data = json.loads(resp.read().decode("utf-8"))
         if data.get("result") != "ok":
             reason = f"unhealthy_{data.get('result')}"
             _cache.update({"ts": now, "healthy": False, "reason": reason})
             return False, reason
-    except httpx.TimeoutException:
-        _cache.update({"ts": now, "healthy": False, "reason": "rpc_timeout"})
-        return False, "rpc_timeout"
-    except httpx.HTTPError as e:
+    except urllib.error.HTTPError as e:
+        reason = f"http_{e.code}"
+        _cache.update({"ts": now, "healthy": False, "reason": reason})
+        return False, reason
+    except (urllib.error.URLError, TimeoutError) as e:
         reason = f"rpc_error_{type(e).__name__}"
         _cache.update({"ts": now, "healthy": False, "reason": reason})
         return False, reason

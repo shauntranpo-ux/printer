@@ -19,12 +19,12 @@ from typing import Optional
 from strategies.base import BaseStrategy
 from strategies.calibration import AssetCalibrator
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import SkipConfig
+from strategies.skip_layer import SkipConfig, check_entry_price_cap
 
 
 SEC_LEFT_THRESHOLD = 900    # 15 min remaining = t>=45min in 60min window
 DIST_PCT           = 0.3    # min % distance from strike
-MIN_ENTRY_CENTS    = 85.0   # skip if trade side entry < this
+MIN_ENTRY_CENTS    = 60.0   # skip if trade side entry < this (lowered from 85 to fit within 80c cap)
 
 
 class LateWindowStrategy(BaseStrategy):
@@ -112,6 +112,14 @@ class LateWindowStrategy(BaseStrategy):
                 side=None,
                 p_model=0.5,
                 reason=f"entry_too_cheap: {side}_ask={entry_cents:.0f}c < {MIN_ENTRY_CENTS:.0f}c",
+            )
+
+        # Entry price cap — reject at 80c+ (fee drag)
+        cap_reason = check_entry_price_cap(entry_cents, side, self.skip_config)
+        if cap_reason:
+            return Decision(
+                action="skip", side=None, p_model=0.5,
+                reason=cap_reason,
             )
 
         signals = {

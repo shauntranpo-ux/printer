@@ -23,7 +23,7 @@ import math
 
 from strategies.base import BaseStrategy
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import SkipConfig, check_skip_with_asset_hook
+from strategies.skip_layer import SkipConfig, check_skip_with_asset_hook, check_entry_price_cap
 from strategies.calibration import AssetCalibrator
 
 from strategies.signals.kalshi_velocity import contract_velocity
@@ -144,6 +144,19 @@ class DOGEStrategy(BaseStrategy):
                     f"(session={session}, min={effective_min_ev:+.3f})"
                 ),
                 contributing_signals=merged_signals,
+                expected_value=ev_result.best_ev,
+            )
+
+        # Entry price cap — reject at 80c+ (fee drag)
+        _entry_cents = features.yes_ask if ev_result.best_side == "yes" else features.no_ask
+        _cap_reason = check_entry_price_cap(_entry_cents, ev_result.best_side, self.skip_config)
+        if _cap_reason:
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=calibrated_p_yes,
+                reason=_cap_reason,
+                contributing_signals={**merged_signals, "entry_cents": _entry_cents},
                 expected_value=ev_result.best_ev,
             )
 

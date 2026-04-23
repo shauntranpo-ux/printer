@@ -21,7 +21,7 @@ from typing import Optional
 from strategies.base import BaseStrategy
 from strategies.calibration import AssetCalibrator
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import SkipConfig
+from strategies.skip_layer import SkipConfig, check_entry_price_cap
 
 
 MIN_ELAPSED_SEC   = 10 * 60    # start at t=10min
@@ -125,6 +125,14 @@ class EarlyWindowStrategy(BaseStrategy):
         else:
             side        = "no"
             entry_cents = features.no_ask
+
+        # Entry price cap — reject at 80c+ (fee drag)
+        cap_reason = check_entry_price_cap(entry_cents, side, self.skip_config)
+        if cap_reason:
+            return Decision(
+                action="skip", side=None, p_model=0.5,
+                reason=cap_reason,
+            )
 
         signals = {
             "btc_10m_return": round(btc_ret, 3),
