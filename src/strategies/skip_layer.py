@@ -139,7 +139,13 @@ def check_skip(
     # vol_ratio = (rv * sqrt(mins_left)) / buffer_pct
     # Skip when ratio is too high (buffer too thin relative to expected move).
     # Momentum confirmation relaxes the threshold; opposition tightens it.
-    if features.current_price > 0 and features.strike > 0 and rv > 0:
+    #
+    # Short-duration markets (< 20 min) skip this check: Kalshi's 15m ladders
+    # place strikes right at the current price (dist ~0.01%), which makes the
+    # ratio explode even in mild volatility. For these markets we rely on the
+    # EV gate + 35c floor + 80c cap to filter bad trades.
+    _is_short_duration = features.seconds_left < 20 * 60
+    if features.current_price > 0 and features.strike > 0 and rv > 0 and not _is_short_duration:
         abs_pct = abs(features.current_price - features.strike) / features.current_price
         mins_left = features.seconds_left / 60.0
         if abs_pct > 0 and mins_left > 0:
