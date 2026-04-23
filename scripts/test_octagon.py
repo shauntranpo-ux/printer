@@ -35,15 +35,18 @@ if url:
             timeout=30.0,
         )
         data = r.json()
-        if "latest_report" in data and isinstance(data.get("latest_report"), dict):
-            raw = data["latest_report"].get("markdown_report", "")
-        else:
-            raw = data["output"][0]["content"][0]["text"]
-        for i, line in enumerate(raw.splitlines()):
-            print(f"  {line}")
-            if i >= 79:
-                print("  ... (truncated)")
-                break
+        print(f"  top-level keys : {list(data.keys())}")
+        lr = data.get("latest_report")
+        print(f"  latest_report  : {type(lr).__name__}  keys={list(lr.keys()) if isinstance(lr, dict) else 'N/A'}")
+        if isinstance(lr, dict):
+            raw = lr.get("markdown_report") or ""
+            print(f"  markdown len   : {len(raw)} chars")
+            lines = raw.splitlines()
+            table_lines = [ln for ln in lines if ln.count("|") >= 3]
+            print(f"  table_lines    : {len(table_lines)} rows with ≥3 pipes")
+            print(f"  first 40 lines of markdown:")
+            for i, ln in enumerate(lines[:40]):
+                print(f"    {ln}")
         print()
     except Exception as e:
         print(f"  [raw dump failed: {e}]")
