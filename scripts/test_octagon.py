@@ -34,7 +34,11 @@ if url:
             json={"model": oc.OCTAGON_MODEL, "input": url},
             timeout=30.0,
         )
-        raw = r.json()["output"][0]["content"][0]["text"]
+        data = r.json()
+        if "latest_report" in data and isinstance(data.get("latest_report"), dict):
+            raw = data["latest_report"].get("markdown_report", "")
+        else:
+            raw = data["output"][0]["content"][0]["text"]
         for i, line in enumerate(raw.splitlines()):
             print(f"  {line}")
             if i >= 79:
