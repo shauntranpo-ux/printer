@@ -665,6 +665,68 @@ def _notify_ctx(asset, ticker, duration_min, phase=None):
     return f"[{' | '.join(parts)}]"
 
 
+async def _maybe_fill_verification_notify(
+    asset: str,
+    ticker: str,
+    side: str,
+    market: dict | None,
+    secs_left: float,
+    entry_price_cents: int | None,
+    price_this_attempt: int | None,
+    market_ask_at_post_c: int | None,
+    fill_yes_price: int | None,
+) -> None:
+    """Send a fill-verification Telegram message for hourly markets only.
+
+    Gated so we can spot price-selection bugs in flight. Compares:
+      - Target:     the strategy-chosen entry price (may be None for BTC).
+      - Market ask: the ask observed just before POST.
+      - Posted:     the price actually sent to Kalshi (may differ via retry drift).
+      - Filled:     the price Kalshi returned on fill.
+
+    Warns with ⚠️ when abs(filled - target) > 3¢. Silently skips for 15m
+    markets or when fill_yes_price is None.
+    """
+    # Derive elapsed_seconds / duration from `market` (the function's local).
+    try:
+        _elapsed_sec = seconds_elapsed(market) if market else 0.0
+    except Exception:
+        _elapsed_sec = 0.0
+    try:
+        _duration_min = (_elapsed_sec + float(secs_left)) / 60.0
+    except (TypeError, ValueError):
+        _duration_min = 0.0
+    if _duration_min <= 25.0 or fill_yes_price is None:
+        return
+    _target = entry_price_cents  # may be None for BTC (strategy doesn't emit it)
+    _ask = market_ask_at_post_c
+    _posted = price_this_attempt
+    _filled = fill_yes_price
+    _target_str = f"{int(round(_target))}¢" if _target is not None else "—"
+    _ask_str    = f"{int(round(_ask))}¢"    if _ask    is not None else "—"
+    _posted_str = f"{int(round(_posted))}¢" if _posted is not None else "—"
+    _filled_str = f"{int(round(_filled))}¢"
+    if _target is not None:
+        _slip_target = int(round(_filled - _target))
+        _slip_target_str = f"{_slip_target:+d}¢ vs target"
+        _warn = "⚠️ " if abs(_slip_target) > 3 else "🎯 "
+    else:
+        _slip_target_str = "n/a vs target"
+        _warn = "🎯 "
+    _slip_market_str = (
+        f"{int(round(_filled - _ask)):+d}¢ vs market" if _ask is not None else "n/a vs market"
+    )
+    _ctx = _notify_ctx(asset, ticker, _duration_min, _phase_for_eth(asset, _elapsed_sec))
+    await send_telegram(
+        f"{_warn}<b>{_ctx} FILL VERIFICATION</b>\n"
+        f"Target:     <b>{_target_str}</b>\n"
+        f"Market ask: {_ask_str}\n"
+        f"Posted:     {_posted_str}\n"
+        f"Filled:     <b>{_filled_str}</b>\n"
+        f"Slippage:   {_slip_target_str}  |  {_slip_market_str}"
+    )
+
+
 async def send_telegram(text: str) -> None:
     """Send a Telegram notification with up to 3 retries on failure."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -2653,6 +2715,16 @@ async def place_order(
             "client_order_id": client_order_id,
             "time_in_force": "good_till_cancelled",
         }
+        # Capture the market ask at post time for fill-verification telemetry.
+        # side == "yes" → we buy YES, market ask is best_yes_ask.
+        # side == "no"  → we buy NO,  market ask is best_no_ask.
+        _market_ask_at_post_c = None
+        try:
+            _ob = fresh_ob if isinstance(fresh_ob, dict) else {}
+            _market_ask_at_post_c = _ob.get("best_yes_ask") if side == "yes" else _ob.get("best_no_ask")
+        except NameError:
+            _market_ask_at_post_c = None
+        price_this_attempt = entry_price_cents  # GTC posts once at target; no retry drift
         log.info(f"[passive] GTC limit {side.upper()} {contracts}x @ {entry_price_cents}c on {ticker} ({secs_left:.0f}s left)")
         try:
             async with session.post(
@@ -2717,6 +2789,14 @@ async def place_order(
                     fp_raw = chk_order.get("yes_price", entry_price_cents)
                     fp = fp_raw if side == "yes" else (100 - fp_raw)
                     log.info(f"[passive] Order {order_id} status={status!r} filled={cc}x @ {fp}c")
+                    # Fill-verification notification — hourly markets only.
+                    # fp_raw is the fill price on the YES side (as the API reports it).
+                    _fill_yes_price = fp_raw
+                    await _maybe_fill_verification_notify(
+                        asset, ticker, side, market, secs_left,
+                        entry_price_cents, price_this_attempt,
+                        _market_ask_at_post_c, _fill_yes_price,
+                    )
                     # GTC path: fill already verified — we just re-fetched the order via GET.
                     # No need to call _verify_order_fill again.
                     return {"fill_confirmed": cc > 0, "fill_price_cents": fp, "order_id": order_id, "filled_contracts": cc}
@@ -2764,6 +2844,14 @@ async def place_order(
             "client_order_id": client_order_id,
             "time_in_force": "good_till_cancelled",
         }
+        # Capture the market ask at post time for fill-verification telemetry.
+        _market_ask_at_post_c = None
+        try:
+            _ob = fresh_ob if isinstance(fresh_ob, dict) else {}
+            _market_ask_at_post_c = _ob.get("best_yes_ask") if side == "yes" else _ob.get("best_no_ask")
+        except NameError:
+            _market_ask_at_post_c = None
+        price_this_attempt = entry_price_cents  # demo GTC posts once at target; no retry drift
         log.info(f"[demo] GTC limit {side.upper()} {contracts}x @ {entry_price_cents}c on {ticker}")
         try:
             async with session.post(
@@ -2836,6 +2924,13 @@ async def place_order(
         fp_raw = filled_order.get("yes_price", entry_price_cents)
         fp     = fp_raw if side == "yes" else (100 - fp_raw)
         log.info(f"[demo] Order {order_id} filled={cc}x @ {fp}c status={status!r}")
+        # Fill-verification notification — hourly markets only.
+        _fill_yes_price = fp_raw
+        await _maybe_fill_verification_notify(
+            asset, ticker, side, market, secs_left,
+            entry_price_cents, price_this_attempt,
+            _market_ask_at_post_c, _fill_yes_price,
+        )
         return {"fill_confirmed": cc > 0, "fill_price_cents": fp, "order_id": order_id, "filled_contracts": cc}
 
     # ── Early window: IOC with price retries ──────────────────────────────────
@@ -2863,6 +2958,11 @@ async def place_order(
         # Always bump from the latest fresh price. No static ceiling — the fresh
         # price already tracks the market; we just add the per-attempt bump on top.
         # Hard cap at 99c for YES side; for NO side the 99 cap is effectively unreachable.
+        # NOTE: intentional price drift — `entry_price_cents` follows the fresh
+        # market ask, and each retry adds +3c. The strategy's original target is
+        # therefore NOT preserved across retries by design. Fill-verification
+        # telemetry compares filled price against the CURRENT `entry_price_cents`
+        # (refreshed target) rather than the original strategy target.
         price_this_attempt = min(99, entry_price_cents + attempt * _bump_per_retry)
         yes_price = price_this_attempt if side == "yes" else (100 - price_this_attempt)
         client_order_id = f"btcbot_{int(time.time() * 1000)}_{attempt}"
@@ -2877,6 +2977,15 @@ async def place_order(
             "client_order_id": client_order_id,
             "time_in_force": "immediate_or_cancel",
         }
+
+        # Capture the market ask at post time for fill-verification telemetry.
+        # Uses the fresh_ob obtained at the top of this attempt.
+        _market_ask_at_post_c = None
+        try:
+            _ob = fresh_ob if isinstance(fresh_ob, dict) else {}
+            _market_ask_at_post_c = _ob.get("best_yes_ask") if side == "yes" else _ob.get("best_no_ask")
+        except NameError:
+            _market_ask_at_post_c = None
 
         if attempt > 0:
             log.info(f"Order retry {attempt}/{_max_retries-1} at {price_this_attempt}c (fresh={fresh_price}c)...")
@@ -3001,6 +3110,13 @@ async def place_order(
                 _fp_raw      = post_order.get("yes_price", price_this_attempt)
                 _fp_canceled = _fp_raw if side == "yes" else (100 - _fp_raw)
                 log.info(f"Order {order_id} IOC partial fill: {_filled}/{_total} @ {_fp_canceled}c")
+                # Fill-verification notification — hourly markets only.
+                _fill_yes_price = _fp_raw
+                await _maybe_fill_verification_notify(
+                    asset, ticker, side, market, secs_left,
+                    entry_price_cents, price_this_attempt,
+                    _market_ask_at_post_c, _fill_yes_price,
+                )
                 # Verify via GET before confirming
                 _verified = await _verify_order_fill(session, order_id, _filled)
                 return {"fill_confirmed": _verified, "fill_price_cents": _fp_canceled, "order_id": order_id, "filled_contracts": _filled}
@@ -3030,6 +3146,12 @@ async def place_order(
         _fill_yes_price = post_order.get("yes_price", price_this_attempt)
         fill_price = _fill_yes_price if side == "yes" else (100 - _fill_yes_price)
         log.info(f"Order FILLED: {order_id} @ {fill_price}c x{filled_count} status={post_status!r}")
+        # Fill-verification notification — hourly markets only.
+        await _maybe_fill_verification_notify(
+            asset, ticker, side, market, secs_left,
+            entry_price_cents, price_this_attempt,
+            _market_ask_at_post_c, _fill_yes_price,
+        )
         # Verify the fill is recorded in Kalshi before returning confirmed
         _verified = await _verify_order_fill(session, order_id, filled_count)
         return {"fill_confirmed": _verified, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
