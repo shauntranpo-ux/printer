@@ -2750,10 +2750,15 @@ async def place_order(
 
         _placed_mins = int(secs_left // 60)
         _placed_secs = int(secs_left % 60)
+        _placed_elapsed = seconds_elapsed(market) if market else 0.0
+        _placed_ctx = _notify_ctx(
+            asset, ticker, (_placed_elapsed + secs_left) / 60.0,
+            _phase_for_eth(asset, _placed_elapsed),
+        )
         asyncio.create_task(send_telegram(
-            f"📋 <b>[{asset}] LIMIT ORDER PLACED</b>\n"
+            f"📋 <b>{_placed_ctx} LIMIT ORDER PLACED</b>\n"
             f"{'⬆' if side == 'yes' else '⬇'} <b>{side.upper()}</b>  {contracts} contracts @ <b>{entry_price_cents}¢</b>\n"
-            f"Expires in {_placed_mins}m {_placed_secs}s  |  <code>{ticker}</code>"
+            f"Expires in {_placed_mins}m {_placed_secs}s"
         ))
 
         # Poll for fill, cancel if not filled within 15 seconds
@@ -3042,9 +3047,14 @@ async def place_order(
             }
             if err_code in _non_retryable:
                 log.error(f"Non-retryable error ({err_code}). Stopping order attempts.")
+                _failed_elapsed = seconds_elapsed(market) if market else 0.0
+                _failed_ctx = _notify_ctx(
+                    asset, ticker, (_failed_elapsed + secs_left) / 60.0,
+                    _phase_for_eth(asset, _failed_elapsed),
+                )
                 await send_telegram(
-                    f"ORDER FAILED  —  {err_code}\n"
-                    f"{side.upper()}  {contracts}x @ {price_this_attempt}c  |  {ticker}"
+                    f"{_failed_ctx} <b>ORDER FAILED</b>  —  {err_code}\n"
+                    f"{side.upper()}  {contracts}x @ {price_this_attempt}c"
                 )
                 break
             attempt += 1
@@ -3183,9 +3193,14 @@ async def place_order(
         log.error(f"Portfolio check error: {exc}")
 
     log.error(f"Order not filled after {_max_retries} attempts for {ticker} {side}@{entry_price_cents}c")
+    _nofill_elapsed = seconds_elapsed(market) if market else 0.0
+    _nofill_ctx = _notify_ctx(
+        asset, ticker, (_nofill_elapsed + secs_left) / 60.0,
+        _phase_for_eth(asset, _nofill_elapsed),
+    )
     await send_telegram(
-        f"⚠️ <b>[{asset}] ORDER NOT FILLED</b>  —  no liquidity\n"
-        f"{side.upper()}  {contracts}x @ {entry_price_cents}¢  |  <code>{ticker}</code>"
+        f"⚠️ <b>{_nofill_ctx} ORDER NOT FILLED</b>  —  no liquidity\n"
+        f"{side.upper()}  {contracts}x @ {entry_price_cents}¢"
     )
     return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
 
@@ -3959,13 +3974,17 @@ async def handle_ready_phase(
     _expiry_dt = datetime.now(timezone(timedelta(hours=-7))) + timedelta(seconds=secs_left)
     _expiry_str = _expiry_dt.strftime("%I:%M %p PST")
     _strat_tag = "🔄 REVERSAL" if _is_reversal else "LIMIT ORDER FILLED"
+    _fill_ctx = _notify_ctx(
+        asset, ticker, (elapsed + secs_left) / 60.0,
+        _phase_for_eth(asset, elapsed),
+    )
     await send_telegram(
-        f"{mode_icon} <b>[{asset}] {_strat_tag}</b>  —  {_time_str}\n"
+        f"{mode_icon} <b>{_fill_ctx} {_strat_tag}</b>  —  {_time_str}\n"
         f"{dir_icon} <b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}¢</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
-        f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s → {_expiry_str}  |  <code>{ticker}</code>"
+        f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s → {_expiry_str}"
     )
 
 
@@ -4082,8 +4101,13 @@ async def handle_locked_phase(
                     _consecutive_loss_pause_until,
                     tz=timezone(timedelta(hours=-7))
                 ).strftime("%I:%M %p PST")
+                _cl_dur_min = (time.time() - pos.get("entry_ts", time.time())) / 60.0
+                _cl_ctx = _notify_ctx(
+                    asset, pos.get("ticker", "?"), _cl_dur_min,
+                    _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
+                )
                 await send_telegram(
-                    f"⚠️ <b>{_consecutive_losses} consecutive losses (last: {asset})</b> — pausing for 15 min.\n"
+                    f"⚠️ <b>{_cl_ctx} {_consecutive_losses} consecutive losses</b> — pausing for 15 min.\n"
                     f"Resumes at {_resume_str}"
                 )
 
@@ -4094,11 +4118,16 @@ async def handle_locked_phase(
         _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
         _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
         _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
+        _close_dur_min = _dur_secs / 60.0
+        _close_ctx = _notify_ctx(
+            asset, pos.get("ticker", ticker), _close_dur_min,
+            _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
+        )
         await send_telegram(
-            f"{result_icon} <b>[{asset}] {'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"{result_icon} <b>{_close_ctx} {'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
             f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
             f"Entry: {pos['entry_price_cents']}¢  →  Expiry: {exit_price}¢\n"
-            f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}  |  <code>{ticker}</code>"
+            f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}"
         )
 
         if _use_state:
