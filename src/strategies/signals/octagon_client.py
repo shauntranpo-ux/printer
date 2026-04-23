@@ -99,50 +99,50 @@ def _parse_table(text: str) -> dict[int, tuple[float, float]]:
     if not table_lines:
         return {}
 
-    # Find header row
-    header_idx = None
-    for i, ln in enumerate(table_lines):
+    # Find all header rows (one per table in the report); keep the parse of each
+    # and return whichever table yields the most strike rows (prefer "Model vs Market"
+    # over the smaller "Who Wins and Why" summary table that appears first).
+    best: dict[int, tuple[float, float]] = {}
+
+    for header_idx, ln in enumerate(table_lines):
         lower = ln.lower()
-        if "outcome" in lower and "market" in lower and "model" in lower:
-            header_idx = i
-            break
-    if header_idx is None:
-        return {}
-
-    # Determine column indices from header
-    header_cells = [c.strip().lower() for c in table_lines[header_idx].split("|")]
-    try:
-        outcome_col = next(i for i, c in enumerate(header_cells) if "outcome" in c)
-        market_col  = next(i for i, c in enumerate(header_cells) if "market" in c)
-        model_col   = next(i for i, c in enumerate(header_cells) if "model" in c)
-    except StopIteration:
-        return {}
-
-    result: dict[int, tuple[float, float]] = {}
-    for ln in table_lines[header_idx + 1:]:
-        if re.match(r"^\s*\|[-| ]+\|\s*$", ln):
-            continue  # separator row
-        cells = [c.strip() for c in ln.split("|")]
-        if len(cells) <= max(outcome_col, market_col, model_col):
+        if not ("outcome" in lower and "market" in lower and "model" in lower):
             continue
-        outcome = cells[outcome_col]
-        if "above" not in outcome.lower():
-            continue  # only parse the YES/Above row; model_prob = P(YES)
+
+        header_cells = [c.strip().lower() for c in table_lines[header_idx].split("|")]
         try:
-            market_pct = float(cells[market_col].replace("%", "").strip()) / 100.0
-            model_pct  = float(cells[model_col].replace("%", "").strip()) / 100.0
-        except ValueError:
+            outcome_col = next(i for i, c in enumerate(header_cells) if "outcome" in c)
+            market_col  = next(i for i, c in enumerate(header_cells) if "market" in c)
+            model_col   = next(i for i, c in enumerate(header_cells) if "model" in c)
+        except StopIteration:
             continue
-        # Extract numeric strike from outcome: strip $, commas, then find all digit runs
-        cleaned = outcome.replace(",", "").replace("$", "")
-        nums = re.findall(r"\d+", cleaned)
-        if not nums:
-            continue
-        # Take the largest number found (avoids matching small incidentals)
-        strike_int = max(int(n) for n in nums)
-        result[strike_int] = (market_pct, model_pct)
 
-    return result
+        result: dict[int, tuple[float, float]] = {}
+        for data_ln in table_lines[header_idx + 1:]:
+            if re.match(r"^\s*\|[-| ]+\|\s*$", data_ln):
+                continue  # separator row
+            cells = [c.strip() for c in data_ln.split("|")]
+            if len(cells) <= max(outcome_col, market_col, model_col):
+                continue
+            outcome = cells[outcome_col]
+            if "above" not in outcome.lower():
+                continue
+            try:
+                market_pct = float(cells[market_col].replace("%", "").strip()) / 100.0
+                model_pct  = float(cells[model_col].replace("%", "").strip()) / 100.0
+            except ValueError:
+                continue
+            cleaned = outcome.replace(",", "").replace("$", "")
+            nums = re.findall(r"\d+", cleaned)
+            if not nums:
+                continue
+            strike_int = max(int(n) for n in nums)
+            result[strike_int] = (market_pct, model_pct)
+
+        if len(result) > len(best):
+            best = result
+
+    return best
 
 
 def _fetch_report(market_url: str, event_ticker: str, ttl: int) -> Optional[dict]:
@@ -166,7 +166,12 @@ def _fetch_report(market_url: str, event_ticker: str, ttl: int) -> Optional[dict
         )
         resp.raise_for_status()
         data = resp.json()
-        text = data["output"][0]["content"][0]["text"]
+        # Octagon native format: {"latest_report": {"markdown_report": "..."}}
+        # Fall back to OpenAI-style output wrapper if native key absent
+        if "latest_report" in data and isinstance(data.get("latest_report"), dict):
+            text = data["latest_report"].get("markdown_report", "")
+        else:
+            text = data["output"][0]["content"][0]["text"]
     except httpx.TimeoutException:
         log.warning("Octagon: timeout fetching report for %s (3s limit)", event_ticker)
         return None
