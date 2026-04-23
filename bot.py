@@ -2690,6 +2690,11 @@ async def place_order(
         log.error(f"place_order called with contracts={contracts} — refusing to send invalid order")
         return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
 
+    # Preserve the strategy-chosen entry price before any retry / fresh-price
+    # drift mutates `entry_price_cents`. Fill-verification telemetry compares
+    # the filled price against this original target, not the refreshed ask.
+    _original_strategy_target_c = entry_price_cents
+
     if mode == "paper":
         log.info(f"[PAPER] Simulated BUY {side} {contracts}x @ {entry_price_cents}c on {ticker}")
         return {
@@ -2811,7 +2816,7 @@ async def place_order(
                     _fill_yes_price = fp_raw
                     await _maybe_fill_verification_notify(
                         asset, ticker, side, market, secs_left,
-                        entry_price_cents, price_this_attempt,
+                        _original_strategy_target_c, price_this_attempt,
                         _market_ask_at_post_c, _fill_yes_price,
                     )
                     # GTC path: fill already verified — we just re-fetched the order via GET.
@@ -2945,7 +2950,7 @@ async def place_order(
         _fill_yes_price = fp_raw
         await _maybe_fill_verification_notify(
             asset, ticker, side, market, secs_left,
-            entry_price_cents, price_this_attempt,
+            _original_strategy_target_c, price_this_attempt,
             _market_ask_at_post_c, _fill_yes_price,
         )
         return {"fill_confirmed": cc > 0, "fill_price_cents": fp, "order_id": order_id, "filled_contracts": cc}
@@ -2977,9 +2982,10 @@ async def place_order(
         # Hard cap at 99c for YES side; for NO side the 99 cap is effectively unreachable.
         # NOTE: intentional price drift — `entry_price_cents` follows the fresh
         # market ask, and each retry adds +3c. The strategy's original target is
-        # therefore NOT preserved across retries by design. Fill-verification
-        # telemetry compares filled price against the CURRENT `entry_price_cents`
-        # (refreshed target) rather than the original strategy target.
+        # preserved separately in `_original_strategy_target_c` (stashed at
+        # function entry). Fill-verification telemetry compares filled price
+        # against that original strategy target, NOT the refreshed ask, so
+        # slippage reflects the strategy's original decision.
         price_this_attempt = min(99, entry_price_cents + attempt * _bump_per_retry)
         yes_price = price_this_attempt if side == "yes" else (100 - price_this_attempt)
         client_order_id = f"btcbot_{int(time.time() * 1000)}_{attempt}"
@@ -3136,7 +3142,7 @@ async def place_order(
                 _fill_yes_price = _fp_raw
                 await _maybe_fill_verification_notify(
                     asset, ticker, side, market, secs_left,
-                    entry_price_cents, price_this_attempt,
+                    _original_strategy_target_c, price_this_attempt,
                     _market_ask_at_post_c, _fill_yes_price,
                 )
                 # Verify via GET before confirming
@@ -3171,7 +3177,7 @@ async def place_order(
         # Fill-verification notification — hourly markets only.
         await _maybe_fill_verification_notify(
             asset, ticker, side, market, secs_left,
-            entry_price_cents, price_this_attempt,
+            _original_strategy_target_c, price_this_attempt,
             _market_ask_at_post_c, _fill_yes_price,
         )
         # Verify the fill is recorded in Kalshi before returning confirmed
