@@ -25,7 +25,7 @@ log = logging.getLogger(__name__)
 
 OCTAGON_API_URL = "https://api.octagonagents.com/v1/responses"
 OCTAGON_MODEL   = "octagon-prediction-markets-agent:cache"
-KALSHI_EVENTS_URL = "https://trade-api.kalshi.com/trade-api/v2/events/{}"
+KALSHI_EVENTS_URL = "https://api.elections.kalshi.com/trade-api/v2/events/{}"
 TIMEOUT_S = 3.0
 TTL_15M   = 900    # 15 minutes
 TTL_HOURLY = 3300  # 55 minutes
