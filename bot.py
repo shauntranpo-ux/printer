@@ -636,6 +636,35 @@ async def db_get_today_pnl(mode: str) -> float:
 #  Kalshi auth
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _phase_for_eth(asset, elapsed_seconds):
+    """Return ETH hourly window-phase label ('Mid'/'Dwell'/'Late') or None.
+
+    BTC and all 15m markets return None.
+    """
+    if asset != "ETH":
+        return None
+    m = elapsed_seconds / 60.0
+    if 9 <= m <= 11:
+        return "Mid"
+    if 30 <= m <= 42:
+        return "Dwell"
+    if m >= 45:
+        return "Late"
+    return None
+
+
+def _notify_ctx(asset, ticker, duration_min, phase=None):
+    """Format a context prefix for Telegram notifications.
+
+    Matches the strategy router rule: >25 min = hourly.
+    """
+    session = "hourly" if duration_min > 25.0 else "15m"
+    parts = [asset, session, ticker]
+    if phase and session == "hourly":
+        parts.append(phase)
+    return f"[{' | '.join(parts)}]"
+
+
 async def send_telegram(text: str) -> None:
     """Send a Telegram notification with up to 3 retries on failure."""
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
@@ -3181,6 +3210,25 @@ def midnight_reset() -> None:
 # ══════════════════════════════════════════════════════════════════════════════
 #  State file
 # ══════════════════════════════════════════════════════════════════════════════
+
+_STRIKE_RE_T_SUFFIX = re.compile(r"-T(\d+)$")
+_STRIKE_RE_NUMERIC_SUFFIX = re.compile(r"-(\d+)$")
+
+def _parse_strike_from_ticker(ticker):
+    """Parse strike price out of a Kalshi ticker.
+
+    Hourly tickers use `-T<strike>` suffix; 15-minute tickers use `-<strike>`.
+    Returns None if no pattern matches or ticker is falsy.
+    """
+    if not ticker:
+        return None
+    m = _STRIKE_RE_T_SUFFIX.search(ticker)
+    if m:
+        return int(m.group(1))
+    m = _STRIKE_RE_NUMERIC_SUFFIX.search(ticker)
+    if m:
+        return int(m.group(1))
+    return None
 
 async def write_state_file(
     config: dict,
