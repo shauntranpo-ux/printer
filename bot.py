@@ -1,4 +1,4 @@
-"""
+﻿"""
 bot.py — Core trading logic for the Kalshi 15-minute prediction market bot.
 
 Connects to Binance WebSocket for live crypto prices, polls Kalshi for the
@@ -2154,6 +2154,12 @@ def printer_brain_routed(
             "abs_pct": abs(current_price - strike) / strike if strike > 0 else 0.0,
             "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
         }
+
+    features.bv3_prob = _win_prob_for_asset(
+        asset,
+        abs(current_price - strike) / strike if strike > 0 else 0.0,
+        secs_left / 60.0,
+    )
 
     try:
         decision = strat.decide(features)

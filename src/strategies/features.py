@@ -55,6 +55,9 @@ class MarketFeatures:
     # Realized volatility (computed from prices_60m)
     realized_vol_1min: Optional[float] = None  # std of 1-min returns over last 60 min
 
+    # BV3 empirical win probability — injected by bot.py before strategy.decide()
+    bv3_prob: Optional[float] = None                 # P(YES) from BV3 table; fallback when Octagon unavailable
+
     # Octagon AI confirmation gate — populated inside BaseStrategy.decide() at Step 6.8
     octagon_model_prob: Optional[float] = None       # Octagon's P(YES)
     octagon_direction_agrees: Optional[bool] = None  # True = Octagon agrees with bot's side

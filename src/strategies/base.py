@@ -32,7 +32,7 @@ class BaseStrategy(ABC):
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
         is_15m: bool = False,
-        confidence_threshold: float = 0.0,  # accepted but unused — gate removed
+        confidence_threshold: float = 0.0,  # BV3 fallback threshold (0-1); 0 = disabled
     ):
         self.asset = asset
         self.skip_config = skip_config
@@ -41,6 +41,7 @@ class BaseStrategy(ABC):
         self.calibrator = calibrator or AssetCalibrator(asset)
         self.maker = maker
         self.is_15m = is_15m
+        self.confidence_threshold = confidence_threshold
 
     def compute_raw_p_model(
         self,
@@ -86,6 +87,59 @@ class BaseStrategy(ABC):
 
         if oct_prob is None:
             features.octagon_direction_agrees = None
+            # BV3 fallback: if confidence_threshold is set and bv3_prob is available,
+            # use BV3 table direction when Octagon is down
+            if self.confidence_threshold > 0 and features.bv3_prob is not None:
+                bv3 = features.bv3_prob
+                if bv3 >= self.confidence_threshold:
+                    bv3_side = "yes"
+                elif bv3 <= 1.0 - self.confidence_threshold:
+                    bv3_side = "no"
+                else:
+                    bv3_side = None
+
+                if bv3_side is not None:
+                    ev = compute_bidirectional_ev(
+                        p_model=bv3,
+                        yes_ask_cents=features.yes_ask,
+                        no_ask_cents=features.no_ask,
+                        stake_dollars=self.stake_dollars,
+                        maker=self.maker,
+                    )
+                    side_ev = ev.yes_ev if bv3_side == "yes" else ev.no_ev
+                    entry_cents = features.yes_ask if bv3_side == "yes" else features.no_ask
+
+                    if side_ev >= self.min_ev:
+                        cap_reason = check_entry_price_cap(entry_cents, bv3_side, self.skip_config)
+                        if not cap_reason:
+                            return Decision(
+                                action="trade",
+                                side=bv3_side,
+                                p_model=bv3,
+                                reason=(
+                                    f"{bv3_side} BV3-fallback EV={side_ev:+.3f} "
+                                    f"(bv3={bv3:.3f} conf≥{self.confidence_threshold:.0%})"
+                                ),
+                                contributing_signals={
+                                    "octagon_direction": None,
+                                    "octagon_model_prob": None,
+                                    "octagon_market_prob": market_prob,
+                                    "octagon_confidence": None,
+                                    "octagon_cache_hit": False,
+                                    "bv3_prob": bv3,
+                                    "bv3_side": bv3_side,
+                                    "yes_ev": ev.yes_ev,
+                                    "no_ev": ev.no_ev,
+                                    "entry_cents": entry_cents,
+                                    "ev_pass": True,
+                                    "vol_pass": True,
+                                    "final_decision": "trade",
+                                    "skip_reason": None,
+                                    "decision_mode": "bv3_fallback",
+                                },
+                                expected_value=side_ev,
+                            )
+
             return Decision(
                 action="skip",
                 side=None,
