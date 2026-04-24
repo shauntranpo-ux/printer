@@ -29,13 +29,8 @@
   "asset_overrides": {
     "BTC": {
       "min_ev_base": 5,
-      "vol_gate_thresh": 1.60,
-      "confidence_threshold": 80,
-      "vol_confirm_mult": 1.25,
-      "vol_oppose_mult": 0.70,
-      "mom_lock_enabled": true,
-      "mom_lock_neutral_tighten": 0.90,
-      "mom_accel_scale": 3.0
+      "vol_gate_thresh": 1.6,
+      "confidence_threshold": 80
     }
   },
   "use_new_strategies": {

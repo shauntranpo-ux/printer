@@ -48,6 +48,7 @@ class MidWindowStrategy(BaseStrategy):
         skip_config: SkipConfig,
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
+        confidence_threshold: float = 0.0,
     ):
         super().__init__(
             asset=asset,
@@ -55,6 +56,7 @@ class MidWindowStrategy(BaseStrategy):
             min_ev=0.0,
             stake_dollars=stake_dollars,
             calibrator=calibrator,
+            confidence_threshold=confidence_threshold,
         )
 
     def compute_raw_p_model(

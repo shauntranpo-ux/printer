@@ -47,6 +47,7 @@ class LateWindowStrategy(BaseStrategy):
             min_ev=0.0,
             stake_dollars=stake_dollars,
             calibrator=calibrator,
+            confidence_threshold=confidence_threshold,
         )
 
     def compute_raw_p_model(

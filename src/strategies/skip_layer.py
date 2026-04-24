@@ -7,7 +7,6 @@ strategy's decide() method for this window.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -21,74 +20,10 @@ class SkipConfig:
     min_entry_price_cents: float = 35.0         # skip markets where either side costs below this floor
     max_entry_price_cents: float = 80.0         # skip trade if the side we'd buy is at or above this ceiling (fee drag)
     cold_start_samples: int = 60                # need this many prices_60m samples
-    vol_ratio_threshold: float = 1.80           # base threshold: skip if expected_move/buffer >= this
-    vol_confirm_mult: float = 1.25              # relax threshold by this when momentum confirms trade
-    vol_oppose_mult: float = 0.70               # tighten threshold by this when momentum opposes trade
+    vol_ratio_threshold: float = 1.80           # skip if expected_move/buffer >= this
     vol_top_pct_threshold: float = 0.95         # legacy field, unused
     vol_bot_pct_threshold: float = 0.05         # legacy field, unused
     macro_event_skip_minutes: float = 15.0      # skip within +/- this of macro event
-    mom_lock_enabled: bool = True               # skip when momentum opposes best-EV side
-    mom_lock_neutral_tighten: float = 1.0       # tighten vol threshold by this mult when momentum is neutral
-    mom_accel_scale: float = 3.0               # multiplier for acceleration probability adjustment
-
-
-def _momentum_acceleration(prices, window_seconds: int = 180) -> tuple[float, str]:
-    """
-    Second derivative of price: how much is momentum changing?
-
-    Compares the most recent `window_seconds` momentum against the prior
-    equal-length window. Returns (acceleration, label):
-      acceleration: pct-point difference (recent_mom - prior_mom)
-      label: "accelerating" | "decelerating" | "flat"
-    """
-    if not prices:
-        return 0.0, "flat"
-    now = time.time()
-    cutoff_recent = now - window_seconds
-    cutoff_prior  = now - window_seconds * 2
-
-    p_prior  = next((p for ts, p in prices if ts >= cutoff_prior),  None)
-    p_mid    = next((p for ts, p in prices if ts >= cutoff_recent), None)
-    p_now    = list(prices)[-1][1]
-
-    if p_prior is None or p_mid is None or p_prior <= 0 or p_mid <= 0:
-        return 0.0, "flat"
-
-    mom_recent = (p_now - p_mid)   / p_mid
-    mom_prior  = (p_mid - p_prior) / p_prior
-    accel = mom_recent - mom_prior
-
-    THRESHOLD = 0.002
-    if accel > THRESHOLD:
-        return accel, "accelerating"
-    if accel < -THRESHOLD:
-        return accel, "decelerating"
-    return accel, "flat"
-
-
-def _momentum_label(prices, window_seconds: int = 180) -> str:
-    """3-min momentum label from a (timestamp, price) deque."""
-    if not prices:
-        return "neutral"
-    now = time.time()
-    cutoff = now - window_seconds
-    oldest = None
-    for ts, price in prices:
-        if ts >= cutoff:
-            oldest = price
-            break
-    entries = list(prices)
-    if oldest is None or not entries:
-        return "neutral"
-    current = entries[-1][1]
-    if oldest == 0:
-        return "neutral"
-    pct = (current - oldest) / oldest
-    if pct > 0.005:
-        return "bullish"
-    if pct < -0.005:
-        return "bearish"
-    return "neutral"
 
 
 def check_skip(
@@ -135,10 +70,9 @@ def check_skip(
     if rv < 0.0001:
         return f"realized_vol too low: {rv:.4f}/min (market may be halted)"
 
-    # Buffer durability gate with momentum-adjusted threshold.
+    # Buffer durability gate.
     # vol_ratio = (rv * sqrt(mins_left)) / buffer_pct
     # Skip when ratio is too high (buffer too thin relative to expected move).
-    # Momentum confirmation relaxes the threshold; opposition tightens it.
     #
     # Short-duration markets (< 20 min) skip this check: Kalshi's 15m ladders
     # place strikes right at the current price (dist ~0.01%), which makes the
@@ -152,26 +86,10 @@ def check_skip(
             vol_ratio      = rv * (mins_left ** 0.5) / abs_pct
             buf_durability = (abs_pct / rv) ** 2
 
-            above = features.current_price > features.strike
-            mom   = _momentum_label(features.prices_60m)
-            mom_confirms = (mom == "bullish" and above) or (mom == "bearish" and not above)
-            mom_opposes  = (mom == "bullish" and not above) or (mom == "bearish" and above)
-
-            if mom_confirms:
-                eff_thresh = cfg.vol_ratio_threshold * cfg.vol_confirm_mult
-            elif mom_opposes:
-                eff_thresh = cfg.vol_ratio_threshold * cfg.vol_oppose_mult
-            else:
-                eff_thresh = cfg.vol_ratio_threshold * cfg.mom_lock_neutral_tighten
-
-            if vol_ratio >= eff_thresh:
-                align = ("confirms/relaxed" if mom_confirms else
-                         "opposes/tightened" if mom_opposes else
-                         "neutral/tightened" if cfg.mom_lock_neutral_tighten < 1.0 else "neutral")
+            if vol_ratio >= cfg.vol_ratio_threshold:
                 return (
-                    f"buffer_too_thin: vol_ratio={vol_ratio:.2f} >= {eff_thresh:.2f} "
-                    f"(dist={abs_pct*100:.2f}% dur={buf_durability:.1f}min "
-                    f"mom={mom}/{align})"
+                    f"buffer_too_thin: vol_ratio={vol_ratio:.2f} >= {cfg.vol_ratio_threshold:.2f} "
+                    f"(dist={abs_pct*100:.2f}% dur={buf_durability:.1f}min)"
                 )
 
     return None
@@ -221,7 +139,7 @@ def check_skip_15m(
     Only enforces the deep-OTM floor (10c). The 76c ceiling is enforced
     post-EV by check_entry_price_cap() using cfg.max_entry_price_cents.
     All other hourly gates (spread, cold_start, macro_event, min_seconds_left,
-    buffer_too_thin, momentum_lock) are intentionally absent for 15m markets.
+    buffer_too_thin) are intentionally absent for 15m markets.
     """
     cheap = min(features.yes_ask, features.no_ask)
     if cheap < min_price_cents:

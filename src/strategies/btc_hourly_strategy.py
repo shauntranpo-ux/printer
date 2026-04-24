@@ -77,6 +77,7 @@ class BTCHourlyStrategy(BaseStrategy):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
+        confidence_threshold: float = 0.0,
     ):
         super().__init__(
             asset="BTC",
@@ -85,6 +86,7 @@ class BTCHourlyStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
+            confidence_threshold=confidence_threshold,
         )
 
     def compute_raw_p_model(

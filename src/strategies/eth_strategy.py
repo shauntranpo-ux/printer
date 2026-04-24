@@ -48,6 +48,7 @@ class ETHStrategy(BaseStrategy):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
+        confidence_threshold: float = 0.0,
     ):
         super().__init__(
             asset="ETH",
@@ -57,6 +58,7 @@ class ETHStrategy(BaseStrategy):
             calibrator=calibrator,
             maker=maker,
             is_15m=True,
+            confidence_threshold=confidence_threshold,
         )
         self.beta = load_beta("ETH")
 

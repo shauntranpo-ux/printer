@@ -33,6 +33,7 @@ class ETHHourlyCombinedStrategy(BaseStrategy):
         skip_config: SkipConfig,
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
+        confidence_threshold: float = 0.0,
     ):
         super().__init__(
             asset="ETH",
@@ -40,10 +41,11 @@ class ETHHourlyCombinedStrategy(BaseStrategy):
             min_ev=0.0,
             stake_dollars=stake_dollars,
             calibrator=calibrator,
+            confidence_threshold=confidence_threshold,
         )
-        self.mid   = MidWindowStrategy("ETH", skip_config, stake_dollars, calibrator)
-        self.dwell = DwellWindowStrategy("ETH", skip_config, stake_dollars, calibrator)
-        self.late  = LateWindowStrategy("ETH", skip_config, stake_dollars, calibrator)
+        self.mid   = MidWindowStrategy("ETH", skip_config, stake_dollars, calibrator, confidence_threshold=confidence_threshold)
+        self.dwell = DwellWindowStrategy("ETH", skip_config, stake_dollars, calibrator, confidence_threshold=confidence_threshold)
+        self.late  = LateWindowStrategy("ETH", skip_config, stake_dollars, calibrator, confidence_threshold=confidence_threshold)
 
     def compute_raw_p_model(
         self, features: MarketFeatures, baseline_p_above: float

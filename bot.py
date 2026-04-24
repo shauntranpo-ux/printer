@@ -1962,15 +1962,12 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
             max_entry_price_cents=_max_price,
             cold_start_samples=int(config.get("cold_start_samples", 60)),
             vol_ratio_threshold=float(get_asset_config(config, asset, "vol_gate_thresh", 1.80)),
-            vol_confirm_mult=float(get_asset_config(config, asset, "vol_confirm_mult", 1.25)),
-            vol_oppose_mult=float(get_asset_config(config, asset, "vol_oppose_mult", 0.70)),
-            mom_lock_enabled=bool(get_asset_config(config, asset, "mom_lock_enabled", True)),
-            mom_lock_neutral_tighten=float(get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0)),
-            mom_accel_scale=float(get_asset_config(config, asset, "mom_accel_scale", 3.0)),
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
         min_ev = float(overrides.get("min_ev_base",
                                      config.get("min_ev_base", 8))) / 100.0
+        confidence_threshold = float(get_asset_config(config, asset, "confidence_threshold",
+                                                      config.get("confidence_threshold", 0))) / 100.0
         stake = float(config.get("trade_amount_dollars", 25))
 
         if asset == "ETH" and is_hourly:
@@ -1978,6 +1975,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
             strat = ETHHourlyCombinedStrategy(
                 skip_config=skip_cfg,
                 stake_dollars=stake,
+                confidence_threshold=confidence_threshold,
             )
         elif asset == "BTC" and is_hourly:
             from strategies.btc_hourly_strategy import BTCHourlyStrategy
@@ -1985,6 +1983,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 skip_config=skip_cfg,
                 min_ev=min_ev,
                 stake_dollars=stake,
+                confidence_threshold=confidence_threshold,
             )
         elif asset == "ETH":
             from strategies.eth_strategy import ETHStrategy
@@ -1992,6 +1991,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 skip_config=skip_cfg,
                 min_ev=min_ev,
                 stake_dollars=stake,
+                confidence_threshold=confidence_threshold,
             )
         elif asset == "SOL":
             from strategies.sol_strategy import SOLStrategy
@@ -1999,6 +1999,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 skip_config=skip_cfg,
                 min_ev=min_ev,
                 stake_dollars=stake,
+                confidence_threshold=confidence_threshold,
             )
         elif asset == "XRP":
             from strategies.xrp_strategy import XRPStrategy
@@ -2006,6 +2007,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 skip_config=skip_cfg,
                 min_ev=min_ev,
                 stake_dollars=stake,
+                confidence_threshold=confidence_threshold,
             )
         elif asset == "BTC" and not is_hourly:
             from strategies.btc_15m_strategy import BTC15mStrategy
@@ -2013,6 +2015,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 skip_config=skip_cfg,
                 min_ev=min_ev,
                 stake_dollars=stake,
+                confidence_threshold=confidence_threshold,
             )
         else:
             return None  # other assets not yet implemented

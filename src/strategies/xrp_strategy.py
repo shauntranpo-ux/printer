@@ -68,6 +68,7 @@ class XRPStrategy(BaseStrategy):
             calibrator=calibrator,
             maker=maker,
             is_15m=True,
+            confidence_threshold=confidence_threshold,
         )
         self.beta = load_beta("XRP")
         self.event_calendar = event_calendar or EventCalendar()

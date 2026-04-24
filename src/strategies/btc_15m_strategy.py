@@ -28,6 +28,7 @@ class BTC15mStrategy(BaseStrategy):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
+        confidence_threshold: float = 0.0,
     ):
         super().__init__(
             asset="BTC",
@@ -37,6 +38,7 @@ class BTC15mStrategy(BaseStrategy):
             calibrator=calibrator,
             maker=maker,
             is_15m=True,
+            confidence_threshold=confidence_threshold,
         )
 
     def compute_raw_p_model(

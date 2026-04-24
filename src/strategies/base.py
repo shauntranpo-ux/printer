@@ -11,10 +11,9 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import check_skip, check_skip_15m, check_entry_price_cap, SkipConfig, _momentum_label, _momentum_acceleration
+from strategies.skip_layer import check_skip, check_skip_15m, check_entry_price_cap, SkipConfig
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
-from strategies.lag_detector import amm_lag_signal
 
 
 class BaseStrategy(ABC):
@@ -23,11 +22,13 @@ class BaseStrategy(ABC):
 
     The decide() method receives raw features and returns a Decision.
     The base class handles:
-      - skip layer (pre-strategy filters)
+      - skip layer (vol gate + pre-strategy filters)
       - baseline computation (market-implied probability from Kalshi AMM price)
       - calibration of p_model
       - bidirectional EV calculation
-      - final skip if no positive-EV side exists
+      - confidence threshold check
+      - entry price cap
+      - Octagon AI confirmation gate
 
     Concrete strategies override `compute_raw_p_model(features, baseline)`
     which returns the strategy's raw probability estimate. The base class
@@ -43,6 +44,7 @@ class BaseStrategy(ABC):
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
         is_15m: bool = False,
+        confidence_threshold: float = 0.0,
     ):
         self.asset = asset
         self.skip_config = skip_config
@@ -51,6 +53,7 @@ class BaseStrategy(ABC):
         self.calibrator = calibrator or AssetCalibrator(asset)
         self.maker = maker
         self.is_15m = is_15m
+        self.confidence_threshold = confidence_threshold
 
     @abstractmethod
     def compute_raw_p_model(
@@ -106,42 +109,6 @@ class BaseStrategy(ABC):
         # Step 3: strategy's raw p_model (P(yes wins) = P(close > strike))
         raw_p_yes, signals = self.compute_raw_p_model(features, baseline_p_above)
 
-        # Step 3.5: AMM lag adjustment — applied before calibration so the
-        # calibrator can smooth it. Boost p_yes when YES is underpriced by lag,
-        # reduce when NO is underpriced.
-        _lag_sig, _lag_mag = amm_lag_signal(
-            features.prices_60m, features.kalshi_price_history
-        )
-        _lag_adj = 0.0
-        if _lag_sig == "lag_yes":
-            _lag_adj = _lag_mag * 0.04
-        elif _lag_sig == "lag_no":
-            _lag_adj = -_lag_mag * 0.04
-        raw_p_yes = max(0.05, min(0.95, raw_p_yes + _lag_adj))
-        signals["amm_lag_signal"] = _lag_sig
-        signals["amm_lag_magnitude"] = round(_lag_mag, 3)
-
-        # Step 3.6: momentum acceleration — scale probability up when momentum
-        # is strengthening, down when it's fading. Only applies when momentum
-        # confirms the trade direction (opposing cases are blocked by the lock).
-        _accel, _accel_label = _momentum_acceleration(features.prices_60m)
-        _accel_adj = 0.0
-        if _accel_label != "flat" and self.skip_config.mom_accel_scale > 0:
-            above = features.current_price > features.strike
-            _mom = _momentum_label(features.prices_60m)
-            _mom_confirms = (
-                (_mom == "bullish" and above) or (_mom == "bearish" and not above)
-            )
-            if _mom_confirms:
-                _mom_sign = 1.0 if above else -1.0
-                _accel_adj = float(max(
-                    -0.03,
-                    min(0.03, _mom_sign * _accel * self.skip_config.mom_accel_scale),
-                ))
-        raw_p_yes = max(0.05, min(0.95, raw_p_yes + _accel_adj))
-        signals["mom_accel_label"] = _accel_label
-        signals["mom_accel_adj"] = round(_accel_adj, 4)
-
         # Step 4: calibrate
         calibrated_p_yes = self.calibrator.calibrate(raw_p_yes)
 
@@ -175,33 +142,29 @@ class BaseStrategy(ABC):
                 expected_value=ev.best_ev,
             )
 
-        # Step 6.5: momentum direction lock (hourly only)
-        # Block trades where BTC momentum opposes the chosen side.
-        # Disabled for 15m markets — the gate stack for 15m is price + EV only.
-        if not self.is_15m and self.skip_config.mom_lock_enabled:
-            _mom = _momentum_label(features.prices_60m)
-            if _mom != "neutral":
-                _mom_opposes_side = (
-                    (_mom == "bullish" and ev.best_side == "no") or
-                    (_mom == "bearish" and ev.best_side == "yes")
+        # Step 6.5: confidence threshold check
+        if self.confidence_threshold > 0:
+            win_prob = calibrated_p_yes if ev.best_side == "yes" else (1.0 - calibrated_p_yes)
+            if win_prob < self.confidence_threshold:
+                return Decision(
+                    action="skip",
+                    side=None,
+                    p_model=calibrated_p_yes,
+                    reason=(
+                        f"confidence below threshold: win_prob={win_prob:.3f} "
+                        f"< {self.confidence_threshold:.3f} ({ev.best_side} side)"
+                    ),
+                    contributing_signals={
+                        **signals,
+                        "baseline_p_above": baseline_p_above,
+                        "raw_p_yes": raw_p_yes,
+                        "calibrated_p_yes": calibrated_p_yes,
+                        "yes_ev": ev.yes_ev,
+                        "no_ev": ev.no_ev,
+                        "win_prob": win_prob,
+                    },
+                    expected_value=ev.best_ev,
                 )
-                if _mom_opposes_side:
-                    return Decision(
-                        action="skip",
-                        side=None,
-                        p_model=calibrated_p_yes,
-                        reason=f"mom_lock: {_mom} momentum opposes {ev.best_side} trade",
-                        contributing_signals={
-                            **signals,
-                            "baseline_p_above": baseline_p_above,
-                            "raw_p_yes": raw_p_yes,
-                            "calibrated_p_yes": calibrated_p_yes,
-                            "yes_ev": ev.yes_ev,
-                            "no_ev": ev.no_ev,
-                            "momentum": _mom,
-                        },
-                        expected_value=ev.best_ev,
-                    )
 
         # Step 6.75: entry price cap — reject trades at or above max_entry_price_cents (fee drag)
         _entry_cents = features.yes_ask if ev.best_side == "yes" else features.no_ask
