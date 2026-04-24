@@ -172,10 +172,13 @@ def run_walk_forward(
     print(f"  Windows         : {n_windows}")
     print(f"  In-win train    : {in_window_train_pct:.0%}  |  forward: {fwd_pct:.0%}")
     print(f"  MC sims/window  : {n_mc_sims}  (from {len(_ALL_COMBOS)} unique combos)")
-    print(f"  Train data      : {split_cfg['train_start_date']} -> "
-          f"{split_cfg['train_end_date']}  ({split_cfg['train_windows']:,} windows)")
-    print(f"  OOS holdout     : {split_cfg['oos_start_date']} -> "
-          f"{split_cfg['oos_end_date']}  [LOCKED - not used]")
+    _t0  = split_cfg.get("train_start_date", "?")
+    _t1  = split_cfg.get("train_end_date",   split_cfg.get("train_end", "?"))
+    _tw  = split_cfg.get("train_windows",    "?")
+    _o0  = split_cfg.get("oos_start_date",   "?")
+    _o1  = split_cfg.get("oos_end_date",     "?")
+    print(f"  Train data      : {_t0} -> {_t1}  ({_tw} windows)")
+    print(f"  OOS holdout     : {_o0} -> {_o1}  [LOCKED - not used]")
     print()
 
     # -- Load train data ------------------------------------------------------
@@ -386,8 +389,8 @@ def _save_report(results, efficiency, eff_pt, pass_rate,
             "forward_pct":           round(1.0 - iw_train_pct, 2),
             "n_mc_sims_per_window":  n_mc_sims,
             "trade_amount_dollars":  trade_amount,
-            "train_period":  f"{split_cfg['train_start_date']} -> {split_cfg['train_end_date']}",
-            "oos_locked":    f"{split_cfg['oos_start_date']} -> {split_cfg['oos_end_date']}",
+            "train_period":  f"{split_cfg.get('train_start_date','?')} -> {split_cfg.get('train_end_date', split_cfg.get('train_end','?'))}",
+            "oos_locked":    f"{split_cfg.get('oos_start_date','?')} -> {split_cfg.get('oos_end_date','?')}",
         },
         "summary": {
             "windows_completed":          len(results),
