@@ -1292,6 +1292,8 @@ function renderMarketGrid(assets, dailyData) {
 
 // â”€â”€ Signal panel â”€â”€
 const _SIG_LABELS = {
+  octagon_direction:'Octagon dir', octagon_model_prob:'Octagon prob', octagon_market_prob:'Market prob',
+  octagon_confidence:'Octagon conf', octagon_cache_hit:'Cached',
   beta_adj:'BTC Î² adj', regime:'Regime', regime_adj:'Regime adj',
   velocity:'Velocity', velocity_adj:'Vel adj',
   ratio_z:'Ratio Z', ratio_adj:'Ratio adj',
@@ -1308,6 +1310,7 @@ const _SIG_LABELS = {
   pct_from_strike:'Dist from strike',
 };
 const _SIG_ORDER = [
+  'octagon_direction','octagon_model_prob','octagon_market_prob','octagon_confidence','octagon_cache_hit',
   'btc_3m_return','beta_adj','regime','regime_adj',
   'ratio_z','momentum_bias','exhaustion_adj',
   'news_mode','news_direction','session',
@@ -1407,6 +1410,9 @@ function _buildBTCHourlyViewHtml(a) {
 }
 function _fmtSigVal(k, v) {
   if (v===null||v===undefined) return null;
+  if (k==='octagon_direction') return v==='yes'?'▲ YES':'▼ NO';
+  if (k==='octagon_model_prob'||k==='octagon_market_prob') return (v*100).toFixed(1)+'%';
+  if (k==='octagon_confidence') return String(v).toUpperCase();
   if (typeof v==='boolean') return v?'YES':'NO';
   if (['final_p_yes','beta_adj','regime_adj','velocity_adj','exhaustion_adj','ratio_adj'].includes(k)) return (v>=0?'+':'')+(v*100).toFixed(1)+'%';
   if (k==='btc_3m_return') return (v>=0?'+':'')+(v*100).toFixed(2)+'%';
@@ -1416,6 +1422,7 @@ function _fmtSigVal(k, v) {
   return String(v);
 }
 function _sigDotHtml(k, v) {
+  if (k==='octagon_direction') return `<div class="cf-dot ${v?'on':''}"></div>`;
   if (k==='regime') return `<div class="cf-dot ${v==='momentum'?'on':v==='reversion'?'off':''}"></div>`;
   if (k==='velocity') return `<div class="cf-dot ${v==='rising'?'on':v==='falling'?'off':''}"></div>`;
   if (k==='news_mode') return `<div class="cf-dot ${v?'on':''}"></div>`;
