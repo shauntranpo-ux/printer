@@ -239,7 +239,7 @@ def _build_features_from_bars(bar_events: list[Event]) -> dict:
     Build a HAR-style feature dict from bar events.
     Returns empty dict if insufficient data.
     Feature keys follow FeatureVector.to_flat_dict() convention:
-    "har_rv__rv_15m_pos", etc.
+    "rv_15m_pos", etc.
     """
     from backtesting.training.har_fitter import _rv_components, _bars_in_window
 
@@ -270,10 +270,10 @@ def _build_features_from_bars(bar_events: list[Event]) -> dict:
         if len(log_rets) < n_bars:
             return {}
         comps = _rv_components(log_rets[-n_bars:])
-        features[f"har_rv__{alias}_pos"] = comps["rv_pos"]
-        features[f"har_rv__{alias}_neg"] = comps["rv_neg"]
+        features[f"{alias}_pos"] = comps["rv_pos"]
+        features[f"{alias}_neg"] = comps["rv_neg"]
 
     jump_n = _bars_in_window(granularity_s, 15)
-    features["har_rv__jump_15m"] = _rv_components(log_rets[-jump_n:])["jump"]
+    features["jump_15m"] = _rv_components(log_rets[-jump_n:])["jump"]
 
     return features

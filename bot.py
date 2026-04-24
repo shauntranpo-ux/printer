@@ -3962,6 +3962,8 @@ async def handle_locked_phase(
                      if pos["entry_price_cents"] else 0
 
         log.info(f"{ticker} expired. Outcome={outcome}, P&L=${pnl:.2f} (fee=${fee:.2f})")
+        pnl_str    = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+        outcome_str = "WIN" if pnl >= 0 else "LOSS"
 
         # Update live BV3 correction table with actual outcome (BTC only)
         _d = pos.get("_bv3_dist_idx")
@@ -4006,7 +4008,6 @@ async def handle_locked_phase(
                     f"Resumes at {_resume_str}"
                 )
 
-                pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
         mode_icon = "[PAPER]" if pos["mode"] == "paper" else "[LIVE]"
         _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
@@ -4021,7 +4022,7 @@ async def handle_locked_phase(
             _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
         )
         await send_telegram(
-            f"<b>{_close_ctx} {mode_icon} {"WIN" if pnl >= 0 else "LOSS"}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"<b>{_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
             f"{pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
             f"Entry: {pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
             f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}"
