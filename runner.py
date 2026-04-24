@@ -49,6 +49,9 @@ def _send_telegram_sync(text: str) -> None:
 # Each entry: {"name": str, "strategy": dict, "proc": Popen, "last_crash": float}
 _procs: list[dict] = []
 
+# Sidecar process for price validation (paper mode only)
+_validator_proc: subprocess.Popen | None = None
+
 
 def _load_strategies(path: str) -> list[dict]:
     """Read and validate strategies.json. Returns only enabled entries."""
@@ -97,13 +100,27 @@ def _start_bot(strategy: dict) -> subprocess.Popen:
     )
 
 
+def _start_validator() -> subprocess.Popen:
+    print("[runner] Starting price_validator.py (paper mode sidecar) ...")
+    proc = subprocess.Popen(
+        [sys.executable, os.path.join(BASE_DIR, "price_validator.py")],
+        cwd=BASE_DIR,
+    )
+    print(f"[runner]   price_validator PID={proc.pid}")
+    return proc
+
+
 def _shutdown(signum, frame):
+    global _validator_proc
     print("\n[runner] Shutting down ...")
     for entry in _procs:
         proc = entry["proc"]
         if proc.poll() is None:
             proc.terminate()
             print(f"[runner]   terminated '{entry['name']}'")
+    if _validator_proc and _validator_proc.poll() is None:
+        _validator_proc.terminate()
+        print("[runner]   terminated price_validator")
     sys.exit(0)
 
 
@@ -135,6 +152,18 @@ def main():
         print(f"[runner]   '{s['name']}' PID={proc.pid}  state={s['state_file']}")
 
     print(f"[runner] {len(strategies)} strategy instance(s) running. Ctrl+C to stop.\n")
+
+    # Start price_validator if running in paper mode
+    try:
+        _cfg_path = os.path.join(BASE_DIR, "config.json")
+        with open(_cfg_path) as _fh:
+            _cfg = json.load(_fh)
+        if _cfg.get("mode", "paper") == "paper":
+            _validator_proc = _start_validator()
+        else:
+            print("[runner] Live mode — price_validator not started.")
+    except Exception as _e:
+        print(f"[runner] Could not read config.json to check mode: {_e}")
 
     while True:
         try:
@@ -200,9 +229,17 @@ def main():
                         print(f"[runner] '{entry['name']}' restarted "
                               f"(PID={new_proc.pid}, crashes_1h={len(recent)}).")
 
+            # Restart price_validator if it died unexpectedly
+            if _validator_proc and _validator_proc.poll() is not None:
+                print(f"[runner] price_validator exited (code={_validator_proc.returncode}) — restarting ...")
+                _validator_proc = _start_validator()
+
             running = [e["name"] for e in _procs if e["proc"].poll() is None and not e.get("halted")]
             halted  = [e["name"] for e in _procs if e.get("halted")]
             status  = f"[runner] OK | running: {running}"
+            if _validator_proc:
+                v_status = "running" if _validator_proc.poll() is None else "restarting"
+                status  += f" | price_validator: {v_status}"
             if halted:
                 status += f" | HALTED (crash loop): {halted}"
             print(status)
