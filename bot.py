@@ -930,9 +930,10 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         return _all_markets_cache if return_all else _market_cache
 
     path = "/markets"
-    # Hourly above/below markets only. KXBTC15M (15-min directional) is excluded —
-    # no validated edge; paper trading showed 50/50 win rate from legacy strategy.
-    _SERIES_SEARCH_ORDER = ("KXBTCD", "BTCD-B")
+    _SERIES_SEARCH_ORDER = ("KXBTC15M", "KXBTCD", "BTCD-B")
+
+
+
     all_markets = []
     seen_tickers: set[str] = set()
     for series in _SERIES_SEARCH_ORDER:
