@@ -26,7 +26,11 @@
     "SOL",
     "XRP"
   ],
-  "asset_overrides": {},
+  "asset_overrides": {
+    "ETH": {"min_ev_base": 11, "vol_gate_thresh": 1.50},
+    "SOL": {"min_ev_base": 11, "vol_gate_thresh": 1.50},
+    "XRP": {"min_ev_base": 11, "vol_gate_thresh": 1.50}
+  },
   "use_new_strategies": {
     "BTC": true,
     "ETH": true,

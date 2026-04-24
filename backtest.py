@@ -818,6 +818,7 @@ def run_backtest(
         "asset":                  asset,
         "min_ev":                 min_ev,
         "vol_threshold":          vol_threshold,
+        "min_confidence":         min_confidence,
         "trade_amount_dollars":   trade_amount,
         "total_windows":          total_windows,
         "windows_skipped":        skipped,
@@ -874,24 +875,25 @@ def write_to_db(r: dict, start_year: int) -> None:
         )
     """)
     # Add columns that may be missing from old schema
-    for col, typedef in [("asset", "TEXT"), ("min_ev", "REAL"), ("vol_threshold", "REAL")]:
+    for col, typedef in [("asset", "TEXT"), ("min_ev", "REAL"), ("vol_threshold", "REAL"), ("min_confidence", "INTEGER")]:
         try:
             conn.execute(f"ALTER TABLE stress_test_results ADD COLUMN {col} {typedef}")
         except Exception:
             pass
     conn.execute("""
         INSERT INTO stress_test_results (
-            run_ts, asset, min_ev, vol_threshold,
+            run_ts, asset, min_ev, vol_threshold, min_confidence,
             start_date, end_date,
             total_markets, total_trades, win_rate,
             total_pnl_dollars, max_drawdown_percent,
             avg_profit_percent, sharpe_ratio, max_consecutive_losses
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         datetime.now(timezone.utc).isoformat(),
         r.get("asset", "UNK"),
         r.get("min_ev", 0.0),
         r.get("vol_threshold", 1.80),
+        r.get("min_confidence", 65),
         f"{start_year}-01-01",
         "2026-12-31",
         r["total_windows"],
