@@ -1926,6 +1926,28 @@ def _session_ev_adjustment() -> float:
 _STRATEGY_SINGLETONS: dict = {}  # keyed by "ASSET" or "ASSET_hourly"
 
 
+def _octagon_status_snapshot() -> dict:
+    """Safe read of octagon_client._status for bot_state.json."""
+    try:
+        import sys as _sys
+        _src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+        if _src not in _sys.path:
+            _sys.path.insert(0, _src)
+        from strategies.signals import octagon_client as _oc
+        st = _oc._status
+        import os as _os
+        return {
+            "key_present": bool(_os.environ.get("OCTAGON_API_KEY")),
+            "last_ok_ts":   st.get("last_ok_ts"),
+            "last_fail_ts": st.get("last_fail_ts"),
+            "calls":        st.get("calls", 0),
+            "hits":         st.get("hits", 0),
+        }
+    except Exception:
+        import os as _os
+        return {"key_present": bool(_os.environ.get("OCTAGON_API_KEY")), "calls": 0, "hits": 0}
+
+
 def _strategy_name_for(asset, duration_min):
     """Human-readable strategy name for the dashboard per-asset card."""
     is_hourly = duration_min > 25.0
@@ -3250,6 +3272,7 @@ async def write_state_file(
         "open_position": current_position,
         "consecutive_losses": _consecutive_losses,
         "consecutive_loss_pause_until": _consecutive_loss_pause_until,
+        "octagon_status": _octagon_status_snapshot(),
     }
 
     # Per-asset snapshot for multi-asset dashboard display

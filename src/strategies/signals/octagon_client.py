@@ -42,6 +42,9 @@ _slug_cache: dict[str, str] = {}
 # parsed_table: dict[int, tuple[float, float]]  strike_int → (market_pct, model_pct)
 _report_cache: dict[str, tuple[dict, float]] = {}
 
+# Tracks last call outcome for dashboard health display
+_status: dict = {"last_ok_ts": None, "last_fail_ts": None, "key_present": False, "calls": 0, "hits": 0}
+
 
 def _get_http() -> httpx.Client:
     global _http
@@ -271,8 +274,10 @@ def query(
             model_prob * 100, market_prob * 100,
             direction_agrees, confidence, cache_hit,
         )
+        import os as _os; _status["key_present"] = bool(_os.environ.get("OCTAGON_API_KEY")); _status["calls"] += 1; _status["last_ok_ts"] = time.time(); _status["hits"] += int(cache_hit)
         return model_prob, direction_agrees, confidence, cache_hit
 
     except Exception as exc:
         log.warning("Octagon: unexpected error for %s: %s", ticker, exc)
+        _status["last_fail_ts"] = time.time(); _status["calls"] += 1
         return _FALLTHROUGH

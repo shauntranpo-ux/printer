@@ -439,7 +439,10 @@ tr:last-child td{border-bottom:none;}
       <div class="card brain-card" id="signals-card">
         <div class="brain-card-title">
           Signals
-          <span id="sig-asset-badge" style="font-size:10px;background:var(--accent);color:#fff;padding:2px 7px;border-radius:4px;letter-spacing:.04em;">—</span>
+          <div style="display:flex;gap:5px;align-items:center;">
+            <span id="oct-status-badge" style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:.04em;border:1px solid var(--line-2);color:var(--ink-3);">OCT —</span>
+            <span id="sig-asset-badge" style="font-size:10px;background:var(--accent);color:#fff;padding:2px 7px;border-radius:4px;letter-spacing:.04em;">—</span>
+          </div>
         </div>
         <div class="cf-section-lbl">Last Action</div>
         <div class="cf-row" style="border-bottom:none;padding-bottom:4px;">
@@ -1656,6 +1659,9 @@ async function pollState() {
     const s = await r.json();
     const ph = s.phase || 'DONE';
     const action=document.getElementById('st-action'); if(action) action.textContent=s.last_action||'—';
+    // Octagon status badge
+    const _oct = s.octagon_status || {}; const _octBadge = document.getElementById('oct-status-badge');
+    if (_octBadge) { const _hasKey = _oct.key_present; const _lastOk = _oct.last_ok_ts; const _calls = _oct.calls||0; const _ago = _lastOk ? Math.round((Date.now()/1000 - _lastOk)/60) : null; _octBadge.textContent = !_hasKey ? 'OCT NO KEY' : _calls===0 ? 'OCT READY' : _ago!==null ? ('OCT ' + (_ago<2?'LIVE':_ago+'m ago')) : 'OCT ERR'; _octBadge.style.background = !_hasKey ? 'rgba(214,57,73,.1)' : _lastOk ? 'rgba(27,158,85,.12)' : 'rgba(201,125,16,.12)'; _octBadge.style.color = !_hasKey ? 'var(--down)' : _lastOk ? 'var(--up)' : 'var(--amber)'; _octBadge.style.borderColor = !_hasKey ? 'rgba(214,57,73,.3)' : _lastOk ? 'rgba(27,158,85,.3)' : 'rgba(201,125,16,.3)'; }
     const reason=document.getElementById('st-reason'); if(reason) reason.textContent=s.last_skip_reason||'—';
     const limitBadge=document.getElementById('limit-badge');
     if (s.limit_triggered&&s.limit_reason) { limitBadge.textContent='Warning: '+s.limit_reason+' — switched to paper mode'; limitBadge.classList.add('visible'); }
