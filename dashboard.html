@@ -51,7 +51,7 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 .tb-btn:hover{background:var(--card-2);}
 .tb-btn.on{border-color:rgba(27,158,85,.5);color:var(--up);background:rgba(27,158,85,.1);}
 .tb-btn.off{border-color:rgba(214,57,73,.5);color:var(--down);background:rgba(214,57,73,.1);}
-/* Mode selector â€” three explicit buttons, one active at a time */
+/* Mode selector — three explicit buttons, one active at a time */
 .mode-selector-tb{display:inline-flex;gap:4px;align-items:center;}
 .mode-sel-btn{display:inline-flex;align-items:center;padding:7px 13px;border-radius:7px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);transition:all .15s;}
 .mode-sel-btn:hover{background:var(--card-2);}
@@ -336,7 +336,7 @@ tr:last-child td{border-bottom:none;}
       </div>
 
       <!-- Clock -->
-      <span id="clock-txt">â€”</span>
+      <span id="clock-txt">—</span>
 
       <!-- Settings gear -->
       <button class="tb-btn" id="tbtab-settings" onclick="selectTab('settings')" title="Settings" style="padding:7px 10px;">
@@ -364,32 +364,32 @@ tr:last-child td{border-bottom:none;}
     <!-- Perf bar -->
     <div class="card" id="perf-bar">
       <div class="pf-stat" id="pb-stat-live-pnl">
-        <div class="pf-lbl">Live P&amp;L Â· All-Time</div>
-        <div class="pf-val" id="pb-live-pnl">â€”</div>
+        <div class="pf-lbl">Live P&amp;L · All-Time</div>
+        <div class="pf-val" id="pb-live-pnl">—</div>
       </div>
       <div class="pf-stat" id="pb-stat-live-wr">
-        <div class="pf-lbl">Live WR Â· All-Time</div>
-        <div class="pf-val" id="pb-live-wr">â€”</div>
+        <div class="pf-lbl">Live WR · All-Time</div>
+        <div class="pf-val" id="pb-live-wr">—</div>
       </div>
       <div class="pf-stat" id="pb-stat-demo-pnl">
-        <div class="pf-lbl">Demo P&amp;L Â· All-Time</div>
-        <div class="pf-val" id="pb-demo-pnl">â€”</div>
+        <div class="pf-lbl">Demo P&amp;L · All-Time</div>
+        <div class="pf-val" id="pb-demo-pnl">—</div>
       </div>
       <div class="pf-stat" id="pb-stat-demo-wr">
-        <div class="pf-lbl">Demo WR Â· All-Time</div>
-        <div class="pf-val" id="pb-demo-wr">â€”</div>
+        <div class="pf-lbl">Demo WR · All-Time</div>
+        <div class="pf-val" id="pb-demo-wr">—</div>
       </div>
       <div class="pf-stat">
-        <div class="pf-lbl">Paper P&amp;L Â· All-Time</div>
-        <div class="pf-val" id="pb-paper-pnl">â€”</div>
+        <div class="pf-lbl">Paper P&amp;L · All-Time</div>
+        <div class="pf-val" id="pb-paper-pnl">—</div>
       </div>
       <div class="pf-stat">
-        <div class="pf-lbl">Paper WR Â· All-Time</div>
-        <div class="pf-val" id="pb-paper-wr">â€”</div>
+        <div class="pf-lbl">Paper WR · All-Time</div>
+        <div class="pf-val" id="pb-paper-wr">—</div>
       </div>
       <div class="pf-stat">
         <div class="pf-lbl">Trades</div>
-        <div class="pf-val" id="pb-trades" style="font-size:12px;line-height:1.5;">â€”</div>
+        <div class="pf-val" id="pb-trades" style="font-size:12px;line-height:1.5;">—</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;padding:8px 14px;margin-left:auto;flex-shrink:0;">
         <button class="reset-btn" onclick="openResetModal('live')">Reset Live</button>
@@ -404,7 +404,7 @@ tr:last-child td{border-bottom:none;}
     <div class="mid-row">
       <div class="card chart-card">
         <div class="chart-head" style="flex-wrap:wrap;gap:6px;">
-          <div class="chart-title">Equity Curve Â· All Markets</div>
+          <div class="chart-title">Equity Curve · All Markets</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;">
             <div style="display:flex;gap:2px;background:var(--card-2);padding:3px;border-radius:8px;border:1px solid var(--line);">
               <button class="chart-tab active" id="vtab-daily"   onclick="setChartView('daily')">Daily</button>
@@ -430,23 +430,23 @@ tr:last-child td{border-bottom:none;}
           <div class="alloc-legend" id="alloc-legend"><div style="color:var(--ink-3);font-size:11px;">No trades yet</div></div>
         </div>
         <div class="alloc-footer">
-          <div><div class="alloc-stat-lbl">Top market</div><div class="alloc-stat-val" id="alloc-top">â€”</div></div>
-          <div><div class="alloc-stat-lbl">Total trades</div><div class="alloc-stat-val" id="alloc-total">â€”</div></div>
-          <div><div class="alloc-stat-lbl">Win rate</div><div class="alloc-stat-val" id="alloc-wr">â€”</div></div>
+          <div><div class="alloc-stat-lbl">Top market</div><div class="alloc-stat-val" id="alloc-top">—</div></div>
+          <div><div class="alloc-stat-lbl">Total trades</div><div class="alloc-stat-val" id="alloc-total">—</div></div>
+          <div><div class="alloc-stat-lbl">Win rate</div><div class="alloc-stat-val" id="alloc-wr">—</div></div>
         </div>
       </div>
 
       <div class="card brain-card" id="signals-card">
         <div class="brain-card-title">
           Signals
-          <span id="sig-asset-badge" style="font-size:10px;background:var(--accent);color:#fff;padding:2px 7px;border-radius:4px;letter-spacing:.04em;">â€”</span>
+          <span id="sig-asset-badge" style="font-size:10px;background:var(--accent);color:#fff;padding:2px 7px;border-radius:4px;letter-spacing:.04em;">—</span>
         </div>
         <div class="cf-section-lbl">Last Action</div>
         <div class="cf-row" style="border-bottom:none;padding-bottom:4px;">
-          <span class="cf-name" id="st-action" style="font-weight:700;color:var(--ink);">â€”</span>
-          <span class="cf-val" id="sig-ev-badge" style="font-weight:700;">â€”</span>
+          <span class="cf-name" id="st-action" style="font-weight:700;color:var(--ink);">—</span>
+          <span class="cf-val" id="sig-ev-badge" style="font-weight:700;">—</span>
         </div>
-        <div style="font-size:10px;color:var(--ink-3);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="st-reason">â€”</div>
+        <div style="font-size:10px;color:var(--ink-3);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="st-reason">—</div>
         <div class="cf-section-lbl">Strategy Signals</div>
         <div id="sig-rows">
           <div class="cf-row"><span class="cf-name" style="color:var(--ink-3);">Click a market card to view signals</span></div>
@@ -459,7 +459,7 @@ tr:last-child td{border-bottom:none;}
       <div class="pulse-grid">
         <div>
           <div class="pulse-lbl">Skip Stats</div>
-          <div class="pulse-body" id="pulse-skips">â€”</div>
+          <div class="pulse-body" id="pulse-skips">—</div>
         </div>
         <div>
           <div class="pulse-lbl">Last 5 Trades</div>
@@ -467,7 +467,7 @@ tr:last-child td{border-bottom:none;}
         </div>
         <div>
           <div class="pulse-lbl">Price Validation</div>
-          <div class="pulse-body" id="pulse-pv">â€”</div>
+          <div class="pulse-body" id="pulse-pv">—</div>
         </div>
       </div>
     </div>
@@ -483,7 +483,7 @@ tr:last-child td{border-bottom:none;}
     <!-- Market-specific trades -->
     <div class="card" style="padding:14px;">
       <div style="font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">
-        Recent Trades â€” <span id="mv-trades-sym">â€”</span>
+        Recent Trades — <span id="mv-trades-sym">—</span>
         <span id="mv-wr" style="font-weight:500;margin-left:6px;"></span>
       </div>
       <div class="table-wrap">
@@ -541,25 +541,25 @@ tr:last-child td{border-bottom:none;}
         <div class="s-group" style="flex-direction:row;align-items:center;gap:10px;">
           <label style="min-width:60px;">ETH</label>
           <label class="tog"><input type="checkbox" id="s-asset-ETH" onchange="toggleAsset('ETH',this.checked)"><span class="tog-slider"></span></label>
-          <span class="tog-lbl" id="s-asset-ETH-label">â€”</span>
+          <span class="tog-lbl" id="s-asset-ETH-label">—</span>
           <span style="font-size:10px;color:var(--ink-3);margin-left:auto;">min EV: <input type="number" id="s-ev-ETH" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--line-2);border-radius:4px;color:var(--ink);"> <button class="s-save" onclick="saveAssetEV('ETH')">âœ“</button></span>
         </div>
         <div class="s-group" style="flex-direction:row;align-items:center;gap:10px;">
           <label style="min-width:60px;">SOL</label>
           <label class="tog"><input type="checkbox" id="s-asset-SOL" onchange="toggleAsset('SOL',this.checked)"><span class="tog-slider"></span></label>
-          <span class="tog-lbl" id="s-asset-SOL-label">â€”</span>
+          <span class="tog-lbl" id="s-asset-SOL-label">—</span>
           <span style="font-size:10px;color:var(--ink-3);margin-left:auto;">min EV: <input type="number" id="s-ev-SOL" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--line-2);border-radius:4px;color:var(--ink);"> <button class="s-save" onclick="saveAssetEV('SOL')">âœ“</button></span>
         </div>
         <div class="s-group" style="flex-direction:row;align-items:center;gap:10px;">
           <label style="min-width:60px;">XRP</label>
           <label class="tog"><input type="checkbox" id="s-asset-XRP" onchange="toggleAsset('XRP',this.checked)"><span class="tog-slider"></span></label>
-          <span class="tog-lbl" id="s-asset-XRP-label">â€”</span>
+          <span class="tog-lbl" id="s-asset-XRP-label">—</span>
           <span style="font-size:10px;color:var(--ink-3);margin-left:auto;">min EV: <input type="number" id="s-ev-XRP" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--line-2);border-radius:4px;color:var(--ink);"> <button class="s-save" onclick="saveAssetEV('XRP')">âœ“</button></span>
         </div>
         <div class="s-group" style="flex-direction:row;align-items:center;gap:10px;">
           <label style="min-width:60px;">BTC</label>
           <label class="tog"><input type="checkbox" id="s-asset-BTC" onchange="toggleAsset('BTC',this.checked)"><span class="tog-slider"></span></label>
-          <span class="tog-lbl" id="s-asset-BTC-label">â€”</span>
+          <span class="tog-lbl" id="s-asset-BTC-label">—</span>
           <span style="font-size:10px;color:var(--ink-3);margin-left:auto;">min EV: <input type="number" id="s-ev-BTC" min="0" max="20" step="0.5" style="width:48px;font-size:11px;padding:2px 4px;background:var(--bg);border:1px solid var(--line-2);border-radius:4px;color:var(--ink);"> <button class="s-save" onclick="saveAssetEV('BTC')">âœ“</button></span>
         </div>
       </div>
@@ -719,7 +719,7 @@ function renderMarketView(sym) {
   let arrowHtml;
   if (dir === 'UP') arrowHtml = `<svg style="width:32px;height:32px;fill:var(--up)" viewBox="0 0 24 24"><polygon points="12,2 22,20 2,20"/></svg>`;
   else if (dir === 'DOWN') arrowHtml = `<svg style="width:32px;height:32px;fill:var(--down)" viewBox="0 0 24 24"><polygon points="12,22 22,4 2,4"/></svg>`;
-  else arrowHtml = `<span style="font-size:28px;color:var(--line-2);">â€”</span>`;
+  else arrowHtml = `<span style="font-size:28px;color:var(--line-2);">—</span>`;
 
   const badgeCls = effectiveStatus==='TRADING'?'trading':effectiveStatus==='WATCHING'?'watching':effectiveStatus==='SKIPPED'?'skipped':'offline';
   const phaseCls = 'phase-'+(a.phase||'DONE');
@@ -730,7 +730,7 @@ function renderMarketView(sym) {
   const live15m    = isHourlyAsset && a.session_type === '15m';
   const liveHourly = isHourlyAsset && a.session_type === 'hourly';
 
-  // KPIs for each section â€” only populated when that section is active
+  // KPIs for each section — only populated when that section is active
   const _ev15    = live15m ? ev : null,    _evH    = liveHourly ? ev : null;
   const _wp15    = live15m ? wp : null,    _wpH    = liveHourly ? wp : null;
   const _yask15  = live15m ? yask : null,  _yaskH  = liveHourly ? yask : null;
@@ -775,18 +775,18 @@ function renderMarketView(sym) {
       ${(isHourlyAsset?_skip15:a.skip_reason)?`<div style="font-size:11px;color:var(--down);margin-top:4px;width:100%;">${escHtml(isHourlyAsset?_skip15:a.skip_reason)}</div>`:''}
     </div>
     <div class="mv-kpi-grid">
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Strike</div><div class="mv-kpi-val">${(isHourlyAsset?_str15:strike)!=null?_fmtPrice(sym,isHourlyAsset?_str15:strike):'â€”'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Dist</div><div class="mv-kpi-val">${(isHourlyAsset?_dist15:dist)!=null?(isHourlyAsset?_dist15:dist).toFixed(2)+'%':'â€”'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">YES Ask</div><div class="mv-kpi-val">${(isHourlyAsset?_yask15:yask)!=null?(isHourlyAsset?_yask15:yask)+'Â¢':'â€”'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${(isHourlyAsset?_nask15:nask)!=null?(isHourlyAsset?_nask15:nask)+'Â¢':'â€”'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">EV</div><div class="mv-kpi-val ${(isHourlyAsset?_ev15:ev)!=null&&(isHourlyAsset?_ev15:ev)>0?'g':(isHourlyAsset?_ev15:ev)!=null&&(isHourlyAsset?_ev15:ev)<0?'r':''}">${(isHourlyAsset?_ev15:ev)!=null?((isHourlyAsset?_ev15:ev)>=0?'+':'')+(isHourlyAsset?_ev15:ev).toFixed(1)+'%':'â€”'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Win Prob</div><div class="mv-kpi-val">${(isHourlyAsset?_wp15:wp)!=null?(isHourlyAsset?_wp15:wp).toFixed(1)+'%':'â€”'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Strike</div><div class="mv-kpi-val">${(isHourlyAsset?_str15:strike)!=null?_fmtPrice(sym,isHourlyAsset?_str15:strike):'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Dist</div><div class="mv-kpi-val">${(isHourlyAsset?_dist15:dist)!=null?(isHourlyAsset?_dist15:dist).toFixed(2)+'%':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">YES Ask</div><div class="mv-kpi-val">${(isHourlyAsset?_yask15:yask)!=null?(isHourlyAsset?_yask15:yask)+'c':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${(isHourlyAsset?_nask15:nask)!=null?(isHourlyAsset?_nask15:nask)+'c':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">EV</div><div class="mv-kpi-val ${(isHourlyAsset?_ev15:ev)!=null&&(isHourlyAsset?_ev15:ev)>0?'g':(isHourlyAsset?_ev15:ev)!=null&&(isHourlyAsset?_ev15:ev)<0?'r':''}">${(isHourlyAsset?_ev15:ev)!=null?((isHourlyAsset?_ev15:ev)>=0?'+':'')+(isHourlyAsset?_ev15:ev).toFixed(1)+'%':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Win Prob</div><div class="mv-kpi-val">${(isHourlyAsset?_wp15:wp)!=null?(isHourlyAsset?_wp15:wp).toFixed(1)+'%':'—'}</div></div>
     </div>` : `<div class="mv-section-waiting">Next 15-minute window not yet open.</div>`}
     <div class="mv-body">
       <div class="mv-row">
         <div class="card chart-card">
           <div class="chart-head">
-            <div class="chart-title">Equity â€” ${sym}</div>
+            <div class="chart-title">Equity — ${sym}</div>
             <div class="chart-tabs">
               <button class="chart-tab active" id="mv-ctab-paper" onclick="setMvChartTab('paper')">Paper</button>
               <button class="chart-tab" id="mv-ctab-live" onclick="setMvChartTab('live')">Live</button>
@@ -827,15 +827,15 @@ function renderMarketView(sym) {
       </div>
     </div>
     <div class="mv-kpi-grid">
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Strike</div><div class="mv-kpi-val">${_strH!=null?_fmtPrice(sym,_strH):'â€”'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Dist</div><div class="mv-kpi-val">${_distH!=null?_distH.toFixed(2)+'%':'â€”'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">YES Ask</div><div class="mv-kpi-val">${_yaskH!=null?_yaskH+'Â¢':'â€”'}</div></div>
-      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${_naskH!=null?_naskH+'Â¢':'â€”'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Strike</div><div class="mv-kpi-val">${_strH!=null?_fmtPrice(sym,_strH):'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Dist</div><div class="mv-kpi-val">${_distH!=null?_distH.toFixed(2)+'%':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">YES Ask</div><div class="mv-kpi-val">${_yaskH!=null?_yaskH+'c':'—'}</div></div>
+      <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${_naskH!=null?_naskH+'c':'—'}</div></div>
     </div>
     <div class="mv-body">
       <div class="card brain-card" style="min-height:100px;">
         <div class="brain-card-title">
-          Hourly Strategy â€” Window State
+          Hourly Strategy — Window State
           <span style="font-size:10px;background:#6366f1;color:#fff;padding:2px 7px;border-radius:4px;">${sym}</span>
         </div>
         <div id="mv-hourly-sig-rows">${_buildHourlyViewHtml(a)}</div>
@@ -902,14 +902,14 @@ function renderAssetTradeTable(tbodyId, trades) {
     const pnlCls = isPending ? '' : pnl > 0 ? 'td-win' : pnl < 0 ? 'td-loss' : '';
     const pnlCell = isPending
       ? '<span style="background:rgba(201,125,16,.12);color:var(--amber);border:1px solid rgba(201,125,16,.3);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;">OPEN</span>'
-      : (pnl != null ? fmtPnl(pnl) : 'â€”');
+      : (pnl != null ? fmtPnl(pnl) : '—');
     const fillBadge = isPending
       ? '<span style="background:rgba(201,125,16,.12);color:var(--amber);border:1px solid rgba(201,125,16,.3);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">PEND</span>'
       : (t.fill_confirmed
         ? '<span style="background:rgba(27,158,85,.1);color:var(--up);border:1px solid rgba(27,158,85,.25);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">CONF</span>'
         : '<span style="background:rgba(214,57,73,.1);color:var(--down);border:1px solid rgba(214,57,73,.25);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">UNFILL</span>');
     const rowStyle = isPending ? 'style="background:rgba(201,125,16,.04);"' : '';
-    return `<tr ${rowStyle}><td>${fmtTime(t.ts)}</td><td>${t.side==='yes'?'â–² UP':t.side==='no'?'â–¼ DN':'â€”'}</td><td>${t.contracts||'â€”'}</td><td>${t.entry_price_cents!=null?t.entry_price_cents+'Â¢':'â€”'}</td><td>${t.exit_price_cents!=null?t.exit_price_cents+'Â¢':'â€”'}</td><td>${fillBadge}</td><td>${escHtml(t.exit_reason||t.outcome||'â€”')}</td><td class="${pnlCls}">${pnlCell}</td></tr>`;
+    return `<tr ${rowStyle}><td>${fmtTime(t.ts)}</td><td>${t.side==='yes'?'▲ UP':t.side==='no'?'▼ DN':'—'}</td><td>${t.contracts||'—'}</td><td>${t.entry_price_cents!=null?t.entry_price_cents+'c':'—'}</td><td>${t.exit_price_cents!=null?t.exit_price_cents+'c':'—'}</td><td>${fillBadge}</td><td>${escHtml(t.exit_reason||t.outcome||'—')}</td><td class="${pnlCls}">${pnlCell}</td></tr>`;
   }).join('');
 }
 
@@ -1110,7 +1110,7 @@ function setChartView(view) {
 }
 function setChartTab(tab) {
   _activeChartTab = tab;
-  // Both share the same canvas area â€” just show paper-chart always, but draw the right data
+  // Both share the same canvas area — just show paper-chart always, but draw the right data
   document.getElementById('live-chart').style.display = 'none';
   document.getElementById('paper-chart').style.display = 'block';
   document.getElementById('ctab-live').classList.toggle('active', tab==='live');
@@ -1119,9 +1119,9 @@ function setChartTab(tab) {
 }
 
 // â”€â”€ Formatters â”€â”€
-function fmtPnl(v) { if (v==null) return 'â€”'; return v>=0?`+$${v.toFixed(2)}`:`-$${Math.abs(v).toFixed(2)}`; }
-function fmtTime(ts) { if (!ts) return 'â€”'; return new Date(ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}); }
-function shortTicker(t) { if (!t) return 'â€”'; return t.length>16?t.slice(0,16)+'â€¦':t; }
+function fmtPnl(v) { if (v==null) return '—'; return v>=0?`+$${v.toFixed(2)}`:`-$${Math.abs(v).toFixed(2)}`; }
+function fmtTime(ts) { if (!ts) return '—'; return new Date(ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit',hour12:true}); }
+function shortTicker(t) { if (!t) return '—'; return t.length>16?t.slice(0,16)+'…':t; }
 function escHtml(s) { if (s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // â”€â”€ Market allocation donut â”€â”€
@@ -1164,23 +1164,23 @@ function updateAllocation() {
   const totalWins = Object.values(wins).reduce((a,b)=>a+b,0);
   const wr = total>0 ? Math.round(totalWins/total*100) : null;
   const topEl=document.getElementById('alloc-top'), totEl=document.getElementById('alloc-total'), wrEl=document.getElementById('alloc-wr');
-  if(topEl) topEl.textContent = top&&top[1]>0?top[0]:'â€”';
-  if(totEl) totEl.textContent = total>0?total:'â€”';
-  if(wrEl) wrEl.textContent = wr!==null&&total>0?wr+'%':'â€”';
+  if(topEl) topEl.textContent = top&&top[1]>0?top[0]:'—';
+  if(totEl) totEl.textContent = total>0?total:'—';
+  if(wrEl) wrEl.textContent = wr!==null&&total>0?wr+'%':'—';
 }
 
 // â”€â”€ Price / secs formatters â”€â”€
 const _ASSET_ORDER = ['BTC','ETH','SOL','XRP'];
 const _ASSET_LABEL = {BTC:'BTC',ETH:'ETH',SOL:'SOL',XRP:'XRP'};
 function _fmtPrice(asset, price) {
-  if (price==null) return 'â€”';
+  if (price==null) return '—';
   if (asset==='ETH') return '$'+price.toLocaleString('en-US',{maximumFractionDigits:0});
   if (price>=100) return '$'+price.toLocaleString('en-US',{maximumFractionDigits:0});
   if (price>=1) return '$'+price.toFixed(2);
   return '$'+price.toFixed(4);
 }
 function _fmtSecs(s) {
-  if (!s||s<=0) return 'â€”';
+  if (!s||s<=0) return '—';
   const m=Math.floor(s/60),ss=String(Math.floor(s%60)).padStart(2,'0');
   return m+'m '+ss+'s';
 }
@@ -1196,17 +1196,17 @@ function renderTradeTable(tbodyId, trades) {
     const pnlCls=isPending?'':pnl>0?'td-win':pnl<0?'td-loss':'';
     const pnlCell=isPending
       ?'<span style="background:rgba(201,125,16,.12);color:var(--amber);border:1px solid rgba(201,125,16,.3);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;">OPEN</span>'
-      :(pnl!=null?fmtPnl(pnl):'â€”');
+      :(pnl!=null?fmtPnl(pnl):'—');
     const rowStyle=isPending?'style="background:rgba(201,125,16,.04);"':'';
     const mktLabel=escHtml(t.market_title||shortTicker(t.market_id));
-    const mktTitle=escHtml(`${t.market_id||''}${t.order_id?' Â· '+t.order_id:''}`);
+    const mktTitle=escHtml(`${t.market_id||''}${t.order_id?' · '+t.order_id:''}`);
     const mktCell=`<span title="${mktTitle}">${mktLabel}</span>`;
     const fillBadge=isPending
       ?'<span style="background:rgba(201,125,16,.12);color:var(--amber);border:1px solid rgba(201,125,16,.3);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">PEND</span>'
       :(t.fill_confirmed
         ?'<span style="background:rgba(27,158,85,.1);color:var(--up);border:1px solid rgba(27,158,85,.25);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">CONF</span>'
         :'<span style="background:rgba(214,57,73,.1);color:var(--down);border:1px solid rgba(214,57,73,.25);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">UNFILL</span>');
-    return `<tr ${rowStyle}><td>${fmtTime(t.ts)}</td><td>${mktCell}</td><td>${t.side==='yes'?'â–² UP':t.side==='no'?'â–¼ DN':'â€”'}</td><td>${t.contracts||'â€”'}</td><td>${t.entry_price_cents!=null?t.entry_price_cents+'Â¢':'â€”'}</td><td>${t.exit_price_cents!=null?t.exit_price_cents+'Â¢':'â€”'}</td><td>${fillBadge}</td><td>${escHtml(t.exit_reason||t.outcome||'â€”')}</td><td class="${pnlCls}">${pnlCell}</td></tr>`;
+    return `<tr ${rowStyle}><td>${fmtTime(t.ts)}</td><td>${mktCell}</td><td>${t.side==='yes'?'▲ UP':t.side==='no'?'▼ DN':'—'}</td><td>${t.contracts||'—'}</td><td>${t.entry_price_cents!=null?t.entry_price_cents+'c':'—'}</td><td>${t.exit_price_cents!=null?t.exit_price_cents+'c':'—'}</td><td>${fillBadge}</td><td>${escHtml(t.exit_reason||t.outcome||'—')}</td><td class="${pnlCls}">${pnlCell}</td></tr>`;
   }).join('');
 }
 
@@ -1231,7 +1231,7 @@ function renderMarketGrid(assets, dailyData) {
     let arrowHtml;
     if (dir==='UP') arrowHtml = `<svg class="mc-svg up" viewBox="0 0 24 24"><polygon points="12,2 22,20 2,20"/></svg>`;
     else if (dir==='DOWN') arrowHtml = `<svg class="mc-svg down" viewBox="0 0 24 24"><polygon points="12,22 22,4 2,4"/></svg>`;
-    else arrowHtml = `<span class="mc-neutral">â€”</span>`;
+    else arrowHtml = `<span class="mc-neutral">—</span>`;
     const wins=daily.wins||0, losses=daily.losses||0, pnl=daily.pnl||0;
     const pnlStr = pnl>=0?'+$'+pnl.toFixed(2):'-$'+Math.abs(pnl).toFixed(2);
     const skipReason = a.skip_reason||'';
@@ -1244,14 +1244,14 @@ function renderMarketGrid(assets, dailyData) {
     let posBoxHtml = '';
     if (hasPosition) {
       if (posForCard) {
-        const posDir=posForCard.side==='yes'?'â–² UP':'â–¼ DOWN';
+        const posDir=posForCard.side==='yes'?'▲ UP':'▼ DOWN';
         const entryC=posForCard.entry_price_cents||0, contracts=posForCard.contracts||0;
         const risk=(entryC*contracts/100).toFixed(2), maxPayout=((100-entryC)*contracts/100).toFixed(2);
         const modeTag=(posForCard.mode||'paper').toUpperCase();
         const closeTime=posForCard.market_close_time?new Date(posForCard.market_close_time).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',hour12:true}):null;
-        posBoxHtml=`<div class="mc-pos-box"><div class="mc-pos-label">Open Position Â· ${modeTag}</div><div class="mc-pos-row"><span style="font-weight:700;color:var(--ink)">${posDir} @ ${entryC}Â¢</span><span style="color:var(--ink-3);">${contracts} contracts</span></div><div class="mc-pos-row"><span>Risk <b>$${risk}</b></span><span>Max <b>$${maxPayout}</b></span></div>${closeTime?`<div class="mc-pos-row" style="font-size:9px;color:var(--ink-3);">Expires ${closeTime}</div>`:''}</div>`;
+        posBoxHtml=`<div class="mc-pos-box"><div class="mc-pos-label">Open Position · ${modeTag}</div><div class="mc-pos-row"><span style="font-weight:700;color:var(--ink)">${posDir} @ ${entryC}c</span><span style="color:var(--ink-3);">${contracts} contracts</span></div><div class="mc-pos-row"><span>Risk <b>$${risk}</b></span><span>Max <b>$${maxPayout}</b></span></div>${closeTime?`<div class="mc-pos-row" style="font-size:9px;color:var(--ink-3);">Expires ${closeTime}</div>`:''}</div>`;
       } else {
-        posBoxHtml=`<div class="mc-pos-box"><div class="mc-pos-label">Open Position</div><div class="mc-pos-row" style="color:var(--ink-3);font-size:9px;">Holding to expiry Â·  ${a.phase||''}</div></div>`;
+        posBoxHtml=`<div class="mc-pos-box"><div class="mc-pos-label">Open Position</div><div class="mc-pos-row" style="color:var(--ink-3);font-size:9px;">Holding to expiry ·  ${a.phase||''}</div></div>`;
       }
     }
     const isSelected = _selectedSignalAsset === k;
@@ -1262,14 +1262,14 @@ function renderMarketGrid(assets, dailyData) {
       </div>
       <div class="mc-arrow-wrap">${arrowHtml}</div>
       <div class="mc-metrics">
-        <div class="mc-row"><span class="mc-lbl">Strike</span><span class="mc-val">${strike!=null?_fmtPrice(k,strike):'â€”'}</span></div>
-        <div class="mc-row"><span class="mc-lbl">Dist</span><span class="mc-val">${dist!=null?dist.toFixed(2)+'%':'â€”'}</span></div>
-        <div class="mc-row"><span class="mc-lbl">YES ask</span><span class="mc-val">${yask!=null?yask+'Â¢':'â€”'}</span></div>
-        <div class="mc-row"><span class="mc-lbl">NO ask</span><span class="mc-val">${nask!=null?nask+'Â¢':'â€”'}</span></div>
-        <div class="mc-row"><span class="mc-lbl">EV</span><span class="mc-val ${ev!=null&&ev>0?'g':ev!=null&&ev<0?'r':''}">${ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'â€”'}</span></div>
-        <div class="mc-row"><span class="mc-lbl">Win Prob</span><span class="mc-val">${wp!=null?wp.toFixed(1)+'%':'â€”'}</span></div>
+        <div class="mc-row"><span class="mc-lbl">Strike</span><span class="mc-val">${strike!=null?_fmtPrice(k,strike):'—'}</span></div>
+        <div class="mc-row"><span class="mc-lbl">Dist</span><span class="mc-val">${dist!=null?dist.toFixed(2)+'%':'—'}</span></div>
+        <div class="mc-row"><span class="mc-lbl">YES ask</span><span class="mc-val">${yask!=null?yask+'c':'—'}</span></div>
+        <div class="mc-row"><span class="mc-lbl">NO ask</span><span class="mc-val">${nask!=null?nask+'c':'—'}</span></div>
+        <div class="mc-row"><span class="mc-lbl">EV</span><span class="mc-val ${ev!=null&&ev>0?'g':ev!=null&&ev<0?'r':''}">${ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—'}</span></div>
+        <div class="mc-row"><span class="mc-lbl">Win Prob</span><span class="mc-val">${wp!=null?wp.toFixed(1)+'%':'—'}</span></div>
       </div>
-      <div class="mc-row" style="margin-top:4px;"><span class="mc-lbl">Time Left</span><span class="mc-val">${a.secs_left>0?_fmtSecs(a.secs_left):'â€”'}</span></div>
+      <div class="mc-row" style="margin-top:4px;"><span class="mc-lbl">Time Left</span><span class="mc-val">${a.secs_left>0?_fmtSecs(a.secs_left):'—'}</span></div>
       <div class="mc-status-row">
         <span class="mc-badge ${badgeCls}">${effectiveStatus}</span>
         ${skipReason?`<span class="mc-skip">${escHtml(skipReason)}</span>`:''}
@@ -1342,18 +1342,18 @@ function _buildHourlyViewHtml(a) {
 
   const rows = [
     ['Phase', `<span style="color:${phaseColor};font-weight:700;">${phase}</span>`],
-    ['Elapsed', elMin != null ? elMin.toFixed(1)+' min' : 'â€”'],
-    ['ETH crossings', s.eth_cross != null ? `<span style="color:${s.eth_cross===0?'var(--up)':'var(--down)'};font-weight:700;">${s.eth_cross}</span>` : 'â€”'],
-    ['BTC crossings', s.btc_cross != null ? `<span style="color:${s.btc_cross===0?'var(--up)':'var(--down)'};font-weight:700;">${s.btc_cross}</span>` : 'â€”'],
-    ['ETH dist', s.eth_dist_pct != null ? s.eth_dist_pct.toFixed(3)+'%' : (s.pct_from_strike != null ? s.pct_from_strike.toFixed(3)+'%' : 'â€”')],
-    ['ETH ITM', s.eth_itm != null ? (s.eth_itm ? '<span style="color:var(--up)">YES</span>' : '<span style="color:var(--down)">NO</span>') : 'â€”'],
-    ['BTC ITM', s.btc_itm != null ? (s.btc_itm ? '<span style="color:var(--up)">YES</span>' : '<span style="color:var(--down)">NO</span>') : 'â€”'],
-    ['Dwell %', s.dwell_itm != null ? (s.dwell_itm*100).toFixed(1)+'%' : 'â€”'],
-    ['Streak %', s.streak_frac != null ? (s.streak_frac*100).toFixed(1)+'%' : 'â€”'],
-    ['Entry', s.entry_cents != null ? s.entry_cents.toFixed(0)+'Â¢' : 'â€”'],
-  ].filter(([,v]) => v !== 'â€”');
+    ['Elapsed', elMin != null ? elMin.toFixed(1)+' min' : '—'],
+    ['ETH crossings', s.eth_cross != null ? `<span style="color:${s.eth_cross===0?'var(--up)':'var(--down)'};font-weight:700;">${s.eth_cross}</span>` : '—'],
+    ['BTC crossings', s.btc_cross != null ? `<span style="color:${s.btc_cross===0?'var(--up)':'var(--down)'};font-weight:700;">${s.btc_cross}</span>` : '—'],
+    ['ETH dist', s.eth_dist_pct != null ? s.eth_dist_pct.toFixed(3)+'%' : (s.pct_from_strike != null ? s.pct_from_strike.toFixed(3)+'%' : '—')],
+    ['ETH ITM', s.eth_itm != null ? (s.eth_itm ? '<span style="color:var(--up)">YES</span>' : '<span style="color:var(--down)">NO</span>') : '—'],
+    ['BTC ITM', s.btc_itm != null ? (s.btc_itm ? '<span style="color:var(--up)">YES</span>' : '<span style="color:var(--down)">NO</span>') : '—'],
+    ['Dwell %', s.dwell_itm != null ? (s.dwell_itm*100).toFixed(1)+'%' : '—'],
+    ['Streak %', s.streak_frac != null ? (s.streak_frac*100).toFixed(1)+'%' : '—'],
+    ['Entry', s.entry_cents != null ? s.entry_cents.toFixed(0)+'c' : '—'],
+  ].filter(([,v]) => v !== '—');
 
-  if (!rows.length) return '<div style="color:var(--ink-3);font-size:12px;padding:8px 0;">No hourly data â€” strategy fires at t=9-11min, t=30-42min, or tâ‰¥45min</div>';
+  if (!rows.length) return '<div style="color:var(--ink-3);font-size:12px;padding:8px 0;">No hourly data — strategy fires at t=9-11min, t=30-42min, or tâ‰¥45min</div>';
 
   return rows.map(([k,v]) => `<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">${k}</span><span class="cf-val">${v}</span></div>`).join('');
 }
@@ -1362,22 +1362,22 @@ function _buildBTCHourlyViewHtml(a) {
   const s = a.signals || {};
   const session = s.session || 'unknown';
   const sessionDisplay = session === 'asian'
-    ? '<span style="color:var(--down);font-weight:700;">Asian â€” SKIPPED</span>'
+    ? '<span style="color:var(--down);font-weight:700;">Asian — SKIPPED</span>'
     : '<span style="color:var(--up);font-weight:700;">Active</span>';
 
-  const vwapZ = s.vwap_z != null ? (s.vwap_z >= 0 ? '+' : '') + Number(s.vwap_z).toFixed(2) : 'â€”';
-  const rsi   = s.rsi != null ? Number(s.rsi).toFixed(0) : 'â€”';
-  const boll  = s.bollinger || 'â€”';
-  const mom   = s.momentum_reversal || 'â€”';
+  const vwapZ = s.vwap_z != null ? (s.vwap_z >= 0 ? '+' : '') + Number(s.vwap_z).toFixed(2) : '—';
+  const rsi   = s.rsi != null ? Number(s.rsi).toFixed(0) : '—';
+  const boll  = s.bollinger || '—';
+  const mom   = s.momentum_reversal || '—';
   const totalAdj = s.total_adj_before_taper != null
     ? (s.total_adj_before_taper >= 0 ? '+' : '') + Number(s.total_adj_before_taper).toFixed(3)
-    : 'â€”';
+    : '—';
   const pYes = s.final_p_yes != null
     ? Number(s.final_p_yes).toFixed(2) + (s.baseline_p_above != null
         ? ` <span style="color:var(--ink-3)">(baseline ${Number(s.baseline_p_above).toFixed(2)})</span>`
         : '')
-    : 'â€”';
-  const entry = s.entry_cents != null ? Number(s.entry_cents).toFixed(0) + 'Â¢' : 'â€”';
+    : '—';
+  const entry = s.entry_cents != null ? Number(s.entry_cents).toFixed(0) + 'c' : '—';
 
   const rows = [
     ['Session',   sessionDisplay],
@@ -1388,10 +1388,10 @@ function _buildBTCHourlyViewHtml(a) {
     ['Total adj', totalAdj],
     ['p_yes',     pYes],
     ['Entry',     entry],
-  ].filter(([, v]) => v !== 'â€”' || true);  // keep all rows for BTC V3 panel â€” 'â€”' is informative
+  ].filter(([, v]) => v !== '—' || true);  // keep all rows for BTC V3 panel — '—' is informative
 
   if (!rows.length) {
-    return '<div style="color:var(--ink-3);font-size:12px;padding:8px 0;">No BTC V3 data â€” strategy skipped or mid-signal-build.</div>';
+    return '<div style="color:var(--ink-3);font-size:12px;padding:8px 0;">No BTC V3 data — strategy skipped or mid-signal-build.</div>';
   }
   return rows.map(([k, v]) => `<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">${k}</span><span class="cf-val">${v}</span></div>`).join('');
 }
@@ -1428,10 +1428,10 @@ function renderSignalPanel(asset, assetData) {
   const rows = document.getElementById('sig-rows');
   if (!rows) return;
   const d = assetData || {};
-  if (action) action.textContent = d.status || 'â€”';
+  if (action) action.textContent = d.status || '—';
   if (reason) reason.textContent = d.skip_reason || '';
   const ev = d.ev;
-  if (evBadge) { evBadge.textContent=ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'â€”'; evBadge.style.color=ev>0?'var(--up)':ev<0?'var(--down)':'var(--ink-3)'; }
+  if (evBadge) { evBadge.textContent=ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—'; evBadge.style.color=ev>0?'var(--up)':ev<0?'var(--down)':'var(--ink-3)'; }
   rows.innerHTML = _buildSigRowsHtml(d.signals || {});
 }
 function selectSignalAsset(asset) {
@@ -1542,11 +1542,11 @@ async function pollBotStatus() {
     const pill = document.getElementById('status-pill');
     const lbl = document.getElementById('status-pill-label');
     if (pill) pill.className = 'status-pill ' + (alive&&!paused?'running':'stopped');
-    if (lbl) lbl.textContent = alive ? (paused?'PAUSED':'RUNNING') : 'STOPPED Â· WAITING';
+    if (lbl) lbl.textContent = alive ? (paused?'PAUSED':'RUNNING') : 'STOPPED · WAITING';
   } catch(e) {
     const pill=document.getElementById('status-pill'), lbl=document.getElementById('status-pill-label');
     if (pill) pill.className='status-pill stopped';
-    if (lbl) lbl.textContent='STOPPED Â· WAITING';
+    if (lbl) lbl.textContent='STOPPED · WAITING';
   }
 }
 
@@ -1582,25 +1582,25 @@ async function pollMarketPulse() {
     const data = await r.json(); if (!data || data.error) return;
     const skipEl = document.getElementById('pulse-skips');
     if (skipEl) {
-      const consec = data.consecutive_losses!=null?data.consecutive_losses:'â€”';
+      const consec = data.consecutive_losses!=null?data.consecutive_losses:'—';
       const lastSkip = data.last_skip_reason||'None';
-      const action = data.last_action||'â€”';
+      const action = data.last_action||'—';
       skipEl.innerHTML = `Action: <b>${escHtml(action)}</b><br>Skip: ${escHtml(lastSkip)}<br>Consec losses: <b>${consec}</b>`;
     }
     const tradesEl = document.getElementById('pulse-trades');
     if (tradesEl && data.recent_trades) {
       tradesEl.innerHTML = data.recent_trades.length ? data.recent_trades.map(t => {
         const cls=t.outcome==='win'?'pt-win':t.outcome==='loss'?'pt-loss':'';
-        const pnl=t.pnl_dollars!=null?fmtPnl(t.pnl_dollars):'â€”';
+        const pnl=t.pnl_dollars!=null?fmtPnl(t.pnl_dollars):'—';
         const side=t.side==='yes'?'UP':t.side==='no'?'DN':'?';
-        return `<div class="pt-row ${cls}">${fmtTime(t.ts)} Â· ${(t.mode||'?').toUpperCase()} Â· ${side} Â· ${pnl}</div>`;
+        return `<div class="pt-row ${cls}">${fmtTime(t.ts)} · ${(t.mode||'?').toUpperCase()} · ${side} · ${pnl}</div>`;
       }).join('') : '<div class="pt-row" style="color:var(--ink-3);">No trades yet</div>';
     }
     const pvEl = document.getElementById('pulse-pv');
     if (pvEl && data.price_validation) {
       const pv=data.price_validation, vdict=pv.verdict||'';
       const vcls=vdict==='VALIDATED'?'color:var(--up)':vdict==='MARGINAL'?'color:var(--amber)':vdict==='UNRELIABLE'?'color:var(--down)':'color:var(--ink-3)';
-      pvEl.innerHTML = `Samples: <b>${pv.count||0}</b> Â· Avg gap: <b>${pv.avg_gap!=null?pv.avg_gap+'Â¢':'â€”'}</b>${vdict?` Â· <b style="${vcls}">${escHtml(vdict)}</b>`:''}`;
+      pvEl.innerHTML = `Samples: <b>${pv.count||0}</b> · Avg gap: <b>${pv.avg_gap!=null?pv.avg_gap+'c':'—'}</b>${vdict?` · <b style="${vcls}">${escHtml(vdict)}</b>`:''}`;
     }
   } catch(e) { console.error('Pulse poll:', e); }
 }
@@ -1618,10 +1618,10 @@ async function pollPnl() {
     const _fmtWr = (obj, elId) => {
       const el = document.getElementById(elId); if (!el) return;
       if (obj.trades > 0) { const wr=obj.win_rate; el.textContent=wr.toFixed(0)+'% ('+obj.trades+')'; el.className='pf-val '+(wr>=50?'green':wr>=35?'':'red'); }
-      else { el.textContent='â€”'; el.className='pf-val'; }
+      else { el.textContent='—'; el.className='pf-val'; }
     };
     _fmtWr(al, 'pb-live-wr'); _fmtWr(ad, 'pb-demo-wr'); _fmtWr(ap, 'pb-paper-wr');
-    // Hide live/demo stat columns when no trades â€” avoid cluttering the bar with dashes
+    // Hide live/demo stat columns when no trades — avoid cluttering the bar with dashes
     const _showStatPair = (prefix, hasData) => {
       ['pnl','wr'].forEach(s => {
         const el = document.getElementById('pb-stat-'+prefix+'-'+s);
@@ -1638,10 +1638,10 @@ async function pollState() {
     const r = await fetch('/api/state'); if (!r.ok) return;
     const s = await r.json();
     const ph = s.phase || 'DONE';
-    const action=document.getElementById('st-action'); if(action) action.textContent=s.last_action||'â€”';
-    const reason=document.getElementById('st-reason'); if(reason) reason.textContent=s.last_skip_reason||'â€”';
+    const action=document.getElementById('st-action'); if(action) action.textContent=s.last_action||'—';
+    const reason=document.getElementById('st-reason'); if(reason) reason.textContent=s.last_skip_reason||'—';
     const limitBadge=document.getElementById('limit-badge');
-    if (s.limit_triggered&&s.limit_reason) { limitBadge.textContent='Warning: '+s.limit_reason+' â€” switched to paper mode'; limitBadge.classList.add('visible'); }
+    if (s.limit_triggered&&s.limit_reason) { limitBadge.textContent='Warning: '+s.limit_reason+' — switched to paper mode'; limitBadge.classList.add('visible'); }
     else limitBadge.classList.remove('visible');
     _openPosition = s.open_position || null;
     if (s.config) { if (!settingsPopulated) { populateSettings(s.config); populateAssetToggles(s.config); settingsPopulated=true; } updateBotToggleUI(s.config.bot_enabled!==false); }
@@ -1674,8 +1674,8 @@ async function pollTrades() {
   const pbTrades=document.getElementById('pb-trades');
   if (pbTrades) pbTrades.innerHTML=`<span style="opacity:.65;font-size:10px">Today</span> ${todayN}<br><span style="opacity:.65;font-size:10px">All-time</span> ${allN}`;
   const lwrEl=document.getElementById('live-wr');
-  if(lwrEl){const wr=alWr!=null?alWr:apWr!=null?apWr:null;lwrEl.textContent=wr!=null?`${wr}% WR all-time`:'â€”';}
-  const pwrEl=document.getElementById('paper-wr');if(pwrEl)pwrEl.textContent=apWr!=null?`${apWr}% WR`:'â€”';
+  if(lwrEl){const wr=alWr!=null?alWr:apWr!=null?apWr:null;lwrEl.textContent=wr!=null?`${wr}% WR all-time`:'—';}
+  const pwrEl=document.getElementById('paper-wr');if(pwrEl)pwrEl.textContent=apWr!=null?`${apWr}% WR`:'—';
   updateChartsAndPnl();
   if (_currentMarketSym && MARKET_TABS.includes(_currentTab)) renderMarketView(_currentMarketSym);
 }

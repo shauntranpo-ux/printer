@@ -2835,7 +2835,7 @@ async def place_order(
         )
         asyncio.create_task(send_telegram(
             f"<b>{_placed_ctx} MARKET ORDER PLACED</b>\n"
-            f"<b>{side.upper()}</b>  {contracts} contracts\n"
+            f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts\n"
             f"Expires in {_placed_mins}m {_placed_secs}s"
         ))
 
@@ -3038,7 +3038,7 @@ async def place_order(
     )
     await send_telegram(
         f"<b>{_nofill_ctx} MARKET ORDER NOT FILLED</b>  —  no liquidity\n"
-        f"{side.upper()}  {contracts}x"
+        f"{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}  {contracts}x"
     )
     return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
 
@@ -3721,9 +3721,7 @@ async def handle_ready_phase(
 
     # Position sizing — flat fixed amount
     # Reversal trades use 50% of configured amount (contrarian = smaller size)
-    trade_amount = config.get("trade_amount_dollars", 20)
-    if _is_reversal:
-        trade_amount = trade_amount * 0.50
+    trade_amount = config.get("trade_amount_dollars", 25)
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
     contracts, dollars_used = calculate_contracts(
         trade_amount, int(entry_price_cents), avail_liquidity,
@@ -3872,7 +3870,7 @@ async def handle_ready_phase(
     )
     await send_telegram(
         f"<b>{_fill_ctx} {mode_icon} {_strat_tag}</b>  —  {_time_str}\n"
-        f"<b>{side.upper()}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
+        f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
