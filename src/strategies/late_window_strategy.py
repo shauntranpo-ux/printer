@@ -39,8 +39,8 @@ class LateWindowStrategy(BaseStrategy):
         skip_config: SkipConfig,
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
+        confidence_threshold: float = 0.0,
     ):
-        # min_ev not used — we override decide() entirely
         super().__init__(
             asset=asset,
             skip_config=skip_config,

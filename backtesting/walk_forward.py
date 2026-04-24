@@ -112,15 +112,15 @@ def _mini_mc(windows, price_lookup, n_sims: int,
     best_sharpe  = -math.inf
     best_result  = None
 
-    for min_ev, min_confidence in combos:
+    for min_ev, vol_threshold in combos:
         r = run_backtest(
-            min_ev         = min_ev,
-            trade_amount   = trade_amount,
-            min_confidence = min_confidence,
-            verbose        = False,
-            asset          = asset,
-            _windows       = windows,
-            _price_lookup  = price_lookup,
+            min_ev        = min_ev,
+            trade_amount  = trade_amount,
+            vol_threshold = vol_threshold,
+            verbose       = False,
+            asset         = asset,
+            _windows      = windows,
+            _price_lookup = price_lookup,
         )
         if not r:
             continue
@@ -129,8 +129,8 @@ def _mini_mc(windows, price_lookup, n_sims: int,
             best_sharpe = s
             best_result = r
             best_params = {
-                "min_ev":         min_ev,
-                "min_confidence": min_confidence,
+                "min_ev":        min_ev,
+                "vol_threshold": vol_threshold,
             }
 
     return best_params, _metrics(best_result)
@@ -236,17 +236,17 @@ def run_walk_forward(
             continue
 
         print(f"     Best params  : ev={best_params['min_ev']:.0%}  "
-              f"conf={best_params['min_confidence']}")
+              f"vol={best_params['vol_threshold']:.2f}")
 
         # -- Run forward period with best params -------------------------------
         fwd_r = run_backtest(
-            min_ev         = best_params["min_ev"],
-            trade_amount   = trade_amount,
-            min_confidence = best_params["min_confidence"],
-            verbose        = False,
-            asset          = asset,
-            _windows       = fwd_w,
-            _price_lookup  = fwd_pl,
+            min_ev        = best_params["min_ev"],
+            trade_amount  = trade_amount,
+            vol_threshold = best_params["vol_threshold"],
+            verbose       = False,
+            asset         = asset,
+            _windows      = fwd_w,
+            _price_lookup = fwd_pl,
         )
         fwd_metrics = _metrics(fwd_r)
 
@@ -359,7 +359,7 @@ def _print_summary(results, efficiency, eff_pt,
     valid_params = [r["best_params"] for r in results if r.get("best_params")]
     if len(valid_params) >= 2:
         unique_ev   = len({p["min_ev"]         for p in valid_params})
-        unique_conf = len({p["min_confidence"] for p in valid_params})
+        unique_conf = len({p["vol_threshold"] for p in valid_params})
         if unique_ev == 1 and unique_conf == 1:
             print()
             print("  NOTE: Walk-forward: params converged to same values in all windows.")

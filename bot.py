@@ -1974,6 +1974,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
             from strategies.eth_hourly_combined import ETHHourlyCombinedStrategy
             strat = ETHHourlyCombinedStrategy(
                 skip_config=skip_cfg,
+                min_ev=min_ev,
                 stake_dollars=stake,
                 confidence_threshold=confidence_threshold,
             )

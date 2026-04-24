@@ -123,9 +123,9 @@ def _load_best_params() -> dict:
             cfg = json.load(fh)
         return {
             "min_ev":         0.30,
-            "min_confidence": int(cfg.get("confidence_threshold", 80)),
+            "vol_threshold": float(cfg.get("vol_gate_thresh", 1.80)),
         }
-    return {"min_ev": 0.30, "min_confidence": 80}
+    return {"min_ev": 0.30, "vol_threshold": 1.80}
 
 # -----------------------------------------------------------------------------
 # Empirical win-probability tables -- loaded from bv3_tables/*.json
@@ -347,6 +347,47 @@ def compute_momentum_acceleration(p_prior: float, p_mid: float, p_now: float,
     return float(max(-0.03, min(0.03, accel * mom_accel_scale)))
 
 
+def brain_decide_simple(
+    btc_price: float,
+    strike: float,
+    yes_ask: float,
+    no_ask: float,
+    mins_left: float,
+    min_ev: float = 0.05,
+    fee: float = 0.07,
+    asset: str = "BTC",
+    min_entry_price_cents: float = 10.0,
+    max_entry_price_cents: float = 76.0,
+) -> dict:
+    """
+    Simplified decision matching new BaseStrategy.decide() pipeline.
+    No momentum adjustments, no confidence gate.
+    Direction: current price vs strike (proxy for Octagon in backtest).
+    Probability: BV3 empirical win rate (proxy for oct_prob in backtest).
+    """
+    above   = btc_price > strike
+    side    = "yes" if above else "no"
+    entry_c = yes_ask if above else no_ask
+
+    if entry_c < min_entry_price_cents or entry_c >= max_entry_price_cents:
+        return {"action": "skip", "side": side, "ev": 0.0,
+                "entry_c": entry_c, "win_prob": 0.5}
+
+    abs_pct      = abs((btc_price - strike) / strike)
+    win_prob_raw = _empirical_win_prob(abs_pct, mins_left, asset=asset)
+    prob_yes     = win_prob_raw if above else (1.0 - win_prob_raw)
+    side_prob    = prob_yes if above else (1.0 - prob_yes)
+    ev           = side_prob - (entry_c / 100.0) - fee
+
+    return {
+        "action":   "trade" if ev >= min_ev else "skip",
+        "side":     side,
+        "ev":       float(ev),
+        "entry_c":  float(entry_c),
+        "win_prob": float(side_prob),
+    }
+
+
 # -----------------------------------------------------------------------------
 # Main backtest
 # -----------------------------------------------------------------------------
@@ -521,23 +562,12 @@ def run_backtest(
 ) -> dict:
     rng = random.Random(seed)
 
-    # Load per-asset P1/P2/P4 signal config from config.json
+    # Per-asset overrides for vol_gate_thresh and min_ev_base
     _overrides = _load_asset_overrides(asset)
-    vol_confirm_mult        = _overrides.get("vol_confirm_mult",        1.0)
-    vol_oppose_mult         = _overrides.get("vol_oppose_mult",         1.0)
-    mom_lock_enabled        = _overrides.get("mom_lock_enabled",        True)
-    mom_lock_neutral_tighten = _overrides.get("mom_lock_neutral_tighten", 1.0)
-    mom_accel_scale         = _overrides.get("mom_accel_scale",         3.0)
-    # Per-asset overrides for vol_gate_thresh and min_ev_base (match live bot behaviour)
     if "vol_gate_thresh" in _overrides:
         vol_threshold = _overrides["vol_gate_thresh"]
     if "min_ev_base" in _overrides:
         min_ev = float(_overrides["min_ev_base"]) / 100.0
-    if verbose:
-        print(f"  P1/P2/P4 overrides for {asset}: "
-              f"vol_confirm={vol_confirm_mult}, vol_oppose={vol_oppose_mult}, "
-              f"mom_lock={mom_lock_enabled}, neutral_tighten={mom_lock_neutral_tighten}, "
-              f"accel_scale={mom_accel_scale}")
 
     # Pre-warm the BV3 table for this asset (prints load message once)
     if asset not in _bv3_by_asset:
@@ -584,35 +614,7 @@ def run_backtest(
                 continue
 
             mins_left = float(15 - minute)
-
-            # 3-minute momentum (P1/P2/P4)
-            recent = [prices[m] for m in range(max(0, minute - 3), minute + 1)
-                      if m in prices]
-            _mom_pct, mom = compute_momentum(recent)
-
-            # P2: Direction lock -- skip when momentum opposes trade side.
-            # above=True -> would bet YES; bearish momentum opposes YES.
-            # above=False -> would bet NO; bullish momentum opposes NO.
-            _above = btc > strike
-            if mom_lock_enabled and mom != "neutral":
-                _mom_opposes = (mom == "bearish" and _above) or \
-                               (mom == "bullish" and not _above)
-                if _mom_opposes:
-                    continue
-
-            # P4: Momentum acceleration -- second derivative, confirming direction only.
-            _accel_adj = 0.0
-            _p_mid   = prices.get(minute - 3)
-            _p_prior = prices.get(minute - 6)
-            if _p_mid is not None and _p_prior is not None and mom != "neutral":
-                _mom_confirms = (mom == "bullish" and _above) or \
-                                (mom == "bearish" and not _above)
-                if _mom_confirms:
-                    _raw_accel = compute_momentum_acceleration(
-                        _p_prior, _p_mid, btc, mom_accel_scale
-                    )
-                    _mom_sign  = 1.0 if _above else -1.0
-                    _accel_adj = float(max(-0.03, min(0.03, _mom_sign * _raw_accel)))
+            _above    = btc > strike
 
             # -- Vol gate (mirrors bot.py realized vol gate) ------------------
             # FIX: Original code used only prices from minute 0..`minute`
@@ -653,17 +655,7 @@ def run_backtest(
                                 for j in range(1, len(vol_prices))]
                     rv = float(np.std(vol_rets))
                     expected_move = rv * (mins_left ** 0.5)
-                    # P1: Momentum-adaptive vol threshold.
-                    # Confirming momentum -> relax threshold (require stronger vol to skip).
-                    # Opposing momentum already blocked by P2 direction lock above.
-                    # Neutral -> tighten slightly.
-                    if mom == "neutral":
-                        _eff_thresh = vol_threshold * mom_lock_neutral_tighten
-                    elif (mom == "bullish" and _above) or (mom == "bearish" and not _above):
-                        _eff_thresh = vol_threshold * vol_confirm_mult
-                    else:
-                        _eff_thresh = vol_threshold * vol_oppose_mult
-                    if expected_move / abs_pct >= _eff_thresh:
+                    if expected_move / abs_pct >= vol_threshold:
                         vol_skip = True
             if vol_skip:
                 continue
@@ -672,25 +664,16 @@ def run_backtest(
             yes_ask, no_ask = simulate_amm_prices(btc, strike, rng)
 
             # Brain decision
-            brain = brain_decide(btc, strike, yes_ask, no_ask, mins_left,
-                                  mom, min_ev=min_ev, fee=KALSHI_FEE_CENTS / 100.0,
-                                  asset=asset,
-                                  max_entry_price_cents=max_entry_price_cents,
-                                  min_reward_cents=min_reward_cents,
-                                  max_risk_reward_ratio=max_risk_reward_ratio,
-                                  accel_adj=_accel_adj)
+            brain = brain_decide_simple(btc, strike, yes_ask, no_ask, mins_left,
+                                        min_ev=min_ev, fee=KALSHI_FEE_CENTS / 100.0,
+                                        asset=asset)
 
             if brain["action"] != "trade":
-                continue
-
-            # -- Confidence filter ---------------------------------------------
-            if brain["confidence"] < min_confidence:
                 continue
 
             # -- Entry ---------------------------------------------------------
             side       = brain["side"]
             entry_c    = brain["entry_c"]
-            confidence = brain["confidence"]
             win_prob   = brain["win_prob"]
             ev         = brain["ev"]
 
@@ -722,10 +705,8 @@ def run_backtest(
                 "pnl":          round(pnl,        4),
                 "fee":          round(fee_total,  4),
                 "profit_pct":   round(profit_pct, 2),
-                "confidence":   confidence,
                 "win_prob":     round(win_prob,   4),
                 "ev":           round(ev,         4),
-                "mom":          mom,
             })
 
             trade_placed = True
@@ -803,7 +784,7 @@ def run_backtest(
         else:
             cur_cl = 0
 
-    avg_conf       = sum(t["confidence"]  for t in trades) / total
+    avg_conf       = 0.0
     avg_profit_pct = sum(t["profit_pct"]  for t in trades) / total
 
     # Entry minute distribution
@@ -836,6 +817,7 @@ def run_backtest(
         "start_year":             start_year,
         "asset":                  asset,
         "min_ev":                 min_ev,
+        "vol_threshold":          vol_threshold,
         "trade_amount_dollars":   trade_amount,
         "total_windows":          total_windows,
         "windows_skipped":        skipped,
@@ -873,15 +855,43 @@ def write_to_db(r: dict, start_year: int) -> None:
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("""
+        CREATE TABLE IF NOT EXISTS stress_test_results (
+            id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_ts               TEXT,
+            asset                TEXT,
+            min_ev               REAL,
+            vol_threshold        REAL,
+            start_date           TEXT,
+            end_date             TEXT,
+            total_markets        INTEGER,
+            total_trades         INTEGER,
+            win_rate             REAL,
+            total_pnl_dollars    REAL,
+            max_drawdown_percent REAL,
+            avg_profit_percent   REAL,
+            sharpe_ratio         REAL,
+            max_consecutive_losses INTEGER
+        )
+    """)
+    # Add columns that may be missing from old schema
+    for col, typedef in [("asset", "TEXT"), ("min_ev", "REAL"), ("vol_threshold", "REAL")]:
+        try:
+            conn.execute(f"ALTER TABLE stress_test_results ADD COLUMN {col} {typedef}")
+        except Exception:
+            pass
+    conn.execute("""
         INSERT INTO stress_test_results (
-            run_ts, start_date, end_date,
+            run_ts, asset, min_ev, vol_threshold,
+            start_date, end_date,
             total_markets, total_trades, win_rate,
             total_pnl_dollars, max_drawdown_percent,
-            avg_confidence, avg_profit_percent,
-            sharpe_ratio, max_consecutive_losses
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            avg_profit_percent, sharpe_ratio, max_consecutive_losses
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     """, (
         datetime.now(timezone.utc).isoformat(),
+        r.get("asset", "UNK"),
+        r.get("min_ev", 0.0),
+        r.get("vol_threshold", 1.80),
         f"{start_year}-01-01",
         "2026-12-31",
         r["total_windows"],
@@ -889,7 +899,6 @@ def write_to_db(r: dict, start_year: int) -> None:
         r["win_rate"],
         r["total_pnl_dollars"],
         r["max_drawdown_percent"],
-        r["avg_confidence"],
         r["avg_profit_percent"],
         r["sharpe_ratio"],
         r["max_consecutive_losses"],
@@ -1000,7 +1009,7 @@ def print_reality_check(r: dict) -> None:
                            if w.get("best_params")]
             if len(_all_params) >= 2:
                 _u_ev   = len({p.get("min_ev")          for p in _all_params})
-                _u_conf = len({p.get("min_confidence")  for p in _all_params})
+                _u_conf = len({p.get("vol_threshold")  for p in _all_params})
                 wfv_varied = (_u_ev > 1 or _u_conf > 1)
         except Exception:
             pass
@@ -1125,14 +1134,14 @@ def run_sweep(start_year: int, trade_amount: float) -> None:
 MONTE_CARLO_OUT = os.path.join(_BASE_DIR, "monte_carlo_results.json")
 
 PARAM_SPACE = {
-    "min_ev":         [0.03, 0.05, 0.08, 0.10, 0.12, 0.15],
-    "min_confidence": [60, 65, 70, 75, 80, 85],
+    "min_ev":        [0.03, 0.05, 0.07, 0.09, 0.10],
+    "vol_threshold": [1.2, 1.5, 1.8, 2.0, 2.5],
 }
 
-# Pre-computed pool of all unique combinations (6 x 6 = 36)
+# Pre-computed pool of all unique combinations (5 x 5 = 25)
 _ALL_COMBOS = list(itertools.product(
     PARAM_SPACE["min_ev"],
-    PARAM_SPACE["min_confidence"],
+    PARAM_SPACE["vol_threshold"],
 ))
 
 
@@ -1174,23 +1183,23 @@ def run_monte_carlo(n_simulations: int = 10_000, start_year: int = 2020,
     combos_to_run = combo_pool[:effective_n]
 
     t0 = time.time()
-    for i, (min_ev, min_confidence) in enumerate(combos_to_run, 1):
+    for i, (min_ev, vol_threshold) in enumerate(combos_to_run, 1):
 
         r = run_backtest(
-            min_ev         = min_ev,
-            trade_amount   = trade_amount,
-            min_confidence = min_confidence,
-            verbose        = False,
-            _windows       = windows,
-            _price_lookup  = price_lookup,
+            min_ev        = min_ev,
+            trade_amount  = trade_amount,
+            vol_threshold = vol_threshold,
+            verbose       = False,
+            _windows      = windows,
+            _price_lookup = price_lookup,
         )
 
         if not r:
             continue
 
         r["params"] = {
-            "min_ev":         min_ev,
-            "min_confidence": min_confidence,
+            "min_ev":        min_ev,
+            "vol_threshold": vol_threshold,
         }
         all_results.append(r)
 
@@ -1258,7 +1267,7 @@ def _print_mc_summary(top20: list) -> None:
     print("-" * W)
     for rank, r in enumerate(top20, 1):
         p = r["params"]
-        param_str = f"ev={p['min_ev']:.0%} conf={p['min_confidence']}"
+        param_str = f"ev={p['min_ev']:.0%} vol={p['vol_threshold']:.1f}"
         print(f"  {rank:>4}  {r['sharpe_ratio']:>7.3f}  "
               f"{r['win_rate']*100:>7.1f}%  "
               f"${r['total_pnl_dollars']:>7.2f}  "
@@ -1268,7 +1277,7 @@ def _print_mc_summary(top20: list) -> None:
     print(f"\n  BEST PARAMS:")
     bp = best["params"]
     print(f"    min_ev          = {bp['min_ev']:.0%}")
-    print(f"    min_confidence  = {bp['min_confidence']}")
+    print(f"    vol_threshold   = {bp['vol_threshold']:.2f}")
     print(f"\n  Expected win rate     : {best['win_rate']*100:.1f}%")
     ann_return = (best["total_pnl_dollars"] / (best["total_trades"] * 5.0) *
                   35_040 * 5.0) if best["total_trades"] else 0
@@ -1296,8 +1305,8 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
     if custom_ev is not None or custom_confidence is not None:
         base = _load_best_params()
         params = {
-            "min_ev":         custom_ev         if custom_ev         is not None else base["min_ev"],
-            "min_confidence": custom_confidence if custom_confidence is not None else base["min_confidence"],
+            "min_ev":        custom_ev if custom_ev is not None else base["min_ev"],
+            "vol_threshold": base.get("vol_threshold", 1.80),
         }
     else:
         params = _load_best_params()
@@ -1306,7 +1315,7 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
     print("  OOS EVALUATION")
     print("=" * 70)
     src = "custom" if (custom_ev is not None or custom_confidence is not None) else "MC best"
-    print(f"  Params ({src})  :  ev={params['min_ev']:.0%}  conf={params['min_confidence']}")
+    print(f"  Params ({src})  :  ev={params['min_ev']:.0%}  vol={params['vol_threshold']:.2f}")
     print(f"  Train period :  {split_cfg['train_start_date']} -> "
           f"{split_cfg['train_end_date']}  ({split_cfg['train_windows']:,} windows)")
     print(f"  OOS period   :  {split_cfg['oos_start_date']} -> "
@@ -1321,23 +1330,23 @@ def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
 
     print(f"\n  Running in-sample backtest  ({len(train_w):,} windows) ...")
     train_r = run_backtest(
-        min_ev         = params["min_ev"],
-        trade_amount   = trade_amount,
-        min_confidence = params["min_confidence"],
-        watch_minutes  = custom_watch,
-        verbose        = False,
-        _windows       = train_w,
+        min_ev        = params["min_ev"],
+        trade_amount  = trade_amount,
+        vol_threshold = params["vol_threshold"],
+        watch_minutes = custom_watch,
+        verbose       = False,
+        _windows      = train_w,
         _price_lookup  = train_pl,
     )
 
     print(f"  Running OOS backtest        ({len(oos_w):,} windows) ...")
     oos_r = run_backtest(
-        min_ev         = params["min_ev"],
-        trade_amount   = trade_amount,
-        min_confidence = params["min_confidence"],
-        watch_minutes  = custom_watch,
-        verbose        = False,
-        _windows       = oos_w,
+        min_ev        = params["min_ev"],
+        trade_amount  = trade_amount,
+        vol_threshold = params["vol_threshold"],
+        watch_minutes = custom_watch,
+        verbose       = False,
+        _windows      = oos_w,
         _price_lookup  = oos_pl,
     )
 

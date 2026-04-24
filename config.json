@@ -7,11 +7,11 @@
   "daily_profit_target_dollars": 200,
   "max_consecutive_losses": 5,
   "enable_reversal_signal": false,
-  "min_ev_base": 8,
+  "min_ev_base": 5,
   "_note_min_ev_base": "in percent, e.g. 8 = 0.08 minimum EV threshold",
   "kalshi_fee_per_contract_cents": 7,
   "preflight_override": false,
-  "vol_gate_thresh": 1.8,
+  "vol_gate_thresh": 1.7,
   "min_entry_price_cents": 35,
   "max_entry_price_cents": 100,
   "min_reward_cents": 15,
@@ -26,13 +26,7 @@
     "SOL",
     "XRP"
   ],
-  "asset_overrides": {
-    "BTC": {
-      "min_ev_base": 5,
-      "vol_gate_thresh": 1.6,
-      "confidence_threshold": 80
-    }
-  },
+  "asset_overrides": {},
   "use_new_strategies": {
     "BTC": true,
     "ETH": true,

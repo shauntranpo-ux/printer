@@ -205,17 +205,18 @@ def query(
     strike: float,
     yes_ask: float,
     no_ask: float,
-    side: str,
+    side: Optional[str],
     is_15m: bool,
 ) -> tuple[Optional[float], Optional[bool], Optional[str], bool]:
     """
     Query Octagon for a prediction on the given Kalshi contract.
 
     Returns (model_prob, direction_agrees, confidence, cache_hit).
-    Returns (None, None, None, False) on any error — caller must fall through.
+    Returns (None, None, None, False) on any error — caller must skip the trade.
 
     confidence: "high" (>=5pp delta), "medium" (>=2pp), "low" (<2pp)
-    direction_agrees: True when Octagon's implied direction matches `side`
+    direction_agrees: True when Octagon's implied direction matches `side`;
+                      None when side is None (caller derives direction from model_prob)
     """
     try:
         parts = ticker.split("-")
@@ -253,7 +254,7 @@ def query(
 
         # direction_agrees: Octagon bullish (model > market) → favours YES
         octagon_bullish = model_prob > market_prob
-        direction_agrees = octagon_bullish == (side == "yes")
+        direction_agrees = (octagon_bullish == (side == "yes")) if side is not None else None
 
         diff = abs(model_prob - market_prob)
         if diff >= 0.05:
@@ -266,7 +267,7 @@ def query(
         log.info(
             "Octagon [%s] strike=%d side=%s model=%.1f%% market=%.1f%% "
             "agrees=%s conf=%s cache=%s",
-            ticker, strike_int, side,
+            ticker, strike_int, side or "N/A",
             model_prob * 100, market_prob * 100,
             direction_agrees, confidence, cache_hit,
         )

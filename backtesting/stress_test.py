@@ -167,7 +167,7 @@ def run_stress_test(
     print("\n" + "=" * 68)
     print("  EXECUTION NOISE STRESS TEST")
     print("=" * 68)
-    print(f"  Params   :  ev={params['min_ev']:.0%}  conf={params['min_confidence']}")
+    print(f"  Params   :  ev={params['min_ev']:.0%}  vol={params.get('vol_threshold', params.get('min_confidence', '?'))}")
     print(f"  Iters    :  {n_iters:,}")
     print(f"  Max slip :  {max_slippage_bps:.0f} bps")
     print(f"  Latency  :  {latency_ms} ms  "
@@ -180,13 +180,13 @@ def run_stress_test(
     t0 = time.time()
     base_trades: list[dict] = []
     base_result = bt.run_backtest(
-        start_year     = start_year,
-        min_ev         = params["min_ev"],
-        trade_amount   = trade_amount,
-        min_confidence = params["min_confidence"],
-        asset          = asset,
-        verbose        = False,
-        _trades_out    = base_trades,
+        start_year    = start_year,
+        min_ev        = params["min_ev"],
+        trade_amount  = trade_amount,
+        vol_threshold = params.get("vol_threshold", 1.80),
+        asset         = asset,
+        verbose       = False,
+        _trades_out   = base_trades,
     )
 
     if not base_result or not base_trades:
