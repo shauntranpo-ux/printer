@@ -554,7 +554,7 @@ def run_backtest(
     watch_minutes: int  = 1,
     seed: int = 42,
     verbose: bool = True,
-    min_confidence: int = 65,
+    min_confidence: int = 78,
     vol_threshold: float = 1.50,   # skip if expected_move / abs_pct >= this
     asset: str          = "BTC",   # which asset to backtest
     max_entry_price_cents: float = 100.0,
