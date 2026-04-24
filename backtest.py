@@ -1650,6 +1650,7 @@ if __name__ == "__main__":
             n_mc_sims    = args.wf_mc_sims,
             trade_amount = args.amount,
             start_year   = args.start_year,
+            asset        = args.asset[0] if args.asset else "BTC",
         )
         sys.exit(0)
 
@@ -1665,6 +1666,7 @@ if __name__ == "__main__":
             latency_ms       = args.st_latency_ms,
             trade_amount     = args.amount,
             start_year       = args.start_year,
+            asset            = args.asset[0] if args.asset else "BTC",
         )
         sys.exit(0)
 

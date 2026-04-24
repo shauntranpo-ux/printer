@@ -145,6 +145,7 @@ def run_stress_test(
     trade_amount:     float = 5.0,
     start_year:       int   = 2020,
     seed:             int   = 42,
+    asset:            str   = "BTC",
 ) -> None:
     """
     Full stress-test pipeline:
@@ -183,6 +184,7 @@ def run_stress_test(
         min_ev         = params["min_ev"],
         trade_amount   = trade_amount,
         min_confidence = params["min_confidence"],
+        asset          = asset,
         verbose        = False,
         _trades_out    = base_trades,
     )

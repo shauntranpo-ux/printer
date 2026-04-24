@@ -5,9 +5,9 @@ Run from project root: py run_sweep.py
 
 Sections
 --------
-  1. Simple Backtest   -- 6 param combos x all assets
-  2. Walk-Forward Analysis (WFA) -- 8-window rolling OOS validation
-  3. Monte Carlo Stress Test    -- execution noise (slippage / latency)
+  1. Simple Backtest        -- 6 param combos x all assets
+  2. Walk-Forward Analysis  -- 8-window rolling OOS validation, per asset
+  3. Monte Carlo Stress     -- execution noise (slippage / latency), per asset
 """
 
 import os
@@ -22,10 +22,11 @@ AMOUNT = 25.0
 ASSETS = ["BTC", "ETH", "SOL", "XRP"]
 
 # ---------------------------------------------------------------------------
-# Parameter combinations
+# Parameter combinations (used for Section 1 simple backtest only)
+# WFA and MC use their own internal param search / best-params from prior runs
 # ---------------------------------------------------------------------------
 COMBOS = [
-    # label                    ev     vol    conf
+    # label                      ev     vol    conf
     ("EV=5%  VOL=1.20 CONF=76", 0.05, 1.20,  76),
     ("EV=7%  VOL=1.50 CONF=76", 0.07, 1.50,  76),
     ("EV=9%  VOL=1.80 CONF=76", 0.09, 1.80,  76),
@@ -74,42 +75,44 @@ for label, ev, vol, conf in COMBOS:
 
 
 # ===========================================================================
-# Section 2 — Walk-Forward Analysis
+# Section 2 — Walk-Forward Analysis (per asset)
 # ===========================================================================
 print("\n" + "#" * 72)
 print("#  SECTION 2 — WALK-FORWARD ANALYSIS  (8 windows, 50 MC sims each)")
-print("#  Searches internal param grid per window, reports efficiency ratio.")
+print("#  Internal param search per window — reports OOS efficiency ratio.")
+print("#  Runs once per asset.")
 print("#" * 72)
 
-run(
-    "WALK-FORWARD  windows=8  mc-sims=50",
-    [PY, BT,
-     "--walk-forward",
-     "--wf-windows", "8",
-     "--wf-mc-sims", "50",
-     "--amount",     str(AMOUNT)],
-)
+for asset in ASSETS:
+    run(
+        f"WFA  {asset}  windows=8  mc-sims=50",
+        [PY, BT,
+         "--walk-forward",
+         "--wf-windows", "8",
+         "--wf-mc-sims", "50",
+         "--amount",     str(AMOUNT),
+         "--asset",      asset],
+    )
 
 
 # ===========================================================================
-# Section 3 — Monte Carlo Stress Test (execution noise)
+# Section 3 — Monte Carlo Stress Test (per asset)
 # ===========================================================================
 print("\n" + "#" * 72)
 print("#  SECTION 3 — MONTE CARLO STRESS TEST  (slippage + latency noise)")
-print("#  Each combo: 300 noise iterations, up to 20 bps adverse slippage.")
+print("#  Uses best params found by WFA. 300 noise iters, 20 bps max slip.")
+print("#  Runs once per asset.")
 print("#" * 72)
 
-for label, ev, vol, conf in COMBOS:
+for asset in ASSETS:
     run(
-        f"STRESS-TEST  {label}",
+        f"STRESS-TEST  {asset}  iters=300  slip=20bps",
         [PY, BT,
          "--stress-test",
          "--st-iters",        "300",
          "--st-max-slippage", "20",
-         "--ev",              str(ev),
-         "--vol-gate",        str(vol),
-         "--confidence",      str(conf),
-         "--amount",          str(AMOUNT)],
+         "--amount",          str(AMOUNT),
+         "--asset",           asset],
     )
 
 

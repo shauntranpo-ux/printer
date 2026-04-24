@@ -118,6 +118,7 @@ def _mini_mc(windows, price_lookup, n_sims: int,
             trade_amount   = trade_amount,
             min_confidence = min_confidence,
             verbose        = False,
+            asset          = asset,
             _windows       = windows,
             _price_lookup  = price_lookup,
         )
@@ -143,6 +144,7 @@ def run_walk_forward(
     n_mc_sims: int          = 50,
     start_year: int         = 2020,
     trade_amount: float     = 5.0,
+    asset: str              = "BTC",
 ) -> None:
     """
     Run Walk-Forward Validation over the TRAIN partition.
@@ -178,7 +180,7 @@ def run_walk_forward(
 
     # -- Load train data ------------------------------------------------------
     print("  Loading train partition ...")
-    all_w, all_pl = load_data(start_year, verbose=True, mode="train")
+    all_w, all_pl = load_data(start_year, verbose=True, mode="train", asset=asset)
     n_total = len(all_w)
 
     min_needed = n_windows * 20          # at least 20 windows per chunk
@@ -242,6 +244,7 @@ def run_walk_forward(
             trade_amount   = trade_amount,
             min_confidence = best_params["min_confidence"],
             verbose        = False,
+            asset          = asset,
             _windows       = fwd_w,
             _price_lookup  = fwd_pl,
         )
