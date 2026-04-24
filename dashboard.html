@@ -1473,17 +1473,18 @@ function renderSignalPanel(asset, assetData) {
     const lastOk = oc.last_ok_ts;
     const calls = oc.calls || 0;
     const hits = oc.hits || 0;
+    const refreshCalls = oc.refresh_calls || 0;
     const ago = lastOk ? Math.round((Date.now()/1000 - lastOk)/60) : null;
     const sigs = d.signals || {};
     const octDir = sigs.octagon_direction;
     const octProb = sigs.octagon_model_prob;
     const mktProb = sigs.octagon_market_prob;
     const octConf = sigs.octagon_confidence;
-    if (octCallsLbl) octCallsLbl.textContent = calls > 0 ? calls+' calls · '+hits+' cached' : '';
+    if (octCallsLbl) { const rPart = refreshCalls>0 ? ' · '+refreshCalls+' refresh' : ''; octCallsLbl.textContent = calls > 0 ? calls+' calls · '+hits+' cached'+rPart : (refreshCalls>0?refreshCalls+' refresh pending':''); }
     if (!hasKey) {
       octRows.innerHTML = '<div class="cf-row"><div class="cf-dot off"></div><span class="cf-name">API key</span><span class="cf-val" style="color:var(--down);">MISSING</span></div>';
     } else if (calls === 0) {
-      octRows.innerHTML = '<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">Key set, no calls yet</span><span class="cf-val" style="color:var(--amber);">READY</span></div>';
+      octRows.innerHTML = refreshCalls>0 ? '<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">Refresh in progress</span><span class="cf-val" style="color:var(--amber);">~30s</span></div>' : '<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">Key set, no calls yet</span><span class="cf-val" style="color:var(--amber);">READY</span></div>';
     } else if (octDir != null) {
       const dirCol = octDir==='yes'?'var(--up)':'var(--down)';
       const dirTxt = octDir==='yes'?'▲ YES':'▼ NO';

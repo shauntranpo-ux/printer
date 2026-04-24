@@ -1942,11 +1942,12 @@ def _octagon_status_snapshot() -> dict:
             "last_ok_ts":   st.get("last_ok_ts"),
             "last_fail_ts": st.get("last_fail_ts"),
             "calls":        st.get("calls", 0),
-            "hits":         st.get("hits", 0),
+            "hits":          st.get("hits", 0),
+            "refresh_calls": st.get("refresh_calls", 0),
         }
     except Exception:
         import os as _os
-        return {"key_present": bool(_os.environ.get("OCTAGON_API_KEY")), "calls": 0, "hits": 0}
+        return {"key_present": bool(_os.environ.get("OCTAGON_API_KEY")), "calls": 0, "hits": 0, "refresh_calls": 0}
 
 
 def _strategy_name_for(asset, duration_min):
