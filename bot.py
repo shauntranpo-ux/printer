@@ -1935,7 +1935,7 @@ def _strategy_name_for(asset, duration_min):
         return "BTCHourly V3"
     if is_hourly:
         return f"{asset}Hourly"
-    return f"{asset}15m"
+    return "Octagon→EV"
 
 
 def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):

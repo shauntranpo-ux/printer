@@ -714,6 +714,11 @@ function renderMarketView(sym) {
   const dir = a.direction;
   const ev = a.ev, wp = a.win_prob, yask = a.yes_ask, nask = a.no_ask;
   const dist = a.distance_pct, strike = a.strike, secs = a.secs_left || 0;
+  const _sigs = a.signals || {};
+  const _octDir = _sigs.octagon_direction;
+  const _octMod = _sigs.octagon_model_prob;
+  const _octMkt = _sigs.octagon_market_prob;
+  const _evPass = _sigs.ev_pass;
 
   // Arrow HTML
   let arrowHtml;
@@ -781,7 +786,12 @@ function renderMarketView(sym) {
       <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${(isHourlyAsset?_nask15:nask)!=null?(isHourlyAsset?_nask15:nask)+'c':'—'}</div></div>
       <div class="mv-kpi-cell"><div class="mv-kpi-lbl">EV</div><div class="mv-kpi-val ${(isHourlyAsset?_ev15:ev)!=null&&(isHourlyAsset?_ev15:ev)>0?'g':(isHourlyAsset?_ev15:ev)!=null&&(isHourlyAsset?_ev15:ev)<0?'r':''}">${(isHourlyAsset?_ev15:ev)!=null?((isHourlyAsset?_ev15:ev)>=0?'+':'')+(isHourlyAsset?_ev15:ev).toFixed(1)+'%':'—'}</div></div>
       <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Win Prob</div><div class="mv-kpi-val">${(isHourlyAsset?_wp15:wp)!=null?(isHourlyAsset?_wp15:wp).toFixed(1)+'%':'—'}</div></div>
-    </div>` : `<div class="mv-section-waiting">Next 15-minute window not yet open.</div>`}
+    </div>
+    <div style="padding:8px 14px 7px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);background:rgba(99,102,241,.05);">
+      <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);flex-shrink:0;">Octagon</span>
+      ${_octDir ? `<span style="font-size:13px;font-weight:800;color:${_octDir==='yes'?'var(--up)':'var(--down)'};">${_octDir==='yes'?'▲ YES':'▼ NO'}</span><span style="font-size:11px;color:var(--ink-3);">model <b style="color:var(--ink)">${(_octMod*100).toFixed(1)}%</b> &middot; mkt ${(_octMkt*100).toFixed(1)}%</span><span style="margin-left:auto;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${_evPass?'rgba(27,158,85,.12)':'rgba(214,57,73,.1)'};color:${_evPass?'var(--up)':'var(--down)'};border:1px solid ${_evPass?'rgba(27,158,85,.3)':'rgba(214,57,73,.3)'};">${_evPass?'EV PASS':'EV FAIL'}</span>` : `<span style="font-size:11px;color:var(--ink-3);">—</span>`}
+    </div>
+` : `<div class="mv-section-waiting">Next 15-minute window not yet open.</div>`}
     <div class="mv-body">
       <div class="mv-row">
         <div class="card chart-card">
