@@ -1975,9 +1975,9 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
             _sys.path.insert(0, _src)
         from strategies.skip_layer import SkipConfig
 
-        # 15m strategies use a simplified price range (10-76c) and skip
-        # spread/cold-start/macro gates entirely (handled by is_15m in BaseStrategy).
-        _min_price = 10.0 if not is_hourly else float(config.get("min_entry_price_cents", 35.0))
+        # Both 15m and hourly use the same 35c floor from config.
+        # The old 10c hardcode for 15m let deep-OTM entries through (~16% WR).
+        _min_price = float(config.get("min_entry_price_cents", 35.0))
         _max_price = 76.0 if not is_hourly else 80.0
         skip_cfg = SkipConfig(
             max_spread_cents=float(config.get("max_spread_cents", 3.0)),

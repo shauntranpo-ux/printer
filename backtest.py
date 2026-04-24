@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """
 backtest.py - Strategy backtest for KXBTC15M printer_brain trading logic.
 
@@ -356,12 +356,13 @@ def brain_decide_simple(
     min_ev: float = 0.05,
     fee: float = 0.07,
     asset: str = "BTC",
-    min_entry_price_cents: float = 10.0,
+    min_entry_price_cents: float = 35.0,
     max_entry_price_cents: float = 76.0,
+    min_confidence: float = 0.76,
 ) -> dict:
     """
     Simplified decision matching new BaseStrategy.decide() pipeline.
-    No momentum adjustments, no confidence gate.
+    No momentum adjustments. Uses confidence gate and 35c floor (mirrors live bot).
     Direction: current price vs strike (proxy for Octagon in backtest).
     Probability: BV3 empirical win rate (proxy for oct_prob in backtest).
     """
@@ -378,6 +379,11 @@ def brain_decide_simple(
     prob_yes     = win_prob_raw if above else (1.0 - win_prob_raw)
     side_prob    = prob_yes if above else (1.0 - prob_yes)
     ev           = side_prob - (entry_c / 100.0) - fee
+
+    # Confidence gate: mirrors live BaseStrategy confidence_threshold
+    if side_prob < min_confidence:
+        return {"action": "skip", "side": side, "ev": float(ev),
+                "entry_c": float(entry_c), "win_prob": float(side_prob)}
 
     return {
         "action":   "trade" if ev >= min_ev else "skip",
@@ -666,7 +672,7 @@ def run_backtest(
             # Brain decision
             brain = brain_decide_simple(btc, strike, yes_ask, no_ask, mins_left,
                                         min_ev=min_ev, fee=KALSHI_FEE_CENTS / 100.0,
-                                        asset=asset)
+                                        asset=asset, min_confidence=min_confidence / 100.0)
 
             if brain["action"] != "trade":
                 continue

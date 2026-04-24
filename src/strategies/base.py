@@ -1,12 +1,12 @@
-"""
+﻿"""
 Abstract base class every per-market strategy inherits.
 
 Decision pipeline (same for 15m and hourly, all modes):
-  1. Skip layer   — price floor (10c); hourly also: spread, cold-start, vol-ratio
-  2. Octagon      — required direction signal; SKIP if unavailable/timeout/error
-  3. Direction    — YES if octagon_prob > market_prob, NO if octagon_prob < market_prob
-  4. EV check     — for Octagon's chosen direction; must meet configured minimum
-  5. Price cap    — 76c ceiling (15m) or 80c ceiling (hourly)
+  1. Skip layer   â€” price floor (10c); hourly also: spread, cold-start, vol-ratio
+  2. Octagon      â€” required direction signal; SKIP if unavailable/timeout/error
+  3. Direction    â€” YES if octagon_prob > market_prob, NO if octagon_prob < market_prob
+  4. EV check     â€” for Octagon's chosen direction; must meet configured minimum
+  5. Price cap    â€” 76c ceiling (15m) or 80c ceiling (hourly)
   6. Trade
 """
 
@@ -48,7 +48,7 @@ class BaseStrategy(ABC):
         features: MarketFeatures,
         baseline_p_above: float,
     ) -> tuple[float, dict]:
-        """Legacy hook — no longer called in the decision pipeline."""
+        """Legacy hook â€” no longer called in the decision pipeline."""
         return baseline_p_above, {}
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
@@ -74,7 +74,7 @@ class BaseStrategy(ABC):
         _total = _yes + _no
         market_prob = _yes / _total if _total > 0 else 0.5
 
-        # Step 3: Octagon — required direction signal
+        # Step 3: Octagon â€” required direction signal
         from strategies.signals import octagon_client as _octagon
         oct_prob, _, oct_conf, oct_hit = _octagon.query(
             features.ticker, features.strike,
@@ -118,7 +118,7 @@ class BaseStrategy(ABC):
                                 p_model=bv3,
                                 reason=(
                                     f"{bv3_side} BV3-fallback EV={side_ev:+.3f} "
-                                    f"(bv3={bv3:.3f} conf≥{self.confidence_threshold:.0%})"
+                                    f"(bv3={bv3:.3f} confâ‰¥{self.confidence_threshold:.0%})"
                                 ),
                                 contributing_signals={
                                     "octagon_direction": None,
@@ -187,6 +187,34 @@ class BaseStrategy(ABC):
             )
 
         features.octagon_direction_agrees = True  # we follow Octagon's direction
+
+        # Step 4b: confidence threshold — primary Octagon gate
+        # YES requires oct_prob >= threshold; NO requires oct_prob <= (1 - threshold)
+        if self.confidence_threshold > 0:
+            _ct = self.confidence_threshold
+            _below = (oct_side == "yes" and oct_prob < _ct)
+            _above = (oct_side == "no"  and oct_prob > 1.0 - _ct)
+            if _below or _above:
+                return Decision(
+                    action="skip",
+                    side=None,
+                    p_model=oct_prob,
+                    reason=(
+                        f"confidence_gate: oct_{oct_side}_prob={oct_prob:.3f} "
+                        f"outside threshold {_ct:.0%}/{1.0-_ct:.0%}"
+                    ),
+                    contributing_signals={
+                        "octagon_direction": oct_side,
+                        "octagon_model_prob": oct_prob,
+                        "octagon_market_prob": market_prob,
+                        "octagon_confidence": oct_conf,
+                        "octagon_cache_hit": oct_hit,
+                        "ev_pass": False,
+                        "vol_pass": True,
+                        "final_decision": "skip",
+                        "skip_reason": "confidence_gate",
+                    },
+                )
 
         # Step 5: EV for Octagon's chosen direction, using Octagon's model_prob
         ev = compute_bidirectional_ev(
