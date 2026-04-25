@@ -7,7 +7,7 @@ Decision pipeline (same for 15m and hourly, all modes):
   3. Direction       â€” YES if octagon_prob > market_prob, NO if octagon_prob < market_prob
   4. EV check        â€” for Octagon's chosen direction; must meet configured minimum
   5. Vol ratio gate  â€” buffer durability (hourly only; 15m auto-pass)
-  6. Confidence gate â€” oct_prob >= threshold (76%); final lock-in requirement
+  6. Confidence gate - p_ev (bv3_prob on 15m, oct_prob on hourly) >= threshold (76%)
   7. Price cap       â€” 76c ceiling (15m) or 80c ceiling (hourly)
   8. Trade
 """
@@ -160,7 +160,7 @@ class BaseStrategy(ABC):
                 },
             )
 
-        # Step 4: Octagon determines direction
+        # Step 3 continued: Octagon determines direction
         if oct_prob > market_prob:
             oct_side = "yes"
         elif oct_prob < market_prob:
@@ -288,6 +288,7 @@ class BaseStrategy(ABC):
                         "final_decision": "skip",
                         "skip_reason": "confidence_gate",
                     },
+                    expected_value=side_ev,
                 )
 
         # Step 7: entry price cap (76c for 15m, 80c for hourly)
@@ -296,7 +297,7 @@ class BaseStrategy(ABC):
             return Decision(
                 action="skip",
                 side=None,
-                p_model=oct_prob,
+                p_model=p_ev,
                 reason=cap_reason,
                 contributing_signals={
                     **base_signals,
@@ -312,7 +313,7 @@ class BaseStrategy(ABC):
         return Decision(
             action="trade",
             side=oct_side,
-            p_model=oct_prob,
+            p_model=p_ev,
             reason=(
                 f"{oct_side} EV={side_ev:+.3f} "
                 f"(octagon={oct_prob:.3f} market={market_prob:.3f})"
