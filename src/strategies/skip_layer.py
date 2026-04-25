@@ -1,4 +1,4 @@
-"""
+﻿"""
 Explicit pre-strategy skip rules. Returns skip reason or None (proceed).
 
 Runs BEFORE any strategy logic. If this returns a reason, we never call the
@@ -57,40 +57,10 @@ def check_skip(
     if len(features.prices_60m) < cfg.cold_start_samples:
         return f"cold_start: only {len(features.prices_60m)} samples (need {cfg.cold_start_samples})"
 
-    # Vol gate — need realized_vol computed
-    if features.realized_vol_1min is None:
-        return "realized_vol not yet computed"
-
-    # Spread check — we check both sides; the EV layer will pick the better one.
+    # Spread check â€” we check both sides; the EV layer will pick the better one.
     # Skip only if BOTH sides have blown-out spreads.
     if features.spread_yes > cfg.max_spread_cents and features.spread_no > cfg.max_spread_cents:
         return f"spread too wide: yes={features.spread_yes:.0f}c no={features.spread_no:.0f}c"
-
-    rv = features.realized_vol_1min
-    if rv < 0.0001:
-        return f"realized_vol too low: {rv:.4f}/min (market may be halted)"
-
-    # Buffer durability gate.
-    # vol_ratio = (rv * sqrt(mins_left)) / buffer_pct
-    # Skip when ratio is too high (buffer too thin relative to expected move).
-    #
-    # Short-duration markets (< 20 min) skip this check: Kalshi's 15m ladders
-    # place strikes right at the current price (dist ~0.01%), which makes the
-    # ratio explode even in mild volatility. For these markets we rely on the
-    # EV gate + 35c floor + 80c cap to filter bad trades.
-    _is_short_duration = features.seconds_left < 20 * 60
-    if features.current_price > 0 and features.strike > 0 and rv > 0 and not _is_short_duration:
-        abs_pct = abs(features.current_price - features.strike) / features.current_price
-        mins_left = features.seconds_left / 60.0
-        if abs_pct > 0 and mins_left > 0:
-            vol_ratio      = rv * (mins_left ** 0.5) / abs_pct
-            buf_durability = (abs_pct / rv) ** 2
-
-            if vol_ratio >= cfg.vol_ratio_threshold:
-                return (
-                    f"buffer_too_thin: vol_ratio={vol_ratio:.2f} >= {cfg.vol_ratio_threshold:.2f} "
-                    f"(dist={abs_pct*100:.2f}% dur={buf_durability:.1f}min)"
-                )
 
     return None
 
@@ -117,7 +87,7 @@ def check_skip_with_asset_hook(
 def check_entry_price_cap(entry_cents: float, side: str, cfg: SkipConfig) -> Optional[str]:
     """Post-decision guard: reject trades at or above cfg.max_entry_price_cents.
 
-    At 80c+ entries the Kalshi fee drag exceeds any realistic edge — even a 97% WR
+    At 80c+ entries the Kalshi fee drag exceeds any realistic edge â€” even a 97% WR
     strategy at 85c yields ~0c net after fees, and 100c entries are pure fee drag.
     Returns a skip reason if the cap is violated, else None.
     """
@@ -147,5 +117,39 @@ def check_skip_15m(
         return (
             f"price_floor_15m: {cheap_side}_ask={cheap:.0f}c "
             f"below {min_price_cents:.0f}c floor"
+        )
+    return None
+
+
+def check_vol_ratio(features: MarketFeatures, cfg: SkipConfig) -> Optional[str]:
+    """
+    Buffer durability gate: skip when expected move is too large relative to
+    strike distance (buffer too thin). Short-duration markets (< 20 min) bypass
+    this check because 15m strikes are placed near ATM, making the ratio explode
+    even in mild volatility.
+
+    Called from BaseStrategy.decide() as step 5 of the pipeline (after EV gate).
+    """
+    if features.seconds_left < 20 * 60:
+        return None  # 15m markets: bypass
+
+    rv = features.realized_vol_1min
+    if rv is None or rv < 0.0001:
+        return None  # no vol data — skip the check, not the trade
+
+    if features.current_price <= 0 or features.strike <= 0:
+        return None
+
+    abs_pct = abs(features.current_price - features.strike) / features.current_price
+    mins_left = features.seconds_left / 60.0
+    if abs_pct <= 0 or mins_left <= 0:
+        return None
+
+    vol_ratio = rv * (mins_left ** 0.5) / abs_pct
+    buf_durability = (abs_pct / rv) ** 2
+    if vol_ratio >= cfg.vol_ratio_threshold:
+        return (
+            f"buffer_too_thin: vol_ratio={vol_ratio:.2f} >= {cfg.vol_ratio_threshold:.2f} "
+            f"(dist={abs_pct*100:.2f}% dur={buf_durability:.1f}min)"
         )
     return None

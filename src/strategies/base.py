@@ -2,12 +2,14 @@
 Abstract base class every per-market strategy inherits.
 
 Decision pipeline (same for 15m and hourly, all modes):
-  1. Skip layer   â€” price floor (10c); hourly also: spread, cold-start, vol-ratio
-  2. Octagon      â€” required direction signal; SKIP if unavailable/timeout/error
-  3. Direction    â€” YES if octagon_prob > market_prob, NO if octagon_prob < market_prob
-  4. EV check     â€” for Octagon's chosen direction; must meet configured minimum
-  5. Price cap    â€” 76c ceiling (15m) or 80c ceiling (hourly)
-  6. Trade
+  1. Skip layer      â€” price floor (35c); hourly also: spread, cold-start
+  2. Octagon         â€” required direction signal; SKIP if unavailable/timeout/error
+  3. Direction       â€” YES if octagon_prob > market_prob, NO if octagon_prob < market_prob
+  4. EV check        â€” for Octagon's chosen direction; must meet configured minimum
+  5. Vol ratio gate  â€” buffer durability (hourly only; 15m auto-pass)
+  6. Confidence gate â€” oct_prob >= threshold (76%); final lock-in requirement
+  7. Price cap       â€” 76c ceiling (15m) or 80c ceiling (hourly)
+  8. Trade
 """
 
 from __future__ import annotations
@@ -16,7 +18,7 @@ from abc import ABC
 from typing import Optional
 
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import check_skip, check_skip_15m, check_entry_price_cap, SkipConfig
+from strategies.skip_layer import check_skip, check_skip_15m, check_entry_price_cap, check_vol_ratio, SkipConfig
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
 
@@ -188,35 +190,7 @@ class BaseStrategy(ABC):
 
         features.octagon_direction_agrees = True  # we follow Octagon's direction
 
-        # Step 4b: confidence threshold — primary Octagon gate
-        # YES requires oct_prob >= threshold; NO requires oct_prob <= (1 - threshold)
-        if self.confidence_threshold > 0:
-            _ct = self.confidence_threshold
-            _below = (oct_side == "yes" and oct_prob < _ct)
-            _above = (oct_side == "no"  and oct_prob > 1.0 - _ct)
-            if _below or _above:
-                return Decision(
-                    action="skip",
-                    side=None,
-                    p_model=oct_prob,
-                    reason=(
-                        f"confidence_gate: oct_{oct_side}_prob={oct_prob:.3f} "
-                        f"outside threshold {_ct:.0%}/{1.0-_ct:.0%}"
-                    ),
-                    contributing_signals={
-                        "octagon_direction": oct_side,
-                        "octagon_model_prob": oct_prob,
-                        "octagon_market_prob": market_prob,
-                        "octagon_confidence": oct_conf,
-                        "octagon_cache_hit": oct_hit,
-                        "ev_pass": False,
-                        "vol_pass": True,
-                        "final_decision": "skip",
-                        "skip_reason": "confidence_gate",
-                    },
-                )
-
-        # Step 5: EV for Octagon's chosen direction, using Octagon's model_prob
+        # Step 4: EV for Octagon's chosen direction
         ev = compute_bidirectional_ev(
             p_model=oct_prob,
             yes_ask_cents=features.yes_ask,
@@ -257,7 +231,52 @@ class BaseStrategy(ABC):
                 expected_value=side_ev,
             )
 
-        # Step 6: entry price cap (76c for 15m, 80c for hourly)
+        # Step 5: vol ratio gate (buffer durability; 15m markets auto-pass)
+        vol_skip = check_vol_ratio(features, self.skip_config)
+        if vol_skip:
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=oct_prob,
+                reason=f"vol_ratio: {vol_skip}",
+                contributing_signals={
+                    **base_signals,
+                    "ev_pass": True,
+                    "vol_pass": False,
+                    "final_decision": "skip",
+                    "skip_reason": "vol_ratio",
+                },
+                expected_value=side_ev,
+            )
+
+        # Step 6: confidence gate — YES: oct_prob >= threshold; NO: oct_prob <= (1 - threshold)
+        if self.confidence_threshold > 0:
+            _ct = self.confidence_threshold
+            _below = (oct_side == "yes" and oct_prob < _ct)
+            _above = (oct_side == "no"  and oct_prob > 1.0 - _ct)
+            if _below or _above:
+                return Decision(
+                    action="skip",
+                    side=None,
+                    p_model=oct_prob,
+                    reason=(
+                        f"confidence_gate: oct_{oct_side}_prob={oct_prob:.3f} "
+                        f"outside threshold {_ct:.0%}/{1.0-_ct:.0%}"
+                    ),
+                    contributing_signals={
+                        "octagon_direction": oct_side,
+                        "octagon_model_prob": oct_prob,
+                        "octagon_market_prob": market_prob,
+                        "octagon_confidence": oct_conf,
+                        "octagon_cache_hit": oct_hit,
+                        "ev_pass": True,
+                        "vol_pass": True,
+                        "final_decision": "skip",
+                        "skip_reason": "confidence_gate",
+                    },
+                )
+
+        # Step 7: entry price cap (76c for 15m, 80c for hourly)
         cap_reason = check_entry_price_cap(entry_cents, oct_side, self.skip_config)
         if cap_reason:
             return Decision(
@@ -275,7 +294,7 @@ class BaseStrategy(ABC):
                 expected_value=side_ev,
             )
 
-        # Step 7: trade
+        # Step 8: trade
         return Decision(
             action="trade",
             side=oct_side,
