@@ -81,7 +81,7 @@ def test_buffer_too_thin_skipped_for_short_duration_markets():
 
 def test_buffer_too_thin_still_applies_to_hourly():
     """60m markets still go through buffer_too_thin when dist is tiny + vol is high."""
-    from strategies.skip_layer import check_skip, SkipConfig
+    from strategies.skip_layer import check_vol_ratio, SkipConfig
     from strategies.features import MarketFeatures
     from collections import deque
     import time as _time
@@ -105,9 +105,9 @@ def test_buffer_too_thin_still_applies_to_hourly():
         realized_vol_1min=0.01,  # higher vol
     )
 
-    reason = check_skip(f, SkipConfig())
-    # Could be buffer_too_thin OR another filter — key is that hourly path runs it
-    assert reason is not None  # something should skip this lopsided setup
+    reason = check_vol_ratio(f, SkipConfig())
+    assert reason is not None
+    assert "buffer_too_thin" in reason
 
 
 def test_dwell_window_rejects_trade_at_100c_no_ask():

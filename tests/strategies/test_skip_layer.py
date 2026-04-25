@@ -52,9 +52,12 @@ def test_skip_on_cold_start():
 
 
 def test_skip_on_missing_vol():
+    # Vol guard moved out of check_skip into check_vol_ratio.
+    from strategies.skip_layer import check_vol_ratio
     f = _base_features()
     f.realized_vol_1min = None
-    assert "realized_vol" in check_skip(f, SkipConfig())
+    assert check_skip(f, SkipConfig()) is None
+    assert check_vol_ratio(f, SkipConfig()) is None
 
 
 def test_skip_when_both_spreads_wide():
