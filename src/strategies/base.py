@@ -190,9 +190,21 @@ class BaseStrategy(ABC):
 
         features.octagon_direction_agrees = True  # we follow Octagon's direction
 
-        # Step 4: EV for Octagon's chosen direction
+        # Probability used for EV + confidence gates.
+        # 15m: use BV3 empirical win rate (calibrated from real Kalshi binary outcomes).
+        # Octagon's absolute probability is tuned for hourly/daily directional sentiment
+        # and returns 0.78-0.91 for ALL 15m trades — rendering EV and confidence gates useless.
+        # Hourly: use Octagon directly (better calibrated for longer timeframes).
+        if self.is_15m and features.bv3_prob is not None:
+            p_ev = features.bv3_prob
+            p_ev_source = "bv3"
+        else:
+            p_ev = oct_prob
+            p_ev_source = "octagon"
+
+        # Step 4: EV gate using calibrated probability
         ev = compute_bidirectional_ev(
-            p_model=oct_prob,
+            p_model=p_ev,
             yes_ask_cents=features.yes_ask,
             no_ask_cents=features.no_ask,
             stake_dollars=self.stake_dollars,
@@ -207,6 +219,9 @@ class BaseStrategy(ABC):
             "octagon_market_prob": market_prob,
             "octagon_confidence": oct_conf,
             "octagon_cache_hit": oct_hit,
+            "p_ev": p_ev,
+            "p_ev_source": p_ev_source,
+            "bv3_prob": features.bv3_prob,
             "yes_ev": ev.yes_ev,
             "no_ev": ev.no_ev,
             "entry_cents": entry_cents,
@@ -216,10 +231,10 @@ class BaseStrategy(ABC):
             return Decision(
                 action="skip",
                 side=None,
-                p_model=oct_prob,
+                p_model=p_ev,
                 reason=(
                     f"EV below threshold: {oct_side}_ev={side_ev:+.3f} "
-                    f"< {self.min_ev:+.3f}"
+                    f"< {self.min_ev:+.3f} (p_ev={p_ev:.3f} [{p_ev_source}])"
                 ),
                 contributing_signals={
                     **base_signals,
@@ -237,7 +252,7 @@ class BaseStrategy(ABC):
             return Decision(
                 action="skip",
                 side=None,
-                p_model=oct_prob,
+                p_model=p_ev,
                 reason=f"vol_ratio: {vol_skip}",
                 contributing_signals={
                     **base_signals,
@@ -249,26 +264,25 @@ class BaseStrategy(ABC):
                 expected_value=side_ev,
             )
 
-        # Step 6: confidence gate — YES: oct_prob >= threshold; NO: oct_prob <= (1 - threshold)
+        # Step 6: confidence gate — final entry confirmation using calibrated probability.
+        # 15m: bv3_prob >= threshold means price is clearly beyond the strike.
+        # Hourly: oct_prob >= threshold means Octagon has high conviction.
+        # YES passes if p_ev >= threshold; NO passes if p_ev <= (1 - threshold).
         if self.confidence_threshold > 0:
             _ct = self.confidence_threshold
-            _below = (oct_side == "yes" and oct_prob < _ct)
-            _above = (oct_side == "no"  and oct_prob > 1.0 - _ct)
+            _below = (oct_side == "yes" and p_ev < _ct)
+            _above = (oct_side == "no"  and p_ev > 1.0 - _ct)
             if _below or _above:
                 return Decision(
                     action="skip",
                     side=None,
-                    p_model=oct_prob,
+                    p_model=p_ev,
                     reason=(
-                        f"confidence_gate: oct_{oct_side}_prob={oct_prob:.3f} "
+                        f"confidence_gate: {oct_side}_p_ev={p_ev:.3f} [{p_ev_source}] "
                         f"outside threshold {_ct:.0%}/{1.0-_ct:.0%}"
                     ),
                     contributing_signals={
-                        "octagon_direction": oct_side,
-                        "octagon_model_prob": oct_prob,
-                        "octagon_market_prob": market_prob,
-                        "octagon_confidence": oct_conf,
-                        "octagon_cache_hit": oct_hit,
+                        **base_signals,
                         "ev_pass": True,
                         "vol_pass": True,
                         "final_decision": "skip",
