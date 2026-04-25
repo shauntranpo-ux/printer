@@ -3761,8 +3761,15 @@ async def handle_ready_phase(
     contracts, dollars_used = calculate_contracts(
         trade_amount, int(entry_price_cents), avail_liquidity,
     )
-    if contracts == 0:
-        reason = "trade amount too small for current contract price"
+    target_contracts = int(float(trade_amount) * 100 / int(entry_price_cents)) if int(entry_price_cents) > 0 else 0
+    if contracts == 0 or contracts < target_contracts:
+        if contracts > 0:
+            reason = (
+                f"insufficient_liquidity: only {avail_liquidity} contracts available "
+                f"(${dollars_used:.2f} of ${float(trade_amount):.0f} target — skip partial fill)"
+            )
+        else:
+            reason = "trade amount too small for current contract price"
         log.info(f"{ticker}: {reason}")
         await _log_entry(market, "READY", secs_left, btc_price, strike,
                          int(entry_price_cents), score, "skip", reason, mode)
