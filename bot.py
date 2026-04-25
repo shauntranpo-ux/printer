@@ -1988,10 +1988,18 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
             vol_ratio_threshold=float(get_asset_config(config, asset, "vol_gate_thresh", 1.80)),
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
-        min_ev = float(overrides.get("min_ev_base",
-                                     config.get("min_ev_base", 8))) / 100.0
-        confidence_threshold = float(get_asset_config(config, asset, "confidence_threshold",
-                                                      config.get("confidence_threshold", 0))) / 100.0
+        if not is_hourly:
+            _ev_default = config.get("min_ev_base_15m", config.get("min_ev_base", 8))
+            _ev_base = float(overrides.get("min_ev_base", _ev_default))
+            _ct_default = config.get("confidence_threshold_15m", config.get("confidence_threshold", 0))
+            _ct = float(overrides.get("confidence_threshold_15m",
+                                      overrides.get("confidence_threshold", _ct_default)))
+        else:
+            _ev_base = float(overrides.get("min_ev_base", config.get("min_ev_base", 8)))
+            _ct = float(get_asset_config(config, asset, "confidence_threshold",
+                                         config.get("confidence_threshold", 0)))
+        min_ev = _ev_base / 100.0
+        confidence_threshold = _ct / 100.0
         stake = float(config.get("trade_amount_dollars", 25))
 
         if asset == "ETH" and is_hourly:

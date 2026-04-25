@@ -160,35 +160,65 @@ class BaseStrategy(ABC):
                 },
             )
 
-        # Step 3 continued: Octagon determines direction
-        if oct_prob > market_prob:
-            oct_side = "yes"
-        elif oct_prob < market_prob:
-            oct_side = "no"
+        # Step 3 continued: Determine direction.
+        # 15m: Octagon returns 0.78-0.91 for ALL markets (directional sentiment, not
+        # binary expiry probability), so oct_prob > market_prob always -> always YES.
+        # Use BV3 calibrated win-rate instead: >0.5 = YES, <0.5 = NO.
+        if self.is_15m and features.bv3_prob is not None:
+            _bv3 = features.bv3_prob
+            if _bv3 > 0.5:
+                oct_side = "yes"
+            elif _bv3 < 0.5:
+                oct_side = "no"
+            else:
+                features.octagon_direction_agrees = None
+                return Decision(
+                    action="skip",
+                    side=None,
+                    p_model=market_prob,
+                    reason="bv3_neutral: bv3_prob=0.500 (no direction conviction)",
+                    contributing_signals={
+                        "octagon_direction": None,
+                        "octagon_model_prob": oct_prob,
+                        "octagon_market_prob": market_prob,
+                        "octagon_confidence": oct_conf,
+                        "octagon_cache_hit": oct_hit,
+                        "bv3_prob": _bv3,
+                        "ev_pass": False,
+                        "vol_pass": True,
+                        "final_decision": "skip",
+                        "skip_reason": "bv3_neutral",
+                    },
+                )
         else:
-            features.octagon_direction_agrees = None
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=market_prob,
-                reason=(
-                    f"octagon_neutral: model_prob={oct_prob:.3f} == "
-                    f"market_prob={market_prob:.3f}"
-                ),
-                contributing_signals={
-                    "octagon_direction": None,
-                    "octagon_model_prob": oct_prob,
-                    "octagon_market_prob": market_prob,
-                    "octagon_confidence": oct_conf,
-                    "octagon_cache_hit": oct_hit,
-                    "ev_pass": False,
-                    "vol_pass": True,
-                    "final_decision": "skip",
-                    "skip_reason": "octagon_neutral",
-                },
-            )
+            if oct_prob > market_prob:
+                oct_side = "yes"
+            elif oct_prob < market_prob:
+                oct_side = "no"
+            else:
+                features.octagon_direction_agrees = None
+                return Decision(
+                    action="skip",
+                    side=None,
+                    p_model=market_prob,
+                    reason=(
+                        f"octagon_neutral: model_prob={oct_prob:.3f} == "
+                        f"market_prob={market_prob:.3f}"
+                    ),
+                    contributing_signals={
+                        "octagon_direction": None,
+                        "octagon_model_prob": oct_prob,
+                        "octagon_market_prob": market_prob,
+                        "octagon_confidence": oct_conf,
+                        "octagon_cache_hit": oct_hit,
+                        "ev_pass": False,
+                        "vol_pass": True,
+                        "final_decision": "skip",
+                        "skip_reason": "octagon_neutral",
+                    },
+                )
 
-        features.octagon_direction_agrees = True  # we follow Octagon's direction
+        features.octagon_direction_agrees = True  # we follow the direction signal
 
         # Probability used for EV + confidence gates.
         # 15m: use BV3 empirical win rate (calibrated from real Kalshi binary outcomes).

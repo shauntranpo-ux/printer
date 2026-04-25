@@ -27,9 +27,18 @@
     "XRP"
   ],
   "asset_overrides": {
-    "ETH": {"min_ev_base": 11, "vol_gate_thresh": 1.50},
-    "SOL": {"min_ev_base": 11, "vol_gate_thresh": 1.50},
-    "XRP": {"min_ev_base": 11, "vol_gate_thresh": 1.50}
+    "ETH": {
+      "min_ev_base": 11,
+      "vol_gate_thresh": 1.5
+    },
+    "SOL": {
+      "min_ev_base": 11,
+      "vol_gate_thresh": 1.5
+    },
+    "XRP": {
+      "min_ev_base": 11,
+      "vol_gate_thresh": 1.5
+    }
   },
   "use_new_strategies": {
     "BTC": true,
@@ -40,5 +49,7 @@
   },
   "max_spread_cents": 3.0,
   "min_seconds_left": 30,
-  "cold_start_samples": 60
+  "cold_start_samples": 60,
+  "confidence_threshold_15m": 58,
+  "min_ev_base_15m": 10
 }
