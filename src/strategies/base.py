@@ -161,13 +161,12 @@ class BaseStrategy(ABC):
             )
 
         # Step 3 continued: Determine direction.
-        # 15m: Octagon returns 0.78-0.91 for ALL markets (directional sentiment, not
-        # binary expiry probability), so oct_prob > market_prob always -> always YES.
-        # Use price-continuation instead: above strike -> expect to stay above (YES),
-        # below strike -> expect to stay below (NO). BV3 validates via EV + confidence.
+        # 15m: oct_prob is Octagon's P(YES=above strike) for this specific strike.
+        # Compare to 0.5: >= 0.5 means Octagon thinks YES more likely → YES,
+        # < 0.5 means Octagon thinks NO more likely → NO.
+        # BV3 EV + confidence gates filter out low-conviction entries.
         if self.is_15m:
-            _above = features.current_price > features.strike
-            oct_side = "yes" if _above else "no"
+            oct_side = "yes" if oct_prob >= 0.5 else "no"
         else:
             if oct_prob > market_prob:
                 oct_side = "yes"

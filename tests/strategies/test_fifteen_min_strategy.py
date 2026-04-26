@@ -84,10 +84,10 @@ def test_above_strike_picks_yes():
 
 
 def test_below_strike_picks_no():
-    """Price below strike -> continuation direction is NO."""
-    with _mock_octagon():
+    """Octagon P(YES) < 0.5 -> NO direction."""
+    with _mock_octagon(model_prob=0.28):  # Octagon: 28% chance YES → NO
         d = _strat(min_ev=0.01).decide(
-            _features(current_price=2050.0, strike=2075.0, yes_ask=30.0, no_ask=72.0, bv3_prob=0.24)
+            _features(current_price=2050.0, strike=2075.0, yes_ask=28.0, no_ask=55.0, bv3_prob=0.20)
         )
     if d.action == "trade":
         assert d.side == "no"
