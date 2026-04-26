@@ -44,9 +44,8 @@ def test_cap_helper_respects_custom_max():
     assert check_entry_price_cap(70.0, "yes", cfg) is not None
 
 
-def test_buffer_too_thin_skipped_for_short_duration_markets():
-    """15m markets (seconds_left < 20min) skip the buffer_too_thin check since
-    Kalshi's tight strike ladders make vol_ratio naturally explode."""
+def test_buffer_too_thin_applies_to_short_duration_markets():
+    """15m markets now go through the vol_ratio gate (no bypass)."""
     from strategies.skip_layer import check_skip, SkipConfig
     from strategies.features import MarketFeatures
     from collections import deque

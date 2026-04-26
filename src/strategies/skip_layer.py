@@ -124,15 +124,10 @@ def check_skip_15m(
 def check_vol_ratio(features: MarketFeatures, cfg: SkipConfig) -> Optional[str]:
     """
     Buffer durability gate: skip when expected move is too large relative to
-    strike distance (buffer too thin). Short-duration markets (< 20 min) bypass
-    this check because 15m strikes are placed near ATM, making the ratio explode
-    even in mild volatility.
+    strike distance (buffer too thin). Applies to all markets including 15m.
 
     Called from BaseStrategy.decide() as step 5 of the pipeline (after EV gate).
     """
-    if features.seconds_left < 20 * 60:
-        return None  # 15m markets: bypass
-
     rv = features.realized_vol_1min
     if rv is None or rv < 0.0001:
         return None  # no vol data — skip the check, not the trade
