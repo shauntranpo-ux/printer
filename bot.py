@@ -1959,7 +1959,7 @@ def _strategy_name_for(asset, duration_min):
         return "BTCHourly V3"
     if is_hourly:
         return f"{asset}Hourly"
-    return "Octagon→EV"
+    return "BV3→EV (15m)"
 
 
 def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):
@@ -2018,40 +2018,17 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 stake_dollars=stake,
                 confidence_threshold=confidence_threshold,
             )
-        elif asset == "ETH":
-            from strategies.eth_strategy import ETHStrategy
-            strat = ETHStrategy(
-                skip_config=skip_cfg,
-                min_ev=min_ev,
-                stake_dollars=stake,
-                confidence_threshold=confidence_threshold,
-            )
-        elif asset == "SOL":
-            from strategies.sol_strategy import SOLStrategy
-            strat = SOLStrategy(
-                skip_config=skip_cfg,
-                min_ev=min_ev,
-                stake_dollars=stake,
-                confidence_threshold=confidence_threshold,
-            )
-        elif asset == "XRP":
-            from strategies.xrp_strategy import XRPStrategy
-            strat = XRPStrategy(
-                skip_config=skip_cfg,
-                min_ev=min_ev,
-                stake_dollars=stake,
-                confidence_threshold=confidence_threshold,
-            )
-        elif asset == "BTC" and not is_hourly:
-            from strategies.btc_15m_strategy import BTC15mStrategy
-            strat = BTC15mStrategy(
+        elif not is_hourly:
+            from strategies.fifteen_min_strategy import FifteenMinStrategy
+            strat = FifteenMinStrategy(
+                asset=asset,
                 skip_config=skip_cfg,
                 min_ev=min_ev,
                 stake_dollars=stake,
                 confidence_threshold=confidence_threshold,
             )
         else:
-            return None  # other assets not yet implemented
+            return None  # hourly strategy not implemented for this asset
 
         _STRATEGY_SINGLETONS[cache_key] = strat
         log.info(f"Strategy initialized: {cache_key} ({'hourly' if is_hourly else '15m'}, stake=${stake})")

@@ -110,9 +110,9 @@ def test_buffer_too_thin_still_applies_to_hourly():
     assert "buffer_too_thin" in reason
 
 
-def test_eth_strategy_rejects_trade_at_100c_no_ask():
+def test_fifteen_min_strategy_rejects_trade_at_100c_no_ask():
     """Regression: entry=100c no_ask trades lose money every expiry (fee drag)."""
-    from strategies.eth_strategy import ETHStrategy
+    from strategies.fifteen_min_strategy import FifteenMinStrategy
     from strategies.features import MarketFeatures
     from collections import deque
     import time as _time
@@ -138,8 +138,9 @@ def test_eth_strategy_rejects_trade_at_100c_no_ask():
         prices_60m=prices,
         btc_prices_60m=btc_prices,
     )
+    f.bv3_prob = 0.24  # below strike, NO direction
 
-    strat = ETHStrategy(skip_config=SkipConfig(), min_ev=0.05, stake_dollars=25.0, calibrator=None)
+    strat = FifteenMinStrategy(asset="ETH", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=25.0)
     decision = strat.decide(f)
 
     assert decision.action == "skip", (
