@@ -94,6 +94,11 @@ def cmd_validate(args) -> None:
             _run_strategy_c_validation(config, asset)
         return
 
+    if strategy_arg == "15m":
+        for asset in assets_to_run:
+            cmd_validate_15m(config, asset)
+        return
+
     strategies_to_run = ["a", "b"] if strategy_arg == "both" else [strategy_arg]
     methods_to_run = ["cpcv", "wfa", "mc"] if args.method == "all" else [args.method]
 
@@ -318,6 +323,84 @@ def cmd_backtest_c(args) -> pd.DataFrame:
     return trade_log
 
 
+def cmd_backtest_15m(args) -> pd.DataFrame:
+    """Run FifteenMinStrategy backtest (BV3-only, no Octagon)."""
+    config = _load_global_config()
+    asset = args.asset.lower()
+
+    from backtesting.data.loaders import load_bars
+    from backtesting.simulation.fifteen_min_backtest import run_fifteen_min_backtest
+
+    try:
+        bars = load_bars(asset)
+    except (FileNotFoundError, ValueError) as exc:
+        logger.error("[%s] Cannot load bars: %s", asset.upper(), exc)
+        return pd.DataFrame()
+
+    trade_log = run_fifteen_min_backtest(bars, asset)
+
+    trade_log_dir = os.path.join("backtesting", "output", "trade_logs")
+    os.makedirs(trade_log_dir, exist_ok=True)
+    out_path = os.path.join(trade_log_dir, f"{asset}_15m.parquet")
+    if not trade_log.empty:
+        trade_log.to_parquet(out_path, index=False)
+        logger.info("[%s] 15m backtest → %s (%d trades)", asset.upper(), out_path, len(trade_log))
+    return trade_log
+
+
+def cmd_validate_15m(config: dict, asset: str) -> None:
+    """Run Monte Carlo and WFA for FifteenMinStrategy backtest."""
+    from backtesting.data.loaders import load_bars
+    from backtesting.simulation.fifteen_min_backtest import (
+        run_fifteen_min_backtest,
+        run_monte_carlo,
+        run_wfa,
+    )
+
+    try:
+        bars = load_bars(asset)
+    except (FileNotFoundError, ValueError) as exc:
+        logger.warning("[%s] 15m validate: cannot load bars — %s", asset.upper(), exc)
+        return
+
+    val_cfg = config.get("validation", {})
+    mc_cfg  = val_cfg.get("monte_carlo", {})
+    wfa_cfg = val_cfg.get("wfa", {})
+
+    output_dir = os.path.join("backtesting", "output", "validation", asset, "15m")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Full-history backtest for MC input
+    trade_log = run_fifteen_min_backtest(bars, asset)
+    if not trade_log.empty:
+        tl_path = os.path.join(output_dir, "trade_log.parquet")
+        trade_log.to_parquet(tl_path, index=False)
+
+    # Monte Carlo
+    if mc_cfg.get("enabled", True):
+        mc_df = run_monte_carlo(
+            trade_log,
+            n_iterations=mc_cfg.get("iterations", 1000),
+        )
+        if not mc_df.empty:
+            mc_path = os.path.join(output_dir, "mc.json")
+            with open(mc_path, "w", encoding="utf-8") as f:
+                json.dump(mc_df.to_dict("records"), f, indent=2, default=str)
+            logger.info("[%s] 15m MC → %s", asset.upper(), mc_path)
+
+    # Walk-Forward Analysis
+    if wfa_cfg.get("enabled", True):
+        wfa_df = run_wfa(
+            bars, asset,
+            n_folds=wfa_cfg.get("windows", 6),
+        )
+        if not wfa_df.empty:
+            wfa_path = os.path.join(output_dir, "wfa.json")
+            with open(wfa_path, "w", encoding="utf-8") as f:
+                json.dump(wfa_df.to_dict("records"), f, indent=2, default=str)
+            logger.info("[%s] 15m WFA → %s", asset.upper(), wfa_path)
+
+
 def cmd_backtest(args) -> pd.DataFrame:
     """Run backtest engine and return trade log."""
     config = _load_global_config()
@@ -440,6 +523,8 @@ def cmd_all(args) -> None:
 
     if strategy == "c":
         trade_log = cmd_backtest_c(args)
+    elif strategy == "15m":
+        trade_log = cmd_backtest_15m(args)
     else:
         trade_log = cmd_backtest(args)
     cmd_report(args, trade_log=trade_log)
@@ -545,8 +630,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Asset to validate (use 'all' to iterate btc, eth, sol, xrp sequentially)",
     )
     p_val.add_argument(
-        "--strategy", default="both", choices=["a", "b", "c", "both"],
-        help="Strategy to validate (default: both; 'c' runs event-level CPCV for BTC/ETH)",
+        "--strategy", default="both", choices=["a", "b", "c", "both", "15m"],
+        help="Strategy to validate (default: both; 'c' runs event-level CPCV for BTC/ETH; '15m' runs MC+WFA for all assets)",
     )
     p_val.add_argument(
         "--method", default="all", choices=["cpcv", "wfa", "mc", "all"],
@@ -561,19 +646,23 @@ def _build_parser() -> argparse.ArgumentParser:
     # backtest
     p_bt = sub.add_parser("backtest", help="Run backtest engine")
     p_bt.add_argument("--asset", required=True)
-    p_bt.add_argument("--strategy", default="a", choices=["a", "b", "c"])
-    p_bt.set_defaults(func=lambda args: cmd_backtest_c(args) if args.strategy == "c" else cmd_backtest(args))
+    p_bt.add_argument("--strategy", default="a", choices=["a", "b", "c", "15m"])
+    p_bt.set_defaults(func=lambda args: (
+        cmd_backtest_c(args) if args.strategy == "c" else
+        cmd_backtest_15m(args) if args.strategy == "15m" else
+        cmd_backtest(args)
+    ))
 
     # report
     p_rpt = sub.add_parser("report", help="Generate reports")
     p_rpt.add_argument("--asset", required=True)
-    p_rpt.add_argument("--strategy", default="a", choices=["a", "b", "c"])
+    p_rpt.add_argument("--strategy", default="a", choices=["a", "b", "c", "15m"])
     p_rpt.set_defaults(func=lambda args: cmd_report(args))
 
     # all
     p_all = sub.add_parser("all", help="Run train -> validate -> backtest -> report")
     p_all.add_argument("--asset", required=True)
-    p_all.add_argument("--strategy", default="a", choices=["a", "b", "c"])
+    p_all.add_argument("--strategy", default="a", choices=["a", "b", "c", "15m"])
     p_all.set_defaults(func=cmd_all)
 
     # dry-run
