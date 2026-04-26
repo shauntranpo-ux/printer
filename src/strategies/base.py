@@ -2,13 +2,15 @@
 Abstract base class every per-market strategy inherits.
 
 Decision pipeline (same for 15m and hourly, all modes):
-  1. Skip layer      â€” price floor (35c); hourly also: spread, cold-start
-  2. Octagon         â€” required direction signal; SKIP if unavailable/timeout/error
-  3. Direction       â€” YES if octagon_prob > market_prob, NO if octagon_prob < market_prob
-  4. EV check        â€” for Octagon's chosen direction; must meet configured minimum
-  5. Vol ratio gate  â€” buffer durability (hourly only; 15m auto-pass)
-  6. Confidence gate - p_ev (bv3_prob on 15m, oct_prob on hourly) >= threshold (76%)
-  7. Price cap       â€” 76c ceiling (15m) or 80c ceiling (hourly)
+  1. Skip layer      -- hourly only: spread, cold-start, seconds_left, deep-OTM (20c floor)
+                        15m: no pre-filter; range enforced post-decision at step 7
+  2. Octagon         -- required direction signal; SKIP if unavailable/timeout/error
+  3. Direction       -- 15m: oct_prob >= 0.5 -> YES, < 0.5 -> NO
+                        hourly: oct_prob vs market_prob
+  4. EV check        -- BV3 prob (15m) or oct_prob (hourly); per-asset minimum
+  5. Vol ratio gate  -- buffer durability; applies to all markets
+  6. Confidence gate -- p_ev >= threshold (74% for 15m, 76% for hourly)
+  7. Entry range     -- [20c, 76c) for 15m, [20c, 80c) for hourly
   8. Trade
 """
 

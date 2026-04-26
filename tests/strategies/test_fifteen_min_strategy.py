@@ -117,12 +117,13 @@ def test_entry_range_rejects_76c_entry():
 
 
 def test_no_trade_below_floor():
-    """Both sides below 20c floor -> skip."""
+    """Both sides below 20c floor -> entry_range skip."""
     with _mock_octagon():
         d = _strat().decide(
             _features(yes_ask=15.0, no_ask=18.0, bv3_prob=0.80)
         )
     assert d.action == "skip"
+    assert "entry_range" in d.reason
 
 
 def test_all_assets_instantiate():

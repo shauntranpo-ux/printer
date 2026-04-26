@@ -38,9 +38,9 @@ def check_skip(
     if features.seconds_left < cfg.min_seconds_left:
         return f"seconds_left={features.seconds_left:.0f} < {cfg.min_seconds_left}"
 
-    # Deep-OTM filter: both sides must have at least one tradeable contract above
-    # the minimum price. Deep-OTM contracts (<35c) have 0% observed win rate
-    # because the model's signal adjustments are too small to overcome market pricing.
+    # Deep-OTM filter: both sides must price above the configured floor.
+    # Below the floor the model's signal adjustments are too small to overcome
+    # market pricing. Floor is cfg.min_entry_price_cents (default 20c).
     min_p = cfg.min_entry_price_cents
     if min(features.yes_ask, features.no_ask) < min_p:
         cheap_side = "yes" if features.yes_ask < features.no_ask else "no"
