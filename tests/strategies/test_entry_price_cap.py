@@ -110,28 +110,27 @@ def test_buffer_too_thin_still_applies_to_hourly():
     assert "buffer_too_thin" in reason
 
 
-def test_dwell_window_rejects_trade_at_100c_no_ask():
-    """Regression: dashboard showed entry=100c no_ask trades losing money every expiry."""
-    from strategies.dwell_window_strategy import DwellWindowStrategy
+def test_eth_strategy_rejects_trade_at_100c_no_ask():
+    """Regression: entry=100c no_ask trades lose money every expiry (fee drag)."""
+    from strategies.eth_strategy import ETHStrategy
     from strategies.features import MarketFeatures
     from collections import deque
+    import time as _time
 
-    # Build features: deeply-OTM 60-min ETH market at t=35min
     prices = deque([(float(t), 2315.0) for t in range(0, 60 * 60, 60)])
     btc_prices = deque([(float(t), 86000.0) for t in range(0, 60 * 60, 60)])
 
-    import time as _time
     f = MarketFeatures(
         asset="ETH",
-        ticker="KXETHD-26APR2316-T3089.99",
+        ticker="KXETH15M-26APR2316-T2316.99",
         timestamp=_time.time(),
         current_price=2315.0,
-        strike=3089.99,
+        strike=2316.99,
         btc_price=86000.0,
-        seconds_left=25 * 60.0,
-        elapsed_seconds=35 * 60.0,
-        yes_ask=1.0,     # deeply OTM: YES essentially worthless
-        no_ask=100.0,    # NO guaranteed to win — fee drag if bought
+        seconds_left=5 * 60.0,
+        elapsed_seconds=10 * 60.0,
+        yes_ask=1.0,
+        no_ask=100.0,
         yes_bid=0.0,
         no_bid=99.0,
         spread_yes=1.0,
@@ -140,12 +139,10 @@ def test_dwell_window_rejects_trade_at_100c_no_ask():
         btc_prices_60m=btc_prices,
     )
 
-    strat = DwellWindowStrategy("ETH", skip_config=SkipConfig(), stake_dollars=25.0, calibrator=None)
+    strat = ETHStrategy(skip_config=SkipConfig(), min_ev=0.05, stake_dollars=25.0, calibrator=None)
     decision = strat.decide(f)
 
     assert decision.action == "skip", (
         f"Expected skip at no_ask=100c but got action={decision.action}, "
         f"reason={decision.reason}"
     )
-    # Reason may be price_cap or an earlier gate (cold_start, dwell, etc.) —
-    # what matters is the trade was NOT placed.

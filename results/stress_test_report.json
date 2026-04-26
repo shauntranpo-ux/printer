@@ -1,101 +1,100 @@
 {
-  "generated_at": "2026-04-01T05:32:32.881110+00:00",
+  "generated_at": "2026-04-24T10:39:29.375345+00:00",
   "params": {
-    "min_ev": 0.3,
-    "stop_loss_pct": 30.0,
-    "min_confidence": 80
+    "min_ev": 0.11,
+    "vol_threshold": 1.5
   },
   "config": {
-    "n_iters": 500,
+    "n_iters": 300,
     "max_slippage_bps": 20.0,
     "latency_ms": 0,
-    "trade_amount": 5.0
+    "trade_amount": 25.0
   },
   "base_backtest": {
-    "total_trades": 18270,
-    "win_rate": 0.9679,
-    "total_pnl_dollars": 43355.76,
-    "sharpe_ratio": 424.248,
-    "max_drawdown_pct": 11.89
+    "total_trades": 95324,
+    "win_rate": 0.8794,
+    "total_pnl_dollars": 844721.58,
+    "sharpe_ratio": 116.453,
+    "max_drawdown_pct": 68.39
   },
   "noise_simulation": {
-    "base_pnl": 43355.76,
-    "mean_pnl": 32344.25,
-    "median_pnl": 32345.5,
-    "p5_pnl": 32264.2,
-    "p95_pnl": 32427.22,
-    "mean_win_rate": 0.9679,
-    "mean_sharpe": 383.08,
-    "mean_max_drawdown": 12.19,
+    "base_pnl": 844721.58,
+    "mean_pnl": 839903.67,
+    "median_pnl": 839936.64,
+    "p5_pnl": 838563.52,
+    "p95_pnl": 841164.5,
+    "mean_win_rate": 0.8794,
+    "mean_sharpe": 149.377,
+    "mean_max_drawdown": 50.02,
     "breakeven_rate": 1.0,
-    "iterations_valid": 500
+    "iterations_valid": 300
   },
   "degradation_curve": [
     {
       "slippage_bps": 0,
-      "total_pnl": 43451.77,
-      "pct_vs_base": 0.2,
-      "trades_valid": 18270
+      "total_pnl": 1123423.04,
+      "pct_vs_base": 33.0,
+      "trades_valid": 95324
     },
     {
       "slippage_bps": 2,
-      "total_pnl": 43230.12,
-      "pct_vs_base": -0.3,
-      "trades_valid": 18270
+      "total_pnl": 1122603.69,
+      "pct_vs_base": 32.9,
+      "trades_valid": 95324
     },
     {
       "slippage_bps": 4,
-      "total_pnl": 43213.37,
-      "pct_vs_base": -0.3,
-      "trades_valid": 18270
+      "total_pnl": 1121949.03,
+      "pct_vs_base": 32.8,
+      "trades_valid": 95324
     },
     {
       "slippage_bps": 6,
-      "total_pnl": 43196.62,
-      "pct_vs_base": -0.4,
-      "trades_valid": 18270
+      "total_pnl": 1121223.32,
+      "pct_vs_base": 32.7,
+      "trades_valid": 95324
     },
     {
       "slippage_bps": 8,
-      "total_pnl": 43179.87,
-      "pct_vs_base": -0.4,
-      "trades_valid": 18270
+      "total_pnl": 1120568.51,
+      "pct_vs_base": 32.7,
+      "trades_valid": 95324
     },
     {
       "slippage_bps": 10,
-      "total_pnl": 43163.12,
-      "pct_vs_base": -0.4,
-      "trades_valid": 18270
+      "total_pnl": 1119926.04,
+      "pct_vs_base": 32.6,
+      "trades_valid": 95324
     },
     {
       "slippage_bps": 12,
-      "total_pnl": 43146.37,
-      "pct_vs_base": -0.5,
-      "trades_valid": 18270
+      "total_pnl": 1119107.88,
+      "pct_vs_base": 32.5,
+      "trades_valid": 95324
     },
     {
       "slippage_bps": 14,
-      "total_pnl": 43129.62,
-      "pct_vs_base": -0.5,
-      "trades_valid": 18270
+      "total_pnl": 1118528.81,
+      "pct_vs_base": 32.4,
+      "trades_valid": 95324
     },
     {
       "slippage_bps": 16,
-      "total_pnl": 43112.87,
-      "pct_vs_base": -0.6,
-      "trades_valid": 18270
+      "total_pnl": 1118058.57,
+      "pct_vs_base": 32.4,
+      "trades_valid": 95324
     },
     {
       "slippage_bps": 18,
-      "total_pnl": 42922.77,
-      "pct_vs_base": -1.0,
-      "trades_valid": 18270
+      "total_pnl": 1117049.14,
+      "pct_vs_base": 32.2,
+      "trades_valid": 95324
     },
     {
       "slippage_bps": 20,
-      "total_pnl": 42906.08,
-      "pct_vs_base": -1.0,
-      "trades_valid": 18270
+      "total_pnl": 1116522.73,
+      "pct_vs_base": 32.2,
+      "trades_valid": 95324
     }
   ],
   "latency_miss_table": [
@@ -104,42 +103,42 @@
       "miss_probability": 0.0,
       "expected_missed_trades": 0.0,
       "pnl_impact": 0.0,
-      "net_pnl": 43355.76
+      "net_pnl": 844721.58
     },
     {
       "latency_ms": 50,
       "miss_probability": 0.003,
-      "expected_missed_trades": 54.8,
-      "pnl_impact": 130.07,
-      "net_pnl": 43225.69
+      "expected_missed_trades": 286.0,
+      "pnl_impact": 2534.16,
+      "net_pnl": 842187.42
     },
     {
       "latency_ms": 100,
       "miss_probability": 0.01,
-      "expected_missed_trades": 182.7,
-      "pnl_impact": 433.56,
-      "net_pnl": 42922.2
+      "expected_missed_trades": 953.2,
+      "pnl_impact": 8447.22,
+      "net_pnl": 836274.36
     },
     {
       "latency_ms": 200,
       "miss_probability": 0.03,
-      "expected_missed_trades": 548.1,
-      "pnl_impact": 1300.67,
-      "net_pnl": 42055.09
+      "expected_missed_trades": 2859.7,
+      "pnl_impact": 25341.65,
+      "net_pnl": 819379.93
     },
     {
       "latency_ms": 500,
       "miss_probability": 0.07,
-      "expected_missed_trades": 1278.9,
-      "pnl_impact": 3034.9,
-      "net_pnl": 40320.86
+      "expected_missed_trades": 6672.7,
+      "pnl_impact": 59130.51,
+      "net_pnl": 785591.07
     },
     {
       "latency_ms": 1000,
       "miss_probability": 0.15,
-      "expected_missed_trades": 2740.5,
-      "pnl_impact": 6503.36,
-      "net_pnl": 36852.4
+      "expected_missed_trades": 14298.6,
+      "pnl_impact": 126708.24,
+      "net_pnl": 718013.34
     }
   ]
 }
