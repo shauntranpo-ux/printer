@@ -307,7 +307,7 @@ async def main() -> None:
                                 valid.append((mins_left, m))
                         except Exception:
                             pass
-                    valid.sort()
+                    valid.sort(key=lambda x: x[0])
 
                     if not valid:
                         print("[validator] No valid markets in 1-16 min window — skipping.")

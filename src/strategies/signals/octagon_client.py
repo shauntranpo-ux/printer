@@ -187,13 +187,13 @@ def _parse_table(text: str) -> dict[int, tuple[float, float]]:
             except ValueError:
                 continue
             cleaned = outcome.replace(",", "").replace("$", "")
-            nums = re.findall(r"\d+", cleaned)
+            nums = re.findall(r"\d+\.?\d*", cleaned)
             if not nums:
                 continue
             # Use the largest number as the strike (filters out small word-numbers like "15")
-            strike_int = max(int(n) for n in nums)
-            if strike_int < 100:
-                continue  # sanity check — no real strike is < $100
+            strike_int = int(round(max(float(n) for n in nums)))
+            if strike_int <= 0:
+                continue  # sanity check — no real strike is $0 or negative
             result[strike_int] = (market_pct, model_pct)
 
         if len(result) > len(best):
