@@ -17,8 +17,8 @@ from strategies.features import MarketFeatures
 class SkipConfig:
     max_spread_cents: float = 3.0               # max spread on the side we'd trade
     min_seconds_left: float = 30.0              # skip if under this
-    min_entry_price_cents: float = 35.0         # skip markets where either side costs below this floor
-    max_entry_price_cents: float = 80.0         # skip trade if the side we'd buy is at or above this ceiling (fee drag)
+    min_entry_price_cents: float = 20.0         # entry range lower bound (inclusive)
+    max_entry_price_cents: float = 80.0         # entry range upper bound (exclusive)
     cold_start_samples: int = 60                # need this many prices_60m samples
     vol_ratio_threshold: float = 1.80           # skip if expected_move/buffer >= this
     vol_top_pct_threshold: float = 0.95         # legacy field, unused
@@ -57,7 +57,7 @@ def check_skip(
     if len(features.prices_60m) < cfg.cold_start_samples:
         return f"cold_start: only {len(features.prices_60m)} samples (need {cfg.cold_start_samples})"
 
-    # Spread check â€” we check both sides; the EV layer will pick the better one.
+    # Spread check â€" we check both sides; the EV layer will pick the better one.
     # Skip only if BOTH sides have blown-out spreads.
     if features.spread_yes > cfg.max_spread_cents and features.spread_no > cfg.max_spread_cents:
         return f"spread too wide: yes={features.spread_yes:.0f}c no={features.spread_no:.0f}c"
@@ -84,39 +84,17 @@ def check_skip_with_asset_hook(
     return check_skip(features, cfg, macro_event_active)
 
 
-def check_entry_price_cap(entry_cents: float, side: str, cfg: SkipConfig) -> Optional[str]:
-    """Post-decision guard: reject trades at or above cfg.max_entry_price_cents.
-
-    At 80c+ entries the Kalshi fee drag exceeds any realistic edge â€” even a 97% WR
-    strategy at 85c yields ~0c net after fees, and 100c entries are pure fee drag.
-    Returns a skip reason if the cap is violated, else None.
-    """
+def check_entry_range(entry_cents: float, side: str, cfg: SkipConfig) -> Optional[str]:
+    """Post-decision range gate: entry must be within [min_entry_price_cents, max_entry_price_cents)."""
+    if entry_cents < cfg.min_entry_price_cents:
+        return (
+            f"entry_range: {side}_ask={entry_cents:.0f}c "
+            f"below {cfg.min_entry_price_cents:.0f}c"
+        )
     if entry_cents >= cfg.max_entry_price_cents:
         return (
-            f"price_cap: {side}_ask={entry_cents:.0f}c "
-            f">= {cfg.max_entry_price_cents:.0f}c (fee drag)"
-        )
-    return None
-
-
-def check_skip_15m(
-    features: MarketFeatures,
-    min_price_cents: float = 35.0,
-) -> Optional[str]:
-    """
-    Minimal pre-EV gate for 15-minute markets.
-
-    15m always trades the continuation side (expensive side = max of yes/no ask):
-    above strike buys YES, below strike buys NO. The floor applies to the
-    expensive side only — a cheap YES when below strike is irrelevant.
-    The 76c ceiling is enforced post-EV by check_entry_price_cap().
-    All other hourly gates are intentionally absent for 15m markets.
-    """
-    expensive = max(features.yes_ask, features.no_ask)
-    if expensive < min_price_cents:
-        return (
-            f"price_floor_15m: max_ask={expensive:.0f}c "
-            f"below {min_price_cents:.0f}c floor"
+            f"entry_range: {side}_ask={entry_cents:.0f}c "
+            f">= {cfg.max_entry_price_cents:.0f}c"
         )
     return None
 

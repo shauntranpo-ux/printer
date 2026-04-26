@@ -2,13 +2,13 @@
 FifteenMinStrategy — unified 15-minute binary strategy for BTC, ETH, SOL, XRP.
 
 Pipeline (enforced by BaseStrategy.decide):
-  1. Price floor   — max(yes_ask, no_ask) >= 35c (we always trade the expensive side)
-  2. Octagon       — queried for signal telemetry; direction ignores oct_prob for 15m
-  3. Direction     — above strike -> YES, below strike -> NO (price-continuation)
-  4. BV3           — P(YES=above strike), converted in bot.py from P(stays on current side)
-  5. EV gate       — min 11% after Kalshi fee drag
-  6. Confidence    — BV3 must have >= 74% conviction price stays on its side
-  7. Price cap     — entry must be < 76c
+  1. (no pre-filter for 15m)
+  2. Octagon       — required direction signal; SKIP if unavailable/timeout/error
+  3. Direction     — oct_prob >= 0.5 -> YES, < 0.5 -> NO
+  4. EV gate       — BV3 prob used; per-asset minimum (BTC 7%, ETH 9%, SOL/XRP 16%)
+  5. Vol ratio     — buffer durability: rv * sqrt(mins) / dist < 1.80
+  6. Confidence    — BV3 >= 74% (YES) or <= 26% (NO)
+  7. Entry range   — entry must be in [20c, 76c)
   8. Trade
 """
 

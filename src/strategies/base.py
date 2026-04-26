@@ -18,7 +18,7 @@ from abc import ABC
 from typing import Optional
 
 from strategies.features import MarketFeatures, Decision
-from strategies.skip_layer import check_skip, check_skip_15m, check_entry_price_cap, check_vol_ratio, SkipConfig
+from strategies.skip_layer import check_skip, check_entry_range, check_vol_ratio, SkipConfig
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
 
@@ -54,21 +54,16 @@ class BaseStrategy(ABC):
         return baseline_p_above, {}
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
-        # Step 1: skip layer
-        if self.is_15m:
-            skip_reason = check_skip_15m(
-                features,
-                min_price_cents=self.skip_config.min_entry_price_cents,
-            )
-        else:
+        # Step 1: skip layer (hourly only; 15m range enforced post-decision in step 7)
+        if not self.is_15m:
             skip_reason = check_skip(features, self.skip_config, macro_event_active)
-        if skip_reason:
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=0.5,
-                reason=f"skip_layer: {skip_reason}",
-            )
+            if skip_reason:
+                return Decision(
+                    action="skip",
+                    side=None,
+                    p_model=0.5,
+                    reason=f"skip_layer: {skip_reason}",
+                )
 
         # Step 2: market-implied probability from AMM prices
         _yes = features.yes_ask / 100.0
@@ -112,7 +107,7 @@ class BaseStrategy(ABC):
                     entry_cents = features.yes_ask if bv3_side == "yes" else features.no_ask
 
                     if side_ev >= self.min_ev:
-                        cap_reason = check_entry_price_cap(entry_cents, bv3_side, self.skip_config)
+                        cap_reason = check_entry_range(entry_cents, bv3_side, self.skip_config)
                         if not cap_reason:
                             return Decision(
                                 action="trade",
@@ -298,20 +293,20 @@ class BaseStrategy(ABC):
                     expected_value=side_ev,
                 )
 
-        # Step 7: entry price cap (76c for 15m, 80c for hourly)
-        cap_reason = check_entry_price_cap(entry_cents, oct_side, self.skip_config)
-        if cap_reason:
+        # Step 7: entry range (20c-76c for 15m, 20c-80c for hourly)
+        range_reason = check_entry_range(entry_cents, oct_side, self.skip_config)
+        if range_reason:
             return Decision(
                 action="skip",
                 side=None,
                 p_model=p_ev,
-                reason=cap_reason,
+                reason=range_reason,
                 contributing_signals={
                     **base_signals,
                     "ev_pass": True,
                     "vol_pass": True,
                     "final_decision": "skip",
-                    "skip_reason": "entry_price_cap",
+                    "skip_reason": "entry_range",
                 },
                 expected_value=side_ev,
             )

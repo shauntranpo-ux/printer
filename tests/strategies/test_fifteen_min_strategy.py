@@ -102,8 +102,8 @@ def test_low_bv3_skips_via_confidence_gate():
     assert d.action == "skip"
 
 
-def test_price_cap_rejects_76c_entry():
-    """Entry at or above 76c is rejected by price cap (bot.py sets max=76 for 15m)."""
+def test_entry_range_rejects_76c_entry():
+    """Entry at or above 76c is outside the range (bot.py sets max=76 for 15m)."""
     strat = FifteenMinStrategy(
         asset="ETH",
         skip_config=SkipConfig(cold_start_samples=10, max_entry_price_cents=76.0),
@@ -113,14 +113,14 @@ def test_price_cap_rejects_76c_entry():
     with _mock_octagon():
         d = strat.decide(_features(yes_ask=76.0, no_ask=26.0, bv3_prob=0.90))
     assert d.action == "skip"
-    assert "price_cap" in d.reason
+    assert "entry_range" in d.reason
 
 
 def test_no_trade_below_floor():
-    """Both sides below 35c -> skip."""
+    """Both sides below 20c floor -> skip."""
     with _mock_octagon():
         d = _strat().decide(
-            _features(yes_ask=20.0, no_ask=25.0, bv3_prob=0.80)
+            _features(yes_ask=15.0, no_ask=18.0, bv3_prob=0.80)
         )
     assert d.action == "skip"
 

@@ -1,9 +1,10 @@
 """
-Tests for the 80c entry-price cap.
+Tests for the entry range gate (20c–76c for 15m, 20c–80c for hourly).
 
-At 80c+ entries the Kalshi fee drag exceeds any realistic edge. This cap is
-enforced post-decision in every strategy — no strategy may emit a trade
-Decision where the chosen side's ask is >= cfg.max_entry_price_cents.
+The bot only enters trades where the chosen side's ask is within
+[cfg.min_entry_price_cents, cfg.max_entry_price_cents). Below the floor is
+deep-OTM with no edge; at or above the ceiling the fee drag exceeds any
+realistic edge.
 """
 
 import sys, os
@@ -12,36 +13,45 @@ if _src not in sys.path:
     sys.path.insert(0, _src)
 
 import pytest
-from strategies.skip_layer import check_entry_price_cap, SkipConfig
+from strategies.skip_layer import check_entry_range, SkipConfig
 
 
-def test_cap_helper_allows_below_80c():
+def test_entry_range_allows_in_range():
     cfg = SkipConfig()
-    assert check_entry_price_cap(79.0, "yes", cfg) is None
-    assert check_entry_price_cap(50.0, "no", cfg) is None
-    assert check_entry_price_cap(1.0, "yes", cfg) is None
+    assert check_entry_range(79.0, "yes", cfg) is None
+    assert check_entry_range(50.0, "no", cfg) is None
+    assert check_entry_range(21.0, "yes", cfg) is None
 
 
-def test_cap_helper_rejects_at_80c():
+def test_entry_range_rejects_at_ceiling():
     cfg = SkipConfig()
-    reason = check_entry_price_cap(80.0, "yes", cfg)
+    reason = check_entry_range(80.0, "yes", cfg)
     assert reason is not None
-    assert "price_cap" in reason
+    assert "entry_range" in reason
     assert "yes_ask=80c" in reason
 
 
-def test_cap_helper_rejects_above_80c():
+def test_entry_range_rejects_above_ceiling():
     cfg = SkipConfig()
-    reason = check_entry_price_cap(100.0, "no", cfg)
+    reason = check_entry_range(100.0, "no", cfg)
     assert reason is not None
+    assert "entry_range" in reason
     assert "no_ask=100c" in reason
-    assert "fee drag" in reason
 
 
-def test_cap_helper_respects_custom_max():
-    cfg = SkipConfig(max_entry_price_cents=70.0)
-    assert check_entry_price_cap(69.0, "yes", cfg) is None
-    assert check_entry_price_cap(70.0, "yes", cfg) is not None
+def test_entry_range_rejects_below_floor():
+    cfg = SkipConfig()
+    reason = check_entry_range(10.0, "yes", cfg)
+    assert reason is not None
+    assert "entry_range" in reason
+    assert "yes_ask=10c" in reason
+
+
+def test_entry_range_respects_custom_bounds():
+    cfg = SkipConfig(min_entry_price_cents=25.0, max_entry_price_cents=70.0)
+    assert check_entry_range(30.0, "yes", cfg) is None
+    assert check_entry_range(24.0, "yes", cfg) is not None  # below floor
+    assert check_entry_range(70.0, "yes", cfg) is not None  # at ceiling
 
 
 def test_buffer_too_thin_applies_to_short_duration_markets():
