@@ -163,33 +163,11 @@ class BaseStrategy(ABC):
         # Step 3 continued: Determine direction.
         # 15m: Octagon returns 0.78-0.91 for ALL markets (directional sentiment, not
         # binary expiry probability), so oct_prob > market_prob always -> always YES.
-        # Use BV3 calibrated win-rate instead: >0.5 = YES, <0.5 = NO.
-        if self.is_15m and features.bv3_prob is not None:
-            _bv3 = features.bv3_prob
-            if _bv3 > 0.5:
-                oct_side = "yes"
-            elif _bv3 < 0.5:
-                oct_side = "no"
-            else:
-                features.octagon_direction_agrees = None
-                return Decision(
-                    action="skip",
-                    side=None,
-                    p_model=market_prob,
-                    reason="bv3_neutral: bv3_prob=0.500 (no direction conviction)",
-                    contributing_signals={
-                        "octagon_direction": None,
-                        "octagon_model_prob": oct_prob,
-                        "octagon_market_prob": market_prob,
-                        "octagon_confidence": oct_conf,
-                        "octagon_cache_hit": oct_hit,
-                        "bv3_prob": _bv3,
-                        "ev_pass": False,
-                        "vol_pass": True,
-                        "final_decision": "skip",
-                        "skip_reason": "bv3_neutral",
-                    },
-                )
+        # Use price-continuation instead: above strike -> expect to stay above (YES),
+        # below strike -> expect to stay below (NO). BV3 validates via EV + confidence.
+        if self.is_15m:
+            _above = features.current_price > features.strike
+            oct_side = "yes" if _above else "no"
         else:
             if oct_prob > market_prob:
                 oct_side = "yes"

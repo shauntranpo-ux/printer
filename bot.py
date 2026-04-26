@@ -2164,11 +2164,15 @@ def printer_brain_routed(
             "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
         }
 
-    features.bv3_prob = _win_prob_for_asset(
+    _bv3_raw = _win_prob_for_asset(
         asset,
         abs(current_price - strike) / strike if strike > 0 else 0.0,
         secs_left / 60.0,
     )
+    # bv3_raw = P(price stays on current side of strike). Convert to P(YES = above strike)
+    # so that base.py EV and confidence gates operate on a consistent P(YES) scale.
+    _bv3_above = current_price > strike
+    features.bv3_prob = _bv3_raw if _bv3_above else (1.0 - _bv3_raw)
 
     try:
         decision = strat.decide(features)
