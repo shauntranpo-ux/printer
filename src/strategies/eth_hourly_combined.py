@@ -2,9 +2,9 @@
 ETHHourlyCombinedStrategy — pass-through strategy for ETH hourly binaries.
 
 Uses only the market-implied probability (Kalshi AMM price) as the baseline.
-Octagon determines direction. BaseStrategy handles the full gate stack:
+Supertrend determines direction. BaseStrategy handles the full gate stack:
   1. Skip layer (spread, cold-start, vol-ratio)
-  2. Octagon direction
+  2. Supertrend direction
   3. EV threshold
   4. Entry price ceiling (80c)
 """

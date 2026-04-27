@@ -1,15 +1,14 @@
-﻿"""
+"""
 Abstract base class every per-market strategy inherits.
 
 Decision pipeline (same for 15m and hourly, all modes):
   1. Skip layer      -- hourly only: spread, cold-start, seconds_left, deep-OTM (20c floor)
-                        15m: no pre-filter; range enforced post-decision at step 7
-  2. Octagon         -- required direction signal; SKIP if unavailable/timeout/error
-  3. Direction       -- 15m: oct_prob >= 0.5 -> YES, < 0.5 -> NO
-                        hourly: oct_prob vs market_prob
-  4. EV check        -- BV3 prob (15m) or oct_prob (hourly); per-asset minimum
+                        15m: no pre-filter; range enforced post-decision at step 6
+  2. Market prob     -- Kalshi AMM implied probability (reference only)
+  3. Supertrend      -- sole direction signal; SKIP if insufficient data
+  4. EV check        -- p_ev=0.70 assumed probability; per-asset minimum
   5. Vol ratio gate  -- buffer durability; applies to all markets
-  6. Confidence gate -- p_ev >= threshold (74% for 15m, 76% for hourly)
+  6. Confidence gate -- p_ev >= threshold (disabled by default; set in config)
   7. Entry range     -- [20c, 76c) for 15m, [20c, 80c) for hourly
   8. Trade
 """
@@ -24,6 +23,8 @@ from strategies.skip_layer import check_skip, check_entry_range, check_vol_ratio
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
 
+_SUPERTREND_P_MODEL = 0.70  # assumed win probability when Supertrend fires
+
 
 class BaseStrategy(ABC):
 
@@ -36,7 +37,9 @@ class BaseStrategy(ABC):
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
         is_15m: bool = False,
-        confidence_threshold: float = 0.0,  # BV3 fallback threshold (0-1); 0 = disabled
+        confidence_threshold: float = 0.0,
+        supertrend_atr_period: int = 10,
+        supertrend_atr_multiplier: float = 3.0,
     ):
         self.asset = asset
         self.skip_config = skip_config
@@ -46,13 +49,15 @@ class BaseStrategy(ABC):
         self.maker = maker
         self.is_15m = is_15m
         self.confidence_threshold = confidence_threshold
+        self.supertrend_atr_period = supertrend_atr_period
+        self.supertrend_atr_multiplier = supertrend_atr_multiplier
 
     def compute_raw_p_model(
         self,
         features: MarketFeatures,
         baseline_p_above: float,
     ) -> tuple[float, dict]:
-        """Legacy hook â€” no longer called in the decision pipeline."""
+        """Legacy hook — no longer called in the decision pipeline."""
         return baseline_p_above, {}
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
@@ -67,168 +72,63 @@ class BaseStrategy(ABC):
                     reason=f"skip_layer: {skip_reason}",
                 )
 
-        # Step 2: market-implied probability from AMM prices
+        # Step 2: market-implied probability from AMM prices (reference only)
         _yes = features.yes_ask / 100.0
         _no = features.no_ask / 100.0
         _total = _yes + _no
         market_prob = _yes / _total if _total > 0 else 0.5
 
-        # Step 3: Octagon â€” required direction signal
-        from strategies.signals import octagon_client as _octagon
-        oct_prob, _, oct_conf, oct_hit = _octagon.query(
-            features.ticker, features.strike,
-            features.yes_ask, features.no_ask,
-            None, self.is_15m,
+        # Step 3: Supertrend direction
+        from strategies.signals.supertrend import supertrend_direction
+        st = supertrend_direction(
+            features.prices_60m,
+            self.supertrend_atr_period,
+            self.supertrend_atr_multiplier,
         )
-        features.octagon_model_prob = oct_prob
-        features.octagon_confidence = oct_conf
-        features.octagon_cache_hit = oct_hit
+        features.supertrend_direction = st
 
-        if oct_prob is None:
-            features.octagon_direction_agrees = None
-            # BV3 fallback: if confidence_threshold is set and bv3_prob is available,
-            # use BV3 table direction when Octagon is down
-            if self.confidence_threshold > 0 and features.bv3_prob is not None:
-                bv3 = features.bv3_prob
-                if bv3 >= self.confidence_threshold:
-                    bv3_side = "yes"
-                elif bv3 <= 1.0 - self.confidence_threshold:
-                    bv3_side = "no"
-                else:
-                    bv3_side = None
-
-                if bv3_side is not None:
-                    ev = compute_bidirectional_ev(
-                        p_model=bv3,
-                        yes_ask_cents=features.yes_ask,
-                        no_ask_cents=features.no_ask,
-                        stake_dollars=self.stake_dollars,
-                        maker=self.maker,
-                    )
-                    side_ev = ev.yes_ev if bv3_side == "yes" else ev.no_ev
-                    entry_cents = features.yes_ask if bv3_side == "yes" else features.no_ask
-
-                    if side_ev >= self.min_ev:
-                        cap_reason = check_entry_range(entry_cents, bv3_side, self.skip_config)
-                        if not cap_reason:
-                            return Decision(
-                                action="trade",
-                                side=bv3_side,
-                                p_model=bv3,
-                                reason=(
-                                    f"{bv3_side} BV3-fallback EV={side_ev:+.3f} "
-                                    f"(bv3={bv3:.3f} confâ‰¥{self.confidence_threshold:.0%})"
-                                ),
-                                contributing_signals={
-                                    "octagon_direction": None,
-                                    "octagon_model_prob": None,
-                                    "octagon_market_prob": market_prob,
-                                    "octagon_confidence": None,
-                                    "octagon_cache_hit": False,
-                                    "bv3_prob": bv3,
-                                    "bv3_side": bv3_side,
-                                    "yes_ev": ev.yes_ev,
-                                    "no_ev": ev.no_ev,
-                                    "entry_cents": entry_cents,
-                                    "ev_pass": True,
-                                    "vol_pass": True,
-                                    "final_decision": "trade",
-                                    "skip_reason": None,
-                                    "decision_mode": "bv3_fallback",
-                                },
-                                expected_value=side_ev,
-                            )
-
+        if st is None:
             return Decision(
                 action="skip",
                 side=None,
                 p_model=market_prob,
-                reason="octagon_unavailable",
+                reason="supertrend_insufficient_data",
                 contributing_signals={
-                    "octagon_direction": None,
-                    "octagon_model_prob": None,
-                    "octagon_market_prob": market_prob,
-                    "octagon_confidence": oct_conf,
-                    "octagon_cache_hit": oct_hit,
+                    "supertrend_direction": None,
+                    "market_prob": market_prob,
                     "ev_pass": False,
                     "vol_pass": True,
                     "final_decision": "skip",
-                    "skip_reason": "octagon_unavailable",
+                    "skip_reason": "supertrend_insufficient_data",
                 },
             )
 
-        # Step 3 continued: Determine direction.
-        # 15m: oct_prob is Octagon's P(YES=above strike) for this specific strike.
-        # Compare to 0.5: >= 0.5 means Octagon thinks YES more likely → YES,
-        # < 0.5 means Octagon thinks NO more likely → NO.
-        # BV3 EV + confidence gates filter out low-conviction entries.
-        if self.is_15m:
-            oct_side = "yes" if oct_prob >= 0.5 else "no"
-        else:
-            if oct_prob > market_prob:
-                oct_side = "yes"
-            elif oct_prob < market_prob:
-                oct_side = "no"
-            else:
-                features.octagon_direction_agrees = None
-                return Decision(
-                    action="skip",
-                    side=None,
-                    p_model=market_prob,
-                    reason=(
-                        f"octagon_neutral: model_prob={oct_prob:.3f} == "
-                        f"market_prob={market_prob:.3f}"
-                    ),
-                    contributing_signals={
-                        "octagon_direction": None,
-                        "octagon_model_prob": oct_prob,
-                        "octagon_market_prob": market_prob,
-                        "octagon_confidence": oct_conf,
-                        "octagon_cache_hit": oct_hit,
-                        "ev_pass": False,
-                        "vol_pass": True,
-                        "final_decision": "skip",
-                        "skip_reason": "octagon_neutral",
-                    },
-                )
+        st_side = "yes" if st == 1 else "no"
 
-        features.octagon_direction_agrees = True  # we follow the direction signal
-
-        # Probability used for EV + confidence gates.
-        # 15m: use BV3 empirical win rate (calibrated from real Kalshi binary outcomes).
-        # Octagon's absolute probability is tuned for hourly/daily directional sentiment
-        # and returns 0.78-0.91 for ALL 15m trades — rendering EV and confidence gates useless.
-        # Hourly: use Octagon directly (better calibrated for longer timeframes).
-        if self.is_15m and features.bv3_prob is not None:
-            p_ev = features.bv3_prob
-            p_ev_source = "bv3"
-        else:
-            p_ev = oct_prob
-            p_ev_source = "octagon"
-
-        # Step 4: EV gate using calibrated probability
+        # Step 4: EV gate using fixed assumed probability
+        p_ev = _SUPERTREND_P_MODEL
+        # p(YES)=0.70 for YES direction; p(YES)=0.30 (=1-0.70) for NO direction
+        p_model_for_ev = p_ev if st_side == "yes" else 1.0 - p_ev
         ev = compute_bidirectional_ev(
-            p_model=p_ev,
+            p_model=p_model_for_ev,
             yes_ask_cents=features.yes_ask,
             no_ask_cents=features.no_ask,
             stake_dollars=self.stake_dollars,
             maker=self.maker,
         )
-        side_ev = ev.yes_ev if oct_side == "yes" else ev.no_ev
-        entry_cents = features.yes_ask if oct_side == "yes" else features.no_ask
+        side_ev = ev.yes_ev if st_side == "yes" else ev.no_ev
+        entry_cents = features.yes_ask if st_side == "yes" else features.no_ask
 
         base_signals = {
-            "octagon_direction": oct_side,
-            "octagon_model_prob": oct_prob,
-            "octagon_market_prob": market_prob,
-            "octagon_confidence": oct_conf,
-            "octagon_cache_hit": oct_hit,
+            "supertrend_direction": st,
+            "supertrend_side": st_side,
+            "market_prob": market_prob,
             "p_ev": p_ev,
-            "p_ev_source": p_ev_source,
-            "bv3_prob": features.bv3_prob,
+            "p_ev_source": "supertrend",
             "yes_ev": ev.yes_ev,
             "no_ev": ev.no_ev,
             "entry_cents": entry_cents,
+            "raw_p_yes": p_ev if st_side == "yes" else 1.0 - p_ev,
         }
 
         if side_ev < self.min_ev:
@@ -237,8 +137,8 @@ class BaseStrategy(ABC):
                 side=None,
                 p_model=p_ev,
                 reason=(
-                    f"EV below threshold: {oct_side}_ev={side_ev:+.3f} "
-                    f"< {self.min_ev:+.3f} (p_ev={p_ev:.3f} [{p_ev_source}])"
+                    f"EV below threshold: {st_side}_ev={side_ev:+.3f} "
+                    f"< {self.min_ev:+.3f} (p_ev={p_ev:.2f})"
                 ),
                 contributing_signals={
                     **base_signals,
@@ -250,7 +150,7 @@ class BaseStrategy(ABC):
                 expected_value=side_ev,
             )
 
-        # Step 5: vol ratio gate (buffer durability; 15m markets auto-pass)
+        # Step 5: vol ratio gate (buffer durability)
         vol_skip = check_vol_ratio(features, self.skip_config)
         if vol_skip:
             return Decision(
@@ -268,21 +168,18 @@ class BaseStrategy(ABC):
                 expected_value=side_ev,
             )
 
-        # Step 6: confidence gate — final entry confirmation using calibrated probability.
-        # 15m: bv3_prob >= threshold means price is clearly beyond the strike.
-        # Hourly: oct_prob >= threshold means Octagon has high conviction.
-        # YES passes if p_ev >= threshold; NO passes if p_ev <= (1 - threshold).
+        # Step 6: confidence gate (disabled by default; set confidence_threshold > 0 to enable)
         if self.confidence_threshold > 0:
             _ct = self.confidence_threshold
-            _below = (oct_side == "yes" and p_ev < _ct)
-            _above = (oct_side == "no"  and p_ev > 1.0 - _ct)
+            _below = (st_side == "yes" and p_ev < _ct)
+            _above = (st_side == "no"  and p_ev > 1.0 - _ct)
             if _below or _above:
                 return Decision(
                     action="skip",
                     side=None,
                     p_model=p_ev,
                     reason=(
-                        f"confidence_gate: {oct_side}_p_ev={p_ev:.3f} [{p_ev_source}] "
+                        f"confidence_gate: {st_side}_p_ev={p_ev:.3f} "
                         f"outside threshold {_ct:.0%}/{1.0-_ct:.0%}"
                     ),
                     contributing_signals={
@@ -295,8 +192,8 @@ class BaseStrategy(ABC):
                     expected_value=side_ev,
                 )
 
-        # Step 7: entry range (20c-76c for 15m, 20c-80c for hourly)
-        range_reason = check_entry_range(entry_cents, oct_side, self.skip_config)
+        # Step 7: entry range ([20c, 76c) for 15m, [20c, 80c) for hourly)
+        range_reason = check_entry_range(entry_cents, st_side, self.skip_config)
         if range_reason:
             return Decision(
                 action="skip",
@@ -316,11 +213,11 @@ class BaseStrategy(ABC):
         # Step 8: trade
         return Decision(
             action="trade",
-            side=oct_side,
+            side=st_side,
             p_model=p_ev,
             reason=(
-                f"{oct_side} EV={side_ev:+.3f} "
-                f"(octagon={oct_prob:.3f} market={market_prob:.3f})"
+                f"{st_side} supertrend={st} EV={side_ev:+.3f} "
+                f"market={market_prob:.3f}"
             ),
             contributing_signals={
                 **base_signals,
@@ -328,6 +225,7 @@ class BaseStrategy(ABC):
                 "vol_pass": True,
                 "final_decision": "trade",
                 "skip_reason": None,
+                "decision_mode": "supertrend",
             },
             expected_value=side_ev,
         )

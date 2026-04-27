@@ -53,11 +53,13 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 .tb-btn.off{border-color:rgba(214,57,73,.5);color:var(--down);background:rgba(214,57,73,.1);}
 /* Mode selector — three explicit buttons, one active at a time */
 .mode-selector-tb{display:inline-flex;gap:4px;align-items:center;}
-.mode-sel-btn{display:inline-flex;align-items:center;padding:7px 13px;border-radius:7px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);transition:all .15s;}
+.mode-sel-btn{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 13px;border-radius:7px;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.8px;text-transform:uppercase;cursor:pointer;border:1px solid var(--line-2);background:var(--card);color:var(--ink-2);transition:all .15s;}
 .mode-sel-btn:hover{background:var(--card-2);}
 .mode-sel-btn.sel-live{color:#4cbe7a;border-color:rgba(27,158,85,.45);background:rgba(27,158,85,.1);box-shadow:0 0 7px rgba(255,215,0,.28),0 0 0 1px rgba(255,215,0,.32);}
-.mode-sel-btn.sel-demo{color:#5badff;border-color:rgba(74,158,255,.45);background:rgba(74,158,255,.1);box-shadow:0 0 7px rgba(255,215,0,.28),0 0 0 1px rgba(255,215,0,.32);}
-.mode-sel-btn.sel-paper{color:#aaa;border-color:rgba(160,160,160,.35);background:rgba(160,160,160,.07);box-shadow:0 0 7px rgba(255,215,0,.28),0 0 0 1px rgba(255,215,0,.32);}
+.mode-sel-btn.sel-demo{color:#5badff;border-color:rgba(74,158,255,.45);background:rgba(74,158,255,.1);box-shadow:0 0 7px rgba(74,158,255,.25),0 0 0 1px rgba(74,158,255,.35);}
+.mode-sel-btn.sel-paper{color:#aaa;border-color:rgba(160,160,160,.35);background:rgba(160,160,160,.07);box-shadow:0 0 0 1px rgba(160,160,160,.25);}
+.mode-btn-label{display:block;line-height:1;}
+.mode-btn-sub{display:block;font-size:9px;font-weight:400;letter-spacing:.2px;text-transform:none;opacity:.6;margin-top:2px;line-height:1;}
 .tb-dot{width:7px;height:7px;border-radius:50%;background:var(--ink-3);}
 .tb-dot.on{background:var(--up);}
 #clock-txt{font-size:14px;font-weight:600;color:var(--ink);letter-spacing:.2px;white-space:nowrap;}
@@ -328,11 +330,11 @@ tr:last-child td{border-bottom:none;}
         <span id="bot-toggle-tb-label">Bot Off</span>
       </button>
 
-      <!-- Mode selector: LIVE / DEMO / PAPER -->
+      <!-- Mode selector: PAPER / DEMO / LIVE -->
       <div class="mode-selector-tb">
-        <button id="mode-btn-live"  class="mode-sel-btn" onclick="setMode('live')">LIVE</button>
-        <button id="mode-btn-demo"  class="mode-sel-btn" onclick="setMode('demo')">DEMO</button>
-        <button id="mode-btn-paper" class="mode-sel-btn" onclick="setMode('paper')">PAPER</button>
+        <button id="mode-btn-paper" class="mode-sel-btn" onclick="setMode('paper')"><span class="mode-btn-label">PAPER</span><span class="mode-btn-sub">simulation</span></button>
+        <button id="mode-btn-demo"  class="mode-sel-btn" onclick="setMode('demo')"><span class="mode-btn-label">DEMO</span><span class="mode-btn-sub">fake&nbsp;$ Kalshi</span></button>
+        <button id="mode-btn-live"  class="mode-sel-btn" onclick="setMode('live')"><span class="mode-btn-label">LIVE</span><span class="mode-btn-sub">real&nbsp;$</span></button>
       </div>
 
       <!-- Clock -->
@@ -536,9 +538,9 @@ tr:last-child td{border-bottom:none;}
         <div class="s-group">
           <label>Mode</label>
           <div class="tog-wrap" style="gap:5px;">
-            <button id="s-mode-live"  class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('live')">LIVE</button>
-            <button id="s-mode-demo"  class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('demo')">DEMO</button>
             <button id="s-mode-paper" class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('paper')">PAPER</button>
+            <button id="s-mode-demo"  class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('demo')">DEMO</button>
+            <button id="s-mode-live"  class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('live')">LIVE</button>
           </div>
         </div>
       </div>

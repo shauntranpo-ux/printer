@@ -840,8 +840,8 @@ def api_signal_stats():
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT claude_signals, outcome FROM trades "
-            "WHERE outcome IN ('win','loss') AND claude_signals IS NOT NULL "
+            "SELECT entry_signals, outcome FROM trades "
+            "WHERE outcome IN ('win','loss') AND entry_signals IS NOT NULL "
             "ORDER BY ts DESC LIMIT 500"
         ).fetchall()
         conn.close()
@@ -849,7 +849,7 @@ def api_signal_stats():
         buckets: dict = {}
         for row in rows:
             try:
-                sigs = json.loads(row["claude_signals"])
+                sigs = json.loads(row["entry_signals"])
             except Exception:
                 continue
             outcome = row["outcome"]

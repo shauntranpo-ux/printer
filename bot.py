@@ -11,6 +11,7 @@ Start via runner.py, not directly.
 
 import asyncio
 import json
+import math
 import sqlite3
 import logging
 import os
@@ -36,9 +37,6 @@ from cryptography.hazmat.primitives.asymmetric import padding
 import asset_manager
 from asset_manager import (
     ASSET_CONFIG,
-    load_bv3_tables,
-    empirical_win_prob  as _am_win_prob,
-    bv3_bucket_indices  as _am_bv3_bucket,
     get_price           as _am_get_price,
     price_age_seconds   as _am_price_age,
     binance_feed_task,
@@ -110,11 +108,6 @@ _market_cache: dict | None = None
 _market_cache_ts: float = 0.0
 _all_markets_cache: list = []
 _all_markets_cache_ts: float = 0.0
-
-# Live BV3 correction table — tracks actual win rates per (dist_idx, time_idx) bucket
-# Updated after every resolved trade. Blended into _empirical_win_prob().
-_bv3_corrections: dict = {}  # (dist_idx, time_idx) -> [wins, total]
-_BV3_CORRECTIONS_FILE = os.path.join(_DATA_DIR, "bv3_corrections.json")
 
 # Daily-limit tracking
 limit_triggered: bool = False
@@ -365,7 +358,7 @@ def _init_config() -> None:
         "daily_profit_target_dollars": 200,
         "max_consecutive_losses": 5,             # pause 15 min after this many losses in a row
         "enable_reversal_signal": False,         # disabled by default — no backtested evidence yet
-        "min_ev_base": 8,                        # raised from 3 to 8 after adding fee accounting
+        "min_ev_base": 8,                        # EV gate; fee formula fix may allow lower — tune via backtest
         "kalshi_fee_per_contract_cents": 7,      # Kalshi platform fee; update if pricing changes
         "preflight_override": False,             # set true ONLY to bypass pre-flight hard stop — not recommended
     }
@@ -500,12 +493,31 @@ def init_db() -> None:
             ("order_id",          "TEXT"),
             ("asset",             "TEXT DEFAULT 'BTC'"),  # multi-asset support
             ("raw_p_yes",         "REAL"),                # pre-calibration P(YES wins)
-            ("claude_signals",    "TEXT"),                # JSON snapshot of entry signals
+            ("entry_signals",    "TEXT"),                # JSON snapshot of entry signals
         ):
             try:
                 c.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")
             except Exception:
                 pass  # column already exists
+
+        # Drop dead columns that were never populated (SQLite 3.35+)
+        existing_cols = {row[1] for row in c.execute("PRAGMA table_info(trades)")}
+        for dead_col in ("claude_confidence", "stop_loss_price_cents"):
+            if dead_col in existing_cols:
+                try:
+                    c.execute(f"ALTER TABLE trades DROP COLUMN {dead_col}")
+                    log.info("DB: dropped dead column %s from trades", dead_col)
+                except Exception as exc:
+                    log.warning("DB: could not drop column %s: %s", dead_col, exc)
+
+        # Rename claude_signals -> entry_signals
+        existing_cols = {row[1] for row in c.execute("PRAGMA table_info(trades)")}
+        if "claude_signals" in existing_cols and "entry_signals" not in existing_cols:
+            try:
+                c.execute("ALTER TABLE trades RENAME COLUMN claude_signals TO entry_signals")
+                log.info("DB: renamed claude_signals -> entry_signals")
+            except Exception as exc:
+                log.warning("DB: could not rename claude_signals: %s", exc)
 
         conn.commit()
         conn.close()
@@ -558,7 +570,7 @@ async def db_write_trade(trade: dict) -> int | None:
                     model_prob, implied_prob, btc_price_at_entry, strike,
                     seconds_left_at_entry, fill_confirmed,
                     exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                    order_id, asset, raw_p_yes, claude_signals
+                    order_id, asset, raw_p_yes, entry_signals
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
@@ -572,7 +584,7 @@ async def db_write_trade(trade: dict) -> int | None:
                 trade.get("outcome", "pending"), trade.get("pnl_dollars"),
                 trade.get("profit_percent"),
                 trade.get("order_id"), trade.get("asset", "BTC"),
-                trade.get("raw_p_yes"), trade.get("claude_signals"),
+                trade.get("raw_p_yes"), trade.get("entry_signals"),
             ))
             await db.commit()
             return cur.lastrowid
@@ -1405,77 +1417,6 @@ def btc_position(btc_price: float, strike: float) -> str:
 #  Momentum
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-def calculate_momentum(prices=None) -> tuple[float, str]:
-    """
-    Calculate price momentum over the last 180 seconds.
-
-    Args:
-        prices: deque of (timestamp, price) tuples. Defaults to global btc_prices.
-
-    Returns:
-        (pct_change, label) where label is 'bullish', 'bearish', or 'neutral'.
-    """
-    prices = prices or btc_prices
-    if not prices:
-        return 0.0, "neutral"
-
-    cutoff = time.time() - 180
-    oldest = None
-    for ts, price in prices:
-        if ts >= cutoff:
-            oldest = price
-            break
-
-    if oldest is None:
-        return 0.0, "neutral"
-
-    current = prices[-1][1]
-    pct = (current - oldest) / oldest
-
-    if pct > 0.005:
-        return pct, "bullish"
-    if pct < -0.005:
-        return pct, "bearish"
-    return pct, "neutral"
-
-
-def calculate_momentum_acceleration(prices=None) -> tuple[float, str]:
-    """
-    Second derivative of price: how much is 3-min momentum changing vs 3-6 min ago?
-
-    Returns (acceleration, label):
-      acceleration: pct-point change between recent and prior 3-min momentum
-      label: "accelerating" | "decelerating" | "flat"
-
-    "accelerating" = momentum strengthening in its current direction.
-    "decelerating" = momentum weakening (trend fading, potential reversal).
-    """
-    prices = prices or btc_prices
-    if not prices:
-        return 0.0, "flat"
-
-    now = time.time()
-    cutoff_3m = now - 180
-    cutoff_6m = now - 360
-
-    p_6m = next((p for ts, p in prices if ts >= cutoff_6m), None)
-    p_3m = next((p for ts, p in prices if ts >= cutoff_3m), None)
-    p_now = prices[-1][1]
-
-    if p_6m is None or p_3m is None or p_6m <= 0 or p_3m <= 0:
-        return 0.0, "flat"
-
-    mom_recent = (p_now - p_3m) / p_3m   # last 3 min
-    mom_prior  = (p_3m - p_6m) / p_6m    # 3-6 min ago
-    accel = mom_recent - mom_prior
-
-    THRESHOLD = 0.002  # 0.2% momentum shift = meaningful acceleration
-    if accel > THRESHOLD:
-        return accel, "accelerating"
-    if accel < -THRESHOLD:
-        return accel, "decelerating"
-    return accel, "flat"
-
 
 def btc_realized_vol(prices=None) -> float | None:
     """
@@ -1524,33 +1465,6 @@ def track_contract_price(ticker: str, price: float) -> None:
         _contract_price_history[ticker] = deque(maxlen=60)
     _contract_price_history[ticker].append((time.time(), price))
 
-
-def contract_velocity(ticker: str, side: str) -> str:
-    """
-    Determine whether the contract price is moving in a favorable direction.
-
-    For YES buys: YES ask price falling toward entry zone = opportunity.
-    For NO  buys: YES ask price rising away from us = NO getting cheaper = opportunity.
-
-    Returns 'favorable', 'neutral', or 'unfavorable'.
-    """
-    hist = _contract_price_history.get(ticker)
-    if not hist or len(hist) < 3:
-        return "neutral"
-
-    prices = [p for _, p in hist]
-    oldest, newest = prices[0], prices[-1]
-    change = (newest - oldest) / oldest if oldest else 0
-
-    if side == "yes":
-        # YES ask falling toward us (e.g. 91Â¢ → 65Â¢) = great opportunity
-        if change < -0.05:  return "favorable"
-        if change > 0.05:   return "unfavorable"
-    else:
-        # YES ask rising (NO getting cheaper) = opportunity to buy NO
-        if change > 0.05:   return "favorable"
-        if change < -0.05:  return "unfavorable"
-    return "neutral"
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -1766,188 +1680,11 @@ async def recalibrate_asset_strategies() -> None:
 #  Printer Brain v3 — Empirically Calibrated from 4.5M rows of BTC 1-min data
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-# Empirical win-probability table: P(BTC stays on same side at window close)
-# Derived from backtest of 4.5M rows binance_api_BTCUSDT_1m.csv (2017-2026 regime)
-# Simulated all 15-min KXBTC15M-equivalent windows, measured each minute within.
-#
-# Rows = distance bucket (abs % BTC is from strike):
-#   0: 0-0.1%   1: 0.1-0.2%   2: 0.2-0.3%   3: 0.3-0.4%   4: 0.4-0.5%
-#   5: 0.5-0.6% 6: 0.6-0.75%  7: 0.75-1.0%  8: 1.0-1.25%  9: 1.25%+
-# Columns = minutes remaining until window close (index 0 = 1 min, index 12 = 13 min)
-_BV3_TABLE = [
-    # 1min   2min   3min   4min   5min   6min   7min   8min   9min  10min  11min  12min  13min
-    [0.850, 0.796, 0.758, 0.727, 0.705, 0.686, 0.672, 0.656, 0.639, 0.624, 0.606, 0.595, 0.578],  # 0.0-0.1%
-    [0.980, 0.956, 0.931, 0.904, 0.876, 0.856, 0.833, 0.807, 0.783, 0.752, 0.733, 0.706, 0.675],  # 0.1-0.2%
-    [0.994, 0.983, 0.967, 0.951, 0.933, 0.909, 0.889, 0.868, 0.835, 0.811, 0.788, 0.756, 0.713],  # 0.2-0.3%
-    [0.997, 0.990, 0.981, 0.968, 0.950, 0.935, 0.917, 0.893, 0.874, 0.840, 0.816, 0.778, 0.741],  # 0.3-0.4%
-    [0.998, 0.993, 0.987, 0.977, 0.962, 0.948, 0.932, 0.908, 0.883, 0.869, 0.835, 0.809, 0.782],  # 0.4-0.5%
-    [0.998, 0.997, 0.988, 0.979, 0.968, 0.960, 0.944, 0.925, 0.913, 0.876, 0.849, 0.824, 0.781],  # 0.5-0.6%
-    [0.999, 0.994, 0.994, 0.979, 0.974, 0.963, 0.947, 0.936, 0.914, 0.897, 0.872, 0.839, 0.817],  # 0.6-0.75%
-    [0.999, 0.996, 0.995, 0.988, 0.982, 0.968, 0.963, 0.942, 0.917, 0.905, 0.884, 0.845, 0.818],  # 0.75-1.0%
-    [1.000, 0.999, 0.994, 0.992, 0.984, 0.980, 0.967, 0.964, 0.935, 0.919, 0.911, 0.862, 0.820],  # 1.0-1.25%
-    [1.000, 0.997, 0.995, 0.991, 0.986, 0.972, 0.971, 0.960, 0.942, 0.921, 0.904, 0.874, 0.820],  # 1.25%+
-]
-# Upper bound of each distance bucket as a fraction (NOT percent)
-_BV3_DIST_BOUNDS = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.0075, 0.010, 0.0125]
-
-
-def _empirical_win_prob(abs_pct: float, mins_left: float) -> float:
-    """
-    Return empirical P(BTC stays on current side at window close).
-    abs_pct: absolute fraction distance from strike (e.g. 0.003 = 0.3%)
-    mins_left: minutes until window closes
-    """
-    # Distance bucket
-    bidx = len(_BV3_DIST_BOUNDS)  # default = last row (1.25%+)
-    for i, bound in enumerate(_BV3_DIST_BOUNDS):
-        if abs_pct < bound:
-            bidx = i
-            break
-    bidx = min(bidx, len(_BV3_TABLE) - 1)
-    row = _BV3_TABLE[bidx]
-
-    # Sub-1-min: nearly certain (just above the 1-min row value)
-    if mins_left < 1.0:
-        return min(0.997, row[0] + 0.005)
-
-    # Beyond 13 min: use the 13-min value (worst case in our table)
-    if mins_left >= 13.0:
-        return row[12]
-
-    # Linear interpolation between integer-minute columns
-    t_low  = int(mins_left) - 1   # 0-indexed into row
-    t_high = t_low + 1
-    frac   = mins_left - int(mins_left)
-
-    if t_high > 12:
-        return row[12]
-
-    bv3_val = row[t_low] + (row[t_high] - row[t_low]) * frac
-
-    # â”€â”€ Blend with live corrections if we have enough samples â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    key = (bidx, min(t_low, 12))
-    if key in _bv3_corrections:
-        wins, total = _bv3_corrections[key]
-        if total >= 5:
-            live_wr = wins / total
-            # alpha grows 0→0.40 as samples grow 5→50; table always dominates early on
-            alpha = min(0.40, (total - 5) / 45 * 0.40)
-            return bv3_val * (1.0 - alpha) + live_wr * alpha
-
-    return bv3_val
-
-
-def _bv3_bucket_indices(abs_pct: float, mins_left: float) -> tuple[int, int]:
-    """Return (dist_idx, time_idx) for a given trade — used to record outcomes."""
-    bidx = len(_BV3_DIST_BOUNDS)
-    for i, bound in enumerate(_BV3_DIST_BOUNDS):
-        if abs_pct < bound:
-            bidx = i
-            break
-    bidx = min(bidx, len(_BV3_TABLE) - 1)
-    t_low = max(0, min(12, int(max(1.0, mins_left)) - 1))
-    return bidx, t_low
-
-
-def _win_prob_for_asset(asset: str, abs_pct: float, mins_left: float) -> float:
-    """
-    Per-asset wrapper for win probability lookup.
-    BTC: uses the existing _empirical_win_prob (includes live corrections blending).
-    Others: delegates directly to asset_manager (no correction blending yet).
-    """
-    if asset == "BTC":
-        return _empirical_win_prob(abs_pct, mins_left)
-    return _am_win_prob(asset, abs_pct, mins_left)
-
-
-def _bv3_bucket_indices_for_asset(asset: str, abs_pct: float, mins_left: float) -> tuple[int, int]:
-    """Per-asset wrapper for bucket index lookup."""
-    if asset == "BTC":
-        return _bv3_bucket_indices(abs_pct, mins_left)
-    return _am_bv3_bucket(asset, abs_pct, mins_left)
-
-
-def _load_bv3_corrections() -> None:
-    """Load persisted live BV3 corrections from disk on startup."""
-    global _bv3_corrections
-    try:
-        with open(_BV3_CORRECTIONS_FILE, "r", encoding="utf-8") as fh:
-            raw = json.load(fh)
-        _bv3_corrections = {
-            (int(k.split(",")[0]), int(k.split(",")[1])): v
-            for k, v in raw.items()
-        }
-        total_samples = sum(v[1] for v in _bv3_corrections.values())
-        log.info(f"BV3 corrections loaded: {len(_bv3_corrections)} buckets, {total_samples} total samples.")
-    except FileNotFoundError:
-        _bv3_corrections = {}
-    except (json.JSONDecodeError, KeyError, ValueError) as exc:
-        corrupt_path = f"{_BV3_CORRECTIONS_FILE}.corrupt.{int(time.time())}"
-        try:
-            os.rename(_BV3_CORRECTIONS_FILE, corrupt_path)
-            log.warning(f"BV3 corrections corrupted ({exc}). Renamed to {corrupt_path}. Starting fresh.")
-        except OSError:
-            log.warning(f"BV3 corrections corrupted ({exc}). Starting fresh.")
-        _bv3_corrections = {}
-    except Exception as exc:
-        log.warning(f"BV3 corrections load error: {exc}")
-        _bv3_corrections = {}
-
-
-def _save_bv3_corrections() -> None:
-    """Persist live BV3 corrections to disk (atomic write)."""
-    try:
-        serialisable = {f"{k[0]},{k[1]}": v for k, v in _bv3_corrections.items()}
-        atomic_write_json(serialisable, _BV3_CORRECTIONS_FILE)
-    except Exception as exc:
-        log.warning(f"BV3 corrections save error: {exc}")
-
-
-def _update_bv3_correction(dist_idx: int, time_idx: int, won: bool) -> None:
-    """Record one trade outcome into the live BV3 correction table."""
-    key = (dist_idx, time_idx)
-    if key not in _bv3_corrections:
-        _bv3_corrections[key] = [0, 0]
-    _bv3_corrections[key][1] += 1
-    if won:
-        _bv3_corrections[key][0] += 1
-    wins, total = _bv3_corrections[key]
-    log.info(f"BV3 correction updated: bucket {key} -> {wins}/{total} ({wins/total:.0%})")
-    _save_bv3_corrections()
-
-
 def _session_ev_adjustment() -> float:
     return 0.0
 
 
-# â”€â”€ Feature-flagged routing to new-foundation strategies (refactor) â”€â”€â”€â”€â”€â”€
-# Routes any asset through strategies/ pipeline when config
-# use_new_strategies.<ASSET> is True. Default: False (legacy path unchanged).
-
 _STRATEGY_SINGLETONS: dict = {}  # keyed by "ASSET" or "ASSET_hourly"
-
-
-def _octagon_status_snapshot() -> dict:
-    """Safe read of octagon_client._status for bot_state.json."""
-    try:
-        import sys as _sys
-        _src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
-        if _src not in _sys.path:
-            _sys.path.insert(0, _src)
-        from strategies.signals import octagon_client as _oc
-        st = _oc._status
-        import os as _os
-        return {
-            "key_present": bool(_os.environ.get("OCTAGON_API_KEY")),
-            "last_ok_ts":   st.get("last_ok_ts"),
-            "last_fail_ts": st.get("last_fail_ts"),
-            "calls":        st.get("calls", 0),
-            "hits":          st.get("hits", 0),
-            "refresh_calls": st.get("refresh_calls", 0),
-        }
-    except Exception:
-        import os as _os
-        return {"key_present": bool(_os.environ.get("OCTAGON_API_KEY")), "calls": 0, "hits": 0, "refresh_calls": 0}
 
 
 def _strategy_name_for(asset, duration_min):
@@ -1959,7 +1696,7 @@ def _strategy_name_for(asset, duration_min):
         return "BTCHourly V3"
     if is_hourly:
         return f"{asset}Hourly"
-    return "BV3→EV (15m)"
+    return "Supertrend (15m)"
 
 
 def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):
@@ -1999,6 +1736,8 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         min_ev = _ev_base / 100.0
         confidence_threshold = _ct / 100.0
         stake = float(config.get("trade_amount_dollars", 25))
+        st_period = int(config.get("supertrend_atr_period", 10))
+        st_mult   = float(config.get("supertrend_atr_multiplier", 3.0))
 
         if asset == "ETH" and is_hourly:
             from strategies.eth_hourly_combined import ETHHourlyCombinedStrategy
@@ -2007,6 +1746,8 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 min_ev=min_ev,
                 stake_dollars=stake,
                 confidence_threshold=confidence_threshold,
+                supertrend_atr_period=st_period,
+                supertrend_atr_multiplier=st_mult,
             )
         elif asset == "BTC" and is_hourly:
             from strategies.btc_hourly_strategy import BTCHourlyStrategy
@@ -2015,6 +1756,8 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 min_ev=min_ev,
                 stake_dollars=stake,
                 confidence_threshold=confidence_threshold,
+                supertrend_atr_period=st_period,
+                supertrend_atr_multiplier=st_mult,
             )
         elif not is_hourly:
             from strategies.fifteen_min_strategy import FifteenMinStrategy
@@ -2024,6 +1767,8 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 min_ev=min_ev,
                 stake_dollars=stake,
                 confidence_threshold=confidence_threshold,
+                supertrend_atr_period=st_period,
+                supertrend_atr_multiplier=st_mult,
             )
         else:
             return None  # hourly strategy not implemented for this asset
@@ -2036,39 +1781,15 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         return None
 
 
-def printer_brain_routed(
+def strategy_brain(
     btc_price, strike, yes_ask, no_ask,
     elapsed_seconds, secs_left, ticker,
     min_ev_base=3.0, vol_gate_thresh=1.80, kalshi_fee=0.07,
     asset="BTC", max_entry_price_cents=100.0,
     min_reward_cents=0.0, max_risk_reward_ratio=999.0,
-    vol_confirm_mult=1.25, vol_oppose_mult=0.70,
-    mom_lock_enabled=True, mom_lock_neutral_tighten=1.0,
-    mom_accel_scale=3.0,
 ):
-    """
-    Routes to legacy printer_brain OR new strategy based on per-asset config flag.
-
-    When config.use_new_strategies.<asset> is True, dispatch to new strategy
-    pipeline. Otherwise use legacy printer_brain. Returns the same dict shape.
-    """
+    """Dispatch to FifteenMinStrategy via Supertrend. Returns brain dict."""
     config = read_config()
-    flag_on = bool(config.get("use_new_strategies", {}).get(asset, False))
-    if not flag_on:
-        return printer_brain(
-            btc_price, strike, yes_ask, no_ask,
-            elapsed_seconds, secs_left, ticker,
-            min_ev_base=min_ev_base, vol_gate_thresh=vol_gate_thresh,
-            kalshi_fee=kalshi_fee, asset=asset,
-            max_entry_price_cents=max_entry_price_cents,
-            min_reward_cents=min_reward_cents,
-            max_risk_reward_ratio=max_risk_reward_ratio,
-            vol_confirm_mult=vol_confirm_mult,
-            vol_oppose_mult=vol_oppose_mult,
-            mom_lock_enabled=mom_lock_enabled,
-            mom_lock_neutral_tighten=mom_lock_neutral_tighten,
-            mom_accel_scale=mom_accel_scale,
-        )
 
     market_duration_min = (elapsed_seconds + secs_left) / 60.0
     strat = _get_or_make_strategy(asset, config, market_duration_min=market_duration_min)
@@ -2078,7 +1799,7 @@ def printer_brain_routed(
         # and produces random-confidence outputs (observed 50/50 win rate in paper trading).
         log.info(
             f"No strategy for {asset} at {market_duration_min:.0f}min "
-            f"(use_new_strategies=True) — skipping"
+            f"skipping (no strategy for duration)"
         )
         _above = btc_price > strike if strike > 0 else False
         return {
@@ -2139,16 +1860,6 @@ def printer_brain_routed(
             "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
         }
 
-    _bv3_raw = _win_prob_for_asset(
-        asset,
-        abs(current_price - strike) / strike if strike > 0 else 0.0,
-        secs_left / 60.0,
-    )
-    # bv3_raw = P(price stays on current side of strike). Convert to P(YES = above strike)
-    # so that base.py EV and confidence gates operate on a consistent P(YES) scale.
-    _bv3_above = current_price > strike
-    features.bv3_prob = _bv3_raw if _bv3_above else (1.0 - _bv3_raw)
-
     try:
         decision = strat.decide(features)
     except Exception as exc:
@@ -2177,6 +1888,11 @@ def printer_brain_routed(
 
     abs_pct = abs(current_price - strike) / strike
     true_p = decision.p_model if decision.side == "yes" else (1.0 - decision.p_model)
+    if decision.action == "trade":
+        _st = decision.contributing_signals.get("supertrend_direction")
+        _mkt = decision.contributing_signals.get("market_prob")
+        log.info("[%s] signal=supertrend st=%s market=%.3f side=%s",
+                 asset, _st, _mkt or 0, decision.side)
     return {
         "action": decision.action,
         "side": decision.side if decision.side else naive,
@@ -2207,403 +1923,153 @@ def printer_brain_routed(
 # â”€â”€ End feature-flagged routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
-def printer_brain(
-    btc_price: float,
-    strike: float,
-    yes_ask: float,
-    no_ask: float,
-    elapsed_seconds: float,
-    secs_left: float,
-    ticker: str,
-    min_ev_base: float = 3.0,
-    vol_gate_thresh: float = 1.80,
-    kalshi_fee: float = 0.07,
-    asset: str = "BTC",
-    max_entry_price_cents: float = 100.0,
-    min_reward_cents: float = 0.0,
-    max_risk_reward_ratio: float = 999.0,
-    vol_confirm_mult: float = 1.25,
-    vol_oppose_mult: float = 0.70,
-    mom_lock_enabled: bool = True,
-    mom_lock_neutral_tighten: float = 1.0,
-    mom_accel_scale: float = 3.0,
-) -> dict:
-    """
-    Printer Brain v3 — empirically calibrated from 4.5M rows BTC 1-min data.
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+#  Reversal signal
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+def strategy_brain(
+    btc_price, strike, yes_ask, no_ask,
+    elapsed_seconds, secs_left, ticker,
+    min_ev_base=3.0, vol_gate_thresh=1.80, kalshi_fee=0.07,
+    asset="BTC", max_entry_price_cents=100.0,
+    min_reward_cents=0.0, max_risk_reward_ratio=999.0,
+):
+    """Dispatch to FifteenMinStrategy via Supertrend. Returns brain dict."""
+    config = read_config()
 
-    Key findings from backtest (2020-2026 regime):
-      - Even within 0.1% of strike BTC stays on same side ~70% of the time
-        (momentum / continuation effect — NOT a coin flip)
-      - At 0.2% distance with 5 min left: 93% win rate
-      - At 0.5% distance with 5 min left: 97% win rate
-      - Old Brain v2 was estimating 52-70% for these — massively underconfident
+    market_duration_min = (elapsed_seconds + secs_left) / 60.0
+    strat = _get_or_make_strategy(asset, config, market_duration_min=market_duration_min)
+    if strat is None:
+        # No validated strategy for this asset/duration. Skipping is better than
+        # using the legacy printer_brain which has no calibrated edge on these markets
+        # and produces random-confidence outputs (observed 50/50 win rate in paper trading).
+        log.info(
+            f"No strategy for {asset} at {market_duration_min:.0f}min "
+            f"skipping (no strategy for duration)"
+        )
+        _above = btc_price > strike if strike > 0 else False
+        return {
+            "action": "skip",
+            "side": "yes" if _above else "no",
+            "confidence": 50,
+            "reasoning": f"no_strategy:{asset}_{market_duration_min:.0f}min",
+            "key_signals": [],
+            "signals": {},
+            "win_prob": 0.5,
+            "mom_label": "no_strategy",
+            "mom_pct": 0.0,
+            "vel_signal": "neutral",
+            "raw_p_yes": None,
+            "mins_left": secs_left / 60.0,
+            "abs_pct": abs(btc_price - strike) / strike if strike > 0 else 0.0,
+            "above": _above,
+            "_rv": None,
+            "_vol_ratio": None,
+            "price_filter_skip": False,
+        }
 
-    Decision logic: trade when expected value (EV) is positive.
-      EV = P(win) - contract_cost
-      e.g. 90% win rate, contract at 80c → EV = +10c per $1 payout
-    """
-    _asset_prices = asset_manager._prices.get(asset, btc_prices)
-    mom_pct, mom_label = calculate_momentum(prices=_asset_prices)
-    vel_signal = contract_velocity(ticker, "yes")
-    mins_left = secs_left / 60
-    pct_above = (btc_price - strike) / strike   # + = BTC above strike
-    abs_pct   = abs(pct_above)
-    above     = pct_above > 0
-
-    # â”€â”€ 0. Buffer durability gate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # vol_ratio = (rv * sqrt(mins_left)) / buffer_pct  — how many times larger
-    # the expected move is vs. the current buffer. Skip when ratio is too high.
-    #
-    # Adaptive threshold: we ALWAYS bet continuation (above→YES, below→NO).
-    # Momentum confirms trade direction (price moving away from strike) → buffer
-    # is effectively widening, so relax threshold by 25%.
-    # Momentum opposes (price moving toward strike) → buffer is eroding, so
-    # tighten threshold by 30%.
-    _mom_confirms = (mom_label == "bullish" and above) or (mom_label == "bearish" and not above)
-    _mom_opposes  = (mom_label == "bullish" and not above) or (mom_label == "bearish" and above)
-
-    _rv             = btc_realized_vol(prices=_asset_prices)
-    _vol_skip       = False
-    _mom_lock_skip  = False
-    _vol_ratio      = None
-    _buf_durability = None   # (buffer / rv)^2, in vol-minutes
-    _eff_thresh     = vol_gate_thresh
-    if _rv is not None and _rv > 0 and abs_pct > 0:
-        _expected_move  = _rv * (mins_left ** 0.5)
-        _vol_ratio      = _expected_move / abs_pct
-        _buf_durability = (abs_pct / _rv) ** 2
-
-        if _mom_confirms:
-            _eff_thresh = vol_gate_thresh * vol_confirm_mult
-        elif _mom_opposes:
-            _eff_thresh = vol_gate_thresh * vol_oppose_mult
-        elif mom_lock_neutral_tighten < 1.0:
-            _eff_thresh = vol_gate_thresh * mom_lock_neutral_tighten
-
-        if _vol_ratio >= _eff_thresh:
-            _vol_skip = True
-
-    # â”€â”€ 0b. Momentum direction lock â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Hard skip when BTC momentum opposes the continuation trade. Vol gate
-    # already tightens the threshold when opposing; this blocks the remainder.
-    if mom_lock_enabled and _mom_opposes and not _vol_skip:
-        _vol_skip = True
-        _mom_lock_skip = True
-
-    # â”€â”€ 1. Empirical win probability from backtest table â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    win_prob_raw = _win_prob_for_asset(asset, abs_pct, mins_left)
-
-    # â”€â”€ 2. Momentum adjustment (empirical: confirms avg 87% vs opposes 76%) â”€â”€â”€â”€â”€â”€
-    # Flat adjustment — no strength multiplier to prevent direction flips.
-    # Confirms: BTC moving away from strike (+5%). Opposes: toward strike (-5%).
-    if mom_label == "bullish":
-        mom_adj = +0.05 if above else -0.05
-    elif mom_label == "bearish":
-        mom_adj = +0.05 if not above else -0.05
-    else:
-        mom_adj = 0.0
-
-    # â”€â”€ 2b. Momentum acceleration (second derivative) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Scale mom_adj up when momentum is strengthening, down when it's fading.
-    # Only applies when momentum confirms the trade — opposing momentum is
-    # already blocked by the direction lock (Priority 2).
-    _accel, _accel_label = calculate_momentum_acceleration(prices=_asset_prices)
-    accel_adj = 0.0
-    if _mom_confirms and _accel_label != "flat":
-        # mom_sign: +1 for YES (above), -1 for NO (below).
-        # Bullish accel confirms YES → positive adj. Bearish accel confirms NO
-        # (accel is negative) → flip sign so the adj is still positive.
-        _mom_sign = 1.0 if above else -1.0
-        accel_adj = float(max(-0.03, min(0.03, _mom_sign * _accel * mom_accel_scale)))
-
-    # â”€â”€ 3. Contract velocity â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    vel_adj = +0.01 if vel_signal == "favorable" else (-0.01 if vel_signal == "unfavorable" else 0.0)
-
-    # â”€â”€ 3b. AMM lag detector â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # If BTC has moved >= 0.3% in the last 45 seconds but the contract price
-    # hasn't repriced proportionally, the contract is temporarily mispriced.
-    # We capture this edge before the AMM catches up.
+    from strategies.feature_builder import build_features_from_bot_state
     try:
-        from strategies.lag_detector import amm_lag_signal as _amm_lag_fn
-        _lag_sig, _lag_mag = _amm_lag_fn(_asset_prices, _contract_price_history.get(ticker))
-    except Exception:
-        _lag_sig, _lag_mag = "neutral", 0.0
-    lag_adj = 0.0
-    if (_lag_sig == "lag_yes" and above) or (_lag_sig == "lag_no" and not above):
-        lag_adj = _lag_mag * 0.04   # max +4% probability boost for a fully unpriced lag
-
-    # â”€â”€ 4. Combined probability + learned calibration scale â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    win_prob = win_prob_raw + mom_adj + accel_adj + vel_adj + lag_adj
-    win_prob = 0.50 + (win_prob - 0.50) * _brain_cal["prob_scale"]
-    win_prob = max(0.10, min(0.997, win_prob))
-
-    # â”€â”€ 5. YES / NO win probabilities â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    prob_yes = win_prob if above else (1.0 - win_prob)
-    prob_no  = 1.0 - prob_yes
-
-    # â”€â”€ 5b. Market-implied probability anchor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # The BV3 model uses historical average BTC behavior. In volatile/trending
-    # regimes (crash days, news spikes) the market's live pricing is more
-    # accurate than the backtest table. When our model and the market disagree
-    # by >25 percentage points, blend toward market consensus so EV stays
-    # realistic and doesn't show fictitious 40-60% edges.
-    #
-    # Market-implied prob for the side we'd bet:
-    mkt_implied = (yes_ask / 100) if above else (no_ask / 100)
-    model_side_prob = prob_yes if above else prob_no
-    divergence = model_side_prob - mkt_implied   # positive = model more optimistic
-    if divergence > 0.25:
-        # Blend weight grows from 0→0.5 as divergence goes from 25%→65%
-        blend = min(0.50, (divergence - 0.25) / 0.40 * 0.50)
-        blended = model_side_prob * (1 - blend) + mkt_implied * blend
-        if above:
-            prob_yes = blended
-            prob_no  = 1.0 - blended
+        if asset == "BTC":
+            prices_deque = btc_prices
+            current_price = btc_price
         else:
-            prob_no  = blended
-            prob_yes = 1.0 - blended
-        brain_log.debug(
-            f"Market-anchor: model={model_side_prob:.1%} mkt={mkt_implied:.1%} "
-            f"div={divergence:.1%} blend={blend:.2f} → {blended:.1%}"
+            prices_deque = asset_manager._prices.get(asset) or btc_prices
+            current_price = prices_deque[-1][1] if prices_deque else btc_price
+
+        features = build_features_from_bot_state(
+            asset=asset,
+            ticker=ticker,
+            current_price=current_price,
+            strike=strike,
+            btc_price=btc_price,
+            seconds_left=secs_left,
+            elapsed_seconds=elapsed_seconds,
+            yes_ask=yes_ask,
+            no_ask=no_ask,
+            yes_bid=max(0.0, yes_ask - 1.0),
+            no_bid=max(0.0, no_ask - 1.0),
+            prices_deque=prices_deque,
+            contract_history=_contract_price_history.get(ticker),
+            btc_prices_deque=btc_prices,
         )
+    except Exception as exc:
+        log.warning(f"{asset} feature_builder failed — skipping (not falling back to legacy): {exc}")
+        _above = current_price > strike if strike > 0 else False
+        return {
+            "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
+            "reasoning": f"feature_builder_error:{exc.__class__.__name__}",
+            "key_signals": [], "signals": {}, "win_prob": 0.5,
+            "mom_label": "error", "mom_pct": 0.0, "vel_signal": "neutral",
+            "raw_p_yes": None, "mins_left": secs_left / 60.0,
+            "abs_pct": abs(current_price - strike) / strike if strike > 0 else 0.0,
+            "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+        }
 
-    # â”€â”€ 6. Expected value vs actual contract price â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # yes_ask / no_ask are in cents (0-100). $1 payout.
-    # Fee deducted here: Kalshi charges ~7c per contract, reducing net EV by 0.07.
-    # A "5% edge" trade before this fix was actually -2% after fees.
-    yes_ev = prob_yes - (yes_ask / 100) - kalshi_fee
-    no_ev  = prob_no  - (no_ask  / 100) - kalshi_fee
+    try:
+        decision = strat.decide(features)
+    except Exception as exc:
+        log.warning(f"{asset} strat.decide() failed — skipping (not falling back to legacy): {exc}")
+        _above = current_price > strike if strike > 0 else False
+        return {
+            "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
+            "reasoning": f"decide_error:{exc.__class__.__name__}",
+            "key_signals": [], "signals": {}, "win_prob": 0.5,
+            "mom_label": "error", "mom_pct": 0.0, "vel_signal": "neutral",
+            "raw_p_yes": None, "mins_left": secs_left / 60.0,
+            "abs_pct": abs(current_price - strike) / strike if strike > 0 else 0.0,
+            "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+        }
 
-    # Directional track record: penalise if a direction has been losing badly
-    if _brain_cal["bullish_wr"] < 0.35: yes_ev -= 0.04
-    if _brain_cal["bearish_wr"] < 0.35: no_ev  -= 0.04
-
-    # â”€â”€ 7. Pick side — always bet with BTC's position (continuation) â”€â”€â”€â”€â”€â”€â”€â”€
-    # Best-EV switching caused confidence gate failures: contrarian contracts
-    # have 20-35% win prob and always fail the 65% floor. Continuation side
-    # naturally has 65-85% win prob; EV gate (3%) handles negative-EV skips.
-    if above:
-        side, best_ev, entry_c, true_p = "yes", yes_ev, yes_ask, prob_yes
-    else:
-        side, best_ev, entry_c, true_p = "no",  no_ev,  no_ask,  prob_no
-
-    # â”€â”€ 7b. Entry price hard filters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Prevent pathological trades: max_entry_price_cents=82 means we never risk
-    # $0.83 to make $0.10. min_reward_cents=15 ensures minimum upside. These are
-    # applied BEFORE EV so bad-price opportunities are rejected immediately.
-    _price_filter_skip = False
-    _price_filter_reason = ""
-    if entry_c > max_entry_price_cents:
-        _price_filter_skip = True
-        _price_filter_reason = (
-            f"entry {entry_c:.0f}c > max_entry_price {max_entry_price_cents:.0f}c"
-        )
-    else:
-        _reward_c = 100 - entry_c
-        if _reward_c < min_reward_cents:
-            _price_filter_skip = True
-            _price_filter_reason = (
-                f"reward {_reward_c:.0f}c < min_reward {min_reward_cents:.0f}c"
-            )
-        elif _reward_c > 0:
-            _rr = entry_c / _reward_c
-            if _rr > max_risk_reward_ratio:
-                _price_filter_skip = True
-                _price_filter_reason = (
-                    f"risk:reward {_rr:.1f}:1 > max {max_risk_reward_ratio:.1f}:1"
-                )
-
-    if _price_filter_skip:
+    above = current_price > strike
+    naive = "yes" if above else "no"
+    if decision.side is not None and decision.side != naive:
         brain_log.info(
-            f"SKIP {side.upper():3} PRICE_FILTER | {ticker} | {_price_filter_reason} | "
-            f"entry={entry_c:.0f}c reward={100-entry_c:.0f}c"
+            f"ROUTER_FLIPPED {asset} {ticker} | px={current_price:.4f} "
+            f"strike={strike:.4f} naive={naive} picked={decision.side} | "
+            f"yes_ev={decision.contributing_signals.get('yes_ev', float('nan')):+.3f} "
+            f"no_ev={decision.contributing_signals.get('no_ev', float('nan')):+.3f} | "
+            f"mode={decision.contributing_signals.get('decision_mode', '?')}"
         )
 
-    # â”€â”€ 8. EV filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Base 3% floor + session adjustment: US session (13-20 UTC) lowers bar by
-    # 2% to 1% — clearest trends, most liquid. Asian dead hours (00-06 UTC)
-    # raise bar by 2% to 5% — choppy/rangebound, need stronger edge to justify.
-    min_ev = (min_ev_base / 100.0) + _session_ev_adjustment()
+    abs_pct = abs(current_price - strike) / strike
+    true_p = decision.p_model if decision.side == "yes" else (1.0 - decision.p_model)
+    if decision.action == "trade":
+        _st = decision.contributing_signals.get("supertrend_direction")
+        _mkt = decision.contributing_signals.get("market_prob")
+        log.info("[%s] signal=supertrend st=%s market=%.3f side=%s",
+                 asset, _st, _mkt or 0, decision.side)
+    return {
+        "action": decision.action,
+        "side": decision.side if decision.side else naive,
+        "confidence": int(round(true_p * 100)),
+        "reasoning": decision.reason,
+        "key_signals": [f"{k}: {v}" for k, v in decision.contributing_signals.items()],
+        "signals": dict(decision.contributing_signals),
+        "win_prob": float(true_p),  # P(chosen side wins), used by confidence gate
+        "mom_label": decision.contributing_signals.get(
+            "regime", decision.contributing_signals.get("mom_label", "neutral")
+        ),
+        "mom_pct": float(decision.contributing_signals.get(
+            "regime_adj", decision.contributing_signals.get("mom_adj", 0.0)
+        )),
+        "vel_signal": decision.contributing_signals.get(
+            "velocity", decision.contributing_signals.get("vel_signal", "neutral")
+        ),
+        "raw_p_yes": decision.contributing_signals.get("raw_p_yes"),
+        "mins_left": secs_left / 60.0,
+        "abs_pct": abs_pct,
+        "above": above,
+        "_rv": features.realized_vol_1min,
+        "_vol_ratio": None,
+        "price_filter_skip": False,
+    }
 
-    skip_reason = _price_filter_reason if _price_filter_skip else ""
-    if not _price_filter_skip:
-        if _vol_skip:
-            if _mom_lock_skip:
-                skip_reason = (
-                    f"mom_lock: {mom_label} momentum opposes {side} trade "
-                    f"(dist={abs_pct*100:.2f}% {mins_left:.1f}min left)"
-                )
-            else:
-                _ratio_str = f"{_vol_ratio:.2f}" if _vol_ratio is not None else "?"
-                _dur_str   = f"{_buf_durability:.1f}min" if _buf_durability is not None else "?"
-                _neutral_tight = not _mom_confirms and not _mom_opposes and mom_lock_neutral_tighten < 1.0
-                _align_str = ("mom=confirms/relaxed" if _mom_confirms else
-                              "mom=neutral/tightened" if _neutral_tight else "mom=neutral")
-                skip_reason = (
-                    f"vol too high: expected move covers {_ratio_str}x strike distance "
-                    f"(dist={abs_pct*100:.2f}% | dur={_dur_str} | "
-                    f"thresh={_eff_thresh:.2f} | {_align_str} | {mins_left:.1f}min left)"
-                )
-        elif best_ev < min_ev:
-            skip_reason = (
-                f"EV {best_ev:+.1%} below {min_ev:.0%} minimum | "
-                f"{side.upper()} at {entry_c:.0f}c, win prob {true_p:.1%}"
-            )
 
-    action = "skip" if skip_reason else "trade"
-
-    # â”€â”€ 9. Confidence = win probability 0-100 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    confidence = min(99, max(0, int(true_p * 100) + _brain_cal["confidence_bonus"]))
-
-    _rv_str = f"{_rv*100:.3f}%/min" if _rv is not None else "n/a"
-    _ratio_display = f"{_vol_ratio:.2f}" if _vol_ratio is not None else "n/a"
-    if action == "trade":
-        reasoning = (
-            f"BTC is {abs_pct*100:.2f}% {'above' if above else 'below'} strike "
-            f"with {mins_left:.1f} min left. Empirical win prob: {true_p:.1%} "
-            f"(raw {win_prob_raw:.1%} + mom {mom_adj:+.1%}). "
-            f"Contract {entry_c:.0f}c -> EV {best_ev:+.1%}. "
-            f"Momentum: {mom_label} ({mom_pct*100:+.2f}%). Vol: {_rv_str} (ratio {_ratio_display})."
-        )
-    else:
-        reasoning = skip_reason or f"No EV edge. Best: {best_ev:+.1%} (need {min_ev:.0%})"
-
-    key_signals = [
-        f"BTC {pct_above*100:+.2f}% from strike | {mins_left:.1f} min left",
-        f"Win prob: YES={prob_yes:.1%}  NO={prob_no:.1%}  (raw={win_prob_raw:.1%})",
-        f"EV: YES={yes_ev:+.1%}  NO={no_ev:+.1%}  (min {min_ev:.0%})",
-        f"Momentum: {mom_label} ({mom_pct*100:+.2f}%) accel={_accel_label} ({_accel*100:+.2f}%) | Velocity: {vel_signal} | AMM lag: {_lag_sig} ({_lag_mag:.2f})",
-        f"Realized vol: {_rv_str} | Vol ratio: {_ratio_display} (thresh={_eff_thresh:.2f}) | Dur: {f'{_buf_durability:.1f}min' if _buf_durability else 'n/a'}",
-    ]
-
-    brain_log.info(
-        f"{action.upper():5} {side.upper():3} conf={confidence:3} | "
-        f"dist={abs_pct*100:.3f}% {'UP' if above else 'DN'} | "
-        f"ev={best_ev:+.1%} floor={min_ev:.0%} | prob={true_p:.1%} raw={win_prob_raw:.1%} mom={mom_adj:+.1%} | "
-        f"contract={entry_c:.0f}c | {mom_label} {mins_left:.1f}min | "
-        f"vol={_rv_str} ratio={_ratio_display}"
-    )
-    return {"action": action, "side": side, "confidence": confidence,
-            "reasoning": reasoning, "key_signals": key_signals,
-            "win_prob": float(true_p),
-            "mom_label": mom_label, "mom_pct": float(mom_pct),
-            "vel_signal": vel_signal,
-            "mins_left": mins_left, "abs_pct": abs_pct, "above": above,
-            "_rv": _rv, "_vol_ratio": _vol_ratio,
-            "price_filter_skip": _price_filter_skip}
-
+# â”€â”€ End feature-flagged routing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Reversal signal
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-
-def _reversal_signal(
-    abs_pct: float,
-    mins_left: float,
-    mom_pct: float,
-    mom_label: str,
-    vel_signal: str,
-    above: bool,       # True = BTC currently ABOVE strike
-    yes_ask: float,
-    no_ask: float,
-    vol_ratio: float | None,
-) -> dict:
-    """
-    Evaluate an exhaustion-reversal setup.
-
-    Fires when:
-      - BTC has made a strong directional move (momentum in current direction)
-      - The opposing contract is very cheap (â‰¤ 20Â¢) — market prices reversal unlikely
-      - Deceleration signals present (velocity unfavorable for current side)
-      - Time window optimal (3â€“12 min remaining)
-
-    Returns a dict: {signal, side, ask, prob, ev, reason}
-    """
-    # The reversal bets the OPPOSITE of where BTC currently sits
-    rev_side = "no" if above else "yes"
-    rev_ask  = no_ask if above else yes_ask
-
-    # Gate 1: contract must be cheap — this is what makes reversal bets worth taking
-    if rev_ask > 20:
-        return {"signal": False, "reason": f"reversal contract {rev_ask:.0f}Â¢ > 20Â¢, not cheap enough"}
-
-    # Gate 2: time window — needs 3â€“12 min for the reversal to play out
-    if mins_left < 3 or mins_left > 12:
-        return {"signal": False, "reason": f"time {mins_left:.1f}m outside 3â€“12m reversal window"}
-
-    # Gate 3: momentum must be strongly WITH BTC's current side — need exhaustion to reverse.
-    # 0.007 = 0.7% move in 3 min. calculate_momentum() labels anything > 0.5% as bullish/bearish,
-    # so this adds a small extra bar above the label threshold to confirm the move is meaningful.
-    mom_in_current = (mom_label == "bullish" and above) or (mom_label == "bearish" and not above)
-    if not mom_in_current or abs(mom_pct) < 0.007:
-        return {
-            "signal": False,
-            "reason": f"insufficient exhaustion signal (mom={mom_label} {mom_pct*100:+.2f}%, above={above})",
-        }
-
-    # Gate 4: distance not too extreme — hard to reverse when BTC is far from strike.
-    # 0.010 = 1.0%. At 1%+ distance the BV3 continuation rate is 97-100%; even a
-    # cheap opposing contract can't generate enough reversal probability to beat the EV bar.
-    if abs_pct > 0.010:
-        return {"signal": False, "reason": f"BTC too far from strike ({abs_pct*100:.2f}%) for reliable reversal"}
-
-    # â”€â”€ Reversal probability â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Base: complement of the BV3 continuation probability
-    bv3_cont = _empirical_win_prob(abs_pct, mins_left)
-    rev_prob  = 1.0 - bv3_cont
-
-    # Exhaustion boost: stronger momentum → more likely to have exhausted, mean-revert.
-    # Grows from 0 at the gate threshold (0.7%) to the 0.08 cap at ~2.7% move.
-    # Formula rescaled to match corrected gate: was (pct - 0.10) * 0.30, which was
-    # permanently zero because pct never reaches 10%.
-    exhaust_boost = min(0.08, max(0.0, (abs(mom_pct) - 0.007) * 4.0))
-
-    # Velocity deceleration boost: price movement slowing = reversal more likely
-    vel_boost = 0.04 if vel_signal == "unfavorable" else 0.0
-
-    # High-vol penalty: unpredictable in wild markets.
-    # Threshold 1.00 aligns with the main strategy vol gate (skip â‰¥1.50) —
-    # reversal setups are inherently riskier, so penalty starts earlier,
-    # but below 1.00 (main gate considers safe) we apply no penalty.
-    vol_penalty = 0.0
-    if vol_ratio is not None and vol_ratio > 1.00:
-        vol_penalty = min(0.10, (vol_ratio - 1.00) * 0.20)
-
-    rev_prob = max(0.05, min(0.45, rev_prob + exhaust_boost + vel_boost - vol_penalty))
-
-    # â”€â”€ Reversal EV â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    rev_ev = rev_prob - (rev_ask / 100)
-
-    # Lower EV bar than main strategy (8%) since we're buying cheap contrarian contracts
-    if rev_ev < 0.08:
-        return {
-            "signal": False,
-            "reason": (
-                f"reversal EV {rev_ev:+.1%} below 8% minimum "
-                f"(prob={rev_prob:.1%} vs market {rev_ask:.0f}Â¢)"
-            ),
-        }
-
-    reason = (
-        f"REVERSAL {rev_side.upper()} @ {rev_ask:.0f}Â¢ | "
-        f"prob={rev_prob:.1%} (base={bv3_cont:.1%} cont → {1-bv3_cont:.1%} rev, "
-        f"+exhaust={exhaust_boost:.1%} +vel={vel_boost:.1%} -vol={vol_penalty:.1%}) | "
-        f"EV={rev_ev:+.1%} | exhaustion: {mom_label} {mom_pct*100:+.2f}%"
-    )
-    brain_log.info(f"REVERSAL signal: {reason}")
-    return {
-        "signal": True,
-        "side": rev_side,
-        "ask": rev_ask,
-        "prob": rev_prob,
-        "ev": rev_ev,
-        "reason": reason,
-    }
-
-
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-#  Position sizing
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def calculate_contracts(
@@ -2620,14 +2086,25 @@ def calculate_contracts(
     if entry_price_cents <= 0:
         return 0, 0.0
 
+    price_dollars = entry_price_cents / 100.0
+
+    def _taker_fee(n: int) -> float:
+        raw = 0.07 * n * price_dollars * (1.0 - price_dollars)
+        return math.ceil(raw * 100) / 100.0
+
     contracts = int(trade_amount_dollars * 100 / entry_price_cents)
     contracts = min(contracts, liquidity)
     contracts = max(contracts, 0)
-    dollars_used = contracts * entry_price_cents / 100.0
+
+    # Reduce until stake + fee fits within budget (fee is paid at purchase time)
+    while contracts > 0 and contracts * price_dollars + _taker_fee(contracts) > trade_amount_dollars:
+        contracts -= 1
+
+    dollars_used = contracts * price_dollars
 
     log.info(
         f"Fixed sizing: price={entry_price_cents}c "
-        f"bet=${dollars_used:.2f} -> {contracts} contracts"
+        f"bet=${dollars_used:.2f} fee=${_taker_fee(contracts):.2f} -> {contracts} contracts"
     )
     return contracts, dollars_used
 
@@ -3267,7 +2744,6 @@ async def write_state_file(
         "open_position": current_position,
         "consecutive_losses": _consecutive_losses,
         "consecutive_loss_pause_until": _consecutive_loss_pause_until,
-        "octagon_status": _octagon_status_snapshot(),
     }
 
     # Per-asset snapshot for multi-asset dashboard display
@@ -3474,7 +2950,7 @@ async def handle_ready_phase(
                         c_ob = await fetch_orderbook(session, c_ticker, candidate)
                         if c_ob is None:
                             continue
-                        c_brain = printer_brain_routed(
+                        c_brain = strategy_brain(
                             btc_price, c_strike,
                             c_ob["best_yes_ask"], c_ob["best_no_ask"],
                             c_elapsed, c_secs_left, c_ticker,
@@ -3484,17 +2960,14 @@ async def handle_ready_phase(
                             max_entry_price_cents=get_asset_config(config, asset, "max_entry_price_cents", 100.0),
                             min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
                             max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
-                            vol_confirm_mult=get_asset_config(config, asset, "vol_confirm_mult", 1.25),
-                            vol_oppose_mult=get_asset_config(config, asset, "vol_oppose_mult", 0.70),
-                            mom_lock_enabled=get_asset_config(config, asset, "mom_lock_enabled", True),
-                            mom_lock_neutral_tighten=get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0),
-                            mom_accel_scale=get_asset_config(config, asset, "mom_accel_scale", 3.0),
                             asset=asset,
                         )
                         c_win_prob = c_brain.get("win_prob", 0.5)
                         c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
-                        _c_fee     = config.get("kalshi_fee_per_contract_cents", 7) / 100
-                        c_ev       = c_win_prob - c_entry / 100 - _c_fee
+                        _c_fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100
+                        _c_p        = c_entry / 100.0
+                        _c_fee      = _c_fee_rate * _c_p * (1.0 - _c_p)
+                        c_ev        = c_win_prob - _c_p - _c_fee
                         log.info(f"  Window {c_ticker}: ev={c_ev:+.1%} side={c_brain['side']} strike=${c_strike:,.0f}")
                         if best_ev is None or c_ev > best_ev:
                             best_ev     = c_ev
@@ -3580,19 +3053,14 @@ async def handle_ready_phase(
     track_contract_price(ticker, yes_ask)
 
     # â”€â”€ Printer Brain — primary decision engine (always runs, no API needed) â”€â”€
-    brain = printer_brain_routed(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
-                          min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
-                          vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
-                          kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
-                          max_entry_price_cents=get_asset_config(config, asset, "max_entry_price_cents", 100.0),
-                          min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
-                          max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
-                          vol_confirm_mult=get_asset_config(config, asset, "vol_confirm_mult", 1.25),
-                          vol_oppose_mult=get_asset_config(config, asset, "vol_oppose_mult", 0.70),
-                          mom_lock_enabled=get_asset_config(config, asset, "mom_lock_enabled", True),
-                          mom_lock_neutral_tighten=get_asset_config(config, asset, "mom_lock_neutral_tighten", 1.0),
-                          mom_accel_scale=get_asset_config(config, asset, "mom_accel_scale", 3.0),
-                          asset=asset)
+    brain = strategy_brain(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
+                     min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
+                     vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
+                     kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
+                     max_entry_price_cents=get_asset_config(config, asset, "max_entry_price_cents", 100.0),
+                     min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
+                     max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
+                     asset=asset)
     side     = brain["side"]
     score    = brain["confidence"]
     do_trade = brain["action"] == "trade"
@@ -3618,8 +3086,9 @@ async def handle_ready_phase(
         _consecutive_price_skips = 0
 
     entry_price_cents = yes_ask if side == "yes" else no_ask
-    _fee = config.get("kalshi_fee_per_contract_cents", 7) / 100
-    brain_ev = brain.get("win_prob", 0.5) - (entry_price_cents / 100) - _fee
+    _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100
+    _entry_p  = entry_price_cents / 100.0
+    brain_ev  = brain.get("win_prob", 0.5) - _entry_p - _fee_rate * _entry_p * (1.0 - _entry_p)
     brain_win_prob = brain.get("win_prob", 0.5)
 
     # Dashboard eval snapshot — updated at every exit point below
@@ -3639,7 +3108,7 @@ async def handle_ready_phase(
     entry_price_cents = yes_ask if side == "yes" else no_ask
 
     # Dashboard breakdown from Brain v3 components
-    win_p_raw   = _win_prob_for_asset(asset, abs((btc_price - strike) / strike), secs_left / 60)
+    win_p_raw   = 0.70  # Supertrend assumed probability
     _mom_label  = brain.get("mom_label",  "neutral")
     _vel_signal = brain.get("vel_signal", "neutral")
     _abs_pct    = brain.get("abs_pct", abs((btc_price - strike) / strike))
@@ -3676,52 +3145,7 @@ async def handle_ready_phase(
         do_trade = False
 
     # â”€â”€ Reversal model — runs whenever main strategy skips â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    # Evaluates exhaustion-reversal setups independent of the continuation model.
-    # Uses 50% of configured trade amount. Never fires when main strategy trades.
-    # Disabled by default (enable_reversal_signal=false) — no backtested evidence.
-    _rev = None
-    if not do_trade and config.get("enable_reversal_signal", False):
-        _rev = _reversal_signal(
-            abs_pct       = brain.get("abs_pct", abs((btc_price - strike) / strike)),
-            mins_left     = secs_left / 60,
-            mom_pct       = brain.get("mom_pct", 0.0),
-            mom_label     = brain.get("mom_label", "neutral"),
-            vel_signal    = brain.get("vel_signal", "neutral"),
-            above         = brain.get("above", btc_price > strike),
-            yes_ask       = yes_ask,
-            no_ask        = no_ask,
-            vol_ratio     = brain.get("_vol_ratio"),
-        )
-        if _rev and _rev["signal"]:
-            # Re-check allowed_sides — reversal may pick a side the gate blocked above
-            _rev_side = _rev["side"]
-            if _allowed_sides is not None and _rev_side not in _allowed_sides:
-                _rev = None  # treat as no signal
-                rev_reason = f"reversal side={_rev_side} not in allowed_sides={_allowed_sides}"
-                last_reversal_reason = rev_reason
-                log.info(f"{ticker}: reversal blocked — {rev_reason}")
-            else:
-                log.info(f"{ticker}: {_rev['reason']}")
-                side              = _rev_side
-                entry_price_cents = _rev["ask"]
-                score             = int(_rev["prob"] * 100)
-                do_trade          = True
-                skip_reason_ai    = ""
-                _is_reversal      = True
-                last_reversal_reason = _rev["reason"]
-        else:
-            rev_reason = _rev["reason"] if _rev else "reversal not evaluated"
-            last_reversal_reason = rev_reason
-            log.info(f"{ticker}: watching — {skip_reason_ai} | reversal: {rev_reason}")
-            await _log_entry(market, "READY", secs_left, btc_price, strike,
-                             int(entry_price_cents), score, "skip", skip_reason_ai, mode)
-            _eval_snap.update({"status": "SKIPPED", "skip_reason": skip_reason_ai})
-            if _use_state: state["eval"] = dict(_eval_snap)
-            else: _asset_eval[asset] = dict(_eval_snap)
-            last_action, last_skip_reason = "watching", skip_reason_ai
-            return
-    else:
-        _is_reversal = False
+    _is_reversal = False
 
     if not do_trade:
         log.info(f"{ticker}: watching — {skip_reason_ai}")
@@ -3827,13 +3251,12 @@ async def handle_ready_phase(
         "order_id":          order_id,
         "asset":             asset,
         "raw_p_yes":         brain.get("raw_p_yes"),
-        "claude_signals":    json.dumps({
-            "mom_label":    brain.get("mom_label", "neutral"),
-            "accel_label":  (brain.get("signals") or {}).get("mom_accel_label", "flat"),
-            "lag_signal":   (brain.get("signals") or {}).get("amm_lag_signal", "neutral"),
-            "lag_mag":      round((brain.get("signals") or {}).get("amm_lag_magnitude", 0.0), 3),
-            "vel_signal":   brain.get("vel_signal", "neutral"),
-            "mom_confirms": brain.get("mom_label", "neutral") != "neutral",
+        "entry_signals":    json.dumps({
+            "supertrend_direction": (brain.get("signals") or {}).get("supertrend_direction"),
+            "supertrend_side":      (brain.get("signals") or {}).get("supertrend_side"),
+            "market_prob":          (brain.get("signals") or {}).get("market_prob"),
+            "p_ev":                 (brain.get("signals") or {}).get("p_ev"),
+            "decision_mode":        (brain.get("signals") or {}).get("decision_mode"),
         }),
     }
     trade_id = await db_write_trade(trade_data)
@@ -3841,7 +3264,6 @@ async def handle_ready_phase(
     _entry_ts = time.time()
     _abs_pct_at_entry = abs(btc_price - strike) / strike
     _mins_left_at_entry = secs_left / 60
-    _bv3_dist_idx, _bv3_time_idx = _bv3_bucket_indices_for_asset(asset, _abs_pct_at_entry, _mins_left_at_entry)
     # Record the market's total duration (elapsed + remaining at entry) so
     # exit-side notifications label the session by market type, not hold time.
     # A quickly-exited hourly trade is still hourly regardless of hold length.
@@ -3867,8 +3289,6 @@ async def handle_ready_phase(
         "market_close_time": market.get("close_time", ""),
         "order_id": order_id,
         "asset": asset,
-        "_bv3_dist_idx": _bv3_dist_idx,
-        "_bv3_time_idx": _bv3_time_idx,
     }
     if _use_state:
         state["position"] = _new_position
@@ -3985,7 +3405,9 @@ async def handle_locked_phase(
 
         log.info(f"{ticker}: result={market_result!r} → {outcome}")
         exit_price = 100 if outcome == "win" else 0
-        fee = pos["contracts"] * config.get("kalshi_fee_per_contract_cents", 7) / 100
+        _entry_p = pos["entry_price_cents"] / 100.0
+        _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
+        fee = math.ceil(_fee_rate * pos["contracts"] * _entry_p * (1.0 - _entry_p) * 100) / 100
         pnl = (exit_price - pos["entry_price_cents"]) * pos["contracts"] / 100 - fee
         profit_pct = (exit_price - pos["entry_price_cents"]) / pos["entry_price_cents"] * 100 \
                      if pos["entry_price_cents"] else 0
@@ -3994,11 +3416,6 @@ async def handle_locked_phase(
         pnl_str    = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
         outcome_str = "WIN" if pnl >= 0 else "LOSS"
 
-        # Update live BV3 correction table with actual outcome (BTC only)
-        _d = pos.get("_bv3_dist_idx")
-        _t = pos.get("_bv3_time_idx")
-        if _d is not None and _t is not None and pos.get("asset", "BTC") == "BTC":
-            _update_bv3_correction(_d, _t, outcome == "win")
 
         await db_update_trade(pos["trade_id"], {
             "exit_price_cents": exit_price,
@@ -4765,16 +4182,12 @@ async def main() -> None:
     except Exception as _e:
         log.warning(f"Startup zombie-trade cleanup failed (non-fatal): {_e}")
 
-    _load_bv3_corrections()
 
     # Verify Kalshi credentials and log account balance before doing anything.
     # Skipped in paper mode — no real credentials are loaded there.
     if read_config().get("mode", "paper") != "paper":
         async with aiohttp.ClientSession() as verify_session:
             await verify_kalshi_connection(verify_session)
-
-    # Load BV3 tables for all assets (full tables for live trading)
-    load_bv3_tables(use_pre2023=False)
 
     # Start Binance multi-asset price feed
     _startup_config = read_config()
@@ -4801,7 +4214,7 @@ async def main() -> None:
         log.info(f"Price feed ready after {waited}s. {_first_asset}: ${_first_price:,.2f}")
     _startup_cfg = read_config()
     _btc_display = f"${get_btc_price():,.2f}" if get_btc_price() is not None else f"{_first_asset}: ${_first_price:,.2f}" if _first_price else "price N/A"
-    await send_telegram(f"<b>Printer bot started</b>\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
+    await send_telegram(f"<b>Printer bot started</b>\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}\n{_oct_line}")
 
     # Pre-flight check runs once before trading begins.
     # LIVE mode with unresolved issues → sys.exit(1). Paper mode → warn and continue.

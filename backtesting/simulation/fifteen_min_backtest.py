@@ -6,7 +6,7 @@ Pipeline per 15m window:
   2. Strike = close of bar 0 in the window.
   3. BV3 prob from empirical win-rate table (asset_manager).
   4. Synthetic market prices: yes_ask=50c / no_ask=50c (ATM baseline).
-  5. Run FifteenMinStrategy.decide() with Octagon stubbed to (None,...).
+  5. Run FifteenMinStrategy.decide() — direction from Supertrend ATR.
   6. P&L vs actual window outcome (bar[14].close vs strike).
 
 Includes: run_fifteen_min_backtest(), run_monte_carlo(), run_wfa()
@@ -65,7 +65,6 @@ def run_fifteen_min_backtest(
 ) -> pd.DataFrame:
     """
     Simulate FifteenMinStrategy on historical 1m bars using BV3 table for signals.
-    Octagon is permanently stubbed to (None, None, None, False).
 
     Args:
         bars:           1m OHLCV DataFrame with timestamp, open, high, low, close, volume.
@@ -81,8 +80,6 @@ def run_fifteen_min_backtest(
     from strategies.fifteen_min_strategy import FifteenMinStrategy
     from strategies.skip_layer import SkipConfig
     from strategies.features import MarketFeatures
-    from unittest.mock import patch as _patch
-
     asset_upper = asset.upper()
     effective_min_ev = min_ev if min_ev is not None else _MIN_EV.get(asset_upper, 0.11)
 
@@ -107,98 +104,94 @@ def run_fifteen_min_backtest(
     yes_ask = yes_ask_cents
     no_ask = no_ask_cents
 
-    with _patch(
-        "strategies.signals.octagon_client.query",
-        return_value=(None, None, None, False),
-    ):
-        for start_idx in range(0, n - step + 1, step):
-            window = bars.iloc[start_idx : start_idx + step]
-            if len(window) < step:
-                break
+    for start_idx in range(0, n - step + 1, step):
+        window = bars.iloc[start_idx : start_idx + step]
+        if len(window) < step:
+            break
 
-            strike_price  = float(window.iloc[0]["close"])
-            entry_bar     = window.iloc[entry_minute]
-            exit_bar      = window.iloc[-1]
-            current_price = float(entry_bar["close"])
-            exit_price    = float(exit_bar["close"])
+        strike_price  = float(window.iloc[0]["close"])
+        entry_bar     = window.iloc[entry_minute]
+        exit_bar      = window.iloc[-1]
+        current_price = float(entry_bar["close"])
+        exit_price    = float(exit_bar["close"])
 
-            if strike_price <= 0 or current_price <= 0:
-                continue
+        if strike_price <= 0 or current_price <= 0:
+            continue
 
-            abs_pct      = abs(current_price - strike_price) / current_price
-            above_strike = current_price > strike_price
-            mins_left    = float(step - entry_minute)
+        abs_pct      = abs(current_price - strike_price) / current_price
+        above_strike = current_price > strike_price
+        mins_left    = float(step - entry_minute)
 
-            bv3_raw  = am.empirical_win_prob(asset_upper, abs_pct, mins_left)
-            bv3_prob = bv3_raw if above_strike else (1.0 - bv3_raw)
+        bv3_raw  = am.empirical_win_prob(asset_upper, abs_pct, mins_left)
+        bv3_prob = bv3_raw if above_strike else (1.0 - bv3_raw)
 
-            # Realized vol from bars immediately before entry
-            lookback_start = max(0, start_idx + entry_minute - 15)
-            lookback = bars.iloc[lookback_start : start_idx + entry_minute]
-            if len(lookback) >= 2:
-                lr = np.log(
-                    lookback["close"].clip(lower=1e-10).values
-                    / lookback["open"].clip(lower=1e-10).values
-                )
-                rv_1min = float(np.std(lr))
-            else:
-                rv_1min = 0.002
-
-            entry_ts = pd.Timestamp(entry_bar["timestamp"])
-
-            features = MarketFeatures(
-                asset=asset_upper,
-                ticker=f"KX{asset_upper}15M-BT",
-                timestamp=_time.time(),
-                current_price=current_price,
-                strike=strike_price,
-                btc_price=current_price if asset_upper == "BTC" else 95000.0,
-                seconds_left=mins_left * 60.0,
-                elapsed_seconds=float(entry_minute * 60),
-                yes_ask=yes_ask,
-                no_ask=no_ask,
-                yes_bid=max(0.0, yes_ask - 1.0),
-                no_bid=max(0.0, no_ask - 1.0),
-                spread_yes=1.0,
-                spread_no=1.0,
-                realized_vol_1min=rv_1min,
+        # Realized vol from bars immediately before entry
+        lookback_start = max(0, start_idx + entry_minute - 15)
+        lookback = bars.iloc[lookback_start : start_idx + entry_minute]
+        if len(lookback) >= 2:
+            lr = np.log(
+                lookback["close"].clip(lower=1e-10).values
+                / lookback["open"].clip(lower=1e-10).values
             )
-            features.bv3_prob = bv3_prob
-            # prices_60m is unused in the BV3 fallback path (15m skips pre-filter)
+            rv_1min = float(np.std(lr))
+        else:
+            rv_1min = 0.002
 
-            decision = strat.decide(features)
-            if decision.action != "trade":
-                continue
+        entry_ts = pd.Timestamp(entry_bar["timestamp"])
 
-            label = 1 if exit_price > strike_price else 0
-            fill_cents = yes_ask if decision.side == "yes" else no_ask
-            fill_price = fill_cents / 100.0
-            fee = _kalshi_fee(fill_price)
+        features = MarketFeatures(
+            asset=asset_upper,
+            ticker=f"KX{asset_upper}15M-BT",
+            timestamp=_time.time(),
+            current_price=current_price,
+            strike=strike_price,
+            btc_price=current_price if asset_upper == "BTC" else 95000.0,
+            seconds_left=mins_left * 60.0,
+            elapsed_seconds=float(entry_minute * 60),
+            yes_ask=yes_ask,
+            no_ask=no_ask,
+            yes_bid=max(0.0, yes_ask - 1.0),
+            no_bid=max(0.0, no_ask - 1.0),
+            spread_yes=1.0,
+            spread_no=1.0,
+            realized_vol_1min=rv_1min,
+        )
+        features.bv3_prob = bv3_prob
+        # prices_60m is unused in the BV3 fallback path (15m skips pre-filter)
 
-            pnl_raw = (label - fill_price) if decision.side == "yes" else ((1 - label) - fill_price)
-            pnl_net = pnl_raw - fee
+        decision = strat.decide(features)
+        if decision.action != "trade":
+            continue
 
-            win = int(
-                (decision.side == "yes" and label == 1)
-                or (decision.side == "no" and label == 0)
-            )
-            records.append({
-                "entry_time": entry_ts,
-                "exit_time":  pd.Timestamp(exit_bar["timestamp"]),
-                "asset":      asset_upper,
-                "strategy":   "15m_bv3",
-                "side":       decision.side,
-                "bv3_prob":   round(bv3_prob, 4),
-                "abs_pct":    round(abs_pct * 100, 4),  # stored as percent
-                "mins_left":  mins_left,
-                "yes_ask":    yes_ask,
-                "no_ask":     no_ask,
-                "fill_price": round(fill_price, 4),
-                "pnl":        round(pnl_net, 4),
-                "fee":        round(fee, 4),
-                "label":      label,
-                "win":        win,
-            })
+        label = 1 if exit_price > strike_price else 0
+        fill_cents = yes_ask if decision.side == "yes" else no_ask
+        fill_price = fill_cents / 100.0
+        fee = _kalshi_fee(fill_price)
+
+        pnl_raw = (label - fill_price) if decision.side == "yes" else ((1 - label) - fill_price)
+        pnl_net = pnl_raw - fee
+
+        win = int(
+            (decision.side == "yes" and label == 1)
+            or (decision.side == "no" and label == 0)
+        )
+        records.append({
+            "entry_time": entry_ts,
+            "exit_time":  pd.Timestamp(exit_bar["timestamp"]),
+            "asset":      asset_upper,
+            "strategy":   "15m_bv3",
+            "side":       decision.side,
+            "bv3_prob":   round(bv3_prob, 4),
+            "abs_pct":    round(abs_pct * 100, 4),  # stored as percent
+            "mins_left":  mins_left,
+            "yes_ask":    yes_ask,
+            "no_ask":     no_ask,
+            "fill_price": round(fill_price, 4),
+            "pnl":        round(pnl_net, 4),
+            "fee":        round(fee, 4),
+            "label":      label,
+            "win":        win,
+        })
 
     if not records:
         logger.warning("[%s] No trades generated (check BV3 table and threshold).", asset_upper)

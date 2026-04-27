@@ -2,7 +2,6 @@
   "bot_enabled": false,
   "mode": "paper",
   "trade_amount_dollars": 25,
-  "confidence_threshold": 76,
   "daily_loss_limit_dollars": 50,
   "daily_profit_target_dollars": 200,
   "max_consecutive_losses": 5,
@@ -39,16 +38,11 @@
       "min_ev_base": 16
     }
   },
-  "use_new_strategies": {
-    "BTC": true,
-    "ETH": true,
-    "SOL": true,
-    "XRP": true,
-    "DOGE": true
-  },
   "max_spread_cents": 3.0,
   "min_seconds_left": 30,
   "cold_start_samples": 60,
-  "confidence_threshold_15m": 74,
-  "min_ev_base_15m": 11
+  "confidence_threshold_15m": 0,
+  "min_ev_base_15m": 11,
+  "supertrend_atr_period": 10,
+  "supertrend_atr_multiplier": 3.0
 }

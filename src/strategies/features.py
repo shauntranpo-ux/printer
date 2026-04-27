@@ -55,14 +55,8 @@ class MarketFeatures:
     # Realized volatility (computed from prices_60m)
     realized_vol_1min: Optional[float] = None  # std of 1-min returns over last 60 min
 
-    # BV3 empirical win probability — injected by bot.py before strategy.decide()
-    bv3_prob: Optional[float] = None                 # P(YES) from BV3 table; fallback when Octagon unavailable
-
-    # Octagon AI confirmation gate — populated inside BaseStrategy.decide() at Step 6.8
-    octagon_model_prob: Optional[float] = None       # Octagon's P(YES)
-    octagon_direction_agrees: Optional[bool] = None  # True = Octagon agrees with bot's side
-    octagon_confidence: Optional[str] = None         # "high"/"medium"/"low"; None = not evaluated
-    octagon_cache_hit: bool = False                  # True if served from TTL cache
+    # Supertrend direction — populated inside BaseStrategy.decide()
+    supertrend_direction: Optional[int] = None  # 1 = uptrend (YES), -1 = downtrend (NO)
 
     def window_fraction_remaining(self) -> float:
         """Tau = fraction of 15-min window remaining. Range (0, 1]."""
