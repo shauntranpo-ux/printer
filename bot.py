@@ -4214,7 +4214,7 @@ async def main() -> None:
         log.info(f"Price feed ready after {waited}s. {_first_asset}: ${_first_price:,.2f}")
     _startup_cfg = read_config()
     _btc_display = f"${get_btc_price():,.2f}" if get_btc_price() is not None else f"{_first_asset}: ${_first_price:,.2f}" if _first_price else "price N/A"
-    await send_telegram(f"<b>Printer bot started</b>\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}\n{_oct_line}")
+    await send_telegram(f"<b>Printer bot started</b>\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
 
     # Pre-flight check runs once before trading begins.
     # LIVE mode with unresolved issues → sys.exit(1). Paper mode → warn and continue.
