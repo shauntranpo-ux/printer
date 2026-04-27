@@ -1,0 +1,56 @@
+[
+  {
+    "fold": 0,
+    "start": "2017-08-17",
+    "end": "2019-01-29",
+    "n_trades": 20513,
+    "total_pnl": 5756.24,
+    "win_rate": 0.8006,
+    "sharpe": 0.7023
+  },
+  {
+    "fold": 1,
+    "start": "2019-01-29",
+    "end": "2020-07-11",
+    "n_trades": 13364,
+    "total_pnl": 4049.72,
+    "win_rate": 0.823,
+    "sharpe": 0.794
+  },
+  {
+    "fold": 2,
+    "start": "2020-07-11",
+    "end": "2021-12-21",
+    "n_trades": 20789,
+    "total_pnl": 6052.72,
+    "win_rate": 0.8112,
+    "sharpe": 0.7439
+  },
+  {
+    "fold": 3,
+    "start": "2021-12-21",
+    "end": "2023-06-01",
+    "n_trades": 11412,
+    "total_pnl": 3933.76,
+    "win_rate": 0.8647,
+    "sharpe": 1.0078
+  },
+  {
+    "fold": 4,
+    "start": "2023-06-01",
+    "end": "2024-11-09",
+    "n_trades": 9405,
+    "total_pnl": 3224.4,
+    "win_rate": 0.8628,
+    "sharpe": 0.9966
+  },
+  {
+    "fold": 5,
+    "start": "2024-11-09",
+    "end": "2026-04-20",
+    "n_trades": 8981,
+    "total_pnl": 3014.88,
+    "win_rate": 0.8557,
+    "sharpe": 0.9553
+  }
+]

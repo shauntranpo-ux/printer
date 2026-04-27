@@ -1,0 +1,1402 @@
+[
+  {
+    "iteration": 0,
+    "total_pnl": 17917.52,
+    "win_rate": 0.8234,
+    "sharpe": 0.7958,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 1,
+    "total_pnl": 17695.52,
+    "win_rate": 0.8197,
+    "sharpe": 0.7795,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 2,
+    "total_pnl": 17788.52,
+    "win_rate": 0.8213,
+    "sharpe": 0.7863,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 3,
+    "total_pnl": 17764.52,
+    "win_rate": 0.8208,
+    "sharpe": 0.7845,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 4,
+    "total_pnl": 17760.52,
+    "win_rate": 0.8208,
+    "sharpe": 0.7842,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 5,
+    "total_pnl": 17854.52,
+    "win_rate": 0.8224,
+    "sharpe": 0.7911,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 6,
+    "total_pnl": 17782.52,
+    "win_rate": 0.8211,
+    "sharpe": 0.7858,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 7,
+    "total_pnl": 17936.52,
+    "win_rate": 0.8238,
+    "sharpe": 0.7972,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 8,
+    "total_pnl": 17758.52,
+    "win_rate": 0.8207,
+    "sharpe": 0.7841,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 9,
+    "total_pnl": 17677.52,
+    "win_rate": 0.8194,
+    "sharpe": 0.7782,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 10,
+    "total_pnl": 17711.52,
+    "win_rate": 0.8199,
+    "sharpe": 0.7806,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 11,
+    "total_pnl": 17803.52,
+    "win_rate": 0.8215,
+    "sharpe": 0.7874,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 12,
+    "total_pnl": 17925.52,
+    "win_rate": 0.8236,
+    "sharpe": 0.7964,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 13,
+    "total_pnl": 17745.52,
+    "win_rate": 0.8205,
+    "sharpe": 0.7831,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 14,
+    "total_pnl": 17778.52,
+    "win_rate": 0.8211,
+    "sharpe": 0.7855,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 15,
+    "total_pnl": 17830.52,
+    "win_rate": 0.822,
+    "sharpe": 0.7893,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 16,
+    "total_pnl": 17721.52,
+    "win_rate": 0.8201,
+    "sharpe": 0.7814,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 17,
+    "total_pnl": 17740.52,
+    "win_rate": 0.8204,
+    "sharpe": 0.7827,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 18,
+    "total_pnl": 17702.52,
+    "win_rate": 0.8198,
+    "sharpe": 0.78,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 19,
+    "total_pnl": 17855.52,
+    "win_rate": 0.8224,
+    "sharpe": 0.7912,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 20,
+    "total_pnl": 17663.52,
+    "win_rate": 0.8191,
+    "sharpe": 0.7772,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 21,
+    "total_pnl": 17732.52,
+    "win_rate": 0.8203,
+    "sharpe": 0.7822,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 22,
+    "total_pnl": 17755.52,
+    "win_rate": 0.8207,
+    "sharpe": 0.7838,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 23,
+    "total_pnl": 17909.52,
+    "win_rate": 0.8233,
+    "sharpe": 0.7952,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 24,
+    "total_pnl": 17693.52,
+    "win_rate": 0.8196,
+    "sharpe": 0.7793,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 25,
+    "total_pnl": 17629.52,
+    "win_rate": 0.8186,
+    "sharpe": 0.7747,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 26,
+    "total_pnl": 17972.52,
+    "win_rate": 0.8244,
+    "sharpe": 0.7999,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 27,
+    "total_pnl": 17748.52,
+    "win_rate": 0.8206,
+    "sharpe": 0.7833,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 28,
+    "total_pnl": 17765.52,
+    "win_rate": 0.8209,
+    "sharpe": 0.7846,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 29,
+    "total_pnl": 17767.52,
+    "win_rate": 0.8209,
+    "sharpe": 0.7847,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 30,
+    "total_pnl": 17840.52,
+    "win_rate": 0.8221,
+    "sharpe": 0.7901,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 31,
+    "total_pnl": 17850.52,
+    "win_rate": 0.8223,
+    "sharpe": 0.7908,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 32,
+    "total_pnl": 17679.52,
+    "win_rate": 0.8194,
+    "sharpe": 0.7783,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 33,
+    "total_pnl": 17798.52,
+    "win_rate": 0.8214,
+    "sharpe": 0.787,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 34,
+    "total_pnl": 17701.52,
+    "win_rate": 0.8198,
+    "sharpe": 0.7799,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 35,
+    "total_pnl": 17563.52,
+    "win_rate": 0.8174,
+    "sharpe": 0.77,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 36,
+    "total_pnl": 17798.52,
+    "win_rate": 0.8214,
+    "sharpe": 0.787,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 37,
+    "total_pnl": 17721.52,
+    "win_rate": 0.8201,
+    "sharpe": 0.7814,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 38,
+    "total_pnl": 17895.52,
+    "win_rate": 0.8231,
+    "sharpe": 0.7942,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 39,
+    "total_pnl": 17794.52,
+    "win_rate": 0.8214,
+    "sharpe": 0.7867,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 40,
+    "total_pnl": 17671.52,
+    "win_rate": 0.8193,
+    "sharpe": 0.7777,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 41,
+    "total_pnl": 17725.52,
+    "win_rate": 0.8202,
+    "sharpe": 0.7817,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 42,
+    "total_pnl": 17853.52,
+    "win_rate": 0.8224,
+    "sharpe": 0.791,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 43,
+    "total_pnl": 17706.52,
+    "win_rate": 0.8199,
+    "sharpe": 0.7803,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 44,
+    "total_pnl": 17757.52,
+    "win_rate": 0.8207,
+    "sharpe": 0.784,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 45,
+    "total_pnl": 17838.52,
+    "win_rate": 0.8221,
+    "sharpe": 0.7899,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 46,
+    "total_pnl": 17689.52,
+    "win_rate": 0.8196,
+    "sharpe": 0.779,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 47,
+    "total_pnl": 17735.52,
+    "win_rate": 0.8204,
+    "sharpe": 0.7824,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 48,
+    "total_pnl": 17829.52,
+    "win_rate": 0.8219,
+    "sharpe": 0.7893,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 49,
+    "total_pnl": 17766.52,
+    "win_rate": 0.8209,
+    "sharpe": 0.7846,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 50,
+    "total_pnl": 18029.52,
+    "win_rate": 0.8253,
+    "sharpe": 0.8042,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 51,
+    "total_pnl": 17818.52,
+    "win_rate": 0.8218,
+    "sharpe": 0.7885,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 52,
+    "total_pnl": 17896.52,
+    "win_rate": 0.8231,
+    "sharpe": 0.7942,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 53,
+    "total_pnl": 17829.52,
+    "win_rate": 0.8219,
+    "sharpe": 0.7893,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 54,
+    "total_pnl": 17735.52,
+    "win_rate": 0.8204,
+    "sharpe": 0.7824,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 55,
+    "total_pnl": 17771.52,
+    "win_rate": 0.821,
+    "sharpe": 0.785,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 56,
+    "total_pnl": 17721.52,
+    "win_rate": 0.8201,
+    "sharpe": 0.7814,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 57,
+    "total_pnl": 17813.52,
+    "win_rate": 0.8217,
+    "sharpe": 0.7881,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 58,
+    "total_pnl": 17771.52,
+    "win_rate": 0.821,
+    "sharpe": 0.785,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 59,
+    "total_pnl": 17823.52,
+    "win_rate": 0.8218,
+    "sharpe": 0.7888,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 60,
+    "total_pnl": 17740.52,
+    "win_rate": 0.8204,
+    "sharpe": 0.7827,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 61,
+    "total_pnl": 17848.52,
+    "win_rate": 0.8223,
+    "sharpe": 0.7907,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 62,
+    "total_pnl": 17760.52,
+    "win_rate": 0.8208,
+    "sharpe": 0.7842,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 63,
+    "total_pnl": 17808.52,
+    "win_rate": 0.8216,
+    "sharpe": 0.7877,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 64,
+    "total_pnl": 17601.52,
+    "win_rate": 0.8181,
+    "sharpe": 0.7727,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 65,
+    "total_pnl": 17773.52,
+    "win_rate": 0.821,
+    "sharpe": 0.7852,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 66,
+    "total_pnl": 17726.52,
+    "win_rate": 0.8202,
+    "sharpe": 0.7817,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 67,
+    "total_pnl": 17875.52,
+    "win_rate": 0.8227,
+    "sharpe": 0.7927,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 68,
+    "total_pnl": 17678.52,
+    "win_rate": 0.8194,
+    "sharpe": 0.7782,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 69,
+    "total_pnl": 17815.52,
+    "win_rate": 0.8217,
+    "sharpe": 0.7882,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 70,
+    "total_pnl": 17801.52,
+    "win_rate": 0.8215,
+    "sharpe": 0.7872,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 71,
+    "total_pnl": 17875.52,
+    "win_rate": 0.8227,
+    "sharpe": 0.7927,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 72,
+    "total_pnl": 17685.52,
+    "win_rate": 0.8195,
+    "sharpe": 0.7787,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 73,
+    "total_pnl": 17668.52,
+    "win_rate": 0.8192,
+    "sharpe": 0.7775,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 74,
+    "total_pnl": 17997.52,
+    "win_rate": 0.8248,
+    "sharpe": 0.8018,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 75,
+    "total_pnl": 17806.52,
+    "win_rate": 0.8216,
+    "sharpe": 0.7876,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 76,
+    "total_pnl": 17861.52,
+    "win_rate": 0.8225,
+    "sharpe": 0.7916,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 77,
+    "total_pnl": 17737.52,
+    "win_rate": 0.8204,
+    "sharpe": 0.7825,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 78,
+    "total_pnl": 17735.52,
+    "win_rate": 0.8204,
+    "sharpe": 0.7824,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 79,
+    "total_pnl": 17664.52,
+    "win_rate": 0.8192,
+    "sharpe": 0.7772,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 80,
+    "total_pnl": 17596.52,
+    "win_rate": 0.818,
+    "sharpe": 0.7723,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 81,
+    "total_pnl": 17907.52,
+    "win_rate": 0.8233,
+    "sharpe": 0.795,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 82,
+    "total_pnl": 17763.52,
+    "win_rate": 0.8208,
+    "sharpe": 0.7844,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 83,
+    "total_pnl": 17918.52,
+    "win_rate": 0.8235,
+    "sharpe": 0.7959,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 84,
+    "total_pnl": 17712.52,
+    "win_rate": 0.82,
+    "sharpe": 0.7807,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 85,
+    "total_pnl": 17757.52,
+    "win_rate": 0.8207,
+    "sharpe": 0.784,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 86,
+    "total_pnl": 17763.52,
+    "win_rate": 0.8208,
+    "sharpe": 0.7844,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 87,
+    "total_pnl": 17745.52,
+    "win_rate": 0.8205,
+    "sharpe": 0.7831,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 88,
+    "total_pnl": 17669.52,
+    "win_rate": 0.8192,
+    "sharpe": 0.7776,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 89,
+    "total_pnl": 17766.52,
+    "win_rate": 0.8209,
+    "sharpe": 0.7846,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 90,
+    "total_pnl": 17865.52,
+    "win_rate": 0.8226,
+    "sharpe": 0.7919,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 91,
+    "total_pnl": 17954.52,
+    "win_rate": 0.8241,
+    "sharpe": 0.7985,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 92,
+    "total_pnl": 17694.52,
+    "win_rate": 0.8197,
+    "sharpe": 0.7794,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 93,
+    "total_pnl": 17866.52,
+    "win_rate": 0.8226,
+    "sharpe": 0.792,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 94,
+    "total_pnl": 17791.52,
+    "win_rate": 0.8213,
+    "sharpe": 0.7865,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 95,
+    "total_pnl": 17784.52,
+    "win_rate": 0.8212,
+    "sharpe": 0.786,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 96,
+    "total_pnl": 17921.52,
+    "win_rate": 0.8235,
+    "sharpe": 0.7961,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 97,
+    "total_pnl": 17706.52,
+    "win_rate": 0.8199,
+    "sharpe": 0.7803,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 98,
+    "total_pnl": 17884.52,
+    "win_rate": 0.8229,
+    "sharpe": 0.7933,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 99,
+    "total_pnl": 17720.52,
+    "win_rate": 0.8201,
+    "sharpe": 0.7813,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 100,
+    "total_pnl": 17921.52,
+    "win_rate": 0.8235,
+    "sharpe": 0.7961,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 101,
+    "total_pnl": 17822.52,
+    "win_rate": 0.8218,
+    "sharpe": 0.7888,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 102,
+    "total_pnl": 17838.52,
+    "win_rate": 0.8221,
+    "sharpe": 0.7899,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 103,
+    "total_pnl": 17694.52,
+    "win_rate": 0.8197,
+    "sharpe": 0.7794,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 104,
+    "total_pnl": 17981.52,
+    "win_rate": 0.8245,
+    "sharpe": 0.8006,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 105,
+    "total_pnl": 17861.52,
+    "win_rate": 0.8225,
+    "sharpe": 0.7916,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 106,
+    "total_pnl": 17790.52,
+    "win_rate": 0.8213,
+    "sharpe": 0.7864,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 107,
+    "total_pnl": 17864.52,
+    "win_rate": 0.8225,
+    "sharpe": 0.7919,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 108,
+    "total_pnl": 17893.52,
+    "win_rate": 0.823,
+    "sharpe": 0.794,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 109,
+    "total_pnl": 17626.52,
+    "win_rate": 0.8185,
+    "sharpe": 0.7745,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 110,
+    "total_pnl": 17790.52,
+    "win_rate": 0.8213,
+    "sharpe": 0.7864,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 111,
+    "total_pnl": 17761.52,
+    "win_rate": 0.8208,
+    "sharpe": 0.7843,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 112,
+    "total_pnl": 17750.52,
+    "win_rate": 0.8206,
+    "sharpe": 0.7835,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 113,
+    "total_pnl": 17682.52,
+    "win_rate": 0.8195,
+    "sharpe": 0.7785,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 114,
+    "total_pnl": 17800.52,
+    "win_rate": 0.8215,
+    "sharpe": 0.7871,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 115,
+    "total_pnl": 17800.52,
+    "win_rate": 0.8215,
+    "sharpe": 0.7871,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 116,
+    "total_pnl": 17639.52,
+    "win_rate": 0.8187,
+    "sharpe": 0.7754,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 117,
+    "total_pnl": 17684.52,
+    "win_rate": 0.8195,
+    "sharpe": 0.7787,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 118,
+    "total_pnl": 17760.52,
+    "win_rate": 0.8208,
+    "sharpe": 0.7842,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 119,
+    "total_pnl": 17812.52,
+    "win_rate": 0.8217,
+    "sharpe": 0.788,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 120,
+    "total_pnl": 17795.52,
+    "win_rate": 0.8214,
+    "sharpe": 0.7868,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 121,
+    "total_pnl": 17718.52,
+    "win_rate": 0.8201,
+    "sharpe": 0.7811,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 122,
+    "total_pnl": 17761.52,
+    "win_rate": 0.8208,
+    "sharpe": 0.7843,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 123,
+    "total_pnl": 17875.52,
+    "win_rate": 0.8227,
+    "sharpe": 0.7927,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 124,
+    "total_pnl": 17841.52,
+    "win_rate": 0.8221,
+    "sharpe": 0.7902,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 125,
+    "total_pnl": 17739.52,
+    "win_rate": 0.8204,
+    "sharpe": 0.7827,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 126,
+    "total_pnl": 17932.52,
+    "win_rate": 0.8237,
+    "sharpe": 0.7969,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 127,
+    "total_pnl": 17912.52,
+    "win_rate": 0.8234,
+    "sharpe": 0.7954,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 128,
+    "total_pnl": 17677.52,
+    "win_rate": 0.8194,
+    "sharpe": 0.7782,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 129,
+    "total_pnl": 17844.52,
+    "win_rate": 0.8222,
+    "sharpe": 0.7904,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 130,
+    "total_pnl": 17774.52,
+    "win_rate": 0.821,
+    "sharpe": 0.7852,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 131,
+    "total_pnl": 17671.52,
+    "win_rate": 0.8193,
+    "sharpe": 0.7777,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 132,
+    "total_pnl": 17717.52,
+    "win_rate": 0.82,
+    "sharpe": 0.7811,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 133,
+    "total_pnl": 17786.52,
+    "win_rate": 0.8212,
+    "sharpe": 0.7861,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 134,
+    "total_pnl": 17866.52,
+    "win_rate": 0.8226,
+    "sharpe": 0.792,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 135,
+    "total_pnl": 17781.52,
+    "win_rate": 0.8211,
+    "sharpe": 0.7857,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 136,
+    "total_pnl": 17733.52,
+    "win_rate": 0.8203,
+    "sharpe": 0.7822,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 137,
+    "total_pnl": 17794.52,
+    "win_rate": 0.8214,
+    "sharpe": 0.7867,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 138,
+    "total_pnl": 17811.52,
+    "win_rate": 0.8216,
+    "sharpe": 0.7879,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 139,
+    "total_pnl": 17912.52,
+    "win_rate": 0.8234,
+    "sharpe": 0.7954,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 140,
+    "total_pnl": 17766.52,
+    "win_rate": 0.8209,
+    "sharpe": 0.7846,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 141,
+    "total_pnl": 17839.52,
+    "win_rate": 0.8221,
+    "sharpe": 0.79,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 142,
+    "total_pnl": 17787.52,
+    "win_rate": 0.8212,
+    "sharpe": 0.7862,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 143,
+    "total_pnl": 17806.52,
+    "win_rate": 0.8216,
+    "sharpe": 0.7876,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 144,
+    "total_pnl": 17783.52,
+    "win_rate": 0.8212,
+    "sharpe": 0.7859,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 145,
+    "total_pnl": 17793.52,
+    "win_rate": 0.8213,
+    "sharpe": 0.7866,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 146,
+    "total_pnl": 17684.52,
+    "win_rate": 0.8195,
+    "sharpe": 0.7787,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 147,
+    "total_pnl": 17786.52,
+    "win_rate": 0.8212,
+    "sharpe": 0.7861,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 148,
+    "total_pnl": 17717.52,
+    "win_rate": 0.82,
+    "sharpe": 0.7811,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 149,
+    "total_pnl": 17685.52,
+    "win_rate": 0.8195,
+    "sharpe": 0.7787,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 150,
+    "total_pnl": 17811.52,
+    "win_rate": 0.8216,
+    "sharpe": 0.7879,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 151,
+    "total_pnl": 17770.52,
+    "win_rate": 0.8209,
+    "sharpe": 0.7849,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 152,
+    "total_pnl": 17819.52,
+    "win_rate": 0.8218,
+    "sharpe": 0.7885,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 153,
+    "total_pnl": 17833.52,
+    "win_rate": 0.822,
+    "sharpe": 0.7896,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 154,
+    "total_pnl": 17641.52,
+    "win_rate": 0.8188,
+    "sharpe": 0.7756,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 155,
+    "total_pnl": 17893.52,
+    "win_rate": 0.823,
+    "sharpe": 0.794,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 156,
+    "total_pnl": 17860.52,
+    "win_rate": 0.8225,
+    "sharpe": 0.7916,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 157,
+    "total_pnl": 17809.52,
+    "win_rate": 0.8216,
+    "sharpe": 0.7878,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 158,
+    "total_pnl": 17774.52,
+    "win_rate": 0.821,
+    "sharpe": 0.7852,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 159,
+    "total_pnl": 17817.52,
+    "win_rate": 0.8217,
+    "sharpe": 0.7884,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 160,
+    "total_pnl": 17804.52,
+    "win_rate": 0.8215,
+    "sharpe": 0.7874,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 161,
+    "total_pnl": 17807.52,
+    "win_rate": 0.8216,
+    "sharpe": 0.7877,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 162,
+    "total_pnl": 17676.52,
+    "win_rate": 0.8194,
+    "sharpe": 0.7781,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 163,
+    "total_pnl": 17817.52,
+    "win_rate": 0.8217,
+    "sharpe": 0.7884,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 164,
+    "total_pnl": 17866.52,
+    "win_rate": 0.8226,
+    "sharpe": 0.792,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 165,
+    "total_pnl": 17566.52,
+    "win_rate": 0.8175,
+    "sharpe": 0.7702,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 166,
+    "total_pnl": 17650.52,
+    "win_rate": 0.8189,
+    "sharpe": 0.7762,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 167,
+    "total_pnl": 17860.52,
+    "win_rate": 0.8225,
+    "sharpe": 0.7916,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 168,
+    "total_pnl": 17834.52,
+    "win_rate": 0.822,
+    "sharpe": 0.7896,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 169,
+    "total_pnl": 17816.52,
+    "win_rate": 0.8217,
+    "sharpe": 0.7883,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 170,
+    "total_pnl": 17639.52,
+    "win_rate": 0.8187,
+    "sharpe": 0.7754,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 171,
+    "total_pnl": 17741.52,
+    "win_rate": 0.8205,
+    "sharpe": 0.7828,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 172,
+    "total_pnl": 17908.52,
+    "win_rate": 0.8233,
+    "sharpe": 0.7951,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 173,
+    "total_pnl": 17670.52,
+    "win_rate": 0.8193,
+    "sharpe": 0.7777,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 174,
+    "total_pnl": 17681.52,
+    "win_rate": 0.8194,
+    "sharpe": 0.7785,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 175,
+    "total_pnl": 17720.52,
+    "win_rate": 0.8201,
+    "sharpe": 0.7813,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 176,
+    "total_pnl": 17934.52,
+    "win_rate": 0.8237,
+    "sharpe": 0.7971,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 177,
+    "total_pnl": 17983.52,
+    "win_rate": 0.8246,
+    "sharpe": 0.8007,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 178,
+    "total_pnl": 17671.52,
+    "win_rate": 0.8193,
+    "sharpe": 0.7777,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 179,
+    "total_pnl": 17798.52,
+    "win_rate": 0.8214,
+    "sharpe": 0.787,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 180,
+    "total_pnl": 17753.52,
+    "win_rate": 0.8207,
+    "sharpe": 0.7837,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 181,
+    "total_pnl": 17743.52,
+    "win_rate": 0.8205,
+    "sharpe": 0.783,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 182,
+    "total_pnl": 17945.52,
+    "win_rate": 0.8239,
+    "sharpe": 0.7979,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 183,
+    "total_pnl": 17566.52,
+    "win_rate": 0.8175,
+    "sharpe": 0.7702,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 184,
+    "total_pnl": 17716.52,
+    "win_rate": 0.82,
+    "sharpe": 0.781,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 185,
+    "total_pnl": 17671.52,
+    "win_rate": 0.8193,
+    "sharpe": 0.7777,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 186,
+    "total_pnl": 17688.52,
+    "win_rate": 0.8196,
+    "sharpe": 0.779,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 187,
+    "total_pnl": 17820.52,
+    "win_rate": 0.8218,
+    "sharpe": 0.7886,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 188,
+    "total_pnl": 17563.52,
+    "win_rate": 0.8174,
+    "sharpe": 0.77,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 189,
+    "total_pnl": 17782.52,
+    "win_rate": 0.8211,
+    "sharpe": 0.7858,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 190,
+    "total_pnl": 17740.52,
+    "win_rate": 0.8204,
+    "sharpe": 0.7827,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 191,
+    "total_pnl": 17714.52,
+    "win_rate": 0.82,
+    "sharpe": 0.7809,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 192,
+    "total_pnl": 17816.52,
+    "win_rate": 0.8217,
+    "sharpe": 0.7883,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 193,
+    "total_pnl": 17837.52,
+    "win_rate": 0.8221,
+    "sharpe": 0.7899,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 194,
+    "total_pnl": 17938.52,
+    "win_rate": 0.8238,
+    "sharpe": 0.7974,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 195,
+    "total_pnl": 17684.52,
+    "win_rate": 0.8195,
+    "sharpe": 0.7787,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 196,
+    "total_pnl": 17936.52,
+    "win_rate": 0.8238,
+    "sharpe": 0.7972,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 197,
+    "total_pnl": 17727.52,
+    "win_rate": 0.8202,
+    "sharpe": 0.7818,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 198,
+    "total_pnl": 17634.52,
+    "win_rate": 0.8186,
+    "sharpe": 0.7751,
+    "n_trades": 59049
+  },
+  {
+    "iteration": 199,
+    "total_pnl": 17890.52,
+    "win_rate": 0.823,
+    "sharpe": 0.7938,
+    "n_trades": 59049
+  }
+]
