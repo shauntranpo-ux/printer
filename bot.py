@@ -3088,7 +3088,8 @@ async def handle_ready_phase(
     entry_price_cents = yes_ask if side == "yes" else no_ask
     _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100
     _entry_p  = entry_price_cents / 100.0
-    brain_ev  = brain.get("win_prob", 0.5) - _entry_p - _fee_rate * _entry_p * (1.0 - _entry_p)
+    _fee      = _fee_rate * _entry_p * (1.0 - _entry_p)
+    brain_ev  = brain.get("win_prob", 0.5) - _entry_p - _fee
     brain_win_prob = brain.get("win_prob", 0.5)
 
     # Dashboard eval snapshot — updated at every exit point below
