@@ -353,7 +353,7 @@ def _init_config() -> None:
         "bot_enabled": False,
         "trade_amount_dollars": 25,
         "mode": "paper",
-        "confidence_threshold": 72,
+        "confidence_threshold": 0,   # Supertrend win_prob is fixed 0.70; real gate is EV
         "daily_loss_limit_dollars": 50,          # 2Ã— trade size — real guard, not $5M decoration
         "daily_profit_target_dollars": 200,
         "max_consecutive_losses": 5,             # pause 15 min after this many losses in a row
@@ -1737,7 +1737,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         confidence_threshold = _ct / 100.0
         stake = float(config.get("trade_amount_dollars", 25))
         st_period = int(get_asset_config(config, asset, "supertrend_atr_period", 10))
-        st_mult   = float(get_asset_config(config, asset, "supertrend_atr_multiplier", 3.0))
+        st_mult   = float(get_asset_config(config, asset, "supertrend_atr_multiplier", 4.0))
 
         if asset == "ETH" and is_hourly:
             from strategies.eth_hourly_combined import ETHHourlyCombinedStrategy

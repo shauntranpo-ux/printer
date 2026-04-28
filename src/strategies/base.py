@@ -39,7 +39,7 @@ class BaseStrategy(ABC):
         is_15m: bool = False,
         confidence_threshold: float = 0.0,
         supertrend_atr_period: int = 10,
-        supertrend_atr_multiplier: float = 3.0,
+        supertrend_atr_multiplier: float = 4.0,
     ):
         self.asset = asset
         self.skip_config = skip_config

@@ -31,7 +31,7 @@ class FifteenMinStrategy(BaseStrategy):
         maker: bool = False,
         confidence_threshold: float = 0.0,
         supertrend_atr_period: int = 10,
-        supertrend_atr_multiplier: float = 3.0,
+        supertrend_atr_multiplier: float = 4.0,
     ):
         super().__init__(
             asset=asset,
