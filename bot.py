@@ -4196,6 +4196,8 @@ async def main() -> None:
     # Always subscribe BTC regardless of enabled_assets — other strategies use
     # btc_prices_60m for correlation signals and the deque must stay populated.
     _feed_assets = list(dict.fromkeys(["BTC"] + _enabled))
+    from asset_manager import seed_price_history
+    await seed_price_history(_feed_assets)
     asyncio.create_task(binance_feed_task(_feed_assets))
     asyncio.create_task(coinbase_price_task(_feed_assets))
 

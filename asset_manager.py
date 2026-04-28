@@ -79,6 +79,83 @@ _binance_451_streak: int = 0
 _BINANCE_451_THRESHOLD = 5
 
 
+_BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
+_KRAKEN_OHLC_URL   = "https://api.kraken.com/0/public/OHLC"
+_KRAKEN_PAIRS = {"BTC": "XBTUSD", "ETH": "ETHUSD", "SOL": "SOLUSD", "XRP": "XRPUSD"}
+
+
+async def seed_price_history(assets: list[str]) -> None:
+    """
+    Pre-fill _prices deques with 30 historical 1-minute bars so Supertrend
+    has enough data immediately after a cold start / crash restart.
+    Tries Binance REST first; falls back to Kraken public OHLC.
+    """
+    import aiohttp as _aiohttp
+
+    for asset in assets:
+        dq = _prices.get(asset)
+        if dq is None:
+            continue
+
+        cfg = ASSET_CONFIG.get(asset, {})
+        sym = cfg.get("binance_symbol", "").upper()
+        seeded = False
+
+        # ── Binance REST klines ────────────────────────────────────────────
+        if sym:
+            try:
+                async with _aiohttp.ClientSession() as s:
+                    async with s.get(
+                        _BINANCE_KLINES_URL,
+                        params={"symbol": sym, "interval": "1m", "limit": "30"},
+                        timeout=_aiohttp.ClientTimeout(total=6),
+                    ) as resp:
+                        if resp.status == 200:
+                            klines = await resp.json()
+                            for k in klines:
+                                # k[6] = close_time (ms), k[4] = close price
+                                dq.append((int(k[6]) / 1000.0, float(k[4])))
+                            log.info(
+                                "[%s] seed_price_history: %d bars from Binance REST",
+                                asset, len(klines),
+                            )
+                            seeded = True
+            except Exception as exc:
+                log.debug("[%s] Binance klines seed failed: %s", asset, exc)
+
+        # ── Kraken OHLC fallback ───────────────────────────────────────────
+        if not seeded:
+            pair = _KRAKEN_PAIRS.get(asset)
+            if pair:
+                try:
+                    async with _aiohttp.ClientSession() as s:
+                        async with s.get(
+                            _KRAKEN_OHLC_URL,
+                            params={"pair": pair, "interval": "1"},
+                            timeout=_aiohttp.ClientTimeout(total=6),
+                        ) as resp:
+                            if resp.status == 200:
+                                data = await resp.json()
+                                result = data.get("result", {})
+                                bars = next(
+                                    (v for k, v in result.items()
+                                     if k != "last" and isinstance(v, list)),
+                                    [],
+                                )
+                                for bar in bars[-30:]:
+                                    dq.append((float(bar[0]), float(bar[4])))
+                                log.info(
+                                    "[%s] seed_price_history: %d bars from Kraken",
+                                    asset, min(30, len(bars)),
+                                )
+                                seeded = True
+                except Exception as exc:
+                    log.debug("[%s] Kraken OHLC seed failed: %s", asset, exc)
+
+        if not seeded:
+            log.warning("[%s] seed_price_history: both REST sources failed", asset)
+
+
 async def coinbase_price_task(enabled_assets: list[str]) -> None:
     """
     Fallback REST-polling price feed using Coinbase public spot API.
