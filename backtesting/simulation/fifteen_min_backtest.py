@@ -63,6 +63,10 @@ def run_fifteen_min_backtest(
     no_ask_cents: float = 50.0,
     min_entry_price_cents: float = 20.0,
     max_entry_price_cents: float = 76.0,
+    vol_ratio_threshold: float = 1.80,
+    supertrend_atr_period: int = 10,
+    supertrend_atr_multiplier: float = 3.0,
+    strike_lookback_bars: int = 30,
 ) -> pd.DataFrame:
     """
     Simulate FifteenMinStrategy on historical 1m bars using Supertrend ATR for direction.
@@ -85,6 +89,7 @@ def run_fifteen_min_backtest(
         min_entry_price_cents=min_entry_price_cents,
         max_entry_price_cents=max_entry_price_cents,
         cold_start_samples=60,
+        vol_ratio_threshold=vol_ratio_threshold,
     )
     strat = FifteenMinStrategy(
         asset=asset_upper,
@@ -92,6 +97,8 @@ def run_fifteen_min_backtest(
         min_ev=effective_min_ev,
         stake_dollars=stake_dollars,
         confidence_threshold=confidence_threshold,
+        supertrend_atr_period=supertrend_atr_period,
+        supertrend_atr_multiplier=supertrend_atr_multiplier,
     )
 
     bars = bars.sort_values("timestamp").reset_index(drop=True)
@@ -107,7 +114,8 @@ def run_fifteen_min_backtest(
         if len(window) < step:
             break
 
-        strike_price  = float(window.iloc[0]["close"])
+        strike_bar_idx = max(0, start_idx - strike_lookback_bars)
+        strike_price  = float(bars.iloc[strike_bar_idx]["close"])
         entry_bar     = window.iloc[entry_minute]
         exit_bar      = window.iloc[-1]
         current_price = float(entry_bar["close"])

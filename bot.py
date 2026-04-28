@@ -1736,8 +1736,8 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         min_ev = _ev_base / 100.0
         confidence_threshold = _ct / 100.0
         stake = float(config.get("trade_amount_dollars", 25))
-        st_period = int(config.get("supertrend_atr_period", 10))
-        st_mult   = float(config.get("supertrend_atr_multiplier", 3.0))
+        st_period = int(get_asset_config(config, asset, "supertrend_atr_period", 10))
+        st_mult   = float(get_asset_config(config, asset, "supertrend_atr_multiplier", 3.0))
 
         if asset == "ETH" and is_hourly:
             from strategies.eth_hourly_combined import ETHHourlyCombinedStrategy

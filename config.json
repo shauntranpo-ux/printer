@@ -27,13 +27,15 @@
   ],
   "asset_overrides": {
     "BTC": {
-      "min_ev_base": 7
+      "min_ev_base": 7,
+      "supertrend_atr_period": 7
     },
     "ETH": {
       "min_ev_base": 9
     },
     "SOL": {
-      "min_ev_base": 16
+      "min_ev_base": 16,
+      "supertrend_atr_period": 14
     },
     "XRP": {
       "min_ev_base": 16
@@ -45,5 +47,5 @@
   "confidence_threshold_15m": 0,
   "min_ev_base_15m": 11,
   "supertrend_atr_period": 10,
-  "supertrend_atr_multiplier": 3.0
+  "supertrend_atr_multiplier": 4.0
 }

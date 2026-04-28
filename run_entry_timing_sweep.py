@@ -1,0 +1,70 @@
+"""Sweep entry_minute 1-14 across all 15m assets."""
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backtesting"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
+
+import pandas as pd
+import warnings
+warnings.filterwarnings("ignore")
+
+from backtesting.data.loaders import load_bars
+from backtesting.simulation.fifteen_min_backtest import run_fifteen_min_backtest
+
+ASSETS = ["BTC", "ETH", "SOL", "XRP"]
+DATE_START, DATE_END = "2025-01-01", "2025-06-30"
+ENTRY_GRID = list(range(1, 15))  # 1 to 14 inclusive
+
+def run():
+    results = []
+    for asset in ASSETS:
+        print(f"\n{'='*55}\n  {asset}\n{'='*55}")
+        try:
+            bars = load_bars(asset, start_date=DATE_START, end_date=DATE_END)
+        except Exception as e:
+            print(f"  [SKIP] {e}"); continue
+        bars = bars.rename(columns={"open_time": "timestamp"}) if "open_time" in bars.columns else bars
+        bars["timestamp"] = pd.to_datetime(bars["timestamp"], utc=True)
+        print(f"  Bars: {len(bars):,}")
+
+        for em in ENTRY_GRID:
+            mins_left = 15 - em
+            try:
+                df = run_fifteen_min_backtest(
+                    bars=bars, asset=asset, min_ev=0.0,
+                    stake_dollars=25.0, entry_minute=em,
+                    min_entry_price_cents=5.0, max_entry_price_cents=75.0,
+                )
+            except Exception as e:
+                print(f"  entry={em:2d} ({mins_left:2d}min left)  ERROR: {e}"); continue
+
+            if df.empty:
+                print(f"  entry={em:2d} ({mins_left:2d}min left)  no trades")
+                results.append({"asset": asset, "entry_minute": em, "mins_left": mins_left,
+                                 "n_trades": 0, "win_rate": None, "total_pnl": None, "sharpe": None})
+                continue
+
+            pnl = df["pnl"].values
+            wr, tot, avg = df["win"].mean(), pnl.sum(), pnl.mean()
+            sharpe = avg / (pnl.std() + 1e-10)
+            print(f"  entry={em:2d} ({mins_left:2d}min left)  trades={len(df):>5}  "
+                  f"WR={wr:.1%}  total=${tot*25:.0f}  avg={avg*100:+.2f}c  sharpe={sharpe:.2f}")
+            results.append({"asset": asset, "entry_minute": em, "mins_left": mins_left,
+                             "n_trades": len(df), "win_rate": round(wr, 4),
+                             "total_pnl": round(tot*25, 2), "sharpe": round(sharpe, 3)})
+
+    print(f"\n\n{'='*55}")
+    print("SUMMARY — Best entry_minute per asset (by Sharpe)")
+    print(f"{'='*55}")
+    df_all = pd.DataFrame(results)
+    df_all = df_all[df_all["n_trades"] > 0].copy()
+    for asset in ASSETS:
+        sub = df_all[df_all["asset"] == asset]
+        if sub.empty: print(f"  {asset}: no data"); continue
+        best = sub.loc[sub["sharpe"].idxmax()]
+        print(f"  {asset}:  best_entry={int(best['entry_minute'])} ({int(best['mins_left'])}min left)  "
+              f"trades={int(best['n_trades'])}  WR={best['win_rate']:.1%}  "
+              f"total=${best['total_pnl']:.0f}  sharpe={best['sharpe']:.2f}")
+    print()
+
+if __name__ == "__main__":
+    run()
