@@ -44,6 +44,7 @@
   "max_spread_cents": 3.0,
   "min_seconds_left": 30,
   "cold_start_samples": 60,
+  "confidence_threshold": 0,
   "confidence_threshold_15m": 0,
   "min_ev_base_15m": 11,
   "supertrend_atr_period": 10,

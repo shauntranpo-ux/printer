@@ -1746,8 +1746,6 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 min_ev=min_ev,
                 stake_dollars=stake,
                 confidence_threshold=confidence_threshold,
-                supertrend_atr_period=st_period,
-                supertrend_atr_multiplier=st_mult,
             )
         elif asset == "BTC" and is_hourly:
             from strategies.btc_hourly_strategy import BTCHourlyStrategy
@@ -1756,8 +1754,6 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 min_ev=min_ev,
                 stake_dollars=stake,
                 confidence_threshold=confidence_threshold,
-                supertrend_atr_period=st_period,
-                supertrend_atr_multiplier=st_mult,
             )
         elif not is_hourly:
             from strategies.fifteen_min_strategy import FifteenMinStrategy
