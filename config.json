@@ -1,6 +1,7 @@
 {
   "bot_enabled": false,
   "mode": "paper",
+  "enable_hourly_markets": false,
   "trade_amount_dollars": 25,
   "daily_loss_limit_dollars": 500,
   "daily_profit_target_dollars": 5000,

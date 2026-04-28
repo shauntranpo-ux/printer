@@ -1702,6 +1702,8 @@ def _strategy_name_for(asset, duration_min):
 def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):
     """Lazily construct per-asset strategy singleton. Returns None on failure."""
     is_hourly = market_duration_min > 25.0
+    if is_hourly and not config.get("enable_hourly_markets", True):
+        return None
     cache_key = f"{asset}_hourly" if is_hourly else asset
     if cache_key in _STRATEGY_SINGLETONS:
         return _STRATEGY_SINGLETONS[cache_key]
@@ -2962,7 +2964,7 @@ async def handle_ready_phase(
                         c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
                         _c_fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100
                         _c_p        = c_entry / 100.0
-                        _c_fee      = _c_fee_rate * _c_p * (1.0 - _c_p)
+                        _c_fee      = _c_fee_rate * (1.0 - _c_p)
                         c_ev        = c_win_prob - _c_p - _c_fee
                         log.info(f"  Window {c_ticker}: ev={c_ev:+.1%} side={c_brain['side']} strike=${c_strike:,.0f}")
                         if best_ev is None or c_ev > best_ev:
@@ -3084,7 +3086,7 @@ async def handle_ready_phase(
     entry_price_cents = yes_ask if side == "yes" else no_ask
     _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100
     _entry_p  = entry_price_cents / 100.0
-    _fee      = _fee_rate * _entry_p * (1.0 - _entry_p)
+    _fee      = _fee_rate * (1.0 - _entry_p)  # fee/stake ≈ fee_rate*(1-p); matches ev.py formula
     brain_ev  = brain.get("win_prob", 0.5) - _entry_p - _fee
     brain_win_prob = brain.get("win_prob", 0.5)
 
