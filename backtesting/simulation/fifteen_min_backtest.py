@@ -1,10 +1,10 @@
 """
-FifteenMinStrategy backtest — BV3-only mode (no Octagon).
+FifteenMinStrategy backtest — Supertrend ATR direction signal.
 
 Pipeline per 15m window:
   1. Enter at `entry_minute` (default=5, 10 min left).
   2. Strike = close of bar 0 in the window.
-  3. BV3 prob from empirical win-rate table (asset_manager).
+  3. Build prices_60m deque from ≤120 bars ending at the entry bar.
   4. Synthetic market prices: yes_ask=50c / no_ask=50c (ATM baseline).
   5. Run FifteenMinStrategy.decide() — direction from Supertrend ATR.
   6. P&L vs actual window outcome (bar[14].close vs strike).
@@ -18,6 +18,7 @@ import math
 import os
 import sys
 import time as _time
+from collections import deque as _deque
 from typing import Optional
 
 import numpy as np
@@ -31,7 +32,7 @@ _SRC_DIR = os.path.join(_PROJECT_ROOT, "src")
 
 _RESULT_COLUMNS = [
     "entry_time", "exit_time", "asset", "strategy",
-    "side", "bv3_prob", "abs_pct", "mins_left",
+    "side", "abs_pct", "mins_left",
     "yes_ask", "no_ask", "fill_price", "pnl", "fee", "label", "win",
 ]
 
@@ -54,7 +55,7 @@ def _kalshi_fee(fill_price: float) -> float:
 def run_fifteen_min_backtest(
     bars: pd.DataFrame,
     asset: str,
-    confidence_threshold: float = 0.74,
+    confidence_threshold: float = 0.0,
     min_ev: Optional[float] = None,
     stake_dollars: float = 25.0,
     entry_minute: int = 5,
@@ -64,7 +65,7 @@ def run_fifteen_min_backtest(
     max_entry_price_cents: float = 76.0,
 ) -> pd.DataFrame:
     """
-    Simulate FifteenMinStrategy on historical 1m bars using BV3 table for signals.
+    Simulate FifteenMinStrategy on historical 1m bars using Supertrend ATR for direction.
 
     Args:
         bars:           1m OHLCV DataFrame with timestamp, open, high, low, close, volume.
@@ -73,9 +74,6 @@ def run_fifteen_min_backtest(
         yes_ask_cents / no_ask_cents: Synthetic ATM market prices (default 50c each).
     """
     _setup_paths()
-
-    import asset_manager as am
-    am.load_bv3_tables(use_pre2023=True)
 
     from strategies.fifteen_min_strategy import FifteenMinStrategy
     from strategies.skip_layer import SkipConfig
@@ -118,20 +116,22 @@ def run_fifteen_min_backtest(
         if strike_price <= 0 or current_price <= 0:
             continue
 
-        abs_pct      = abs(current_price - strike_price) / current_price
-        above_strike = current_price > strike_price
-        mins_left    = float(step - entry_minute)
+        abs_pct   = abs(current_price - strike_price) / current_price
+        mins_left = float(step - entry_minute)
 
-        bv3_raw  = am.empirical_win_prob(asset_upper, abs_pct, mins_left)
-        bv3_prob = bv3_raw if above_strike else (1.0 - bv3_raw)
+        # ── Supertrend feed: up to 120 1m bars ending at entry bar ───────────
+        hist_start = max(0, start_idx + entry_minute - 120)
+        hist_slice = bars.iloc[hist_start : start_idx + entry_minute]
+        prices_60m: _deque = _deque(maxlen=3600)
+        for _, hrow in hist_slice.iterrows():
+            ts = pd.Timestamp(hrow["timestamp"])
+            prices_60m.append((ts.timestamp(), float(hrow["close"])))
 
-        # Realized vol from bars immediately before entry
-        lookback_start = max(0, start_idx + entry_minute - 15)
-        lookback = bars.iloc[lookback_start : start_idx + entry_minute]
-        if len(lookback) >= 2:
+        # Realized vol from the same lookback window
+        if len(hist_slice) >= 2:
             lr = np.log(
-                lookback["close"].clip(lower=1e-10).values
-                / lookback["open"].clip(lower=1e-10).values
+                hist_slice["close"].clip(lower=1e-10).values
+                / hist_slice["open"].clip(lower=1e-10).values
             )
             rv_1min = float(np.std(lr))
         else:
@@ -156,8 +156,7 @@ def run_fifteen_min_backtest(
             spread_no=1.0,
             realized_vol_1min=rv_1min,
         )
-        features.bv3_prob = bv3_prob
-        # prices_60m is unused in the BV3 fallback path (15m skips pre-filter)
+        features.prices_60m = prices_60m
 
         decision = strat.decide(features)
         if decision.action != "trade":
@@ -179,9 +178,8 @@ def run_fifteen_min_backtest(
             "entry_time": entry_ts,
             "exit_time":  pd.Timestamp(exit_bar["timestamp"]),
             "asset":      asset_upper,
-            "strategy":   "15m_bv3",
+            "strategy":   "15m_supertrend",
             "side":       decision.side,
-            "bv3_prob":   round(bv3_prob, 4),
             "abs_pct":    round(abs_pct * 100, 4),  # stored as percent
             "mins_left":  mins_left,
             "yes_ask":    yes_ask,

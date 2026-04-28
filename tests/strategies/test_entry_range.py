@@ -147,8 +147,6 @@ def test_fifteen_min_strategy_rejects_trade_at_100c_no_ask():
         prices_60m=prices,
         btc_prices_60m=btc_prices,
     )
-    f.bv3_prob = 0.24  # below strike, NO direction
-
     strat = FifteenMinStrategy(asset="ETH", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=25.0)
     decision = strat.decide(f)
 
