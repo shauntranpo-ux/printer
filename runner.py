@@ -146,7 +146,7 @@ def _start_ladder_collector() -> subprocess.Popen:
     global _last_ladder_run
     print("[runner] Starting collect_kalshi_ladder_history.py ...")
     proc = subprocess.Popen(
-        [sys.executable, os.path.join(BASE_DIR, "collect_kalshi_ladder_history.py")],
+        [sys.executable, os.path.join(BASE_DIR, "collect_kalshi_ladder_history.py"), "--days", "3"],
         cwd=BASE_DIR,
     )
     _last_ladder_run = time.time()
