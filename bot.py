@@ -1713,7 +1713,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         from strategies.skip_layer import SkipConfig
 
         _min_price = float(config.get("min_entry_price_cents", 20.0))
-        _max_price = 76.0 if not is_hourly else 80.0
+        _max_price = float(config.get("max_entry_price_cents", 76.0 if not is_hourly else 80.0))
         skip_cfg = SkipConfig(
             max_spread_cents=float(config.get("max_spread_cents", 3.0)),
             min_seconds_left=float(config.get("min_seconds_left", 30.0)),
