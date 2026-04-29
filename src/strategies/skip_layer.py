@@ -1,4 +1,4 @@
-﻿"""
+"""
 Explicit pre-strategy skip rules. Returns skip reason or None (proceed).
 
 Runs BEFORE any strategy logic. If this returns a reason, we never call the
@@ -21,8 +21,6 @@ class SkipConfig:
     max_entry_price_cents: float = 80.0         # entry range upper bound (exclusive)
     cold_start_samples: int = 60                # need this many prices_60m samples
     vol_ratio_threshold: float = 1.80           # skip if expected_move/buffer >= this
-    vol_top_pct_threshold: float = 0.95         # legacy field, unused
-    vol_bot_pct_threshold: float = 0.05         # legacy field, unused
     macro_event_skip_minutes: float = 15.0      # skip within +/- this of macro event
 
 
@@ -63,26 +61,6 @@ def check_skip(
         return f"spread too wide: yes={features.spread_yes:.0f}c no={features.spread_no:.0f}c"
 
     return None
-
-
-def check_skip_with_asset_hook(
-    features: "MarketFeatures",
-    cfg: "SkipConfig",
-    macro_event_active: bool = False,
-    asset_hook_result: "Optional[tuple[bool, str]]" = None,
-) -> "Optional[str]":
-    """
-    Same as check_skip but respects an optional asset-specific health hook.
-
-    asset_hook_result: (is_healthy, reason)
-        If is_healthy is False, returns the reason immediately (fail-safe).
-    """
-    if asset_hook_result is not None:
-        is_healthy, reason = asset_hook_result
-        if not is_healthy:
-            return f"asset_hook: {reason}"
-    return check_skip(features, cfg, macro_event_active)
-
 
 def check_entry_range(entry_cents: float, side: str, cfg: SkipConfig) -> Optional[str]:
     """Post-decision range gate: entry must be within [min_entry_price_cents, max_entry_price_cents)."""

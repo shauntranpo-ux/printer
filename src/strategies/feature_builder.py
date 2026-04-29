@@ -96,10 +96,7 @@ def build_features_from_bot_state(
 
 
 def _realized_vol_1min(prices_deque) -> float | None:
-    """
-    Std dev of 1-minute log returns over the last 60 minutes.
-    Mirrors the legacy bot.btc_realized_vol() formula.
-    """
+    """Std dev of 1-minute log returns over the last 60 minutes."""
     if not prices_deque or len(prices_deque) < 4:
         return None
 

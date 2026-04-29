@@ -58,12 +58,6 @@ class MarketFeatures:
     # Supertrend direction — populated inside BaseStrategy.decide()
     supertrend_direction: Optional[int] = None  # 1 = uptrend (YES), -1 = downtrend (NO)
 
-    def window_fraction_remaining(self) -> float:
-        """Tau = fraction of 15-min window remaining. Range (0, 1]."""
-        total = self.seconds_left + self.elapsed_seconds
-        if total <= 0:
-            return 0.0
-        return self.seconds_left / total
 
 
 @dataclass

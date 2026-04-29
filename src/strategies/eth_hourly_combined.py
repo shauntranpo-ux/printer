@@ -36,8 +36,3 @@ class ETHHourlyCombinedStrategy(BaseStrategy):
             calibrator=calibrator,
             confidence_threshold=confidence_threshold,
         )
-
-    def compute_raw_p_model(
-        self, features: MarketFeatures, baseline_p_above: float
-    ) -> tuple[float, dict]:
-        return baseline_p_above, {}

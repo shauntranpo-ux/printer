@@ -52,14 +52,6 @@ class BaseStrategy(ABC):
         self.supertrend_atr_period = supertrend_atr_period
         self.supertrend_atr_multiplier = supertrend_atr_multiplier
 
-    def compute_raw_p_model(
-        self,
-        features: MarketFeatures,
-        baseline_p_above: float,
-    ) -> tuple[float, dict]:
-        """Legacy hook — no longer called in the decision pipeline."""
-        return baseline_p_above, {}
-
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
         # Step 1: skip layer (hourly only; 15m range enforced post-decision in step 7)
         if not self.is_15m:
