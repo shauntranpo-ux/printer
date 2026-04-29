@@ -120,7 +120,7 @@ _CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 25, "confidence_thre
                    "daily_loss_limit_dollars": 50000,
                    "daily_profit_target_dollars": 50000}
 _STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
-                   "phase": "waiting", "mode": "paper"}
+                   "today_demo_pnl": 0.0, "phase": "waiting", "mode": "paper"}
 
 def read_config() -> dict:
     return _safe_json_read("config.json", _CONFIG_DEFAULT.copy())
@@ -236,6 +236,7 @@ def api_status():
     alive_count     = sum(1 for r in results if r["alive"])
     live_pnl_total  = sum(r["state"].get("today_live_pnl",  0.0) for r in results)
     paper_pnl_total = sum(r["state"].get("today_paper_pnl", 0.0) for r in results)
+    demo_pnl_total  = sum(r["state"].get("today_demo_pnl",  0.0) for r in results)
 
     return jsonify({
         "strategies": results,
@@ -244,6 +245,7 @@ def api_status():
             "alive":             alive_count,
             "today_live_pnl":    round(live_pnl_total,  2),
             "today_paper_pnl":   round(paper_pnl_total, 2),
+            "today_demo_pnl":    round(demo_pnl_total,  2),
         },
     })
 

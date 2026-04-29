@@ -2119,19 +2119,54 @@ def implied_prob(contract_price_cents: float) -> float:
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Order placement
+
+
+async def _portfolio_has_position(
+    session: aiohttp.ClientSession,
+    ticker: str,
+    side: str,
+) -> bool:
+    """Check whether the portfolio already holds a position for (ticker, side)."""
+    if not ticker or not side:
+        return False
+    try:
+        pos_path = f"/portfolio/positions?ticker={ticker}"
+        async with session.get(
+            KALSHI_BASE_URL + pos_path,
+            headers=kalshi_headers("GET", pos_path),
+            timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+        ) as resp:
+            if resp.status != 200:
+                return False
+            pos_data = await resp.json()
+        positions = pos_data.get("market_positions") or pos_data.get("positions") or []
+        for p in positions:
+            if p.get("ticker") == ticker:
+                held = p.get("position", 0)
+                if side == "yes" and held > 0:
+                    return True
+                if side == "no" and held < 0:
+                    return True
+    except Exception as exc:
+        log.warning(f"_portfolio_has_position error for {ticker}: {exc}")
+    return False
+
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def _verify_order_fill(
     session: aiohttp.ClientSession,
     order_id: str,
     expected_filled: int,
+    ticker: str = "",
+    side: str = "",
 ) -> bool:
     """
     Confirm a fill is recorded in Kalshi by re-fetching the order.
 
     Returns True if Kalshi confirms at least one contract filled.
-    Falls back to True on network errors so a transient failure doesn't
-    cause the bot to miss a real fill and leave an orphaned position.
+    On HTTP errors, falls back to a portfolio position check (requires ticker+side).
+    On network exceptions, returns False — the conservative choice is to not book a
+    phantom position rather than assume a fill that may not exist.
     """
     try:
         chk_path = f"/portfolio/orders/{order_id}"
@@ -2141,8 +2176,8 @@ async def _verify_order_fill(
             timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
         ) as resp:
             if resp.status != 200:
-                log.warning(f"_verify_order_fill: GET {order_id} HTTP {resp.status} — assuming filled")
-                return True
+                log.warning(f"_verify_order_fill: GET {order_id} HTTP {resp.status} — checking portfolio")
+                return await _portfolio_has_position(session, ticker, side)
             chk = await resp.json()
         order = chk.get("order") or chk
         status = order.get("status", "")
@@ -2162,8 +2197,8 @@ async def _verify_order_fill(
         )
         return confirmed_filled > 0
     except Exception as exc:
-        log.warning(f"_verify_order_fill error for {order_id}: {exc} — assuming filled")
-        return True
+        log.warning(f"_verify_order_fill error for {order_id}: {exc} — returning False (conservative)")
+        return False
 
 
 async def place_order(
@@ -2195,18 +2230,8 @@ async def place_order(
     # Preserve the strategy-chosen entry price for fill-verification telemetry.
     _original_strategy_target_c = entry_price_cents
 
-    if mode == "paper":
-        log.info(f"[PAPER] Simulated BUY {side} {contracts}x @ {entry_price_cents}c on {ticker}")
-        return {
-            "fill_confirmed": True,
-            "fill_price_cents": entry_price_cents,
-            "order_id": f"paper_{int(time.time() * 1000)}",
-        }
-
-    path = "/portfolio/orders"
-
-    # Re-fetch fresh price for telemetry (market orders fill at best available
-    # price, but we track the current ask for fill-verification comparison).
+    # Re-fetch fresh orderbook — used for paper slippage simulation AND non-paper
+    # telemetry. Must run before the paper branch so paper fills reflect the live ask.
     fresh_ob = None
     try:
         fresh_ob = await fetch_orderbook(session, ticker, market)
@@ -2225,6 +2250,16 @@ async def place_order(
     except Exception:
         _market_ask_at_post_c = None
 
+    if mode == "paper":
+        paper_fill = _market_ask_at_post_c if _market_ask_at_post_c is not None else entry_price_cents
+        log.info(f"[PAPER] Simulated BUY {side} {contracts}x @ {paper_fill}c on {ticker}")
+        return {
+            "fill_confirmed": True,
+            "fill_price_cents": paper_fill,
+            "order_id": f"paper_{int(time.time() * 1000)}",
+        }
+
+    path = "/portfolio/orders"
     price_this_attempt = entry_price_cents
 
     # â”€â”€ Demo mode: post + poll â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2309,7 +2344,7 @@ async def place_order(
         _fc        = filled_order.get("filled_count")
         cc = _fc if _fc is not None else ((_total - _remaining) if (_total is not None and _remaining is not None) else contracts)
         fp_raw = filled_order.get("yes_price", entry_price_cents)
-        fp     = fp_raw if side == "yes" else (100 - fp_raw)
+        fp     = fp_raw if side == "yes" else (100 - fp_raw)  # yes_price is integer cents 0-100
         log.info(f"[demo] Order {order_id} filled={cc}x @ {fp}c status={status!r}")
         _fill_yes_price = fp_raw
         await _maybe_fill_verification_notify(
@@ -2337,7 +2372,7 @@ async def place_order(
 
     log.info(f"[live] market {side.upper()} {contracts}x on {ticker} ({secs_left:.0f}s left)")
 
-    for attempt in range(2):
+    for attempt in range(2):  # 2 attempts intentional — late-window 15m trades can't afford long retry loops
         if attempt > 0:
             log.info(f"[live] Market order retry {attempt}/1...")
             await asyncio.sleep(1.0)
@@ -2469,7 +2504,7 @@ async def place_order(
                     _original_strategy_target_c, price_this_attempt,
                     _market_ask_at_post_c, _fill_yes_price,
                 )
-                _verified = await _verify_order_fill(session, order_id, _filled)
+                _verified = await _verify_order_fill(session, order_id, _filled, ticker, side)
                 return {"fill_confirmed": _verified, "fill_price_cents": _fp_canceled, "order_id": order_id, "filled_contracts": _filled}
             log.info(f"[live] Market order {order_id} zero-fill")
             break
@@ -2498,7 +2533,7 @@ async def place_order(
             _original_strategy_target_c, price_this_attempt,
             _market_ask_at_post_c, _fill_yes_price,
         )
-        _verified = await _verify_order_fill(session, order_id, filled_count)
+        _verified = await _verify_order_fill(session, order_id, filled_count, ticker, side)
         return {"fill_confirmed": _verified, "fill_price_cents": fill_price, "order_id": order_id, "filled_contracts": filled_count}
 
     # Portfolio check — ground truth after all attempts exhausted
@@ -2515,6 +2550,7 @@ async def place_order(
         for p in positions:
             if p.get("ticker") == ticker:
                 held = p.get("position", 0)
+                # _attempted_tickers (set before place_order) prevents matching a prior trade's held position
                 if side == "yes" and held > 0:
                     log.info(f"Portfolio check: found YES position {held}x on {ticker} — order DID fill")
                     return {"fill_confirmed": True, "fill_price_cents": entry_price_cents, "order_id": None, "filled_contracts": held}
@@ -2537,60 +2573,6 @@ async def place_order(
         f"{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}  {contracts}x"
     )
     return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
-
-
-async def sell_position(
-    session: aiohttp.ClientSession,
-    ticker: str,
-    side: str,
-    contracts: int,
-    mode: str,
-    current_bid: int,
-) -> int:
-    """
-    Exit a position via a market sell order. Retries up to 3 times on API failure.
-    In paper mode, simulates an instant sell at the current bid.
-
-    Returns:
-        Exit price in cents.
-    """
-    if mode == "paper":
-        log.info(f"[PAPER] Simulated SELL {side} {contracts}x @ {current_bid}c on {ticker}")
-        return current_bid
-
-    path = "/portfolio/orders"
-
-    for attempt in range(3):
-        if attempt > 0:
-            log.warning(f"Sell retry {attempt}/2...")
-            await asyncio.sleep(1)
-        body = {
-            "ticker": ticker,
-            "side": side,
-            "type": "market",
-            "count": contracts,
-            "action": "sell",
-            "client_order_id": f"kalshi_exit_{int(time.time() * 1000)}_{attempt}",
-        }
-        try:
-            async with session.post(
-                KALSHI_BASE_URL + path,
-                headers=kalshi_headers("POST", path),
-                json=body,
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
-            ) as resp:
-                data = await resp.json()
-                http_status = resp.status
-            if http_status in (200, 201):
-                fill_price = (data.get("order") or {}).get("yes_price", current_bid)
-                log.info(f"Sell filled @ {fill_price}c (attempt {attempt})")
-                return fill_price
-            log.error(f"Sell HTTP {http_status}: {data}")
-        except Exception as exc:
-            log.error(f"Sell order error (attempt {attempt}): {exc}")
-
-    log.error(f"Sell failed after 3 attempts — using bid price {current_bid}c for PnL")
-    return current_bid
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2734,6 +2716,7 @@ async def write_state_file(
         "mode": config.get("mode", "paper"),
         "today_live_pnl": await db_get_today_pnl("live"),
         "today_paper_pnl": await db_get_today_pnl("paper"),
+        "today_demo_pnl": await db_get_today_pnl("demo"),
         "config": {**config,
                    "min_ev_pct": round((config.get("min_ev_base", 3.0) / 100.0 + _session_ev_adjustment()) * 100),
                    "vol_gate_thresh": config.get("vol_gate_thresh", 1.80)},
@@ -3300,7 +3283,7 @@ async def handle_ready_phase(
     else: _asset_eval[asset] = dict(_eval_snap)
     last_action, last_skip_reason = "trade", ""
     log.info(f"{ticker}: LOCKED.")
-    mode_icon  = "[PAPER]" if mode == "paper" else "[LIVE]"
+    mode_icon  = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
     dir_icon   = "YES" if side == "yes" else "NO"
     _win_prob_used = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0)
     _win_pct   = int(_win_prob_used * 100)
@@ -3454,7 +3437,7 @@ async def handle_locked_phase(
                 )
 
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
-        mode_icon = "[PAPER]" if pos["mode"] == "paper" else "[LIVE]"
+        mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(pos["mode"], "[LIVE]")
         _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
         _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
         _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
