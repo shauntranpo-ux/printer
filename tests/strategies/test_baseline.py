@@ -1,6 +1,6 @@
 import math
 import pytest
-from strategies.baseline import brownian_bridge_prob_above, brownian_bridge_prob_same_side
+from strategies.baseline import brownian_bridge_prob_above
 
 
 def test_at_the_money_is_fifty_fifty():
@@ -52,17 +52,3 @@ def test_output_bounds():
     ]:
         p = brownian_bridge_prob_above(S, K, t, v)
         assert 0.001 <= p <= 0.999
-
-
-def test_same_side_consistency():
-    """prob_same_side should equal prob_above when currently above."""
-    p_above = brownian_bridge_prob_above(101.0, 100.0, 300, 0.002)
-    p_same = brownian_bridge_prob_same_side(101.0, 100.0, 300, 0.002)
-    assert p_above == p_same
-
-
-def test_same_side_flips_when_below():
-    """When below strike, prob_same_side = 1 - prob_above."""
-    p_above = brownian_bridge_prob_above(99.0, 100.0, 300, 0.002)
-    p_same = brownian_bridge_prob_same_side(99.0, 100.0, 300, 0.002)
-    assert abs((1.0 - p_above) - p_same) < 1e-9

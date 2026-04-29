@@ -1,5 +1,5 @@
 import pytest
-from strategies.fees import taker_fee, maker_fee, fee_as_pct_of_stake
+from strategies.fees import taker_fee, maker_fee
 
 
 def test_taker_fee_at_fifty_cents():
@@ -44,10 +44,3 @@ def test_fee_at_extreme_prices_small():
     # Near 1c or 99c, fees should round up to 1 cent minimum
     assert taker_fee(1, 0.01) == 0.01  # 0.07 * 1 * 0.01 * 0.99 = 0.000693 -> 0.01
     assert taker_fee(1, 0.99) == 0.01
-
-
-def test_fee_as_pct_at_fifty_cents_around_three_six_pct():
-    # 10 contracts @ $0.50, stake = $5, fee = $0.18
-    # pct = 0.18 / 5.00 = 0.036 = 3.6%
-    pct = fee_as_pct_of_stake(10, 0.50, taker=True)
-    assert 0.035 <= pct <= 0.04

@@ -75,20 +75,3 @@ def brownian_bridge_prob_above(
 
     # Clamp for numerical safety
     return max(0.001, min(0.999, prob_above))
-
-
-def brownian_bridge_prob_same_side(
-    current_price: float,
-    strike: float,
-    seconds_left: float,
-    vol_1min: float,
-) -> float:
-    """
-    Returns probability asset closes on the SAME side as currently.
-    Convenience wrapper around prob_above.
-    """
-    p_above = brownian_bridge_prob_above(current_price, strike, seconds_left, vol_1min)
-    if current_price > strike:
-        return p_above
-    else:
-        return 1.0 - p_above
