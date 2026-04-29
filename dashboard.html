@@ -1405,7 +1405,7 @@ function _fmtSigVal(k, v) {
   if (k==='supertrend_side') return v==='yes'?'YES':'NO';
   if (k==='market_prob'||k==='p_ev') return (v*100).toFixed(1)+'%';
   if (k==='yes_ev'||k==='no_ev') return (v>=0?'+':'')+(v*100).toFixed(1)+'%';
-  if (k==='entry_cents') return v+'c';
+  if (k==='entry_cents') return Math.round(v)+'c';
   if (typeof v==='boolean') return v?'YES':'NO';
   if (typeof v==='number') return v.toFixed(3);
   return String(v);
