@@ -108,7 +108,7 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 .mc-svg{width:44px;height:44px;}
 .mc-svg.up{fill:var(--up);}
 .mc-svg.down{fill:var(--down);}
-.mc-neutral{font-size:32px;color:var(--line-2);font-weight:300;line-height:1;display:block;text-align:center;}
+.mc-neutral{font-size:32px;color:var(--ink-3);font-weight:800;line-height:1;display:block;text-align:center;}
 .mc-metrics{display:grid;grid-template-columns:1fr 1fr;gap:1px 8px;margin-top:6px;}
 .mc-row{display:flex;justify-content:space-between;align-items:center;padding:2px 0;}
 .mc-lbl{font-size:9px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.06em;font-weight:600;}
@@ -441,10 +441,7 @@ tr:last-child td{border-bottom:none;}
       <div class="card brain-card" id="signals-card">
         <div class="brain-card-title">
           Signals
-          <div style="display:flex;gap:5px;align-items:center;">
-            <span id="oct-status-badge" style="font-size:9px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:.04em;border:1px solid var(--line-2);color:var(--ink-3);">OCT —</span>
-            <span id="sig-asset-badge" style="font-size:10px;background:var(--accent);color:#fff;padding:2px 7px;border-radius:4px;letter-spacing:.04em;">—</span>
-          </div>
+          <span id="sig-asset-badge" style="font-size:10px;background:var(--accent);color:#fff;padding:2px 7px;border-radius:4px;letter-spacing:.04em;">—</span>
         </div>
         <div class="cf-section-lbl">Last Action</div>
         <div class="cf-row" style="border-bottom:none;padding-bottom:4px;">
@@ -452,11 +449,6 @@ tr:last-child td{border-bottom:none;}
           <span class="cf-val" id="sig-ev-badge" style="font-weight:700;">—</span>
         </div>
         <div style="font-size:10px;color:var(--ink-3);margin-bottom:6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="st-reason">—</div>
-        <div class="cf-section-lbl" style="display:flex;justify-content:space-between;">Octagon API <span id="oct-calls-lbl" style="font-weight:400;text-transform:none;"></span></div>
-        <div style="font-size:10px;color:var(--ink-3);margin-bottom:5px;line-height:1.5;">Checks every 15m market: price 10–76c → fetch AI report → model_prob vs market_prob → direction → EV ≥ 5%</div>
-        <div id="oct-api-rows" style="margin-bottom:6px;">
-          <div class="cf-row"><span class="cf-name" style="color:var(--ink-3);">—</span></div>
-        </div>
         <div class="cf-section-lbl">Strategy Signals</div>
         <div id="sig-rows">
           <div class="cf-row"><span class="cf-name" style="color:var(--ink-3);">Click a market card to view signals</span></div>
@@ -666,7 +658,6 @@ let _activeChartTab='paper', _chartView='daily', _resetMode=null;
 let _openPosition=null;
 let _lastAssetsData={};
 let _selectedSignalAsset=null;
-let _octagonState={};
 let _botEnabled=false, _currentMode='paper';
 let _currentTab='overview';
 let _currentMarketSym=null;
@@ -726,16 +717,12 @@ function renderMarketView(sym) {
   const ev = a.ev, wp = a.win_prob, yask = a.yes_ask, nask = a.no_ask;
   const dist = a.distance_pct, strike = a.strike, secs = a.secs_left || 0;
   const _sigs = a.signals || {};
-  const _octDir = _sigs.octagon_direction;
-  const _octMod = _sigs.octagon_model_prob;
-  const _octMkt = _sigs.octagon_market_prob;
-  const _evPass = _sigs.ev_pass;
 
   // Arrow HTML
   let arrowHtml;
   if (dir === 'UP') arrowHtml = `<svg style="width:32px;height:32px;fill:var(--up)" viewBox="0 0 24 24"><polygon points="12,2 22,20 2,20"/></svg>`;
   else if (dir === 'DOWN') arrowHtml = `<svg style="width:32px;height:32px;fill:var(--down)" viewBox="0 0 24 24"><polygon points="12,22 22,4 2,4"/></svg>`;
-  else arrowHtml = `<span style="font-size:28px;color:var(--line-2);">—</span>`;
+  else arrowHtml = `<span style="font-size:28px;color:var(--ink-3);font-weight:800;">−</span>`;
 
   const badgeCls = effectiveStatus==='TRADING'?'trading':effectiveStatus==='WATCHING'?'watching':effectiveStatus==='SKIPPED'?'skipped':'offline';
   const phaseCls = 'phase-'+(a.phase||'DONE');
@@ -797,10 +784,6 @@ function renderMarketView(sym) {
       <div class="mv-kpi-cell"><div class="mv-kpi-lbl">NO Ask</div><div class="mv-kpi-val">${(isHourlyAsset?_nask15:nask)!=null?(isHourlyAsset?_nask15:nask)+'c':'—'}</div></div>
       <div class="mv-kpi-cell"><div class="mv-kpi-lbl">EV</div><div class="mv-kpi-val ${(isHourlyAsset?_ev15:ev)!=null&&(isHourlyAsset?_ev15:ev)>0?'g':(isHourlyAsset?_ev15:ev)!=null&&(isHourlyAsset?_ev15:ev)<0?'r':''}">${(isHourlyAsset?_ev15:ev)!=null?((isHourlyAsset?_ev15:ev)>=0?'+':'')+(isHourlyAsset?_ev15:ev).toFixed(1)+'%':'—'}</div></div>
       <div class="mv-kpi-cell"><div class="mv-kpi-lbl">Win Prob</div><div class="mv-kpi-val">${(isHourlyAsset?_wp15:wp)!=null?(isHourlyAsset?_wp15:wp).toFixed(1)+'%':'—'}</div></div>
-    </div>
-    <div style="padding:8px 14px 7px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);background:rgba(99,102,241,.05);">
-      <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--ink-3);flex-shrink:0;">Octagon</span>
-      ${_octDir ? `<span style="font-size:13px;font-weight:800;color:${_octDir==='yes'?'var(--up)':'var(--down)'};">${_octDir==='yes'?'▲ YES':'▼ NO'}</span><span style="font-size:11px;color:var(--ink-3);">model <b style="color:var(--ink)">${(_octMod*100).toFixed(1)}%</b> &middot; mkt ${(_octMkt*100).toFixed(1)}%</span><span style="margin-left:auto;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;background:${_evPass?'rgba(27,158,85,.12)':'rgba(214,57,73,.1)'};color:${_evPass?'var(--up)':'var(--down)'};border:1px solid ${_evPass?'rgba(27,158,85,.3)':'rgba(214,57,73,.3)'};">${_evPass?'EV PASS':'EV FAIL'}</span>` : `<span style="font-size:11px;color:var(--ink-3);">—</span>`}
     </div>
 ` : `<div class="mv-section-waiting">Next 15-minute window not yet open.</div>`}
     <div class="mv-body">
@@ -1236,12 +1219,7 @@ function renderMarketGrid(assets, dailyData) {
   const grid = document.getElementById('market-grid'); if (!grid) return;
   if (assets) _lastAssetsData = assets;
   if (!_selectedSignalAsset && assets) {
-    // Prefer an asset that reached Octagon (has octagon signals or octagon skip reason)
-    const withOct = _ASSET_ORDER.find(k => assets[k] && (
-      (assets[k].signals && assets[k].signals.octagon_market_prob != null) ||
-      (assets[k].skip_reason && assets[k].skip_reason.includes('octagon'))
-    ));
-    const active = withOct || _ASSET_ORDER.find(k => assets[k] && assets[k].status && assets[k].status !== 'OFFLINE');
+    const active = _ASSET_ORDER.find(k => assets[k] && assets[k].status && assets[k].status !== 'OFFLINE');
     if (active) { _selectedSignalAsset = active; renderSignalPanel(active, assets[active]); }
   } else if (_selectedSignalAsset && assets && assets[_selectedSignalAsset]) {
     renderSignalPanel(_selectedSignalAsset, assets[_selectedSignalAsset]);
@@ -1257,7 +1235,7 @@ function renderMarketGrid(assets, dailyData) {
     let arrowHtml;
     if (dir==='UP') arrowHtml = `<svg class="mc-svg up" viewBox="0 0 24 24"><polygon points="12,2 22,20 2,20"/></svg>`;
     else if (dir==='DOWN') arrowHtml = `<svg class="mc-svg down" viewBox="0 0 24 24"><polygon points="12,22 22,4 2,4"/></svg>`;
-    else arrowHtml = `<span class="mc-neutral">—</span>`;
+    else arrowHtml = `<span class="mc-neutral">−</span>`;
     const wins=daily.wins||0, losses=daily.losses||0, pnl=daily.pnl||0;
     const pnlStr = pnl>=0?'+$'+pnl.toFixed(2):'-$'+Math.abs(pnl).toFixed(2);
     const skipReason = a.skip_reason||'';
@@ -1308,33 +1286,30 @@ function renderMarketGrid(assets, dailyData) {
 
 // â”€â”€ Signal panel â”€â”€
 const _SIG_LABELS = {
-  octagon_direction:'Octagon dir', octagon_model_prob:'Octagon prob', octagon_market_prob:'Market prob',
-  octagon_confidence:'Octagon conf', octagon_cache_hit:'Cached',
-  beta_adj:'BTC Î² adj', regime:'Regime', regime_adj:'Regime adj',
-  velocity:'Velocity', velocity_adj:'Vel adj',
-  ratio_z:'Ratio Z', ratio_adj:'Ratio adj',
-  exhaustion_adj:'Exhaustion',
-  news_mode:'News mode', news_direction:'News dir',
-  momentum_bias:'Momentum', session:'Session',
-  btc_3m_return:'BTC 3m ret', final_p_yes:'P(YES)',
+  // Supertrend 15m signals
+  supertrend_direction: 'Supertrend',
+  supertrend_side:      'Signal side',
+  market_prob:          'Market prob',
+  p_ev:                 'Win prob (model)',
+  yes_ev:               'YES EV',
+  no_ev:                'NO EV',
+  entry_cents:          'Entry price',
+  decision_mode:        'Decision mode',
   // Hourly strategy signals
   eth_cross:'ETH crossings', btc_cross:'BTC crossings',
   eth_itm:'ETH ITM', btc_itm:'BTC ITM',
   eth_dist_pct:'ETH dist %', elapsed_min:'Elapsed min',
-  entry_cents:'Entry', dwell_itm:'Dwell %',
-  streak_frac:'Streak %', cross_count:'Crossings',
-  pct_from_strike:'Dist from strike',
+  dwell_itm:'Dwell %', streak_frac:'Streak %',
+  cross_count:'Crossings', pct_from_strike:'Dist from strike',
 };
 const _SIG_ORDER = [
-  'octagon_direction','octagon_model_prob','octagon_market_prob','octagon_confidence','octagon_cache_hit',
-  'btc_3m_return','beta_adj','regime','regime_adj',
-  'ratio_z','momentum_bias','exhaustion_adj',
-  'news_mode','news_direction','session',
-  'velocity','velocity_adj','final_p_yes',
+  'supertrend_direction', 'supertrend_side',
+  'market_prob', 'p_ev',
+  'yes_ev', 'no_ev',
+  'entry_cents', 'decision_mode',
   // Hourly strategy signals (shown when hourly strategy is active)
-  'elapsed_min','eth_cross','btc_cross','eth_itm','btc_itm',
-  'eth_dist_pct','dwell_itm','streak_frac','cross_count',
-  'pct_from_strike','entry_cents',
+  'elapsed_min', 'eth_cross', 'btc_cross', 'eth_itm', 'btc_itm',
+  'eth_dist_pct', 'dwell_itm', 'streak_frac', 'cross_count', 'pct_from_strike',
 ];
 
 let _mvStratTab = '15min';
@@ -1426,22 +1401,17 @@ function _buildBTCHourlyViewHtml(a) {
 }
 function _fmtSigVal(k, v) {
   if (v===null||v===undefined) return null;
-  if (k==='octagon_direction') return v==='yes'?'▲ YES':'▼ NO';
-  if (k==='octagon_model_prob'||k==='octagon_market_prob') return (v*100).toFixed(1)+'%';
-  if (k==='octagon_confidence') return String(v).toUpperCase();
+  if (k==='supertrend_direction') return v===1?'▲ UP':v===-1?'▼ DN':'−';
+  if (k==='supertrend_side') return v==='yes'?'YES':'NO';
+  if (k==='market_prob'||k==='p_ev') return (v*100).toFixed(1)+'%';
+  if (k==='yes_ev'||k==='no_ev') return (v>=0?'+':'')+(v*100).toFixed(1)+'%';
+  if (k==='entry_cents') return v+'c';
   if (typeof v==='boolean') return v?'YES':'NO';
-  if (['final_p_yes','beta_adj','regime_adj','velocity_adj','exhaustion_adj','ratio_adj'].includes(k)) return (v>=0?'+':'')+(v*100).toFixed(1)+'%';
-  if (k==='btc_3m_return') return (v>=0?'+':'')+(v*100).toFixed(2)+'%';
-  if (k==='ratio_z') return v.toFixed(2);
-  if (k==='momentum_bias') return (v>=0?'+':'')+(v*100).toFixed(1)+'%';
   if (typeof v==='number') return v.toFixed(3);
   return String(v);
 }
 function _sigDotHtml(k, v) {
-  if (k==='octagon_direction') return `<div class="cf-dot ${v?'on':''}"></div>`;
-  if (k==='regime') return `<div class="cf-dot ${v==='momentum'?'on':v==='reversion'?'off':''}"></div>`;
-  if (k==='velocity') return `<div class="cf-dot ${v==='rising'?'on':v==='falling'?'off':''}"></div>`;
-  if (k==='news_mode') return `<div class="cf-dot ${v?'on':''}"></div>`;
+  if (k==='supertrend_direction') return `<div class="cf-dot ${v===1?'on':v===-1?'off':''}"></div>`;
   return '<div class="cf-dot"></div>';
 }
 function _buildSigRowsHtml(sigs) {
@@ -1466,45 +1436,6 @@ function renderSignalPanel(asset, assetData) {
   const ev = d.ev;
   if (evBadge) { evBadge.textContent=ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—'; evBadge.style.color=ev>0?'var(--up)':ev<0?'var(--down)':'var(--ink-3)'; }
   rows.innerHTML = _buildSigRowsHtml(d.signals || {});
-  // Octagon API section — always populated from global _octagonState
-  const octRows = document.getElementById('oct-api-rows');
-  const octCallsLbl = document.getElementById('oct-calls-lbl');
-  if (octRows) {
-    const oc = _octagonState || {};
-    const hasKey = oc.key_present;
-    const lastOk = oc.last_ok_ts;
-    const calls = oc.calls || 0;
-    const hits = oc.hits || 0;
-    const refreshCalls = oc.refresh_calls || 0;
-    const ago = lastOk ? Math.round((Date.now()/1000 - lastOk)/60) : null;
-    const sigs = d.signals || {};
-    const octDir = sigs.octagon_direction;
-    const octProb = sigs.octagon_model_prob;
-    const mktProb = sigs.octagon_market_prob;
-    const octConf = sigs.octagon_confidence;
-    if (octCallsLbl) { const rPart = refreshCalls>0 ? ' · '+refreshCalls+' refresh' : ''; octCallsLbl.textContent = calls > 0 ? calls+' calls · '+hits+' cached'+rPart : (refreshCalls>0?refreshCalls+' refresh pending':''); }
-    if (!hasKey) {
-      octRows.innerHTML = '<div class="cf-row"><div class="cf-dot off"></div><span class="cf-name">API key</span><span class="cf-val" style="color:var(--down);">MISSING</span></div>';
-    } else if (calls === 0) {
-      octRows.innerHTML = refreshCalls>0 ? '<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">Refresh in progress</span><span class="cf-val" style="color:var(--amber);">~30s</span></div>' : '<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">Key set, no calls yet</span><span class="cf-val" style="color:var(--amber);">READY</span></div>';
-    } else if (octDir != null) {
-      const dirCol = octDir==='yes'?'var(--up)':'var(--down)';
-      const dirTxt = octDir==='yes'?'▲ YES':'▼ NO';
-      octRows.innerHTML =
-        '<div class="cf-row"><div class="cf-dot on"></div><span class="cf-name">Direction</span><span class="cf-val" style="color:'+dirCol+';">'+dirTxt+'</span></div>' +
-        (octProb!=null?'<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">Model prob</span><span class="cf-val">'+(octProb*100).toFixed(1)+'%</span></div>':'') +
-        (mktProb!=null?'<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">Market prob</span><span class="cf-val">'+(mktProb*100).toFixed(1)+'%</span></div>':'') +
-        (octConf!=null?'<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">Confidence</span><span class="cf-val">'+String(octConf).toUpperCase()+'</span></div>':'') +
-        (ago!=null?'<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">Last call</span><span class="cf-val" style="color:var(--up);">'+(ago<1?'just now':ago+'m ago')+'</span></div>':'');
-    } else {
-      // key set, calls made but this asset got no Octagon data (skip before Octagon, or unavailable)
-      const skipR = d.skip_reason || '';
-      const unavail = skipR.includes('octagon');
-      octRows.innerHTML =
-        '<div class="cf-row"><div class="cf-dot '+(unavail?'off':'')+'"></div><span class="cf-name">'+(unavail?'Octagon returned no data':'Skipped before Octagon')+'</span><span class="cf-val" style="color:var(--ink-3);">'+(mktProb!=null?(mktProb*100).toFixed(1)+'% mkt':'—')+'</span></div>' +
-        (ago!=null?'<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">Last OK call</span><span class="cf-val" style="color:var(--up);">'+(ago<1?'just now':ago+'m ago')+'</span></div>':'<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">No successful calls yet</span></div>');
-    }
-  }
 }
 function selectSignalAsset(asset) {
   _selectedSignalAsset = asset;
@@ -1711,9 +1642,6 @@ async function pollState() {
     const s = await r.json();
     const ph = s.phase || 'DONE';
     const action=document.getElementById('st-action'); if(action) action.textContent=s.last_action||'—';
-    // Octagon status badge
-    _octagonState = s.octagon_status || {}; const _oct = _octagonState; const _octBadge = document.getElementById('oct-status-badge');
-    if (_octBadge) { const _hasKey = _oct.key_present; const _lastOk = _oct.last_ok_ts; const _calls = _oct.calls||0; const _ago = _lastOk ? Math.round((Date.now()/1000 - _lastOk)/60) : null; _octBadge.textContent = !_hasKey ? 'OCT NO KEY' : _calls===0 ? 'OCT READY' : _ago!==null ? ('OCT ' + (_ago<2?'LIVE':_ago+'m ago')) : 'OCT ERR'; _octBadge.style.background = !_hasKey ? 'rgba(214,57,73,.1)' : _lastOk ? 'rgba(27,158,85,.12)' : 'rgba(201,125,16,.12)'; _octBadge.style.color = !_hasKey ? 'var(--down)' : _lastOk ? 'var(--up)' : 'var(--amber)'; _octBadge.style.borderColor = !_hasKey ? 'rgba(214,57,73,.3)' : _lastOk ? 'rgba(27,158,85,.3)' : 'rgba(201,125,16,.3)'; }
     const reason=document.getElementById('st-reason'); if(reason) reason.textContent=s.last_skip_reason||'—';
     const limitBadge=document.getElementById('limit-badge');
     if (s.limit_triggered&&s.limit_reason) { limitBadge.textContent='Warning: '+s.limit_reason+' — switched to paper mode'; limitBadge.classList.add('visible'); }

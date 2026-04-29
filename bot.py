@@ -129,7 +129,6 @@ last_confidence_score: int = 0
 last_confidence_breakdown: dict = {}
 last_action: str = ""
 last_skip_reason: str = ""
-last_reversal_reason: str = ""   # most recent reversal signal evaluation (pass/fail)
 # Per-asset eval snapshots for dashboard market cards (keyed by asset ticker)
 _asset_eval: dict = {}
 
@@ -2712,7 +2711,6 @@ async def write_state_file(
         "brain_n": _brain_cal["last_count"],
         "last_action": action,
         "last_skip_reason": skip_reason,
-        "last_reversal_reason": last_reversal_reason,
         "mode": config.get("mode", "paper"),
         "today_live_pnl": await db_get_today_pnl("live"),
         "today_paper_pnl": await db_get_today_pnl("paper"),
@@ -2879,7 +2877,7 @@ async def handle_ready_phase(
     """
     global current_phase, current_position
     global last_confidence_score, last_confidence_breakdown
-    global last_action, last_skip_reason, last_reversal_reason
+    global last_action, last_skip_reason
 
     _use_state = state is not None
     mode = config.get("mode", "paper")
