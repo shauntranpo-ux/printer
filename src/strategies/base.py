@@ -142,8 +142,9 @@ class BaseStrategy(ABC):
                 expected_value=side_ev,
             )
 
-        # Step 5: vol ratio gate (buffer durability)
-        vol_skip = check_vol_ratio(features, self.skip_config)
+        # Step 5: vol ratio gate (buffer durability) — hourly only
+        # 15m strikes open at current price; near-zero distance is normal, not a warning
+        vol_skip = None if self.is_15m else check_vol_ratio(features, self.skip_config)
         if vol_skip:
             return Decision(
                 action="skip",
