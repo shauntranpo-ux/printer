@@ -48,7 +48,7 @@ ASSET_CONFIG = {
 
 # ── Per-asset price deques ────────────────────────────────────────────────────
 # asset → deque[(unix_ts, price)]
-_prices: dict[str, deque] = {asset: deque(maxlen=500) for asset in ASSET_CONFIG}
+_prices: dict[str, deque] = {asset: deque(maxlen=2000) for asset in ASSET_CONFIG}
 
 
 # ── Price accessors ───────────────────────────────────────────────────────────

@@ -206,7 +206,7 @@ class BaseStrategy(ABC):
         return Decision(
             action="trade",
             side=st_side,
-            p_model=p_ev,
+            p_model=p_ev if st_side == "yes" else 1.0 - p_ev,
             reason=(
                 f"{st_side} supertrend={st} EV={side_ev:+.3f} "
                 f"market={market_prob:.3f}"
