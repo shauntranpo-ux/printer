@@ -1778,8 +1778,18 @@ def strategy_brain(
             prices_deque = btc_prices
             current_price = btc_price
         else:
-            prices_deque = asset_manager._prices.get(asset) or btc_prices
-            current_price = prices_deque[-1][1] if prices_deque else btc_price
+            prices_deque = asset_manager._prices.get(asset)
+            if not prices_deque:
+                return {
+                    "action": "skip", "side": "no", "confidence": 50,
+                    "reasoning": f"no_price_feed:{asset}",
+                    "key_signals": [], "signals": {}, "win_prob": 0.5,
+                    "mom_label": "no_data", "mom_pct": 0.0, "vel_signal": "neutral",
+                    "raw_p_yes": None, "mins_left": secs_left / 60.0,
+                    "abs_pct": 0.0, "above": False, "_rv": None, "_vol_ratio": None,
+                    "price_filter_skip": False,
+                }
+            current_price = prices_deque[-1][1]
 
         features = build_features_from_bot_state(
             asset=asset,
