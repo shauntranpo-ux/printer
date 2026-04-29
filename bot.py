@@ -1347,7 +1347,7 @@ async def fetch_orderbook(
     # Sanity check — reject prices outside [1, 100]. 0c is impossible; >100c is data corruption.
     # One side at 100c is valid at window open (e.g. yes_ask=12c, no_ask=100c).
     # Both at 100c means the market hasn't opened yet — reject.
-    if not (1 <= best_yes_ask <= 100 and 1 <= best_no_ask <= 100):
+    if not (0 <= best_yes_ask <= 100 and 0 <= best_no_ask <= 100):
         log.warning(
             f"Orderbook prices out of range for {ticker}: "
             f"yes_ask={best_yes_ask}c no_ask={best_no_ask}c — skipping"
