@@ -131,23 +131,3 @@ class AssetCalibrator:
         self.sample_count = n
         with open(self._state_path(), "w") as f:
             json.dump(state, f, indent=2)
-
-
-class IdentityCalibrator(AssetCalibrator):
-    """Pass-through calibrator — never loads from disk, never fits, returns raw p unchanged."""
-
-    def __init__(self):
-        self.asset = "_identity"
-        self._method = None
-        self._isotonic = None
-        self._platt = None
-        self.sample_count = 0
-
-    def _load_if_exists(self) -> None:
-        pass
-
-    def calibrate(self, raw_p: float) -> float:
-        return raw_p
-
-    def refit(self, *args, **kwargs) -> None:
-        pass
