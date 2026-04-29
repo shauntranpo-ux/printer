@@ -429,9 +429,21 @@ def init_db() -> None:
                 exit_reason           TEXT,
                 outcome               TEXT DEFAULT 'pending',
                 pnl_dollars           REAL,
-                profit_percent        REAL
+                profit_percent        REAL,
+                order_id              TEXT,
+                asset                 TEXT DEFAULT 'BTC',
+                raw_p_yes             REAL,
+                entry_signals         TEXT
             )
         """)
+
+        # Migration: add columns that post-date the original schema
+        for _col in ["order_id TEXT", "asset TEXT DEFAULT 'BTC'", "raw_p_yes REAL", "entry_signals TEXT"]:
+            try:
+                c.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
+            except Exception:
+                pass
+        conn.commit()
 
         c.execute("""
             CREATE TABLE IF NOT EXISTS market_log (
