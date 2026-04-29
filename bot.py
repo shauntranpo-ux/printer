@@ -213,7 +213,7 @@ def _simulated_amm_midpoint(btc_price: float, strike: float) -> tuple[float, flo
     pct   = (btc_price - strike) / strike
     ap    = abs(pct) * 100
     above = pct > 0
-    spread = 4.5  # midpoint of backtest's 3.0â€“6.0 spread
+    spread = 4.5  # midpoint of backtest's 3.0—6.0 spread
 
     if ap < 0.10:
         yes_ask = 51.5 if above else 48.5
@@ -354,7 +354,7 @@ def _init_config() -> None:
         "trade_amount_dollars": 25,
         "mode": "paper",
         "confidence_threshold": 0,   # Supertrend win_prob is fixed 0.70; real gate is EV
-        "daily_loss_limit_dollars": 50,          # 2Ã— trade size — real guard, not $5M decoration
+        "daily_loss_limit_dollars": 50,          # 2× trade size — real guard, not $5M decoration
         "daily_profit_target_dollars": 200,
         "max_consecutive_losses": 5,             # pause 15 min after this many losses in a row
         "enable_reversal_signal": False,         # disabled by default — no backtested evidence yet
@@ -1344,7 +1344,7 @@ async def fetch_orderbook(
         )
         return None
 
-    # Sanity check — reject prices outside [1, 100]. 0c is impossible; >100c is data corruption.
+    # Sanity check — reject prices outside [0, 100]. 0c is valid (sub-cent AMM settled market; EV returns -inf and skips). >100c is data corruption.
     # One side at 100c is valid at window open (e.g. yes_ask=12c, no_ask=100c).
     # Both at 100c means the market hasn't opened yet — reject.
     if not (0 <= best_yes_ask <= 100 and 0 <= best_no_ask <= 100):
@@ -2112,7 +2112,7 @@ def calculate_contracts(
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def implied_prob(contract_price_cents: float) -> float:
-    """Convert contract price in cents to implied probability (0â€“1)."""
+    """Convert contract price in cents to implied probability (0—1)."""
     return contract_price_cents / 100.0
 
 
