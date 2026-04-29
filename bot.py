@@ -701,7 +701,7 @@ async def _maybe_fill_verification_notify(
       - Posted:     the price actually sent to Kalshi (may differ via retry drift).
       - Filled:     the price Kalshi returned on fill.
 
-    Warns with âš ï¸ when abs(filled - target) > 3Â¢. Silently skips for 15m
+    Warns with ⚠️ when abs(filled - target) > 3¢. Silently skips for 15m
     markets or when fill_yes_price is None.
     """
     # Derive elapsed_seconds / duration from `market` (the function's local).
@@ -719,19 +719,19 @@ async def _maybe_fill_verification_notify(
     _ask = market_ask_at_post_c
     _posted = price_this_attempt
     _filled = fill_yes_price
-    _target_str = f"{int(round(_target))}Â¢" if _target is not None else "—"
-    _ask_str    = f"{int(round(_ask))}Â¢"    if _ask    is not None else "—"
-    _posted_str = f"{int(round(_posted))}Â¢" if _posted is not None else "—"
-    _filled_str = f"{int(round(_filled))}Â¢"
+    _target_str = f"{int(round(_target))}¢" if _target is not None else "—"
+    _ask_str    = f"{int(round(_ask))}¢"    if _ask    is not None else "—"
+    _posted_str = f"{int(round(_posted))}¢" if _posted is not None else "—"
+    _filled_str = f"{int(round(_filled))}¢"
     if _target is not None:
         _slip_target = int(round(_filled - _target))
-        _slip_target_str = f"{_slip_target:+d}Â¢ vs target"
-        _warn = "âš ï¸ " if abs(_slip_target) > 3 else "ðŸŽ¯ "
+        _slip_target_str = f"{_slip_target:+d}¢ vs target"
+        _warn = "⚠️ " if abs(_slip_target) > 3 else "🎯 "
     else:
         _slip_target_str = "n/a vs target"
-        _warn = "ðŸŽ¯ "
+        _warn = "🎯 "
     _slip_market_str = (
-        f"{int(round(_filled - _ask)):+d}Â¢ vs market" if _ask is not None else "n/a vs market"
+        f"{int(round(_filled - _ask)):+d}¢ vs market" if _ask is not None else "n/a vs market"
     )
     _ctx = _notify_ctx(asset, ticker, _duration_min, _phase_for_eth(asset, _elapsed_sec))
     await send_telegram(
@@ -1240,7 +1240,7 @@ async def fetch_orderbook(
     def _dollars_to_cents(val) -> int | None:
         try:
             v = int(round(float(val) * 100))
-            return v if v > 0 else None  # 0 means no data / empty side
+            return v if v >= 0 else None
         except (TypeError, ValueError):
             return None
 
@@ -1327,7 +1327,7 @@ async def fetch_orderbook(
         if best_yes_ask is not None or best_no_ask is not None:
             log.info(
                 f"AMM prices for {ticker}: "
-                f"yes_ask={best_yes_ask}Â¢  no_ask={best_no_ask}Â¢  yes_bid={best_yes_bid}Â¢"
+                f"yes_ask={best_yes_ask}¢  no_ask={best_no_ask}¢  yes_bid={best_yes_bid}¢"
             )
 
     if best_yes_ask is None or best_no_ask is None:
@@ -1493,7 +1493,7 @@ async def calibrate_from_history() -> None:
 
         overall_wr = sum(1 for r in rows if r[2] == "win") / total
 
-        # Did cheap contracts (< 60Â¢) win?
+        # Did cheap contracts (< 60¢) win?
         cheap = [r for r in rows if r[0] is not None and r[0] < 60]
         if len(cheap) >= 5:
             _adaptive["low_price_wins"] = (
