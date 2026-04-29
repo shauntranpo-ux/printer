@@ -1,5 +1,5 @@
 {
-  "bot_enabled": false,
+  "bot_enabled": true,
   "mode": "paper",
   "enable_hourly_markets": false,
   "trade_amount_dollars": 25,
