@@ -286,9 +286,9 @@ def _log_price_validation(
         avg_sim  = _price_val_sim_sum / n
         avg_real = _price_val_real_sum / _price_val_gap_n if _price_val_gap_n > 0 else 0.0
         avg_gap  = _price_val_gap_sum  / _price_val_gap_n if _price_val_gap_n > 0 else 0.0
-        verdict  = ("âœ“ within 3c" if abs(avg_gap) < 3
-                    else "âš  3-7c gap — edge marginal" if abs(avg_gap) < 7
-                    else "âœ— >7c gap — strategy likely unprofitable")
+        verdict  = ("✓ within 3c" if abs(avg_gap) < 3
+                    else "⚠ 3-7c gap — edge marginal" if abs(avg_gap) < 7
+                    else "✗ >7c gap — strategy likely unprofitable")
         log.info(
             f"Price validation: {n} samples collected. "
             f"Avg price gap: {avg_gap:+.1f}c. "
