@@ -21,13 +21,14 @@
     "no"
   ],
   "enabled_assets": [
+    "BTC",
     "ETH",
     "SOL",
     "XRP"
   ],
   "asset_overrides": {
     "BTC": {
-      "min_ev_base": 6,
+      "min_ev_base": 1,
       "supertrend_atr_period": 14,
       "supertrend_atr_multiplier": 5.0,
       "momentum_lookback": 3
