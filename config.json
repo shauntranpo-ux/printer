@@ -21,7 +21,6 @@
     "no"
   ],
   "enabled_assets": [
-    "BTC",
     "ETH",
     "SOL",
     "XRP"
@@ -34,19 +33,19 @@
       "momentum_lookback": 3
     },
     "ETH": {
-      "min_ev_base": 6,
+      "min_ev_base": 25,
       "supertrend_atr_period": 14,
       "supertrend_atr_multiplier": 5.0,
       "momentum_lookback": 3
     },
     "SOL": {
-      "min_ev_base": 12,
+      "min_ev_base": 25,
       "supertrend_atr_period": 20,
       "supertrend_atr_multiplier": 5.5,
       "momentum_lookback": 3
     },
     "XRP": {
-      "min_ev_base": 12,
+      "min_ev_base": 17,
       "supertrend_atr_period": 14,
       "supertrend_atr_multiplier": 5.5,
       "momentum_lookback": 3
