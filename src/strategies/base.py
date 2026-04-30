@@ -97,6 +97,30 @@ class BaseStrategy(ABC):
 
         st_side = "yes" if st == 1 else "no"
 
+        # Step 3.5: short-term momentum alignment (15m markets only)
+        # Require that the last 4 ticks are moving in the direction of the signal.
+        # Filters entries where hourly trend exists but short-term momentum hasn't confirmed.
+        if self.is_15m and len(features.prices_60m) >= 5:
+            recent_delta = features.prices_60m[-1] - features.prices_60m[-4]
+            aligned = (st_side == "yes" and recent_delta > 0) or (st_side == "no" and recent_delta < 0)
+            if not aligned:
+                return Decision(
+                    action="skip",
+                    side=None,
+                    p_model=market_prob,
+                    reason=f"momentum_misalign: {st_side} signal, 4-tick delta={recent_delta:+.4f}",
+                    contributing_signals={
+                        "supertrend_direction": st,
+                        "supertrend_side": st_side,
+                        "market_prob": market_prob,
+                        "ev_pass": False,
+                        "vol_pass": True,
+                        "final_decision": "skip",
+                        "skip_reason": "momentum_misalign",
+                        "momentum_delta": recent_delta,
+                    },
+                )
+
         # Step 4: EV gate using fixed assumed probability
         p_ev = _SUPERTREND_P_MODEL
         # p(YES)=0.70 for YES direction; p(YES)=0.30 (=1-0.70) for NO direction
