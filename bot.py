@@ -437,12 +437,6 @@ def init_db() -> None:
             )
         """)
 
-        # Migration: add columns that post-date the original schema
-        for _col in ["order_id TEXT", "asset TEXT DEFAULT 'BTC'", "raw_p_yes REAL", "entry_signals TEXT"]:
-            try:
-                c.execute(f"ALTER TABLE trades ADD COLUMN {_col}")
-            except Exception:
-                pass
         conn.commit()
 
         c.execute("""
@@ -1637,6 +1631,7 @@ def _session_ev_adjustment() -> float:
 
 
 _STRATEGY_SINGLETONS: dict = {}  # keyed by "ASSET" or "ASSET_hourly"
+_config_mtime: float = 0.0
 
 
 def _strategy_name_for(asset, duration_min):
@@ -1653,6 +1648,16 @@ def _strategy_name_for(asset, duration_min):
 
 def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):
     """Lazily construct per-asset strategy singleton. Returns None on failure."""
+    global _config_mtime
+    try:
+        mtime = os.path.getmtime(_CONFIG_FILE)
+        if mtime != _config_mtime:
+            _STRATEGY_SINGLETONS.clear()
+            _config_mtime = mtime
+            log.info("config.json changed — strategy singletons cleared")
+    except OSError:
+        pass
+
     is_hourly = market_duration_min > 25.0
     if is_hourly and not config.get("enable_hourly_markets", True):
         return None
@@ -2939,7 +2944,7 @@ async def handle_ready_phase(
     last_confidence_breakdown = breakdown
 
     raw_win_pct = int(brain.get("win_prob", 0) * 100)
-    conf_threshold = int(get_asset_config(config, asset, "confidence_threshold", config.get("confidence_threshold", 72)))
+    conf_threshold = int(get_asset_config(config, asset, "confidence_threshold", config.get("confidence_threshold", 65)))
     if do_trade and raw_win_pct < conf_threshold:
         skip_reason_ai = f"win prob {raw_win_pct}% below floor {conf_threshold}%"
         do_trade = False

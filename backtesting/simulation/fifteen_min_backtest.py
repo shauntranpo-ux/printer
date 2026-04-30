@@ -37,7 +37,7 @@ _RESULT_COLUMNS = [
 ]
 
 # Per-asset min_ev matching config.json asset_overrides
-_MIN_EV = {"BTC": 0.07, "ETH": 0.09, "SOL": 0.16, "XRP": 0.16}
+_MIN_EV = {"BTC": 0.06, "ETH": 0.06, "SOL": 0.12, "XRP": 0.12}
 
 
 def _setup_paths() -> None:
