@@ -134,3 +134,66 @@ def supertrend_direction(
         if direction[i] is not None:
             return direction[i]
     return None
+
+
+def supertrend_direction_from_bars(
+    ohlcv_bars: list,
+    atr_period: int = 10,
+    atr_multiplier: float = 3.0,
+    min_bars: Optional[int] = None,
+) -> Optional[int]:
+    """
+    Same as supertrend_direction but accepts pre-built OHLCV bars
+    (skips the _build_1m_ohlcv step for batch/sweep use).
+    """
+    if min_bars is None:
+        min_bars = atr_period + 2
+    n = len(ohlcv_bars)
+    if n < min_bars:
+        return None
+
+    highs  = [b[1] for b in ohlcv_bars]
+    lows   = [b[2] for b in ohlcv_bars]
+    closes = [b[3] for b in ohlcv_bars]
+
+    tr = [highs[0] - lows[0]]
+    for i in range(1, n):
+        h, lo, pc = highs[i], lows[i], closes[i - 1]
+        tr.append(max(h - lo, abs(h - pc), abs(lo - pc)))
+
+    atr: list[Optional[float]] = [None] * n
+    for i in range(atr_period - 1, n):
+        atr[i] = sum(tr[i - atr_period + 1: i + 1]) / atr_period
+
+    start = atr_period - 1
+    hl2 = [(highs[i] + lows[i]) / 2.0 for i in range(n)]
+
+    upper_final: list[Optional[float]] = [None] * n
+    lower_final: list[Optional[float]] = [None] * n
+    direction:   list[Optional[int]]   = [None] * n
+
+    for i in range(start, n):
+        av = atr[i]
+        if av is None:
+            continue
+        raw_upper = hl2[i] + atr_multiplier * av
+        raw_lower = hl2[i] - atr_multiplier * av
+        if i == start:
+            upper_final[i] = raw_upper
+            lower_final[i] = raw_lower
+            direction[i]   = 1 if closes[i] >= hl2[i] else -1
+            continue
+        pu, pl, pd = upper_final[i - 1], lower_final[i - 1], direction[i - 1]
+        upper_final[i] = (min(raw_upper, pu) if pu is not None and closes[i-1] <= pu else raw_upper)
+        lower_final[i] = (max(raw_lower, pl) if pl is not None and closes[i-1] >= pl else raw_lower)
+        if pd == -1 and closes[i] > upper_final[i]:
+            direction[i] = 1
+        elif pd == 1 and closes[i] < lower_final[i]:
+            direction[i] = -1
+        else:
+            direction[i] = pd
+
+    for i in range(n - 1, start - 1, -1):
+        if direction[i] is not None:
+            return direction[i]
+    return None

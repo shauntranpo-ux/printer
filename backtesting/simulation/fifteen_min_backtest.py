@@ -132,18 +132,15 @@ def run_fifteen_min_backtest(
         # ── Supertrend feed: up to 120 1m bars ending at entry bar ───────────
         hist_start = max(0, start_idx + entry_minute - 120)
         hist_slice = bars.iloc[hist_start : start_idx + entry_minute]
-        prices_60m: _deque = _deque(maxlen=3600)
-        for _, hrow in hist_slice.iterrows():
-            ts = pd.Timestamp(hrow["timestamp"])
-            prices_60m.append((ts.timestamp(), float(hrow["close"])))
+        _epoch   = pd.Timestamp("1970-01-01", tz="UTC")
+        ts_unix  = (pd.to_datetime(hist_slice["timestamp"], utc=True) - _epoch).dt.total_seconds().to_numpy()
+        cl_arr   = hist_slice["close"].to_numpy(dtype=float)
+        prices_60m: _deque = _deque(zip(ts_unix, cl_arr), maxlen=3600)
 
-        # Realized vol from the same lookback window
-        if len(hist_slice) >= 2:
-            lr = np.log(
-                hist_slice["close"].clip(lower=1e-10).values
-                / hist_slice["open"].clip(lower=1e-10).values
-            )
-            rv_1min = float(np.std(lr))
+        # Realized vol from the same lookback window (vectorized)
+        if len(cl_arr) >= 2:
+            op_arr = hist_slice["open"].to_numpy(dtype=float).clip(1e-10)
+            rv_1min = float(np.std(np.log(cl_arr.clip(1e-10) / op_arr)))
         else:
             rv_1min = 0.002
 

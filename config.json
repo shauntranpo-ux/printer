@@ -29,20 +29,27 @@
   "asset_overrides": {
     "BTC": {
       "min_ev_base": 6,
-      "supertrend_atr_period": 7
+      "supertrend_atr_period": 14,
+      "supertrend_atr_multiplier": 5.0,
+      "momentum_lookback": 3
     },
     "ETH": {
-      "min_ev_base": 6
+      "min_ev_base": 6,
+      "supertrend_atr_period": 14,
+      "supertrend_atr_multiplier": 5.0,
+      "momentum_lookback": 3
     },
     "SOL": {
       "min_ev_base": 12,
-      "supertrend_atr_period": 14,
-      "supertrend_atr_multiplier": 5.5
+      "supertrend_atr_period": 20,
+      "supertrend_atr_multiplier": 5.5,
+      "momentum_lookback": 3
     },
     "XRP": {
       "min_ev_base": 12,
       "supertrend_atr_period": 14,
-      "supertrend_atr_multiplier": 5.5
+      "supertrend_atr_multiplier": 5.5,
+      "momentum_lookback": 3
     }
   },
   "max_spread_cents": 3.0,
@@ -52,5 +59,6 @@
   "confidence_threshold_15m": 65,
   "min_ev_base_15m": 9,
   "supertrend_atr_period": 10,
-  "supertrend_atr_multiplier": 4.0
+  "supertrend_atr_multiplier": 4.0,
+  "momentum_lookback": 3
 }
