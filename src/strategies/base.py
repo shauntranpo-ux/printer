@@ -40,6 +40,7 @@ class BaseStrategy(ABC):
         confidence_threshold: float = 0.0,
         supertrend_atr_period: int = 10,
         supertrend_atr_multiplier: float = 4.0,
+        momentum_lookback: int = 4,
     ):
         self.asset = asset
         self.skip_config = skip_config
@@ -51,6 +52,7 @@ class BaseStrategy(ABC):
         self.confidence_threshold = confidence_threshold
         self.supertrend_atr_period = supertrend_atr_period
         self.supertrend_atr_multiplier = supertrend_atr_multiplier
+        self.momentum_lookback = momentum_lookback
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
         # Step 1: skip layer (hourly only; 15m range enforced post-decision in step 7)
@@ -100,8 +102,8 @@ class BaseStrategy(ABC):
         # Step 3.5: short-term momentum alignment (15m markets only)
         # Require that the last 4 ticks are moving in the direction of the signal.
         # Filters entries where hourly trend exists but short-term momentum hasn't confirmed.
-        if self.is_15m and len(features.prices_60m) >= 5:
-            recent_delta = features.prices_60m[-1] - features.prices_60m[-4]
+        if self.is_15m and len(features.prices_60m) >= self.momentum_lookback + 1:
+            recent_delta = features.prices_60m[-1][1] - features.prices_60m[-self.momentum_lookback][1]
             aligned = (st_side == "yes" and recent_delta > 0) or (st_side == "no" and recent_delta < 0)
             if not aligned:
                 return Decision(

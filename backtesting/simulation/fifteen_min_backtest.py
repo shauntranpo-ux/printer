@@ -66,6 +66,7 @@ def run_fifteen_min_backtest(
     vol_ratio_threshold: float = 1.80,
     supertrend_atr_period: int = 10,
     supertrend_atr_multiplier: float = 3.0,
+    momentum_lookback: int = 4,
     strike_lookback_bars: int = 30,
 ) -> pd.DataFrame:
     """
@@ -99,6 +100,7 @@ def run_fifteen_min_backtest(
         confidence_threshold=confidence_threshold,
         supertrend_atr_period=supertrend_atr_period,
         supertrend_atr_multiplier=supertrend_atr_multiplier,
+        momentum_lookback=momentum_lookback,
     )
 
     bars = bars.sort_values("timestamp").reset_index(drop=True)

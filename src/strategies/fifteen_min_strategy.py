@@ -32,6 +32,7 @@ class FifteenMinStrategy(BaseStrategy):
         confidence_threshold: float = 0.0,
         supertrend_atr_period: int = 10,
         supertrend_atr_multiplier: float = 4.0,
+        momentum_lookback: int = 4,
     ):
         super().__init__(
             asset=asset,
@@ -44,4 +45,5 @@ class FifteenMinStrategy(BaseStrategy):
             confidence_threshold=confidence_threshold,
             supertrend_atr_period=supertrend_atr_period,
             supertrend_atr_multiplier=supertrend_atr_multiplier,
+            momentum_lookback=momentum_lookback,
         )

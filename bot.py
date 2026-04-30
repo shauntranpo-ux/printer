@@ -1690,8 +1690,9 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         min_ev = _ev_base / 100.0
         confidence_threshold = _ct / 100.0
         stake = float(config.get("trade_amount_dollars", 25))
-        st_period = int(get_asset_config(config, asset, "supertrend_atr_period", 10))
-        st_mult   = float(get_asset_config(config, asset, "supertrend_atr_multiplier", 4.0))
+        st_period    = int(get_asset_config(config, asset, "supertrend_atr_period", 10))
+        st_mult      = float(get_asset_config(config, asset, "supertrend_atr_multiplier", 4.0))
+        mom_lookback = int(get_asset_config(config, asset, "momentum_lookback", 4))
 
         if asset == "ETH" and is_hourly:
             from strategies.eth_hourly_combined import ETHHourlyCombinedStrategy
@@ -1719,6 +1720,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 confidence_threshold=confidence_threshold,
                 supertrend_atr_period=st_period,
                 supertrend_atr_multiplier=st_mult,
+                momentum_lookback=mom_lookback,
             )
         else:
             return None  # hourly strategy not implemented for this asset
