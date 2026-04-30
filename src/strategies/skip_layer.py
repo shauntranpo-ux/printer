@@ -92,8 +92,9 @@ def check_vol_ratio(features: MarketFeatures, cfg: SkipConfig) -> Optional[str]:
         return None
 
     abs_pct = abs(features.current_price - features.strike) / features.current_price
+    abs_pct = max(abs_pct, 0.003)  # floor prevents division by near-zero at strike open
     mins_left = features.seconds_left / 60.0
-    if abs_pct <= 0 or mins_left <= 0:
+    if mins_left <= 0:
         return None
 
     vol_ratio = rv * (mins_left ** 0.5) / abs_pct
