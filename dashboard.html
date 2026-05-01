@@ -913,9 +913,10 @@ function renderAssetTradeTable(tbodyId, trades) {
   tbody.innerHTML = trades.slice(0, 30).map(t => {
     const pnl = t.pnl_dollars, isPending = t.outcome === 'pending';
     const pnlCls = isPending ? '' : pnl > 0 ? 'td-win' : pnl < 0 ? 'td-loss' : '';
+    const pnlIcon = isPending ? '' : pnl > 0 ? '✅ ' : pnl < 0 ? '❌ ' : '';
     const pnlCell = isPending
       ? '<span style="background:rgba(201,125,16,.12);color:var(--amber);border:1px solid rgba(201,125,16,.3);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;">OPEN</span>'
-      : (pnl != null ? fmtPnl(pnl) : '—');
+      : (pnl != null ? pnlIcon + fmtPnl(pnl) : '—');
     const fillBadge = isPending
       ? '<span style="background:rgba(201,125,16,.12);color:var(--amber);border:1px solid rgba(201,125,16,.3);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">PEND</span>'
       : (t.fill_confirmed
@@ -1138,7 +1139,7 @@ function shortTicker(t) { if (!t) return '—'; return t.length>16?t.slice(0,16)
 function escHtml(s) { if (s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // â”€â”€ Market allocation donut â”€â”€
-const _ALLOC_COLORS = {BTC:'#f7931a', ETH:'#7b8cff', SOL:'#8a5cf0', XRP:'#5cc8f0', DOGE:'#c2a633'};
+const _ALLOC_COLORS = {BTC:'#f7931a', ETH:'#627eea', SOL:'#9945ff', XRP:'#00aae4', DOGE:'#c3a629'};
 function drawAllocDonut(data) {
   const svg = document.getElementById('alloc-donut-svg');
   const leg = document.getElementById('alloc-legend');
@@ -1209,9 +1210,10 @@ function renderTradeTable(tbodyId, trades) {
   tbody.innerHTML = trades.slice(0,50).map(t => {
     const pnl=t.pnl_dollars, isPending=t.outcome==='pending';
     const pnlCls=isPending?'':pnl>0?'td-win':pnl<0?'td-loss':'';
+    const pnlIcon=isPending?'':pnl>0?'✅ ':pnl<0?'❌ ':'';
     const pnlCell=isPending
       ?'<span style="background:rgba(201,125,16,.12);color:var(--amber);border:1px solid rgba(201,125,16,.3);border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;">OPEN</span>'
-      :(pnl!=null?fmtPnl(pnl):'—');
+      :(pnl!=null?pnlIcon+fmtPnl(pnl):'—');
     const rowStyle=isPending?'style="background:rgba(201,125,16,.04);"':'';
     const mktLabel=escHtml(t.market_title||shortTicker(t.market_id));
     const mktTitle=escHtml(`${t.market_id||''}${t.order_id?' · '+t.order_id:''}`);
@@ -1605,9 +1607,10 @@ async function pollMarketPulse() {
     if (tradesEl && data.recent_trades) {
       tradesEl.innerHTML = data.recent_trades.length ? data.recent_trades.map(t => {
         const cls=t.outcome==='win'?'pt-win':t.outcome==='loss'?'pt-loss':'';
+        const icon=t.outcome==='win'?'✅':t.outcome==='loss'?'❌':'';
         const pnl=t.pnl_dollars!=null?fmtPnl(t.pnl_dollars):'—';
         const side=t.side==='yes'?'UP':t.side==='no'?'DN':'?';
-        return `<div class="pt-row ${cls}">${fmtTime(t.ts)} · ${(t.mode||'?').toUpperCase()} · ${side} · ${pnl}</div>`;
+        return `<div class="pt-row ${cls}">${icon?icon+' ':''}${fmtTime(t.ts)} · ${(t.mode||'?').toUpperCase()} · ${side} · ${pnl}</div>`;
       }).join('') : '<div class="pt-row" style="color:var(--ink-3);">No trades yet</div>';
     }
     const pvEl = document.getElementById('pulse-pv');
