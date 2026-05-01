@@ -105,3 +105,21 @@ def check_vol_ratio(features: MarketFeatures, cfg: SkipConfig) -> Optional[str]:
             f"(dist={abs_pct*100:.2f}% dur={buf_durability:.1f}min)"
         )
     return None
+
+
+def check_skip_with_asset_hook(
+    features: MarketFeatures,
+    cfg: SkipConfig,
+    macro_event_active: bool = False,
+    asset_hook_result: Optional[tuple[bool, str]] = None,
+) -> Optional[str]:
+    """
+    Like check_skip but accepts an optional asset-level hook result.
+    asset_hook_result is (ok: bool, reason: str) — if ok is False we skip immediately.
+    Used by per-asset strategies that inject health/event checks (Solana health, XRP calendar).
+    """
+    if asset_hook_result is not None:
+        ok, reason = asset_hook_result
+        if not ok:
+            return reason
+    return check_skip(features, cfg, macro_event_active)

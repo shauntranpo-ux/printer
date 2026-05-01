@@ -1645,7 +1645,7 @@ def _strategy_name_for(asset, duration_min):
         return "BTCHourly V3"
     if is_hourly:
         return f"{asset}Hourly"
-    return "Supertrend (15m)"
+    return {"BTC": "B3", "ETH": "E1", "SOL": "S1", "XRP": "X3", "DOGE": "D3"}.get(asset, "15m")
 
 
 def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):
@@ -1718,17 +1718,33 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 confidence_threshold=confidence_threshold,
             )
         elif not is_hourly:
-            from strategies.fifteen_min_strategy import FifteenMinStrategy
-            strat = FifteenMinStrategy(
-                asset=asset,
-                skip_config=skip_cfg,
-                min_ev=min_ev,
-                stake_dollars=stake,
-                confidence_threshold=confidence_threshold,
-                supertrend_atr_period=st_period,
-                supertrend_atr_multiplier=st_mult,
-                momentum_lookback=mom_lookback,
-            )
+            if asset == "BTC":
+                from src.strategies.btc_strategy import BTCStrategy
+                strat = BTCStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+            elif asset == "ETH":
+                from src.strategies.eth_strategy import ETHStrategy
+                strat = ETHStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+            elif asset == "SOL":
+                from src.strategies.sol_strategy import SOLStrategy
+                strat = SOLStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+            elif asset == "XRP":
+                from src.strategies.xrp_strategy import XRPStrategy
+                strat = XRPStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+            elif asset == "DOGE":
+                from src.strategies.doge_strategy import DOGEStrategy
+                strat = DOGEStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+            else:
+                from strategies.fifteen_min_strategy import FifteenMinStrategy
+                strat = FifteenMinStrategy(
+                    asset=asset,
+                    skip_config=skip_cfg,
+                    min_ev=min_ev,
+                    stake_dollars=stake,
+                    confidence_threshold=confidence_threshold,
+                    supertrend_atr_period=st_period,
+                    supertrend_atr_multiplier=st_mult,
+                    momentum_lookback=mom_lookback,
+                )
         else:
             return None  # hourly strategy not implemented for this asset
 
@@ -2873,10 +2889,13 @@ async def handle_ready_phase(
     skip_reason_ai = brain["reasoning"]
 
     # â”€â”€ allowed_sides gate — disable NO side when model is uncalibrated â”€â”€â”€â”€â”€â”€
-    _allowed_sides = config.get("allowed_sides")
-    if do_trade and _allowed_sides is not None and side not in _allowed_sides:
+    _side_aliases = {"up": "yes", "down": "no"}
+    side = _side_aliases.get(side.lower(), side.lower()) if side else side
+    _allowed_sides = get_asset_config(config, asset, "allowed_sides", config.get("allowed_sides"))
+    _allowed_norm  = [_side_aliases.get(s.lower(), s.lower()) for s in (_allowed_sides or [])]
+    if do_trade and _allowed_norm and side not in _allowed_norm:
         skip_reason_ai = f"side={side} not in allowed_sides={_allowed_sides}"
-        do_trade = False
+
 
     # â”€â”€ Consecutive price-filter skip tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     global _consecutive_price_skips

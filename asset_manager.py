@@ -44,6 +44,11 @@ ASSET_CONFIG = {
         "strike_increment": 0.01,
         "kalshi_series":    ("KXXRPD", "XRPD-B", "KXXRP15M", "KXXRP15", "KXXRP", "XRP"),
     },
+    "DOGE": {
+        "binance_symbol":   "dogeusdt",
+        "strike_increment": 0.001,
+        "kalshi_series":    ("KXDOGE15M", "KXDOGED", "DOGED-B", "KXDOGE", "DOGE"),
+    },
 }
 
 # ── Per-asset price deques ────────────────────────────────────────────────────
