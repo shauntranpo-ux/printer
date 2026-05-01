@@ -676,15 +676,9 @@ def _phase_for_eth(asset, elapsed_seconds):
     return None
 
 
-def _notify_ctx(asset, ticker, duration_min, phase=None):
-    """Format a context prefix for Telegram notifications.
-
-    Matches the strategy router rule: >25 min = hourly.
-    """
-    session = "hourly" if duration_min > 25.0 else "15m"
-    parts = [asset, session, ticker]
-    if phase and session == "hourly":
-        parts.append(phase)
+def _notify_ctx(asset, ticker, duration_min=15.0, phase=None):
+    """Format a context prefix for Telegram notifications."""
+    parts = [asset, "15m", ticker]
     return f"[{' | '.join(parts)}]"
 
 
@@ -699,28 +693,22 @@ async def _maybe_fill_verification_notify(
     market_ask_at_post_c: int | None,
     fill_yes_price: int | None,
 ) -> None:
-    """Send a fill-verification Telegram message for hourly markets only.
+    """Send a fill-verification Telegram message to spot price-selection bugs in flight.
 
-    Gated so we can spot price-selection bugs in flight. Compares:
+    Compares:
       - Target:     the strategy-chosen entry price (may be None for BTC).
       - Market ask: the ask observed just before POST.
       - Posted:     the price actually sent to Kalshi (may differ via retry drift).
       - Filled:     the price Kalshi returned on fill.
 
-    Warns with ⚠️ when abs(filled - target) > 3¢. Silently skips for 15m
-    markets or when fill_yes_price is None.
+    Warns with ⚠️ when abs(filled - target) > 3¢. Silently skips when fill_yes_price is None.
     """
-    # Derive elapsed_seconds / duration from `market` (the function's local).
+    if fill_yes_price is None:
+        return
     try:
         _elapsed_sec = seconds_elapsed(market) if market else 0.0
     except Exception:
         _elapsed_sec = 0.0
-    try:
-        _duration_min = (_elapsed_sec + float(secs_left)) / 60.0
-    except (TypeError, ValueError):
-        _duration_min = 0.0
-    if _duration_min <= 25.0 or fill_yes_price is None:
-        return
     _target = entry_price_cents  # may be None for BTC (strategy doesn't emit it)
     _ask = market_ask_at_post_c
     _posted = price_this_attempt
@@ -739,7 +727,7 @@ async def _maybe_fill_verification_notify(
     _slip_market_str = (
         f"{int(round(_filled - _ask)):+d}¢ vs market" if _ask is not None else "n/a vs market"
     )
-    _ctx = _notify_ctx(asset, ticker, _duration_min, _phase_for_eth(asset, _elapsed_sec))
+    _ctx = _notify_ctx(asset, ticker)
     await send_telegram(
         f"{_warn}<b>{_ctx} FILL VERIFICATION</b>\n"
         f"Target:     <b>{_target_str}</b>\n"
@@ -1019,9 +1007,9 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         except Exception:
             return None
 
-    # Accept any short-duration market: 1-60 minutes (covers 5-min, 15-min, 30-min, hourly)
+    # Accept 15-min markets (reject anything > 20 min)
     short_dur = [m for m in all_markets
-                 if (lambda d: d is not None and 1 <= d <= 75)(market_duration_minutes(m))]
+                 if (lambda d: d is not None and 1 <= d <= 20)(market_duration_minutes(m))]
 
     if short_dur:
         log.info(f"Found {len(short_dur)} short-duration market(s). "
@@ -1090,7 +1078,7 @@ async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> 
     """
     Fetch the soonest-expiring open market for the given non-BTC asset.
     Uses the kalshi_series priority list from ASSET_CONFIG.
-    Accepts windows up to 75 minutes (covers both 15-min and hourly markets).
+    Accepts windows up to 20 minutes (15-min markets only).
     Returns None if no suitable market found.
     """
     series_list = ASSET_CONFIG.get(asset, {}).get("kalshi_series", ())
@@ -1128,7 +1116,7 @@ async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> 
     if not all_markets:
         return None
 
-    # Return soonest-expiring market with > 0 seconds left, < 75 min window (covers hourly markets)
+    # Return soonest-expiring market with > 0 seconds left, < 20 min window
     now_utc = datetime.now(timezone.utc)
     def secs_to_close(m: dict) -> float:
         try:
@@ -1136,10 +1124,7 @@ async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> 
         except Exception:
             return -1.0
 
-    # Accept up to 75 minutes — covers hourly markets (KXETHD) at window open.
-    # The old 20-minute cap was designed for 15-min markets only and blocked all
-    # hourly windows at entry time.
-    valid = [m for m in all_markets if 0 < secs_to_close(m) < 75 * 60]
+    valid = [m for m in all_markets if 0 < secs_to_close(m) < 20 * 60]
     if not valid:
         return None
 
@@ -1631,19 +1616,12 @@ def _session_ev_adjustment() -> float:
     return 0.0
 
 
-_STRATEGY_SINGLETONS: dict = {}  # keyed by "ASSET" or "ASSET_hourly"
+_STRATEGY_SINGLETONS: dict = {}  # keyed by asset name
 _config_mtime: float = 0.0
 
 
-def _strategy_name_for(asset, duration_min):
+def _strategy_name_for(asset, duration_min=15.0):
     """Human-readable strategy name for the dashboard per-asset card."""
-    is_hourly = duration_min > 25.0
-    if asset == "ETH" and is_hourly:
-        return "ETHHourlyCombined"
-    if asset == "BTC" and is_hourly:
-        return "BTCHourly V3"
-    if is_hourly:
-        return f"{asset}Hourly"
     return {"BTC": "B3", "ETH": "E1", "SOL": "S1", "XRP": "X3", "DOGE": "D3"}.get(asset, "15m")
 
 
@@ -1659,10 +1637,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
     except OSError:
         pass
 
-    is_hourly = market_duration_min > 25.0
-    if is_hourly and not config.get("enable_hourly_markets", True):
-        return None
-    cache_key = f"{asset}_hourly" if is_hourly else asset
+    cache_key = asset
     if cache_key in _STRATEGY_SINGLETONS:
         return _STRATEGY_SINGLETONS[cache_key]
     try:
@@ -1673,7 +1648,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         from strategies.skip_layer import SkipConfig
 
         _min_price = float(config.get("min_entry_price_cents", 20.0))
-        _max_price = float(config.get("max_entry_price_cents", 76.0 if not is_hourly else 80.0))
+        _max_price = float(config.get("max_entry_price_cents", 76.0))
         skip_cfg = SkipConfig(
             max_spread_cents=float(config.get("max_spread_cents", 3.0)),
             min_seconds_left=float(config.get("min_seconds_left", 30.0)),
@@ -1683,16 +1658,11 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
             vol_ratio_threshold=float(get_asset_config(config, asset, "vol_gate_thresh", 1.80)),
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
-        if not is_hourly:
-            _ev_default = config.get("min_ev_base_15m", config.get("min_ev_base", 8))
-            _ev_base = float(overrides.get("min_ev_base", _ev_default))
-            _ct_default = config.get("confidence_threshold_15m", config.get("confidence_threshold", 0))
-            _ct = float(overrides.get("confidence_threshold_15m",
-                                      overrides.get("confidence_threshold", _ct_default)))
-        else:
-            _ev_base = float(overrides.get("min_ev_base", config.get("min_ev_base", 8)))
-            _ct = float(get_asset_config(config, asset, "confidence_threshold",
-                                         config.get("confidence_threshold", 0)))
+        _ev_default = config.get("min_ev_base_15m", config.get("min_ev_base", 8))
+        _ev_base = float(overrides.get("min_ev_base", _ev_default))
+        _ct_default = config.get("confidence_threshold_15m", config.get("confidence_threshold", 0))
+        _ct = float(overrides.get("confidence_threshold_15m",
+                                  overrides.get("confidence_threshold", _ct_default)))
         min_ev = _ev_base / 100.0
         confidence_threshold = _ct / 100.0
         stake = float(config.get("trade_amount_dollars", 25))
@@ -1700,55 +1670,36 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         st_mult      = float(get_asset_config(config, asset, "supertrend_atr_multiplier", 4.0))
         mom_lookback = int(get_asset_config(config, asset, "momentum_lookback", 4))
 
-        if asset == "ETH" and is_hourly:
-            from strategies.eth_hourly_combined import ETHHourlyCombinedStrategy
-            strat = ETHHourlyCombinedStrategy(
-                skip_config=skip_cfg,
-                min_ev=min_ev,
-                stake_dollars=stake,
-                confidence_threshold=confidence_threshold,
-            )
-        elif asset == "BTC" and is_hourly:
-            from strategies.btc_hourly_strategy import BTCHourlyStrategy
-            strat = BTCHourlyStrategy(
-                skip_config=skip_cfg,
-                min_ev=min_ev,
-                stake_dollars=stake,
-                confidence_threshold=confidence_threshold,
-            )
-        elif not is_hourly:
-            if asset == "BTC":
-                from src.strategies.btc_strategy import BTCStrategy
-                strat = BTCStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
-            elif asset == "ETH":
-                from src.strategies.eth_strategy import ETHStrategy
-                strat = ETHStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
-            elif asset == "SOL":
-                from src.strategies.sol_strategy import SOLStrategy
-                strat = SOLStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
-            elif asset == "XRP":
-                from src.strategies.xrp_strategy import XRPStrategy
-                strat = XRPStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
-            elif asset == "DOGE":
-                from src.strategies.doge_strategy import DOGEStrategy
-                strat = DOGEStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
-            else:
-                from strategies.fifteen_min_strategy import FifteenMinStrategy
-                strat = FifteenMinStrategy(
-                    asset=asset,
-                    skip_config=skip_cfg,
-                    min_ev=min_ev,
-                    stake_dollars=stake,
-                    confidence_threshold=confidence_threshold,
-                    supertrend_atr_period=st_period,
-                    supertrend_atr_multiplier=st_mult,
-                    momentum_lookback=mom_lookback,
-                )
+        if asset == "BTC":
+            from src.strategies.btc_strategy import BTCStrategy
+            strat = BTCStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+        elif asset == "ETH":
+            from src.strategies.eth_strategy import ETHStrategy
+            strat = ETHStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+        elif asset == "SOL":
+            from src.strategies.sol_strategy import SOLStrategy
+            strat = SOLStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+        elif asset == "XRP":
+            from src.strategies.xrp_strategy import XRPStrategy
+            strat = XRPStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+        elif asset == "DOGE":
+            from src.strategies.doge_strategy import DOGEStrategy
+            strat = DOGEStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
         else:
-            return None  # hourly strategy not implemented for this asset
+            from strategies.fifteen_min_strategy import FifteenMinStrategy
+            strat = FifteenMinStrategy(
+                asset=asset,
+                skip_config=skip_cfg,
+                min_ev=min_ev,
+                stake_dollars=stake,
+                confidence_threshold=confidence_threshold,
+                supertrend_atr_period=st_period,
+                supertrend_atr_multiplier=st_mult,
+                momentum_lookback=mom_lookback,
+            )
 
         _STRATEGY_SINGLETONS[cache_key] = strat
-        log.info(f"Strategy initialized: {cache_key} ({'hourly' if is_hourly else '15m'}, stake=${stake})")
+        log.info(f"Strategy initialized: {cache_key} (15m, stake=${stake})")
         return strat
     except Exception as exc:
         log.warning(f"{asset} strategy init failed, falling back to legacy: {exc}")
@@ -2585,7 +2536,7 @@ async def write_state_file(
         except Exception:
             _a_elapsed_sec = 0.0
         _a_duration_min = (float(_a_elapsed_sec) + float(_sl)) / 60.0 if _m else 0.0
-        _a_session_type = "hourly" if _a_duration_min > 25.0 else "15m"
+        _a_session_type = "15m"
         _a_strategy_name = _strategy_name_for(_a, _a_duration_min)
         _a_strike = _parse_strike_from_ticker(_a_ticker)
         if _a_strike is None:
@@ -2625,7 +2576,7 @@ async def write_state_file(
     except Exception:
         _btc_elapsed_sec = 0.0
     _btc_duration_min = (float(_btc_elapsed_sec) + float(secs_left)) / 60.0 if market else 0.0
-    _btc_session_type = "hourly" if _btc_duration_min > 25.0 else "15m"
+    _btc_session_type = "15m"
     _btc_strategy_name = _strategy_name_for("BTC", _btc_duration_min)
     _btc_strike = _parse_strike_from_ticker(_btc_ticker)
     if _btc_strike is None:
@@ -3090,8 +3041,7 @@ async def handle_ready_phase(
     _abs_pct_at_entry = abs(btc_price - strike) / strike
     _mins_left_at_entry = secs_left / 60
     # Record the market's total duration (elapsed + remaining at entry) so
-    # exit-side notifications label the session by market type, not hold time.
-    # A quickly-exited hourly trade is still hourly regardless of hold length.
+    # exit-side notifications can reference the market's window length.
     try:
         _market_elapsed_at_entry = seconds_elapsed(market) if market else 0.0
     except Exception:

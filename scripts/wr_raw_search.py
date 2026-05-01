@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from collections import defaultdict
 from datetime import datetime, timezone
-from strategies.backtest.hourly_window_generator import generate_hourly_events, realized_vol_from_history
+# hourly_window_generator removed (dead code)
 import numpy as np
 import pandas as pd
 

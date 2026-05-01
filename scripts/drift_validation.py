@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from datetime import datetime, timezone
-from strategies.backtest.hourly_window_generator import generate_hourly_events
+# hourly_window_generator removed (dead code)
 import pandas as pd
 
 

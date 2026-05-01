@@ -143,4 +143,3 @@ def test_all_assets_instantiate():
             stake_dollars=25.0,
         )
         assert s.asset == asset
-        assert s.is_15m is True

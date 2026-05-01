@@ -11,7 +11,7 @@ from scripts.backtest_hourly import (
 )
 
 from strategies.skip_layer import SkipConfig
-from strategies.eth_hourly_strategy import ETHHourlyStrategy
+# ETHHourlyStrategy removed (dead code)
 
 
 def ts(s):

@@ -1,6 +1,5 @@
 """
-Regression snapshot: proves the is_15m=True path uses compute_15m_signal
-and that is_15m=False produces identical results to the old Supertrend path.
+Regression snapshot: proves BaseStrategy uses compute_15m_signal (D3-hybrid) for all markets.
 """
 import collections
 import time
@@ -48,40 +47,13 @@ def _make_features(n_prices: int = 60, current_price: float = 100_000.0,
     )
 
 
-# ── hourly path: unchanged ────────────────────────────────────────────────────
-
-def test_hourly_path_uses_supertrend():
-    """is_15m=False still routes through Supertrend."""
-    strat = _Strat(
-        asset="BTC", skip_config=_SKIP_CFG,
-        min_ev=0.05, stake_dollars=50.0, is_15m=False,
-    )
-    features = _make_features()
-    with _patch("strategies.signals.supertrend.supertrend_direction", return_value=1):
-        d = strat.decide(features)
-    assert d.contributing_signals.get("signal_name") == "supertrend"
-
-
-def test_hourly_path_supertrend_none_skips():
-    """Supertrend returning None → skip (need enough prices to pass skip_layer)."""
-    strat = _Strat(
-        asset="BTC", skip_config=_SKIP_CFG,
-        min_ev=0.05, stake_dollars=50.0, is_15m=False,
-    )
-    features = _make_features(n_prices=60)
-    with _patch("strategies.signals.supertrend.supertrend_direction", return_value=None):
-        d = strat.decide(features)
-    assert d.action == "skip"
-    assert "supertrend_insufficient_data" in d.reason
-
-
 # ── 15m path: new D3-hybrid ────────────────────────────────────────────────────
 
 def test_15m_path_uses_d3_hybrid():
     """is_15m=True routes through compute_15m_signal."""
     strat = _Strat(
         asset="BTC", skip_config=_SKIP_CFG,
-        min_ev=0.001, stake_dollars=50.0, is_15m=True,
+        min_ev=0.001, stake_dollars=50.0,
     )
     features = _make_features(n_prices=60, is_rising=True)
     with _patch(
@@ -96,7 +68,7 @@ def test_15m_none_signal_skips():
     """compute_15m_signal returning None → skip."""
     strat = _Strat(
         asset="BTC", skip_config=_SKIP_CFG,
-        min_ev=0.05, stake_dollars=50.0, is_15m=True,
+        min_ev=0.05, stake_dollars=50.0,
     )
     features = _make_features(n_prices=60)
     with _patch(
@@ -112,7 +84,7 @@ def test_15m_calibrated_p_in_signals():
     """calibrated_p_yes and raw_p_yes both appear in contributing_signals."""
     strat = _Strat(
         asset="BTC", skip_config=_SKIP_CFG,
-        min_ev=0.001, stake_dollars=50.0, is_15m=True,
+        min_ev=0.001, stake_dollars=50.0,
     )
     features = _make_features(n_prices=60, is_rising=True)
     with _patch(
@@ -132,7 +104,7 @@ def test_15m_no_side_signal():
     """A 'no' side signal produces a no-side decision or skip (not a yes trade)."""
     strat = _Strat(
         asset="BTC", skip_config=_SKIP_CFG,
-        min_ev=0.001, stake_dollars=50.0, is_15m=True,
+        min_ev=0.001, stake_dollars=50.0,
     )
     features = _make_features(n_prices=60, is_rising=False,
                                current_price=99_000.0, strike=99_500.0)
