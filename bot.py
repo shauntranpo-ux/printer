@@ -499,6 +499,8 @@ def init_db() -> None:
             ("asset",             "TEXT DEFAULT 'BTC'"),  # multi-asset support
             ("raw_p_yes",         "REAL"),                # pre-calibration P(YES wins)
             ("entry_signals",    "TEXT"),                # JSON snapshot of entry signals
+            ("calibrated_p_yes",  "REAL"),               # post-calibration p_yes used in EV gate
+            ("signal_name",       "TEXT"),               # which signal fired (d3_hybrid / supertrend)
         ):
             try:
                 c.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")

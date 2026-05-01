@@ -1,11 +1,12 @@
 """
 Tests for FifteenMinStrategy — the unified 15m strategy for BTC/ETH/SOL/XRP.
 
-Direction: Supertrend ATR indicator (1=YES/up, -1=NO/down).
-EV: fixed p_ev=0.70 per direction; per-asset minimum gate.
+Direction: D3-hybrid ensemble (compute_15m_signal).
+EV: calibrated BS p_yes per direction; per-asset minimum gate.
 """
 
 import time
+from contextlib import contextmanager
 from unittest.mock import patch as _patch
 
 import pytest
@@ -13,6 +14,14 @@ import pytest
 from strategies.fifteen_min_strategy import FifteenMinStrategy
 from strategies.features import MarketFeatures
 from strategies.skip_layer import SkipConfig
+
+
+def _mock_15m_signal(side: str = "yes", raw_p: float = 0.70):
+    """Patch compute_15m_signal to return a fixed (side, raw_p) tuple."""
+    return _patch(
+        "strategies.signals.fifteen_min_signal.compute_15m_signal",
+        return_value=(side, raw_p),
+    )
 
 
 def _mock_supertrend(direction: int = 1):
@@ -30,6 +39,7 @@ def _features(
     yes_ask: float = 60.0,
     no_ask: float = 42.0,
     seconds_left: float = 600.0,
+    rising: bool = True,
 ):
     now = time.time()
     f = MarketFeatures(
@@ -50,7 +60,8 @@ def _features(
         realized_vol_1min=0.002,
     )
     for i in range(60):
-        f.prices_60m.append((float(i), current_price))
+        price = current_price + (i * 0.5 if rising else -i * 0.5)
+        f.prices_60m.append((float(i), price))
     return f
 
 
@@ -65,15 +76,15 @@ def _strat(asset="ETH", min_ev=0.05, confidence_threshold=0.0):
 
 
 def test_decides_trade_or_skip():
-    with _mock_supertrend(1):
+    with _mock_15m_signal("yes", 0.70):
         d = _strat().decide(_features())
     assert d.action in ("trade", "skip")
     assert 0.0 < d.p_model < 1.0
 
 
-def test_supertrend_up_picks_yes():
-    """Supertrend=1 (uptrend) -> YES direction."""
-    with _mock_supertrend(1):
+def test_signal_yes_picks_yes():
+    """Signal='yes' → YES direction."""
+    with _mock_15m_signal("yes", 0.70):
         d = _strat(min_ev=0.01).decide(
             _features(yes_ask=55.0, no_ask=47.0)
         )
@@ -81,9 +92,9 @@ def test_supertrend_up_picks_yes():
         assert d.side == "yes"
 
 
-def test_supertrend_down_picks_no():
-    """Supertrend=-1 (downtrend) -> NO direction."""
-    with _mock_supertrend(-1):
+def test_signal_no_picks_no():
+    """Signal='no' → NO direction."""
+    with _mock_15m_signal("no", 0.35):
         d = _strat(min_ev=0.01).decide(
             _features(yes_ask=65.0, no_ask=37.0)
         )
@@ -92,31 +103,29 @@ def test_supertrend_down_picks_no():
 
 
 def test_confidence_gate_skips_when_enabled():
-    """confidence_threshold=0.74 always skips: p_ev=0.70 < 0.74 for YES, and
-    p_ev=0.70 > 1-0.74=0.26 for NO — both directions are blocked."""
-    with _mock_supertrend(1):
+    """confidence_threshold=0.74 skips YES when calibrated p_ev < 0.74."""
+    with _mock_15m_signal("yes", 0.70):
         d = _strat(confidence_threshold=0.74).decide(_features())
     assert d.action == "skip"
     assert "confidence" in d.reason
 
 
 def test_entry_range_rejects_76c_entry():
-    """Entry at 76c is always rejected: with p_ev=0.70, yes_ev = 0.70-0.76-fee < 0
-    so the EV gate fires (or entry_range if min_ev is tiny). Either way, skip."""
+    """Entry at 76c is always rejected."""
     strat = FifteenMinStrategy(
         asset="ETH",
         skip_config=SkipConfig(cold_start_samples=10, max_entry_price_cents=76.0),
         min_ev=0.001,
         stake_dollars=25.0,
     )
-    with _mock_supertrend(1):
+    with _mock_15m_signal("yes", 0.70):
         d = strat.decide(_features(yes_ask=76.0, no_ask=26.0))
     assert d.action == "skip"
 
 
 def test_no_trade_below_floor():
-    """Both sides below 20c floor -> entry_range skip."""
-    with _mock_supertrend(1):
+    """Both sides below 20c floor → entry_range skip."""
+    with _mock_15m_signal("yes", 0.70):
         d = _strat().decide(
             _features(yes_ask=15.0, no_ask=18.0)
         )

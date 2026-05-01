@@ -5,8 +5,9 @@ Decision pipeline (same for 15m and hourly, all modes):
   1. Skip layer      -- hourly only: spread, cold-start, seconds_left, deep-OTM (20c floor)
                         15m: no pre-filter; range enforced post-decision at step 6
   2. Market prob     -- Kalshi AMM implied probability (reference only)
-  3. Supertrend      -- sole direction signal; SKIP if insufficient data
-  4. EV check        -- p_ev=0.70 assumed probability; per-asset minimum
+  3. Direction       -- 15m: D3-hybrid ensemble vote (compute_15m_signal)
+                        hourly: Supertrend ATR
+  4. EV check        -- 15m: calibrated BS p_yes; hourly: hardcoded 0.70
   5. Vol ratio gate  -- buffer durability; applies to all markets
   6. Confidence gate -- p_ev >= threshold (disabled by default; set in config)
   7. Entry range     -- [20c, 76c) for 15m, [20c, 80c) for hourly
@@ -15,6 +16,8 @@ Decision pipeline (same for 15m and hourly, all modes):
 
 from __future__ import annotations
 
+import collections
+import logging
 from abc import ABC
 from typing import Optional
 
@@ -24,6 +27,10 @@ from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
 
 _SUPERTREND_P_MODEL = 0.70  # assumed win probability when Supertrend fires
+
+_log = logging.getLogger(__name__)
+_BIAS_WINDOW  = 50   # rolling trade window for YES-bias check
+_BIAS_LIMIT   = 0.80 # warn when rolling YES fraction exceeds this
 
 
 class BaseStrategy(ABC):
@@ -53,6 +60,7 @@ class BaseStrategy(ABC):
         self.supertrend_atr_period = supertrend_atr_period
         self.supertrend_atr_multiplier = supertrend_atr_multiplier
         self.momentum_lookback = momentum_lookback
+        self._side_rolling: collections.deque = collections.deque(maxlen=_BIAS_WINDOW)
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
         # Step 1: skip layer (hourly only; 15m range enforced post-decision in step 7)
@@ -72,32 +80,55 @@ class BaseStrategy(ABC):
         _total = _yes + _no
         market_prob = _yes / _total if _total > 0 else 0.5
 
-        # Step 3: Supertrend direction
-        from strategies.signals.supertrend import supertrend_direction
-        st = supertrend_direction(
-            features.prices_60m,
-            self.supertrend_atr_period,
-            self.supertrend_atr_multiplier,
-        )
-        features.supertrend_direction = st
-
-        if st is None:
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=market_prob,
-                reason="supertrend_insufficient_data",
-                contributing_signals={
-                    "supertrend_direction": None,
-                    "market_prob": market_prob,
-                    "ev_pass": False,
-                    "vol_pass": True,
-                    "final_decision": "skip",
-                    "skip_reason": "supertrend_insufficient_data",
-                },
+        # Step 3: direction signal
+        if self.is_15m:
+            from strategies.signals.fifteen_min_signal import compute_15m_signal
+            result_15m = compute_15m_signal(features)
+            if result_15m is None:
+                return Decision(
+                    action="skip",
+                    side=None,
+                    p_model=market_prob,
+                    reason="fifteen_min_signal_insufficient_data",
+                    contributing_signals={
+                        "signal_name": "d3_hybrid",
+                        "market_prob": market_prob,
+                        "ev_pass": False,
+                        "vol_pass": True,
+                        "final_decision": "skip",
+                        "skip_reason": "fifteen_min_signal_insufficient_data",
+                    },
+                )
+            st_side, signal_raw_p_yes = result_15m
+            st = 1 if st_side == "yes" else -1
+            features.supertrend_direction = st
+        else:
+            from strategies.signals.supertrend import supertrend_direction
+            st = supertrend_direction(
+                features.prices_60m,
+                self.supertrend_atr_period,
+                self.supertrend_atr_multiplier,
             )
+            features.supertrend_direction = st
 
-        st_side = "yes" if st == 1 else "no"
+            if st is None:
+                return Decision(
+                    action="skip",
+                    side=None,
+                    p_model=market_prob,
+                    reason="supertrend_insufficient_data",
+                    contributing_signals={
+                        "supertrend_direction": None,
+                        "market_prob": market_prob,
+                        "ev_pass": False,
+                        "vol_pass": True,
+                        "final_decision": "skip",
+                        "skip_reason": "supertrend_insufficient_data",
+                    },
+                )
+
+            st_side = "yes" if st == 1 else "no"
+            signal_raw_p_yes = _SUPERTREND_P_MODEL
 
         # Step 3.5: short-term momentum alignment (15m markets only)
         # Require that the last 4 ticks are moving in the direction of the signal.
@@ -123,9 +154,12 @@ class BaseStrategy(ABC):
                     },
                 )
 
-        # Step 4: EV gate using fixed assumed probability
-        p_ev = _SUPERTREND_P_MODEL
-        # p(YES)=0.70 for YES direction; p(YES)=0.30 (=1-0.70) for NO direction
+        # Step 4: EV gate — 15m uses calibrated BS p_yes; hourly uses fixed 0.70
+        if self.is_15m:
+            p_ev = self.calibrator.calibrate(signal_raw_p_yes)
+        else:
+            p_ev = _SUPERTREND_P_MODEL
+        # p(YES)=p_ev for YES direction; p(YES)=1-p_ev for NO direction
         p_model_for_ev = p_ev if st_side == "yes" else 1.0 - p_ev
         ev = compute_bidirectional_ev(
             p_model=p_model_for_ev,
@@ -137,16 +171,19 @@ class BaseStrategy(ABC):
         side_ev = ev.yes_ev if st_side == "yes" else ev.no_ev
         entry_cents = features.yes_ask if st_side == "yes" else features.no_ask
 
+        _signal_name = "d3_hybrid" if self.is_15m else "supertrend"
         base_signals = {
             "supertrend_direction": st,
             "supertrend_side": st_side,
             "market_prob": market_prob,
             "p_ev": p_ev,
-            "p_ev_source": "supertrend",
+            "p_ev_source": _signal_name,
             "yes_ev": ev.yes_ev,
             "no_ev": ev.no_ev,
             "entry_cents": entry_cents,
-            "raw_p_yes": p_ev if st_side == "yes" else 1.0 - p_ev,
+            "raw_p_yes": signal_raw_p_yes,
+            "calibrated_p_yes": p_ev,
+            "signal_name": _signal_name,
         }
 
         if side_ev < self.min_ev:
@@ -228,13 +265,23 @@ class BaseStrategy(ABC):
                 expected_value=side_ev,
             )
 
-        # Step 8: trade
+        # Step 8: trade — update rolling bias guard before returning
+        self._side_rolling.append(1 if st_side == "yes" else 0)
+        if len(self._side_rolling) == _BIAS_WINDOW:
+            yes_frac = sum(self._side_rolling) / _BIAS_WINDOW
+            if yes_frac > _BIAS_LIMIT:
+                _log.critical(
+                    "[%s] YES-bias alert: %.0f%% YES in last %d trades "
+                    "(signal=%s) — check for directional signal fault",
+                    self.asset, yes_frac * 100, _BIAS_WINDOW, _signal_name,
+                )
+
         return Decision(
             action="trade",
             side=st_side,
             p_model=p_ev if st_side == "yes" else 1.0 - p_ev,
             reason=(
-                f"{st_side} supertrend={st} EV={side_ev:+.3f} "
+                f"{st_side} {_signal_name} EV={side_ev:+.3f} "
                 f"market={market_prob:.3f}"
             ),
             contributing_signals={
@@ -243,7 +290,7 @@ class BaseStrategy(ABC):
                 "vol_pass": True,
                 "final_decision": "trade",
                 "skip_reason": None,
-                "decision_mode": "supertrend",
+                "decision_mode": _signal_name,
             },
             expected_value=side_ev,
         )
