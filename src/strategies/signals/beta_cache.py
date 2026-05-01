@@ -24,10 +24,11 @@ BETA_CACHE_PATH = Path("data/betas.json")
 STALE_AFTER_DAYS = 14
 
 ASSET_DEFAULT_BETAS = {
-    "BTC": 1.00,
-    "ETH": 1.10,   # historically 1.0-1.2 vs BTC on intraday
-    "SOL": 1.70,   # higher beta (section 5)
-    "XRP": 0.80,   # lower, more idiosyncratic
+    "BTC":  1.00,
+    "ETH":  1.10,   # historically 1.0-1.2 vs BTC on intraday
+    "SOL":  1.70,   # higher beta (section 5)
+    "XRP":  0.80,   # lower, more idiosyncratic
+    "DOGE": 2.50,   # high beta, highly idiosyncratic — critical for D3 skip guard
 }
 
 
@@ -79,7 +80,7 @@ def refit_all_betas(data_dir: str = "data/historical") -> dict:
 
     cache = {"BTC": {"beta": 1.00, "computed_at": time.time()}}
 
-    for asset in ["ETH", "SOL", "XRP"]:
+    for asset in ["ETH", "SOL", "XRP", "DOGE"]:
         path = data_path / f"{asset}_1m_2026.parquet"
         if not path.exists():
             cache[asset] = {

@@ -2895,6 +2895,7 @@ async def handle_ready_phase(
     _allowed_norm  = [_side_aliases.get(s.lower(), s.lower()) for s in (_allowed_sides or [])]
     if do_trade and _allowed_norm and side not in _allowed_norm:
         skip_reason_ai = f"side={side} not in allowed_sides={_allowed_sides}"
+        do_trade = False
 
 
     # â”€â”€ Consecutive price-filter skip tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
