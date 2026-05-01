@@ -407,7 +407,7 @@ tr:last-child td{border-bottom:none;}
     <div class="mid-row">
       <div class="card chart-card">
         <div class="chart-head" style="flex-wrap:wrap;gap:6px;">
-          <div class="chart-title">Equity Curve · All Markets</div>
+          <div class="chart-title">Equity Curve · <span id="chart-view-label" style="color:var(--ink-3);font-weight:400;">Today</span></div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;margin-left:auto;">
             <div style="display:flex;gap:2px;background:var(--card-2);padding:3px;border-radius:8px;border:1px solid var(--line);">
               <button class="chart-tab active" id="vtab-daily"   onclick="setChartView('daily')">Daily</button>
@@ -1116,20 +1116,30 @@ function updateChartsAndPnl() {
 }
 function setChartView(view) {
   _chartView = view;
+  const _viewLabels = {daily:'Today', weekly:'Last 7 Days', monthly:'Last 30 Days', alltime:'All Time'};
+  const lbl = document.getElementById('chart-view-label');
+  if (lbl) lbl.textContent = _viewLabels[view] || view;
   ['daily','weekly','monthly','alltime'].forEach(v => {
     const el = document.getElementById('vtab-'+v);
     if (el) el.classList.toggle('active', v === view);
   });
-  updateChartsAndPnl();
+  // Bypass lerp animation on explicit tab switch — jump directly to filtered data
+  if (chartAnimFrame) { cancelAnimationFrame(chartAnimFrame); chartAnimFrame = null; }
+  const ld = buildEquityCurveByView(liveTradesData, 'live', view);
+  const pd = buildEquityCurveByView(paperTradesData, 'paper', view);
+  liveChartCurrent = liveChartTarget = ld;
+  paperChartCurrent = paperChartTarget = pd;
+  drawChart('paper-chart', _activeChartTab === 'live' ? ld : pd);
 }
 function setChartTab(tab) {
   _activeChartTab = tab;
-  // Both share the same canvas area — just show paper-chart always, but draw the right data
   document.getElementById('live-chart').style.display = 'none';
   document.getElementById('paper-chart').style.display = 'block';
   document.getElementById('ctab-live').classList.toggle('active', tab==='live');
   document.getElementById('ctab-paper').classList.toggle('active', tab==='paper');
-  updateChartsAndPnl();
+  // Immediate redraw with correct mode data
+  const active = tab === 'live' ? liveChartCurrent : paperChartCurrent;
+  drawChart('paper-chart', active);
 }
 
 // â”€â”€ Formatters â”€â”€
@@ -1139,7 +1149,7 @@ function shortTicker(t) { if (!t) return '—'; return t.length>16?t.slice(0,16)
 function escHtml(s) { if (s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // â”€â”€ Market allocation donut â”€â”€
-const _ALLOC_COLORS = {BTC:'#f7931a', ETH:'#627eea', SOL:'#9945ff', XRP:'#00aae4', DOGE:'#c3a629'};
+const _ALLOC_COLORS = {BTC:'#f7931a', ETH:'#111111', SOL:'#9945ff', XRP:'#00aae4', DOGE:'#c3a629'};
 function drawAllocDonut(data) {
   const svg = document.getElementById('alloc-donut-svg');
   const leg = document.getElementById('alloc-legend');
