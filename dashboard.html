@@ -1149,7 +1149,7 @@ function shortTicker(t) { if (!t) return '—'; return t.length>16?t.slice(0,16)
 function escHtml(s) { if (s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // â”€â”€ Market allocation donut â”€â”€
-const _ALLOC_COLORS = {BTC:'#f7931a', ETH:'#111111', SOL:'#9945ff', XRP:'#00aae4', DOGE:'#c3a629'};
+const _ALLOC_COLORS = {BTC:'#f7931a', ETH:'#111111', SOL:'#9945ff', XRP:'#8a8a8a', DOGE:'#c3a629'};
 function drawAllocDonut(data) {
   const svg = document.getElementById('alloc-donut-svg');
   const leg = document.getElementById('alloc-legend');
