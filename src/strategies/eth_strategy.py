@@ -36,8 +36,22 @@ from strategies.signals.taper import magnitude_taper
 
 BETA_ADJ_MAX   = 0.10   # max contribution from BTC-beta signal
 REGIME_ADJ     = 0.03   # momentum / reversion regime nudge
-RATIO_ADJ_MAX  = 0.03   # max contribution from ratio divergence
+RATIO_ADJ_MAX  = 0.03   # legacy linear ratio cap (used outside the E1 band)
 VELOCITY_ADJ   = 0.02   # Kalshi velocity nudge
+
+# E1 — vol-gated ETH/BTC ratio mean-revert (Bollinger ±1.2σ, vol-gated)
+# Plan source: ETH ratio reverts in ranging regimes (62-68% win-rate per
+# Cronos Army backtest) but breaks in trends (45-50%).  Source:
+#   https://medium.com/@bencryptoknowledge/ethereum-backtest-the-most-extensive-analysis-4b13de5b5fc4
+# Lead-lag basis: BTC leads ETH at intraday 30-120 s, t > 2.5
+#   https://www.sciencedirect.com/science/article/abs/pii/S0275531919300522
+#   https://www.sciencedirect.com/science/article/pii/S2214845025001188
+E1_BAND_Z_THRESHOLD     = 1.2          # |z| >= 1.2 to fire the band signal
+E1_RATIO_ADJ_MAX        = 0.05         # boosted cap once the band fires
+# Vol gate: 4 % over 4 h ~= 4% / sqrt(240) per 1-min step ~= 0.00258 stdev/min.
+# Above this threshold the regime is treated as trending and the ratio
+# mean-revert thesis is suppressed to zero.
+E1_VOL_GATE_THRESHOLD   = 0.00258
 
 
 class ETHStrategy(BaseStrategy):
@@ -101,19 +115,33 @@ class ETHStrategy(BaseStrategy):
         signals["regime_adj"] = regime_adj
         p_yes += regime_adj * taper
 
-        # ── Component 3: ETH/BTC ratio divergence ───────────────────────
+        # ── Component 3: ETH/BTC ratio divergence (E1 vol-gated band) ───
         z = ratio_z_score(
             list(features.prices_60m),
             list(features.btc_prices_60m),
             lookback_minutes=240,
         )
 
+        rv = features.realized_vol_1min
+        is_trending = rv is not None and rv >= E1_VOL_GATE_THRESHOLD
+        signals["e1_vol_regime"] = "trending" if is_trending else "ranging"
+        signals["e1_realized_vol_1min"] = rv
+
         ratio_adj = 0.0
-        if z is not None:
-            z_clip = max(-3.0, min(3.0, z))
-            ratio_adj = -z_clip * (RATIO_ADJ_MAX / 3.0)
+        ratio_band_active = False
+        if z is not None and not is_trending:
+            if abs(z) >= E1_BAND_Z_THRESHOLD:
+                # E1 band fired: saturated mean-revert with the boosted cap.
+                ratio_adj = -E1_RATIO_ADJ_MAX if z > 0 else +E1_RATIO_ADJ_MAX
+                ratio_band_active = True
+            else:
+                # Inside the band: keep the legacy linear scaling so the
+                # signal degrades gracefully rather than cliff-edging at 1.2.
+                z_clip = max(-3.0, min(3.0, z))
+                ratio_adj = -z_clip * (RATIO_ADJ_MAX / 3.0)
         signals["ratio_z"] = z
         signals["ratio_adj"] = ratio_adj
+        signals["e1_band_active"] = ratio_band_active
         p_yes += ratio_adj * taper
 
         # ── Component 4: Kalshi contract velocity ───────────────────────

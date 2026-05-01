@@ -28,7 +28,10 @@ from strategies.calibration import AssetCalibrator
 
 from strategies.signals.kalshi_velocity import contract_velocity
 from strategies.signals.session_awareness import (
-    current_session, session_min_ev_multiplier
+    current_session,
+    session_min_ev_multiplier,
+    is_weekend_retail_fomo,
+    WEEKEND_FOMO_SIZE_FACTOR,
 )
 from strategies.signals.idiosyncratic_detector import detect_idiosyncratic_mode
 from strategies.signals.beta_cache import load_beta
@@ -39,6 +42,7 @@ from strategies.signals.taper import magnitude_taper
 BETA_ADJ_MAX  = 0.08
 MOMENTUM_BIAS = 0.015   # smaller than SOL (0.02) — DOGE momentum less reliable
 VELOCITY_ADJ  = 0.02
+WEEKEND_FOMO_BIAS = 0.02   # extra continuation nudge during D3 retail-FOMO window
 
 
 class DOGEStrategy(BaseStrategy):
@@ -89,10 +93,23 @@ class DOGEStrategy(BaseStrategy):
             )
 
         session = current_session()
-        mult = session_min_ev_multiplier(session)
+
+        velocity_for_fomo = contract_velocity(
+            list(features.kalshi_price_history),
+            lookback_samples=30,
+            threshold_pct=0.02,
+        )
+        retail_fomo = is_weekend_retail_fomo(
+            yes_ask_cents=features.yes_ask,
+            velocity=velocity_for_fomo,
+            now=features.timestamp,
+        )
+        mult = session_min_ev_multiplier(session, retail_fomo=retail_fomo)
         effective_min_ev = self.min_ev * mult
 
-        return self._decide_after_skip(features, session, effective_min_ev, idio_signals)
+        return self._decide_after_skip(
+            features, session, effective_min_ev, idio_signals, retail_fomo
+        )
 
     def _decide_after_skip(
         self,
@@ -100,6 +117,7 @@ class DOGEStrategy(BaseStrategy):
         session: str,
         effective_min_ev: float,
         idio_signals: dict,
+        retail_fomo: bool,
     ) -> Decision:
         from strategies.baseline import brownian_bridge_prob_above
         from strategies.ev import compute_bidirectional_ev
@@ -111,10 +129,15 @@ class DOGEStrategy(BaseStrategy):
             features.realized_vol_1min or 0.001,
         )
 
-        raw_p_yes, signals = self.compute_raw_p_model(features, baseline_p_above)
+        raw_p_yes, signals = self.compute_raw_p_model(
+            features, baseline_p_above, retail_fomo=retail_fomo
+        )
         signals["session"] = session
-        signals["session_min_ev_multiplier"] = mult = effective_min_ev / self.min_ev
+        signals["session_min_ev_multiplier"] = effective_min_ev / self.min_ev
         signals["effective_min_ev"] = effective_min_ev
+        signals["retail_fomo"] = retail_fomo
+        if retail_fomo:
+            signals["weekend_fomo_size_factor"] = WEEKEND_FOMO_SIZE_FACTOR
         signals.update(idio_signals)
 
         calibrated_p_yes = self.calibrator.calibrate(raw_p_yes)
@@ -166,6 +189,7 @@ class DOGEStrategy(BaseStrategy):
         self,
         features: MarketFeatures,
         baseline_p_above: float,
+        retail_fomo: bool = False,
     ) -> tuple[float, dict]:
         signals: dict = {}
         p_yes = baseline_p_above
@@ -203,6 +227,17 @@ class DOGEStrategy(BaseStrategy):
         signals["velocity"] = velocity
         signals["velocity_adj"] = velocity_adj
         p_yes += velocity_adj * taper
+
+        # D3: retail-FOMO weekend continuation nudge.
+        # Trigger gate (weekday + velocity + YES quote) lives in
+        # session_awareness.is_weekend_retail_fomo; here we add the
+        # directional bias only when the regime is active and the price
+        # is already above the strike (continuation, not chasing reversals).
+        fomo_adj = 0.0
+        if retail_fomo and above:
+            fomo_adj = +WEEKEND_FOMO_BIAS
+        signals["weekend_fomo_adj"] = fomo_adj
+        p_yes += fomo_adj * taper
 
         p_yes = max(0.05, min(0.95, p_yes))
         signals["final_p_yes"] = p_yes

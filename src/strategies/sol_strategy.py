@@ -1,11 +1,22 @@
 """
 SOLStrategy — evidence-based strategy for SOL 15-min binaries.
 
-Components:
-1. High-beta concurrent-BTC signal (primary, ~1.7x beta default)
-2. Momentum-biased prior (large-cap continuation — Grobys & Sapkota 2021)
-3. Solana network health kill switch (fail-safe, skip if unhealthy)
-4. Final-2-minute exhaustion fade on extreme moves
+Components (post-S1 update):
+1. **PRIMARY:** S1 cross-venue funding-rate dispersion (Binance vs
+   Hyperliquid) — captures positioning imbalance independently of price.
+   Replaces the old high-beta BTC signal as the dominant directional driver.
+2. Solana network health kill switch (fail-safe, skip if unhealthy)
+3. Variance-ratio regime (SOL's own returns)
+4. Reduced BTC-beta signal kept as a secondary "consensus" check at
+   half its previous magnitude — unwound if the funding signal disagrees
+   with it.
+5. Final-2-minute exhaustion fade on extreme moves
+6. Kalshi contract velocity
+
+The funding-dispersion monitor must be refreshed by an async background
+task in bot.py (call `await monitor.refresh()` ~ every 60 s).  Until that
+wiring lands, `current_dispersion()` returns None and the funding signal
+is silently zero — graceful degradation, not a hidden source of PnL.
 
 Uses Brownian-bridge baseline adjusted by evidence signals.
 BaseStrategy handles calibration, EV, and bidirectional side selection.
@@ -28,13 +39,21 @@ from strategies.signals.kalshi_velocity import contract_velocity
 from strategies.signals.beta_cache import load_beta
 from strategies.signals.btc_context import three_min_return
 from strategies.signals.taper import magnitude_taper
+from strategies.signals.funding_dispersion import (
+    FundingDispersionMonitor,
+    funding_dispersion_adjustment,
+    S1_FUNDING_ADJ_MAX,
+)
 
 
-BETA_ADJ_MAX   = 0.12   # larger than ETH's (SOL moves harder)
+# S1 funding signal is now primary; legacy BTC-beta path is halved so it
+# acts as a sanity check rather than a driver.
+BETA_ADJ_MAX   = 0.06
 MOMENTUM_BIAS  = 0.02   # always-on continuation nudge (large-cap default)
 REGIME_ADJ     = 0.03
 VELOCITY_ADJ   = 0.02
 EXHAUSTION_ADJ = 0.03
+FUNDING_ADJ_MAX = S1_FUNDING_ADJ_MAX
 
 
 class SOLStrategy(BaseStrategy):
@@ -45,6 +64,7 @@ class SOLStrategy(BaseStrategy):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
+        funding_monitor: Optional[FundingDispersionMonitor] = None,
     ):
         super().__init__(
             asset="SOL",
@@ -55,6 +75,9 @@ class SOLStrategy(BaseStrategy):
             maker=maker,
         )
         self.beta = load_beta("SOL")
+        # Lazy-construct an empty monitor if the caller didn't inject one;
+        # bot.py wires the live monitor + background refresh task.
+        self.funding_monitor = funding_monitor or FundingDispersionMonitor("SOL")
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
         """
@@ -149,9 +172,18 @@ class SOLStrategy(BaseStrategy):
         taper = magnitude_taper(baseline_p_above)
         above = features.current_price > features.strike
 
-        # ── Component 1: BTC beta signal ────────────────────────────────
-        btc_3m = three_min_return(features.btc_prices_60m)
+        # ── Component 1 (PRIMARY): S1 cross-venue funding dispersion ────
+        dispersion = self.funding_monitor.current_dispersion()
+        funding_adj, funding_info = funding_dispersion_adjustment(dispersion)
+        signals.update(funding_info)
+        signals["funding_adj"] = funding_adj
+        p_yes += funding_adj * taper
 
+        # ── Component 1b (secondary): half-magnitude BTC beta sanity ────
+        # If funding implies down and BTC beta also implies down, conviction
+        # is reinforced; if they disagree, halve BTC beta so the dominant
+        # signal (funding) wins out.
+        btc_3m = three_min_return(features.btc_prices_60m)
         beta_adj = 0.0
         if btc_3m is not None:
             implied_sol_move = self.beta * btc_3m
@@ -160,6 +192,11 @@ class SOLStrategy(BaseStrategy):
             if expected_remaining_move > 0:
                 nudge = (implied_sol_move / expected_remaining_move) * BETA_ADJ_MAX
                 beta_adj = max(-BETA_ADJ_MAX, min(BETA_ADJ_MAX, nudge))
+            # Disagreement attenuator: same sign keeps full magnitude;
+            # opposite signs cut the beta nudge in half.
+            if funding_adj != 0.0 and (funding_adj * beta_adj) < 0:
+                beta_adj *= 0.5
+                signals["beta_adj_attenuated"] = True
         signals["btc_3m_return"] = btc_3m
         signals["beta"] = self.beta
         signals["beta_adj"] = beta_adj

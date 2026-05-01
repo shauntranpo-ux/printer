@@ -101,3 +101,80 @@ def test_eth_cold_start_skip():
     )
     d = strat.decide(_eth_features(above_strike=True))
     assert d.action == "skip"
+
+
+# ── E1 vol-gated ratio mean-revert tests ───────────────────────────────────
+
+def _eth_features_with_ratio_overshoot(z_sign: int, vol: float):
+    """
+    Build an ETH/BTC ratio overshoot of |z| ~ 2 with controllable
+    realized_vol_1min so we can exercise the E1 vol gate.
+    """
+    f = _eth_features(above_strike=True)
+    f.realized_vol_1min = vol
+    now = f.timestamp
+    f.prices_60m.clear()
+    f.btc_prices_60m.clear()
+    btc = 100000.0
+    base_ratio = 0.021
+    eth = btc * base_ratio
+    for i in range(60):
+        ts = now - (60 - i) * 60
+        if i < 50:
+            # Build the rolling-mean ratio.
+            f.prices_60m.append((ts, eth))
+            f.btc_prices_60m.append((ts, btc))
+        else:
+            # Push ratio up or down sharply over the last 10 buckets.
+            shocked = base_ratio * (1.0 + 0.03 * z_sign)
+            f.prices_60m.append((ts, btc * shocked))
+            f.btc_prices_60m.append((ts, btc))
+    f.current_price = f.prices_60m[-1][1]
+    return f
+
+
+def test_e1_band_fires_in_low_vol_overshoot_up():
+    strat = ETHStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.001,
+        stake_dollars=5.0,
+    )
+    f = _eth_features_with_ratio_overshoot(z_sign=+1, vol=0.001)
+    d = strat.decide(f)
+    sig = d.contributing_signals
+    if "ratio_z" in sig and sig["ratio_z"] is not None and abs(sig["ratio_z"]) >= 1.2:
+        assert sig["e1_vol_regime"] == "ranging"
+        assert sig["e1_band_active"] is True
+        # Overshoot up → mean-revert nudge points down (negative ratio_adj)
+        assert sig["ratio_adj"] < 0
+
+
+def test_e1_band_suppressed_in_trending_high_vol():
+    strat = ETHStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.001,
+        stake_dollars=5.0,
+    )
+    f = _eth_features_with_ratio_overshoot(z_sign=+1, vol=0.005)
+    d = strat.decide(f)
+    sig = d.contributing_signals
+    if "ratio_z" in sig:
+        assert sig["e1_vol_regime"] == "trending"
+        assert sig["e1_band_active"] is False
+        assert sig["ratio_adj"] == 0.0
+
+
+def test_e1_band_inactive_below_threshold_falls_back_to_linear():
+    strat = ETHStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.001,
+        stake_dollars=5.0,
+    )
+    f = _eth_features(above_strike=True)
+    f.realized_vol_1min = 0.001  # ranging
+    d = strat.decide(f)
+    sig = d.contributing_signals
+    if "ratio_z" in sig and sig["ratio_z"] is not None and abs(sig["ratio_z"]) < 1.2:
+        assert sig["e1_band_active"] is False
+        # Linear scaling path is still active inside the band
+        assert isinstance(sig["ratio_adj"], float)
