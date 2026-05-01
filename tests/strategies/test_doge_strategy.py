@@ -69,10 +69,11 @@ def test_doge_idiosyncratic_mode_forces_skip():
     doge = 0.10
     for i in range(90):
         ts = now - (90 - i) * 60
-        if i < 75:
-            doge *= 1.0001
+        if i < 85:
+            # alternating small moves give history a non-zero σ
+            doge *= (1.002 if i % 2 == 0 else 0.998)
         else:
-            doge *= 1.005  # DOGE spikes while BTC flat
+            doge *= 1.05            # DOGE spikes hard vs flat-ish history
         f.prices_60m.append((ts, doge))
     f.current_price = doge
 

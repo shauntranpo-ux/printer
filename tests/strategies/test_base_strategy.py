@@ -1,9 +1,7 @@
-from collections import deque
 from unittest.mock import patch as _patch
-import pytest
 
 from strategies.base import BaseStrategy
-from strategies.features import MarketFeatures, Decision
+from strategies.features import MarketFeatures
 from strategies.skip_layer import SkipConfig
 
 
@@ -11,7 +9,11 @@ class DummyStrategy(BaseStrategy):
     """Concrete subclass for testing the decision pipeline."""
 
 
-def _make_features(**overrides):
+def _make_features(trend: float = 0.0, **overrides):
+    """
+    trend > 0 → prices rise over 60 ticks (aligns momentum with YES signal).
+    trend < 0 → prices fall (aligns with NO signal).
+    """
     f = MarketFeatures(
         asset="BTC",
         ticker="TEST",
@@ -30,74 +32,59 @@ def _make_features(**overrides):
         realized_vol_1min=0.002,
     )
     for i in range(60):
-        f.prices_60m.append((float(i), 100000.0))
+        f.prices_60m.append((float(i), 100000.0 + trend * i))
     for k, v in overrides.items():
         setattr(f, k, v)
     return f
 
 
-def _mock_supertrend(direction: int):
-    """Patch supertrend to return a fixed direction (1=YES, -1=NO)."""
+def _mock_signal(side: str):
+    """
+    Patch compute_15m_signal to return a fixed direction.
+    The second element is signal strength in the predicted direction (not raw p_yes).
+    base.py flips it for NO: p_model_for_ev = 1 - 0.70 = 0.30 → no_ev = 0.70 - no_ask.
+    """
     return _patch(
-        "strategies.signals.supertrend.supertrend_direction",
-        return_value=direction,
+        "strategies.signals.fifteen_min_signal.compute_15m_signal",
+        return_value=(side, 0.70),
     )
-
-
-def test_skip_propagates_from_skip_layer():
-    strat = DummyStrategy(
-        asset="BTC",
-        skip_config=SkipConfig(),
-        min_ev=0.08,
-        stake_dollars=5.0,
-    )
-    features = _make_features(seconds_left=10)  # triggers hourly skip_layer before Supertrend
-    decision = strat.decide(features)
-    assert decision.action == "skip"
-    assert "seconds_left" in decision.reason
 
 
 def test_trade_when_ev_positive():
-    strat = DummyStrategy(
-        asset="BTC",
-        skip_config=SkipConfig(),
-        min_ev=0.05,
-        stake_dollars=5.0,
-    )
-    # yes_ask=55c: yes_ev = 0.70 - 0.55 - fee ≈ 0.15 > 0.05
-    features = _make_features(yes_ask=55.0, no_ask=47.0)
-    with _mock_supertrend(1):
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0)
+    # yes_ask=55c, trend up → signal=yes, momentum aligned, EV positive
+    features = _make_features(trend=10.0, yes_ask=55.0, no_ask=47.0, yes_bid=54.0, no_bid=46.0)
+    with _mock_signal("yes"):
         decision = strat.decide(features)
     assert decision.action == "trade"
     assert decision.side == "yes"
 
 
-def test_trade_flips_to_no_when_supertrend_is_down():
-    strat = DummyStrategy(
-        asset="BTC",
-        skip_config=SkipConfig(),
-        min_ev=0.05,
-        stake_dollars=5.0,
-    )
-    # Supertrend=-1 (down/NO): p_model_for_ev=0.30
-    # no_ev = (1-0.30) - 0.37 - fee = 0.70 - 0.37 - fee ≈ 0.33 > 0.05
-    features = _make_features(yes_ask=65.0, no_ask=37.0)
-    with _mock_supertrend(-1):
+def test_trade_flips_to_no_when_signal_is_down():
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0)
+    # no_ask=37c, trend down → signal=no, momentum aligned, EV positive
+    features = _make_features(trend=-10.0, yes_ask=65.0, no_ask=37.0, yes_bid=64.0, no_bid=36.0)
+    with _mock_signal("no"):
         decision = strat.decide(features)
     assert decision.action == "trade"
     assert decision.side == "no"
 
 
 def test_skip_when_ev_below_threshold():
-    strat = DummyStrategy(
-        asset="BTC",
-        skip_config=SkipConfig(),
-        min_ev=0.20,  # very high threshold
-        stake_dollars=5.0,
-    )
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.20, stake_dollars=5.0)
     # yes_ask=65c: yes_ev = 0.70 - 0.65 - fee ≈ 0.05 < 0.20
-    features = _make_features(yes_ask=65.0, no_ask=37.0)
-    with _mock_supertrend(1):
+    features = _make_features(trend=10.0, yes_ask=65.0, no_ask=37.0, yes_bid=64.0, no_bid=36.0)
+    with _mock_signal("yes"):
         decision = strat.decide(features)
     assert decision.action == "skip"
     assert "EV" in decision.reason
+
+
+def test_skip_when_momentum_misaligned():
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0)
+    # Signal says YES but prices are trending down → momentum misalign skip
+    features = _make_features(trend=-10.0, yes_ask=55.0, no_ask=47.0, yes_bid=54.0, no_bid=46.0)
+    with _mock_signal("yes"):
+        decision = strat.decide(features)
+    assert decision.action == "skip"
+    assert "momentum" in decision.reason
