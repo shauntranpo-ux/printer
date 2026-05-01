@@ -96,7 +96,7 @@ body{background:var(--bg);color:var(--ink);font-family:'Barlow Condensed',sans-s
 .reset-btn:hover{border-color:var(--down);color:var(--down);}
 
 /* â”€â”€ Market grid â”€â”€ */
-#market-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px;}
+#market-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px;}
 .market-card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px 14px 12px;box-shadow:var(--shadow);cursor:pointer;transition:border-color .15s;}
 .market-card:hover{border-color:var(--line-2);}
 .market-card.mc-offline{opacity:.55;}
@@ -1138,7 +1138,7 @@ function shortTicker(t) { if (!t) return '—'; return t.length>16?t.slice(0,16)
 function escHtml(s) { if (s==null) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 // â”€â”€ Market allocation donut â”€â”€
-const _ALLOC_COLORS = {ETH:'#7b8cff', SOL:'#8a5cf0', XRP:'#5cc8f0'};
+const _ALLOC_COLORS = {BTC:'#f7931a', ETH:'#7b8cff', SOL:'#8a5cf0', XRP:'#5cc8f0', DOGE:'#c2a633'};
 function drawAllocDonut(data) {
   const svg = document.getElementById('alloc-donut-svg');
   const leg = document.getElementById('alloc-legend');
@@ -1165,12 +1165,14 @@ function drawAllocDonut(data) {
 }
 function updateAllocation() {
   const all = [...liveTradesData, ...paperTradesData];
-  const counts={ETH:0,SOL:0,XRP:0}, wins={ETH:0,SOL:0,XRP:0};
+  const SYMS = ['BTC','ETH','SOL','XRP','DOGE'];
+  const counts = Object.fromEntries(SYMS.map(s=>[s,0]));
+  const wins   = Object.fromEntries(SYMS.map(s=>[s,0]));
   all.forEach(t => {
-    const a = t.asset || (['ETH','SOL','XRP'].find(x=>(t.market_id||'').includes(x)));
+    const a = t.asset || SYMS.find(x=>(t.market_id||'').includes(x));
     if (a && counts[a]!==undefined) { counts[a]++; if(t.outcome==='win') wins[a]++; }
   });
-  const data = ['ETH','SOL','XRP'].map(sym=>({sym, count:counts[sym], color:_ALLOC_COLORS[sym]}));
+  const data = SYMS.map(sym=>({sym, count:counts[sym], color:_ALLOC_COLORS[sym]}));
   drawAllocDonut(data);
   const total = Object.values(counts).reduce((a,b)=>a+b,0);
   const top = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0];
@@ -1183,8 +1185,8 @@ function updateAllocation() {
 }
 
 // â”€â”€ Price / secs formatters â”€â”€
-const _ASSET_ORDER = ['BTC','ETH','SOL','XRP'];
-const _ASSET_LABEL = {BTC:'BTC',ETH:'ETH',SOL:'SOL',XRP:'XRP'};
+const _ASSET_ORDER = ['BTC','ETH','SOL','XRP','DOGE'];
+const _ASSET_LABEL = {BTC:'BTC',ETH:'ETH',SOL:'SOL',XRP:'XRP',DOGE:'DOGE'};
 function _fmtPrice(asset, price) {
   if (price==null) return '—';
   if (asset==='ETH') return '$'+price.toLocaleString('en-US',{maximumFractionDigits:0});
