@@ -1,5 +1,5 @@
 """
-Tests for the entry range gate (20c–76c for 15m, 20c–80c for hourly).
+Tests for the entry range gate (20c–76c for 15m markets).
 
 The bot only enters trades where the chosen side's ask is within
 [cfg.min_entry_price_cents, cfg.max_entry_price_cents). Below the floor is
@@ -86,37 +86,6 @@ def test_buffer_too_thin_applies_to_short_duration_markets():
     assert reason is None or "buffer_too_thin" not in reason, (
         f"short-duration market (14min left) should skip buffer_too_thin gate, got: {reason}"
     )
-
-
-def test_buffer_too_thin_still_applies_to_hourly():
-    """60m markets still go through buffer_too_thin when dist is tiny + vol is high."""
-    from strategies.skip_layer import check_vol_ratio, SkipConfig
-    from strategies.features import MarketFeatures
-    from collections import deque
-    import time as _time
-
-    prices = deque([(float(_time.time() - (60 - i) * 60), 85.40 + 0.001 * i) for i in range(80)])
-
-    f = MarketFeatures(
-        asset="BTC",
-        ticker="KXBTCD-26APR2317-T85409.99",
-        timestamp=_time.time(),
-        current_price=85.40,
-        strike=85.41,
-        btc_price=85.40,
-        seconds_left=55 * 60.0,  # 55 min left → NOT short-duration
-        elapsed_seconds=5 * 60.0,
-        yes_ask=49.0, no_ask=56.0,
-        yes_bid=47.0, no_bid=54.0,
-        spread_yes=2.0, spread_no=2.0,
-        prices_60m=prices,
-        btc_prices_60m=deque([(float(_time.time() - i), 85.40) for i in range(80)]),
-        realized_vol_1min=0.01,  # higher vol
-    )
-
-    reason = check_vol_ratio(f, SkipConfig())
-    assert reason is not None
-    assert "buffer_too_thin" in reason
 
 
 def test_fifteen_min_strategy_rejects_trade_at_100c_no_ask():

@@ -1,6 +1,7 @@
 """
 Regression snapshot: proves the is_15m=True path uses compute_15m_signal
-and that is_15m=False produces identical results to the old Supertrend path.
+and that is_15m=False produces identical results to the Supertrend path
+used by per-asset strategies (BTC/ETH/etc).
 """
 import collections
 import time
@@ -48,9 +49,9 @@ def _make_features(n_prices: int = 60, current_price: float = 100_000.0,
     )
 
 
-# ── hourly path: unchanged ────────────────────────────────────────────────────
+# ── supertrend path (is_15m=False, used by per-asset strategies) ───────────────
 
-def test_hourly_path_uses_supertrend():
+def test_supertrend_path_uses_supertrend():
     """is_15m=False still routes through Supertrend."""
     strat = _Strat(
         asset="BTC", skip_config=_SKIP_CFG,
@@ -62,7 +63,7 @@ def test_hourly_path_uses_supertrend():
     assert d.contributing_signals.get("signal_name") == "supertrend"
 
 
-def test_hourly_path_supertrend_none_skips():
+def test_supertrend_path_supertrend_none_skips():
     """Supertrend returning None → skip (need enough prices to pass skip_layer)."""
     strat = _Strat(
         asset="BTC", skip_config=_SKIP_CFG,

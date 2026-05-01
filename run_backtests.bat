@@ -43,30 +43,3 @@ py backtesting/cli.py report --asset xrp --strategy b
 
 echo.
 echo Done. Drop results here and I will apply best strategy per market and push.
-
-:: ============================================================
-:: SECTION 4 - STRATEGY C (BTC + ETH HOURLY STRIKE-LADDER)
-:: NOTE: Requires data/kalshi/hourly/BTC/ and data/kalshi/hourly/ETH/
-::       to be populated with Kalshi ladder parquet files first.
-::       Uncomment these lines once ladder data is available.
-:: ============================================================
-
-:: -- Strategy C: Train (fits HAR, calibrators, writes fitted.yaml)
-:: py backtesting/cli.py train --asset btc --strategy c
-:: py backtesting/cli.py train --asset eth --strategy c
-
-:: -- Strategy C: Validate (event-level CPCV)
-:: py backtesting/cli.py validate --asset btc --strategy c
-:: py backtesting/cli.py validate --asset eth --strategy c
-
-:: -- Strategy C: Backtest (simulation)
-:: py backtesting/cli.py backtest --asset btc --strategy c
-:: py backtesting/cli.py backtest --asset eth --strategy c
-
-:: -- Strategy C: Reports
-:: py backtesting/cli.py report --asset btc --strategy c
-:: py backtesting/cli.py report --asset eth --strategy c
-
-:: -- Strategy C: Full pipeline (train + validate + backtest + report)
-:: py backtesting/cli.py all --asset btc --strategy c
-:: py backtesting/cli.py all --asset eth --strategy c

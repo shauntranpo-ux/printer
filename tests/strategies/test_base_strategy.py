@@ -51,7 +51,7 @@ def test_skip_propagates_from_skip_layer():
         min_ev=0.08,
         stake_dollars=5.0,
     )
-    features = _make_features(seconds_left=10)  # triggers hourly skip_layer before Supertrend
+    features = _make_features(seconds_left=10)  # triggers skip_layer before Supertrend
     decision = strat.decide(features)
     assert decision.action == "skip"
     assert "seconds_left" in decision.reason

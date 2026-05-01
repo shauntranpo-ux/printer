@@ -10,7 +10,7 @@ py download_data.py --asset BTC ETH
 if errorlevel 1 goto :error
 
 echo.
-echo Done. Now re-run run_backtests_hourly.bat
+echo Done. Now re-run run_backtests.bat
 pause
 exit /b 0
 

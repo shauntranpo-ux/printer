@@ -8,7 +8,6 @@ Sidecars
 --------
   paper mode  : price_validator.py     — continuous AMM price accuracy monitor
   live mode   : validate_and_report.py — blocking GO/NO-GO gate before bots start
-  always      : collect_kalshi_ladder_history.py — refreshed every 24 h
   always      : weekly_report.py       — refreshed every 7 days
 
 Usage:
@@ -31,7 +30,6 @@ DEFAULT_STRATEGIES_FILE = os.path.join(BASE_DIR, "strategies.json")
 RESTART_BACKOFF      = 10        # seconds before restarting a crashed bot
 POLL_INTERVAL        = 5         # seconds between health-check loops
 MAX_CRASHES_PER_HOUR = 5         # halt permanently after this many crashes/hour
-LADDER_INTERVAL      = 24 * 3600 # re-run ladder collector every 24 h
 WEEKLY_INTERVAL      = 7 * 24 * 3600  # re-run weekly report every 7 days
 
 
@@ -57,9 +55,7 @@ def _send_telegram_sync(text: str) -> None:
 # ── Process registry ──────────────────────────────────────────────────────────
 _procs: list[dict] = []                          # bot strategy processes
 _validator_proc: subprocess.Popen | None = None  # price_validator (paper mode)
-_ladder_proc:    subprocess.Popen | None = None  # ladder history collector
 _weekly_proc:    subprocess.Popen | None = None  # weekly report generator
-_last_ladder_run: float = 0.0
 _last_weekly_run: float = 0.0
 
 
@@ -142,18 +138,6 @@ def _run_preflight_validation() -> bool:
     return True
 
 
-def _start_ladder_collector() -> subprocess.Popen:
-    global _last_ladder_run
-    print("[runner] Starting collect_kalshi_ladder_history.py ...")
-    proc = subprocess.Popen(
-        [sys.executable, os.path.join(BASE_DIR, "collect_kalshi_ladder_history.py"), "--days", "3"],
-        cwd=BASE_DIR,
-    )
-    _last_ladder_run = time.time()
-    print(f"[runner]   ladder collector PID={proc.pid}")
-    return proc
-
-
 def _start_weekly_report() -> subprocess.Popen:
     global _last_weekly_run
     print("[runner] Starting weekly_report.py ...")
@@ -175,7 +159,6 @@ def _shutdown(signum, frame):
             print(f"[runner]   terminated '{entry['name']}'")
     for name, proc in [
         ("price_validator",  _validator_proc),
-        ("ladder_collector", _ladder_proc),
         ("weekly_report",    _weekly_proc),
     ]:
         if proc and proc.poll() is None:
@@ -187,7 +170,7 @@ def _shutdown(signum, frame):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    global _validator_proc, _ladder_proc, _weekly_proc
+    global _validator_proc, _weekly_proc
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--strategies", default=DEFAULT_STRATEGIES_FILE)
@@ -240,9 +223,6 @@ def main():
         _validator_proc = _start_validator()
     else:
         print("[runner] Live mode — price_validator not started.")
-
-    # Always: ladder history collector (runs once now, then every 24 h)
-    _ladder_proc = _start_ladder_collector()
 
     # Always: weekly report (runs once now, then every 7 days)
     _weekly_proc = _start_weekly_report()
@@ -312,12 +292,6 @@ def main():
                 print(f"[runner] price_validator exited (code={_validator_proc.returncode}) — restarting ...")
                 _validator_proc = _start_validator()
 
-            # ── ladder collector: restart when done + 24 h elapsed ───────────
-            if _ladder_proc and _ladder_proc.poll() is not None:
-                if now - _last_ladder_run >= LADDER_INTERVAL:
-                    print("[runner] 24 h elapsed — refreshing ladder history ...")
-                    _ladder_proc = _start_ladder_collector()
-
             # ── weekly report: restart when done + 7 days elapsed ────────────
             if _weekly_proc and _weekly_proc.poll() is not None:
                 if now - _last_weekly_run >= WEEKLY_INTERVAL:
@@ -330,8 +304,6 @@ def main():
             sidecars = []
             if _validator_proc:
                 sidecars.append(f"price_validator:{'on' if _validator_proc.poll() is None else 'restarting'}")
-            if _ladder_proc:
-                sidecars.append(f"ladder:{'running' if _ladder_proc.poll() is None else 'idle'}")
             if _weekly_proc:
                 sidecars.append(f"weekly:{'running' if _weekly_proc.poll() is None else 'idle'}")
             status = f"[runner] OK | bots: {running}"

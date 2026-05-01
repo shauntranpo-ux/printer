@@ -169,7 +169,7 @@ def candles_to_tick_deque(bars: list[tuple]) -> deque:
 
 # ── Kalshi market fetch ────────────────────────────────────────────────────────
 def fetch_kalshi_market(asset: str) -> dict | None:
-    """Fetch soonest-expiring open 15m (or hourly) market for an asset."""
+    """Fetch soonest-expiring open 15m market for an asset."""
     now_utc = datetime.now(timezone.utc)
     for series in ASSET_SERIES[asset]:
         path = "/markets"

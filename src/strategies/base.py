@@ -1,17 +1,22 @@
 """
-Abstract base class every per-market strategy inherits.
+Abstract base class every per-market 15-min strategy inherits.
 
-Decision pipeline (same for 15m and hourly, all modes):
-  1. Skip layer      -- hourly only: spread, cold-start, seconds_left, deep-OTM (20c floor)
-                        15m: no pre-filter; range enforced post-decision at step 6
+Decision pipeline (all modes):
+  1. Skip layer      -- supertrend path only: spread, cold-start, seconds_left, deep-OTM (20c floor)
+                        d3_hybrid path (FifteenMinStrategy): no pre-filter;
+                        range enforced post-decision at step 7
   2. Market prob     -- Kalshi AMM implied probability (reference only)
-  3. Direction       -- 15m: D3-hybrid ensemble vote (compute_15m_signal)
-                        hourly: Supertrend ATR
-  4. EV check        -- 15m: calibrated BS p_yes; hourly: hardcoded 0.70
+  3. Direction       -- d3_hybrid path: D3-hybrid ensemble vote (compute_15m_signal)
+                        supertrend path: Supertrend ATR
+  4. EV check        -- d3_hybrid path: calibrated BS p_yes;
+                        supertrend path: hardcoded 0.70
   5. Vol ratio gate  -- buffer durability; applies to all markets
   6. Confidence gate -- p_ev >= threshold (disabled by default; set in config)
-  7. Entry range     -- [20c, 76c) for 15m, [20c, 80c) for hourly
+  7. Entry range     -- [20c, 76c) for 15m markets
   8. Trade
+
+The `is_15m` flag selects between the two production code paths; both are
+used for 15-min markets depending on which strategy class is instantiated.
 """
 
 from __future__ import annotations
@@ -63,7 +68,7 @@ class BaseStrategy(ABC):
         self._side_rolling: collections.deque = collections.deque(maxlen=_BIAS_WINDOW)
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
-        # Step 1: skip layer (hourly only; 15m range enforced post-decision in step 7)
+        # Step 1: skip layer (supertrend path only; d3_hybrid range enforced post-decision in step 7)
         if not self.is_15m:
             skip_reason = check_skip(features, self.skip_config, macro_event_active)
             if skip_reason:
@@ -130,9 +135,9 @@ class BaseStrategy(ABC):
             st_side = "yes" if st == 1 else "no"
             signal_raw_p_yes = _SUPERTREND_P_MODEL
 
-        # Step 3.5: short-term momentum alignment (15m markets only)
+        # Step 3.5: short-term momentum alignment (d3_hybrid path only)
         # Require that the last 4 ticks are moving in the direction of the signal.
-        # Filters entries where hourly trend exists but short-term momentum hasn't confirmed.
+        # Filters entries where the broader trend exists but short-term momentum hasn't confirmed.
         if self.is_15m and len(features.prices_60m) >= self.momentum_lookback + 1:
             recent_delta = features.prices_60m[-1][1] - features.prices_60m[-self.momentum_lookback][1]
             aligned = (st_side == "yes" and recent_delta > 0) or (st_side == "no" and recent_delta < 0)
@@ -154,7 +159,7 @@ class BaseStrategy(ABC):
                     },
                 )
 
-        # Step 4: EV gate — 15m uses calibrated BS p_yes; hourly uses fixed 0.70
+        # Step 4: EV gate — d3_hybrid uses calibrated BS p_yes; supertrend uses fixed 0.70
         if self.is_15m:
             p_ev = self.calibrator.calibrate(signal_raw_p_yes)
         else:
@@ -247,7 +252,7 @@ class BaseStrategy(ABC):
                     expected_value=side_ev,
                 )
 
-        # Step 7: entry range ([20c, 76c) for 15m, [20c, 80c) for hourly)
+        # Step 7: entry range ([20c, 76c) for 15m markets)
         range_reason = check_entry_range(entry_cents, st_side, self.skip_config)
         if range_reason:
             return Decision(

@@ -21,7 +21,7 @@ class SimulatedOrderbook(NamedTuple):
 
 
 # Half-spread per asset in cents. Conservative (wider than live Kalshi data).
-# Real Kalshi spread on active hourly markets is ~2c; we use 3c total = 1.5c half.
+# Real Kalshi spread on active 15-min markets is ~2c; we use 3c total = 1.5c half.
 HALF_SPREAD_CENTS = {
     "BTC":  1.5,
     "ETH":  1.5,
