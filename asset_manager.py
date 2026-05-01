@@ -1,10 +1,10 @@
 """
-asset_manager.py — Asset configuration and Binance price feeds.
+asset_manager.py — Asset configuration and Coinbase price feeds.
 
 Provides:
-  ASSET_CONFIG        — per-asset metadata (strike increment, Kalshi series, Binance symbol)
-  binance_feed_task() — async coroutine maintaining per-asset price deques
-  coinbase_price_task() — fallback REST price feed (Coinbase)
+  ASSET_CONFIG        — per-asset metadata (strike increment, Kalshi series, Coinbase symbol)
+  coinbase_price_task() — async coroutine maintaining per-asset price deques
+  seed_price_history()  — pre-fills price deques from Coinbase Exchange candles on startup
   get_price(asset)    — latest price for an asset
   price_age_seconds   — seconds since last update
 """
@@ -16,11 +16,7 @@ import os
 import time
 from collections import deque
 
-import websockets
-
 log = logging.getLogger("bot")
-
-BINANCE_WS = "wss://stream.binance.com:9443/stream"
 
 # ── Asset registry ────────────────────────────────────────────────────────────
 ASSET_CONFIG = {
@@ -79,21 +75,23 @@ def price_age_seconds(asset: str) -> float | None:
 # Coinbase public REST URL for spot prices — no auth, works globally
 _COINBASE_SPOT_URL = "https://api.coinbase.com/v2/prices/{asset}-USD/spot"
 
-# Consecutive Binance-451 counter — switch to Coinbase fallback after this many
-_binance_451_streak: int = 0
-_BINANCE_451_THRESHOLD = 5
+# Coinbase Exchange public candles API — no auth, supports all 5 assets
+_COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/{product_id}/candles"
 
-
-_BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
-_KRAKEN_OHLC_URL   = "https://api.kraken.com/0/public/OHLC"
-_KRAKEN_PAIRS = {"BTC": "XBTUSD", "ETH": "ETHUSD", "SOL": "SOLUSD", "XRP": "XRPUSD"}
+_COINBASE_PRODUCTS = {
+    "BTC":  "BTC-USD",
+    "ETH":  "ETH-USD",
+    "SOL":  "SOL-USD",
+    "XRP":  "XRP-USD",
+    "DOGE": "DOGE-USD",
+}
 
 
 async def seed_price_history(assets: list[str]) -> None:
     """
     Pre-fill _prices deques with 30 historical 1-minute bars so Supertrend
     has enough data immediately after a cold start / crash restart.
-    Tries Binance REST first; falls back to Kraken public OHLC.
+    Uses Coinbase Exchange public candles API (no auth, supports all 5 assets).
     """
     import aiohttp as _aiohttp
 
@@ -102,70 +100,43 @@ async def seed_price_history(assets: list[str]) -> None:
         if dq is None:
             continue
 
-        cfg = ASSET_CONFIG.get(asset, {})
-        sym = cfg.get("binance_symbol", "").upper()
-        seeded = False
+        product_id = _COINBASE_PRODUCTS.get(asset)
+        if not product_id:
+            log.warning("[%s] seed_price_history: no Coinbase product mapping", asset)
+            continue
 
-        # ── Binance REST klines ────────────────────────────────────────────
-        if sym:
-            try:
-                async with _aiohttp.ClientSession() as s:
-                    async with s.get(
-                        _BINANCE_KLINES_URL,
-                        params={"symbol": sym, "interval": "1m", "limit": "30"},
-                        timeout=_aiohttp.ClientTimeout(total=6),
-                    ) as resp:
-                        if resp.status == 200:
-                            klines = await resp.json()
-                            for k in klines:
-                                # k[6] = close_time (ms), k[4] = close price
-                                dq.append((int(k[6]) / 1000.0, float(k[4])))
-                            log.info(
-                                "[%s] seed_price_history: %d bars from Binance REST",
-                                asset, len(klines),
-                            )
-                            seeded = True
-            except Exception as exc:
-                log.debug("[%s] Binance klines seed failed: %s", asset, exc)
-
-        # ── Kraken OHLC fallback ───────────────────────────────────────────
-        if not seeded:
-            pair = _KRAKEN_PAIRS.get(asset)
-            if pair:
-                try:
-                    async with _aiohttp.ClientSession() as s:
-                        async with s.get(
-                            _KRAKEN_OHLC_URL,
-                            params={"pair": pair, "interval": "1"},
-                            timeout=_aiohttp.ClientTimeout(total=6),
-                        ) as resp:
-                            if resp.status == 200:
-                                data = await resp.json()
-                                result = data.get("result", {})
-                                bars = next(
-                                    (v for k, v in result.items()
-                                     if k != "last" and isinstance(v, list)),
-                                    [],
-                                )
-                                for bar in bars[-30:]:
-                                    dq.append((float(bar[0]), float(bar[4])))
-                                log.info(
-                                    "[%s] seed_price_history: %d bars from Kraken",
-                                    asset, min(30, len(bars)),
-                                )
-                                seeded = True
-                except Exception as exc:
-                    log.debug("[%s] Kraken OHLC seed failed: %s", asset, exc)
-
-        if not seeded:
-            log.warning("[%s] seed_price_history: both REST sources failed", asset)
+        try:
+            async with _aiohttp.ClientSession() as s:
+                async with s.get(
+                    _COINBASE_CANDLES_URL.format(product_id=product_id),
+                    params={"granularity": "60"},
+                    timeout=_aiohttp.ClientTimeout(total=8),
+                ) as resp:
+                    if resp.status == 200:
+                        # Returns [[time, low, high, open, close, volume], ...] descending
+                        candles = await resp.json()
+                        # Take last 30 bars (candles are newest-first, reverse for chronological)
+                        bars = list(reversed(candles[:30]))
+                        for bar in bars:
+                            # bar[0]=time (unix), bar[4]=close
+                            dq.append((float(bar[0]), float(bar[4])))
+                        log.info(
+                            "[%s] seed_price_history: %d bars from Coinbase Exchange",
+                            asset, len(bars),
+                        )
+                    else:
+                        log.warning(
+                            "[%s] seed_price_history: Coinbase returned HTTP %d",
+                            asset, resp.status,
+                        )
+        except Exception as exc:
+            log.warning("[%s] seed_price_history failed: %s", asset, exc)
 
 
 async def coinbase_price_task(enabled_assets: list[str]) -> None:
     """
-    Fallback REST-polling price feed using Coinbase public spot API.
-    Runs in parallel with binance_feed_task. Only writes a price when
-    the asset has no Binance tick in the last 5 seconds.
+    Real-time REST-polling price feed using Coinbase public spot API.
+    Polls every 2 seconds per asset. Primary price source for all assets.
     """
     import aiohttp as _aiohttp
 
@@ -173,16 +144,13 @@ async def coinbase_price_task(enabled_assets: list[str]) -> None:
     if not valid_assets:
         return
 
-    log.info(f"Coinbase fallback feed starting for {valid_assets}")
+    log.info(f"Coinbase price feed starting for {valid_assets}")
     while True:
         try:
             async with _aiohttp.ClientSession() as session:
                 while True:
                     for asset in valid_assets:
                         try:
-                            age = price_age_seconds(asset)
-                            if age is not None and age < 5:
-                                continue
                             url = _COINBASE_SPOT_URL.format(asset=asset)
                             async with session.get(
                                 url, timeout=_aiohttp.ClientTimeout(total=5)
@@ -194,79 +162,9 @@ async def coinbase_price_task(enabled_assets: list[str]) -> None:
                                     dq = _prices[asset]
                                     if not dq or (now_ts - dq[-1][0]) >= 1.0:
                                         dq.append((now_ts, price))
-                                        if age is None or age > 10:
-                                            log.info(
-                                                f"Coinbase fallback [{asset}] "
-                                                f"${price:,.2f}"
-                                            )
                         except Exception as _e:
-                            log.debug(f"Coinbase fallback [{asset}] error: {_e}")
+                            log.debug(f"Coinbase feed [{asset}] error: {_e}")
                     await asyncio.sleep(2)
         except Exception as exc:
-            log.warning(f"Coinbase fallback session error: {exc}. Retrying in 5s...")
+            log.warning(f"Coinbase feed session error: {exc}. Retrying in 5s...")
             await asyncio.sleep(5)
-
-
-async def binance_feed_task(enabled_assets: list[str]) -> None:
-    """
-    Maintain real-time price feeds for all enabled assets via Binance combined
-    WebSocket stream (aggTrade). Reconnects automatically on any error.
-
-    On environments where Binance is geo-blocked (HTTP 451), the coinbase_price_task
-    coroutine provides prices as a fallback — start both tasks in parallel.
-    """
-    global _binance_451_streak
-
-    valid_assets = [a for a in enabled_assets if a in ASSET_CONFIG]
-    if not valid_assets:
-        log.warning("binance_feed_task: no valid assets — price feed not started")
-        return
-
-    streams = "/".join(
-        f"{ASSET_CONFIG[a]['binance_symbol']}@aggTrade"
-        for a in valid_assets
-    )
-    url = f"{BINANCE_WS}?streams={streams}"
-
-    sym_to_asset = {
-        ASSET_CONFIG[a]["binance_symbol"].upper(): a
-        for a in valid_assets
-    }
-
-    while True:
-        try:
-            async with websockets.connect(
-                url, ping_interval=20, ping_timeout=10, open_timeout=15
-            ) as ws:
-                _binance_451_streak = 0
-                log.info(f"Binance feed connected for {valid_assets}")
-                async for raw in ws:
-                    try:
-                        msg   = json.loads(raw)
-                        data  = msg.get("data", {})
-                        sym   = data.get("s", "").upper()
-                        asset = sym_to_asset.get(sym)
-                        if asset and "p" in data:
-                            price  = float(data["p"])
-                            now_ts = time.time()
-                            dq     = _prices[asset]
-                            if not dq or (now_ts - dq[-1][0]) >= 1.0:
-                                dq.append((now_ts, price))
-                    except Exception as parse_exc:
-                        log.debug(f"Binance feed parse error: {parse_exc}")
-        except Exception as exc:
-            err_str = str(exc)
-            if "451" in err_str:
-                _binance_451_streak += 1
-                if _binance_451_streak == 1:
-                    log.warning(
-                        "Binance feed geo-blocked (HTTP 451). "
-                        "coinbase_price_task will supply prices — trading continues."
-                    )
-                elif _binance_451_streak % 20 == 0:
-                    log.debug(f"Binance 451 streak: {_binance_451_streak}")
-                await asyncio.sleep(10)
-            else:
-                log.error(f"Binance feed disconnected ({exc}). Reconnecting in 3s...")
-                _binance_451_streak = 0
-                await asyncio.sleep(3)

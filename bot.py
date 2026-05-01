@@ -1,7 +1,7 @@
 """
 bot.py — Core trading logic for the Kalshi 15-minute prediction market bot.
 
-Connects to Binance WebSocket for live crypto prices, polls Kalshi for the
+Connects to Coinbase for live crypto prices, polls Kalshi for the
 soonest-expiring 15-minute markets (ETH, SOL, XRP), evaluates
 evidence-based strategy signals, places paper or live orders, and enforces
 daily loss / profit limits. Writes bot_state.json every cycle for server.py.
@@ -39,7 +39,6 @@ from asset_manager import (
     ASSET_CONFIG,
     get_price           as _am_get_price,
     price_age_seconds   as _am_price_age,
-    binance_feed_task,
     coinbase_price_task,
 )
 
@@ -4015,7 +4014,7 @@ async def main() -> None:
         async with aiohttp.ClientSession() as verify_session:
             await verify_kalshi_connection(verify_session)
 
-    # Start Binance multi-asset price feed
+    # Start Coinbase price feed for all assets
     _startup_config = read_config()
     _enabled = _startup_config.get("enabled_assets", ["ETH", "SOL", "XRP"])
     # Always subscribe BTC regardless of enabled_assets — other strategies use
@@ -4023,7 +4022,6 @@ async def main() -> None:
     _feed_assets = list(dict.fromkeys(["BTC"] + _enabled))
     from asset_manager import seed_price_history
     await seed_price_history(_feed_assets)
-    asyncio.create_task(binance_feed_task(_feed_assets))
     asyncio.create_task(coinbase_price_task(_feed_assets))
 
     # Wait for the first price from any enabled asset (timeout after 120s so Railway doesn't hang)
