@@ -158,3 +158,135 @@ def test_xrp_clamps_p_yes(tmp_path):
     f.realized_vol_1min = 0.0005
     d = strat.decide(f)
     assert 0.05 <= d.p_model <= 0.95
+
+
+# ── X3 APAC decoupling + event continuation tests ─────────────────────────
+
+def _apac_features(above_strike: bool, decoupled: bool, prior_uptrend: bool):
+    """
+    Build features that are inside the Asia-open window (08:00-10:00 UTC),
+    optionally with XRP/BTC decorrelated and a prior 60-min uptrend.
+    """
+    from datetime import datetime, timezone
+    apac_now = datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc).timestamp()
+
+    current = 2.50 if above_strike else 2.40
+    strike = 2.45
+    f = MarketFeatures(
+        asset="XRP",
+        ticker="KXXRPD-TEST",
+        timestamp=apac_now,
+        current_price=current,
+        strike=strike,
+        btc_price=100000.0,
+        seconds_left=600.0,
+        elapsed_seconds=300.0,
+        yes_ask=62.0 if above_strike else 33.0,
+        no_ask=40.0 if above_strike else 69.0,
+        yes_bid=61.0 if above_strike else 32.0,
+        no_bid=39.0 if above_strike else 68.0,
+        spread_yes=1.0,
+        spread_no=1.0,
+        realized_vol_1min=0.003,
+    )
+
+    # Build prior 60-min XRP series with the requested trend.
+    start_xrp = current * (0.985 if prior_uptrend else 1.015)
+    end_xrp = current
+    for i in range(60):
+        ts = apac_now - (60 - i) * 60
+        frac = i / 59.0
+        xrp = start_xrp + (end_xrp - start_xrp) * frac
+        f.prices_60m.append((ts, xrp))
+        f.prices_1m.append((ts, xrp))
+
+    # Build BTC series — flat if decoupled, trending with XRP if coupled.
+    for i in range(60):
+        ts = apac_now - (60 - i) * 60
+        if decoupled:
+            # Tiny mean-zero noise to break correlation
+            btc = 100000.0 + ((-1) ** i) * 25.0
+        else:
+            btc = 100000.0 + i * 50.0
+        f.btc_prices_60m.append((ts, btc))
+
+    for i in range(40):
+        ts = apac_now - (40 - i) * 10
+        f.kalshi_price_history.append((ts, 62.0))
+
+    return f
+
+
+def test_xrp_apac_decoupled_uptrend_adds_positive_continuation(tmp_path):
+    strat = XRPStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.01,
+        stake_dollars=5.0,
+        event_calendar=_empty_calendar(tmp_path),
+    )
+    f = _apac_features(above_strike=True, decoupled=True, prior_uptrend=True)
+    d = strat.decide(f)
+    sig = d.contributing_signals
+    if "apac_adj" in sig:
+        assert sig.get("apac_window") == "asia_open"
+        assert sig["apac_adj"] > 0
+
+
+def test_xrp_apac_outside_window_no_apac_adj(tmp_path):
+    strat = XRPStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.01,
+        stake_dollars=5.0,
+        event_calendar=_empty_calendar(tmp_path),
+    )
+    f = _apac_features(above_strike=True, decoupled=True, prior_uptrend=True)
+    # Move timestamp to 18:00 UTC (outside both APAC and EU peak)
+    from datetime import datetime, timezone
+    f.timestamp = datetime(2026, 5, 1, 18, 0, tzinfo=timezone.utc).timestamp()
+    d = strat.decide(f)
+    sig = d.contributing_signals
+    if "apac_adj" in sig:
+        assert sig["apac_adj"] == 0.0
+        assert sig.get("apac_window") == "off"
+
+
+def test_xrp_apac_coupled_no_continuation(tmp_path):
+    strat = XRPStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.01,
+        stake_dollars=5.0,
+        event_calendar=_empty_calendar(tmp_path),
+    )
+    # XRP and BTC moving together → high correlation, decoupling fails
+    f = _apac_features(above_strike=True, decoupled=False, prior_uptrend=True)
+    d = strat.decide(f)
+    sig = d.contributing_signals
+    if "apac_adj" in sig:
+        assert sig["apac_adj"] == 0.0
+
+
+def test_session_clock_helpers():
+    from strategies.signals.session_clock import (
+        is_decoupling_window, prior_session_return,
+    )
+    from datetime import datetime, timezone
+
+    asia = datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc).timestamp()
+    eu = datetime(2026, 5, 1, 15, 0, tzinfo=timezone.utc).timestamp()
+    off = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc).timestamp()
+
+    active, label = is_decoupling_window(asia)
+    assert active and label == "asia_open"
+    active, label = is_decoupling_window(eu)
+    assert active and label == "eu_peak"
+    active, label = is_decoupling_window(off)
+    assert not active
+
+    # prior return helper
+    series = [(off - (60 - i) * 60, 100.0 + i) for i in range(60)]
+    r = prior_session_return(series, lookback_seconds=3600)
+    assert r is not None and r > 0
+
+    flat_series = [(off - (60 - i) * 60, 100.0) for i in range(60)]
+    r0 = prior_session_return(flat_series, lookback_seconds=3600)
+    assert r0 == 0.0
