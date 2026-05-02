@@ -1629,6 +1629,16 @@ def _strategy_name_for(asset, duration_min=15.0):
 def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):
     """Lazily construct per-asset strategy singleton. Returns None on failure."""
     global _config_mtime, _current_window
+    # Fix sys.path FIRST so every strategies.* import resolves to src/strategies/.
+    # The root strategies/ directory (YAML configs) would otherwise be picked up as a
+    # namespace package and poison sys.modules['strategies'] before src/ is on the path.
+    import sys as _sys
+    _src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+    if _src not in _sys.path:
+        # Purge any stale root-strategies namespace package cached before this fix runs
+        for _k in [k for k in _sys.modules if k == "strategies" or k.startswith("strategies.")]:
+            del _sys.modules[_k]
+        _sys.path.insert(0, _src)
     try:
         mtime = os.path.getmtime(_CONFIG_FILE)
         if mtime != _config_mtime:
@@ -1652,10 +1662,6 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
     if cache_key in _STRATEGY_SINGLETONS:
         return _STRATEGY_SINGLETONS[cache_key]
     try:
-        import sys as _sys
-        _src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
-        if _src not in _sys.path:
-            _sys.path.insert(0, _src)
         from strategies.skip_layer import SkipConfig
         from strategies.signals.time_windows import get_window_params
 
