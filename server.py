@@ -448,6 +448,24 @@ def index():
         return f"<h1>Error: {exc}</h1>", 500
 
 
+@app.route("/new")
+def new_dashboard():
+    """Serve the Money Printer dashboard."""
+    try:
+        path = os.path.join(_BASE_DIR, "handoff", "Money Printer.html")
+        with open(path, "r", encoding="utf-8") as fh:
+            content = fh.read()
+        from flask import Response
+        return Response(content, mimetype="text/html", headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        })
+    except Exception as exc:
+        log.error(f"new_dashboard() failed: {exc}", exc_info=True)
+        return f"<h1>Error: {exc}</h1>", 500
+
+
 @app.route("/api/config", methods=["GET"])
 def api_config_get():
     """Return the current config."""
@@ -665,6 +683,137 @@ def api_market_pulse():
         return jsonify(result)
     except Exception as exc:
         log.error(f"api_market_pulse error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/equity")
+def api_equity():
+    """
+    Cumulative P&L curve for the equity chart.
+    Query param: range = 1d | 1w | 1m | all
+    Returns: { range, points: [float, ...], x_labels: [str, ...] }
+    """
+    range_ = request.args.get("range", "1d")
+    try:
+        now = datetime.now(timezone.utc)
+        if range_ == "1d":
+            since = now - timedelta(hours=24)
+            bucket_sql = "strftime('%H:00', ts)"
+            n_buckets = 24
+            labels = [f"{h:02d}:00" for h in range(0, 24, 4)]
+        elif range_ == "1w":
+            since = now - timedelta(days=7)
+            bucket_sql = "strftime('%Y-%m-%d', ts)"
+            n_buckets = 7
+            labels = [(now - timedelta(days=i)).strftime("%-d %b") for i in range(6, -1, -1)]
+        elif range_ == "1m":
+            since = now - timedelta(days=30)
+            bucket_sql = "strftime('%Y-%m-%d', ts)"
+            n_buckets = 30
+            labels = [(now - timedelta(days=i * 7)).strftime("%-d %b") for i in range(4, -1, -1)]
+        else:  # all
+            since = datetime(2024, 1, 1, tzinfo=timezone.utc)
+            bucket_sql = "strftime('%Y-%W', ts)"
+            n_buckets = None
+            labels = []
+
+        since_str = since.strftime("%Y-%m-%dT%H:%M:%S")
+        conn = get_db()
+        rows = conn.execute(
+            f"SELECT {bucket_sql} AS bucket, SUM(pnl_dollars) AS bucket_pnl "
+            "FROM trades "
+            "WHERE ts >= ? AND outcome IN ('win','loss') AND pnl_dollars IS NOT NULL "
+            "GROUP BY bucket ORDER BY bucket",
+            (since_str,),
+        ).fetchall()
+        conn.close()
+
+        # Build cumulative series
+        points = []
+        cumulative = 0.0
+        for row in rows:
+            cumulative = round(cumulative + (row["bucket_pnl"] or 0.0), 2)
+            points.append(cumulative)
+
+        if not points:
+            points = [0.0]
+
+        return jsonify({"range": range_, "points": points, "x_labels": labels})
+    except Exception as exc:
+        log.error(f"api_equity error: {exc}", exc_info=True)
+        return jsonify({"range": range_, "points": [0.0], "x_labels": []}), 200
+
+
+@app.route("/api/risk")
+def api_risk():
+    """
+    Risk status for the Overview Risk Status card.
+    Returns daily loss/profit vs limits, EV floor, vol gate config, and win/loss streak.
+    """
+    try:
+        cfg = read_config()
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        loss_limit  = cfg.get("daily_loss_limit_dollars", 50.0)
+        profit_target = cfg.get("daily_profit_target_dollars", 200.0)
+        ev_floor    = cfg.get("min_ev_base", 7.0)
+        vol_thresh  = cfg.get("vol_gate_thresh", 1.80)
+
+        today_pnl   = 0.0
+        today_loss  = 0.0
+        streak_type = "W"
+        streak_count = 0
+
+        try:
+            conn = get_db()
+            rows = conn.execute(
+                "SELECT outcome, pnl_dollars FROM trades "
+                "WHERE ts LIKE ? AND outcome IN ('win','loss') AND pnl_dollars IS NOT NULL "
+                "ORDER BY ts DESC LIMIT 200",
+                (today + "%",),
+            ).fetchall()
+            recent = conn.execute(
+                "SELECT outcome FROM trades WHERE outcome IN ('win','loss') "
+                "ORDER BY ts DESC LIMIT 50"
+            ).fetchall()
+            conn.close()
+
+            for r in rows:
+                today_pnl = round(today_pnl + r["pnl_dollars"], 2)
+                if r["pnl_dollars"] < 0:
+                    today_loss = round(today_loss + abs(r["pnl_dollars"]), 2)
+
+            if recent:
+                first = recent[0]["outcome"]
+                streak_type = "W" if first == "win" else "L"
+                for r in recent:
+                    if r["outcome"] == ("win" if streak_type == "W" else "loss"):
+                        streak_count += 1
+                    else:
+                        break
+        except Exception:
+            pass
+
+        state = read_state()
+        assets = state.get("assets", {})
+        vol_asset = "BTC"
+        vol_current = None
+        for sym, a in assets.items():
+            v = (a or {}).get("vol_ratio") or (a or {}).get("vol")
+            if v is not None:
+                vol_current = round(float(v), 2)
+                vol_asset = sym
+                break
+
+        return jsonify({
+            "daily_loss_limit":    {"current": today_loss,  "max": loss_limit},
+            "daily_profit_target": {"current": max(today_pnl, 0.0), "max": profit_target},
+            "vol_gate":            {"current": vol_current, "threshold": vol_thresh, "asset": vol_asset},
+            "ev_floor":            {"current": ev_floor,    "pct": min(100, int(ev_floor / 10 * 100))},
+            "streak":              {"type": streak_type,    "count": streak_count},
+        })
+    except Exception as exc:
+        log.error(f"api_risk error: {exc}", exc_info=True)
         return jsonify({"error": str(exc)}), 500
 
 
