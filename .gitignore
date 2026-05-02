@@ -60,3 +60,14 @@ data/historical/*.parquet
 Thumbs.db
 start.bat
 .claude/
+
+# Runtime outputs (generated, not committed)
+dashboard.html
+altcoin_sweep_output.txt
+server_test_output.log
+config_change_log.json
+monte_carlo_results.json
+ultraplan.patch
+backtesting/output/*.csv
+backtesting/output/trade_logs/
+backtesting/output/validation/
