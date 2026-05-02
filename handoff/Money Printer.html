@@ -1512,11 +1512,11 @@ function renderMarketPanel(sym){
       <div class="card">
         <div class="card-head"><div class="card-title"><span class="accent"></span>Strategy Signals</div></div>
         <div>
-          <div class="sig-row"><div class="sig-dot ${session.ev>=7?'on':'off'}"></div><div class="sig-name">EV ≥ floor</div><div class="sig-val">${session.ev.toFixed(1)}% / 7.0%</div></div>
-          <div class="sig-row"><div class="sig-dot ${session.vol>=1.2?'on':'warn'}"></div><div class="sig-name">Vol gate</div><div class="sig-val">${session.vol.toFixed(2)} / 1.80</div></div>
+          <div class="sig-row"><div class="sig-dot ${(session.ev??0)>=7?'on':'off'}"></div><div class="sig-name">EV ≥ floor</div><div class="sig-val">${session.ev!=null?session.ev.toFixed(1)+'% / 7.0%':'— / 7.0%'}</div></div>
+          <div class="sig-row"><div class="sig-dot ${(session.vol??0)>=1.2?'on':'warn'}"></div><div class="sig-name">Vol gate</div><div class="sig-val">${session.vol!=null?session.vol.toFixed(2)+' / 1.80':'— / 1.80'}</div></div>
           <div class="sig-row"><div class="sig-dot ${session.wp!=null&&session.wp>=0.55?'on':'off'}"></div><div class="sig-name">Win prob</div><div class="sig-val">${session.wp!=null?(session.wp*100).toFixed(1)+'%':'—'}</div></div>
-          <div class="sig-row"><div class="sig-dot ${session.score>=60?'on':'warn'}"></div><div class="sig-name">Confidence</div><div class="sig-val">${session.score}/100</div></div>
-          <div class="sig-row"><div class="sig-dot ${Math.abs(session.dist)<0.5?'on':'warn'}"></div><div class="sig-name">Strike distance</div><div class="sig-val">${session.dist>=0?'+':''}${session.dist.toFixed(2)}%</div></div>
+          <div class="sig-row"><div class="sig-dot ${(session.score??0)>=60?'on':'warn'}"></div><div class="sig-name">Confidence</div><div class="sig-val">${session.score??'—'}/100</div></div>
+          <div class="sig-row"><div class="sig-dot ${session.dist!=null&&Math.abs(session.dist)<0.5?'on':'warn'}"></div><div class="sig-name">Strike distance</div><div class="sig-val">${session.dist!=null?(session.dist>=0?'+':'')+session.dist.toFixed(2)+'%':'—'}</div></div>
           <div class="sig-row"><div class="sig-dot on"></div><div class="sig-name">Price validation</div><div class="sig-val">OK</div></div>
         </div>
       </div>
@@ -1805,6 +1805,7 @@ async function fetchMarketState() {
     renderMarketStrip();
     renderAllocation();
     renderSignals();
+    if (_activeMarketSym) renderMarketPanel(_activeMarketSym);
   } catch(e) {}
 }
 
