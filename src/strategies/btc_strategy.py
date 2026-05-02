@@ -1,29 +1,9 @@
 """
-BTCStrategy — B3: BTC time-of-day-conditioned order-book imbalance.
-
-Plan source (Part 2.5): the most robust BTC microstructure result in
-the literature is the diurnal liquidity pattern.  Trading order-book
-imbalance (OBI) signals only when depth is high — and skipping the
-21:00 UTC trough plus the funding-reset windows — turns a noisy
-mean-revert signal into a positive-EV one.
-
-Key sources:
-- https://blog.amberdata.io/the-rhythm-of-liquidity-temporal-patterns-in-market-depth
-- https://concretumgroup.com/seasonality-in-bitcoin-intraday-trend-trading/
-- https://papers.ssrn.com/sol3/papers.cfm?abstract_id=4080253
-
-Honest scope: the bot only consumes top-of-book quotes, not L2 depth.
-The OBI is approximated by the Kalshi binary-book imbalance (see
-signals/btc_diurnal_obi.kalshi_book_obi).  The diurnal regime gating
-is exact.
+BTCStrategy — B3: Kalshi order-book imbalance + velocity.
 
 Components:
-1. Diurnal regime classifier — peak / trough / neutral hour band
-2. Funding-reset guard — skip +/- 5 min around 00:00, 08:00, 16:00 UTC
-3. Kalshi-book OBI — directional pressure on the contract book
-4. Final p_yes nudge magnitude is liquidity-conditioned (full at peak,
-   half at neutral, zero at trough)
-5. Kalshi velocity — same off-the-shelf signal used by the other strats
+1. Kalshi-book OBI — directional pressure on the contract book
+2. Kalshi velocity — same off-the-shelf signal used by the other strats
 """
 
 from __future__ import annotations
@@ -36,12 +16,7 @@ from strategies.calibration import AssetCalibrator
 
 from strategies.signals.kalshi_velocity import contract_velocity
 from strategies.signals.taper import magnitude_taper
-from strategies.signals.btc_diurnal_obi import (
-    current_btc_diurnal_band,
-    is_funding_reset_window,
-    kalshi_book_obi,
-    b3_obi_adjustment,
-)
+from strategies.signals.btc_diurnal_obi import kalshi_book_obi
 
 
 B3_OBI_THRESHOLD = 0.04   # min |OBI| before the signal fires
@@ -57,6 +32,7 @@ class BTCStrategy(BaseStrategy):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
+        min_votes: int = 4,
     ):
         super().__init__(
             asset="BTC",
@@ -65,41 +41,10 @@ class BTCStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
+            min_votes=min_votes,
         )
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
-        """
-        BTC-specific skip layer: hard-skip during the diurnal trough
-        (18-21 UTC) and inside funding-reset guard windows.  Per the
-        Amberdata data set, the trough has 1.42x less depth than the
-        peak; running OBI signals there is net-negative EV after fees.
-        """
-        band = current_btc_diurnal_band(features.timestamp)
-        funding_reset = is_funding_reset_window(features.timestamp)
-
-        if band == "trough":
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=0.5,
-                reason="b3_skip: diurnal trough (18-21 UTC, low depth)",
-                contributing_signals={
-                    "diurnal_band": band,
-                    "funding_reset": funding_reset,
-                },
-            )
-        if funding_reset:
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=0.5,
-                reason="b3_skip: funding-reset guard (+-5 min around 00/08/16 UTC)",
-                contributing_signals={
-                    "diurnal_band": band,
-                    "funding_reset": funding_reset,
-                },
-            )
-
         skip_reason = check_skip_with_asset_hook(
             features, self.skip_config, macro_event_active, None
         )
@@ -109,20 +54,11 @@ class BTCStrategy(BaseStrategy):
                 side=None,
                 p_model=0.5,
                 reason=f"skip_layer: {skip_reason}",
-                contributing_signals={
-                    "diurnal_band": band,
-                    "funding_reset": funding_reset,
-                },
             )
 
-        return self._decide_after_skip(features, band, funding_reset)
+        return self._decide_after_skip(features)
 
-    def _decide_after_skip(
-        self,
-        features: MarketFeatures,
-        band: str,
-        funding_reset: bool,
-    ) -> Decision:
+    def _decide_after_skip(self, features: MarketFeatures) -> Decision:
         from strategies.baseline import brownian_bridge_prob_above
         from strategies.ev import compute_bidirectional_ev
 
@@ -134,8 +70,6 @@ class BTCStrategy(BaseStrategy):
         )
 
         raw_p_yes, signals = self.compute_raw_p_model(features, baseline_p_above)
-        signals["diurnal_band"] = band
-        signals["funding_reset"] = funding_reset
 
         calibrated_p_yes = self.calibrator.calibrate(raw_p_yes)
         ev = compute_bidirectional_ev(
@@ -160,11 +94,21 @@ class BTCStrategy(BaseStrategy):
                 action="skip",
                 side=None,
                 p_model=calibrated_p_yes,
-                reason=(
-                    f"EV below threshold: best={ev.best_ev:+.3f} "
-                    f"(min={self.min_ev:+.3f}, band={band})"
-                ),
+                reason=f"EV below threshold: best={ev.best_ev:+.3f} (min={self.min_ev:+.3f})",
                 contributing_signals=merged,
+                expected_value=ev.best_ev,
+            )
+
+        # Gate A: contract velocity must not oppose the chosen side
+        _vel = merged.get("velocity", "flat")
+        _chosen = ev.best_side
+        if (_chosen == "yes" and _vel == "falling") or (_chosen == "no" and _vel == "rising"):
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=calibrated_p_yes,
+                reason=f"gate_a_velocity: {_chosen} opposed by contract velocity={_vel}",
+                contributing_signals={**merged, "gate_a_block": True},
                 expected_value=ev.best_ev,
             )
 
@@ -172,10 +116,7 @@ class BTCStrategy(BaseStrategy):
             action="trade",
             side=ev.best_side,
             p_model=calibrated_p_yes,
-            reason=(
-                f"{ev.best_side} EV={ev.best_ev:+.3f} "
-                f"(p_yes={calibrated_p_yes:.3f}, band={band})"
-            ),
+            reason=f"{ev.best_side} EV={ev.best_ev:+.3f} (p_yes={calibrated_p_yes:.3f})",
             contributing_signals=merged,
             expected_value=ev.best_ev,
         )
@@ -188,24 +129,18 @@ class BTCStrategy(BaseStrategy):
         signals: dict = {}
         p_yes = baseline_p_above
         taper = magnitude_taper(baseline_p_above)
-        band = current_btc_diurnal_band(features.timestamp)
-        funding_reset = is_funding_reset_window(features.timestamp)
 
-        # ── B3 OBI signal, liquidity-conditioned ────────────────────────
+        # ── B3 OBI signal ────────────────────────────────────────────────
         obi = kalshi_book_obi(
             features.yes_bid,
             features.no_bid,
             features.yes_ask,
             features.no_ask,
         )
-        obi_adj, obi_info = b3_obi_adjustment(
-            obi=obi,
-            band=band,
-            funding_reset=funding_reset,
-            obi_threshold=B3_OBI_THRESHOLD,
-            adj_magnitude=B3_OBI_ADJ_MAX,
-        )
-        signals.update(obi_info)
+        obi_adj = 0.0
+        if obi is not None and abs(obi) >= B3_OBI_THRESHOLD:
+            obi_adj = B3_OBI_ADJ_MAX if obi > 0 else -B3_OBI_ADJ_MAX
+        signals["obi"] = obi
         signals["obi_adj"] = obi_adj
         p_yes += obi_adj * taper
 

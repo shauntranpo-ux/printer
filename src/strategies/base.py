@@ -22,6 +22,7 @@ from strategies.features import MarketFeatures, Decision
 from strategies.skip_layer import check_entry_range, check_vol_ratio, SkipConfig
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
+from strategies.signals.kalshi_velocity import contract_velocity as _contract_velocity
 
 _log = logging.getLogger(__name__)
 _BIAS_WINDOW  = 50   # rolling trade window for YES-bias check
@@ -42,6 +43,7 @@ class BaseStrategy(ABC):
         supertrend_atr_period: int = 10,
         supertrend_atr_multiplier: float = 4.0,
         momentum_lookback: int = 4,
+        min_votes: int = 4,
     ):
         self.asset = asset
         self.skip_config = skip_config
@@ -53,6 +55,7 @@ class BaseStrategy(ABC):
         self.supertrend_atr_period = supertrend_atr_period
         self.supertrend_atr_multiplier = supertrend_atr_multiplier
         self.momentum_lookback = momentum_lookback
+        self.min_votes = min_votes
         self._side_rolling: collections.deque = collections.deque(maxlen=_BIAS_WINDOW)
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
@@ -80,13 +83,13 @@ class BaseStrategy(ABC):
                     "skip_reason": "fifteen_min_signal_insufficient_data",
                 },
             )
-        st_side, signal_raw_p_yes = result_15m
+        st_side, signal_raw_p_yes, vote_count = result_15m
         st = 1 if st_side == "yes" else -1
         features.supertrend_direction = st
 
         # Step 2.5: short-term momentum alignment
-        # Require that the last 4 ticks are moving in the direction of the signal.
-        if len(features.prices_60m) >= self.momentum_lookback + 1:
+        # Require that the last `momentum_lookback` ticks are moving in the direction of the signal.
+        if self.momentum_lookback > 0 and len(features.prices_60m) >= self.momentum_lookback + 1:
             recent_delta = features.prices_60m[-1][1] - features.prices_60m[-self.momentum_lookback][1]
             aligned = (st_side == "yes" and recent_delta > 0) or (st_side == "no" and recent_delta < 0)
             if not aligned:
@@ -94,7 +97,7 @@ class BaseStrategy(ABC):
                     action="skip",
                     side=None,
                     p_model=market_prob,
-                    reason=f"momentum_misalign: {st_side} signal, 4-tick delta={recent_delta:+.4f}",
+                    reason=f"momentum_misalign: {st_side} signal, {self.momentum_lookback}-tick delta={recent_delta:+.4f}",
                     contributing_signals={
                         "supertrend_direction": st,
                         "supertrend_side": st_side,
@@ -107,12 +110,30 @@ class BaseStrategy(ABC):
                     },
                 )
 
+        # Gate B: D3 vote supermajority — require min_votes out of 5
+        if vote_count < self.min_votes:
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=market_prob,
+                reason=f"gate_b_votes: {vote_count}/{self.min_votes} votes for {st_side}",
+                contributing_signals={
+                    "supertrend_direction": st,
+                    "supertrend_side": st_side,
+                    "vote_count": vote_count,
+                    "min_votes": self.min_votes,
+                    "market_prob": market_prob,
+                    "ev_pass": False,
+                    "vol_pass": True,
+                    "final_decision": "skip",
+                    "skip_reason": "gate_b_votes",
+                },
+            )
+
         # Step 3: EV gate — calibrated BS p_yes
         p_ev = self.calibrator.calibrate(signal_raw_p_yes)
-        # p(YES)=p_ev for YES direction; p(YES)=1-p_ev for NO direction
-        p_model_for_ev = p_ev if st_side == "yes" else 1.0 - p_ev
         ev = compute_bidirectional_ev(
-            p_model=p_model_for_ev,
+            p_model=p_ev,  # P(YES wins); ev.py applies (1-p_model) for NO internally
             yes_ask_cents=features.yes_ask,
             no_ask_cents=features.no_ask,
             stake_dollars=self.stake_dollars,
@@ -151,6 +172,26 @@ class BaseStrategy(ABC):
                     "vol_pass": True,
                     "final_decision": "skip",
                     "skip_reason": "ev_below_threshold",
+                },
+                expected_value=side_ev,
+            )
+
+        # Gate A: Kalshi contract velocity must not oppose the chosen side
+        _velocity = _contract_velocity(list(features.kalshi_price_history))
+        if (_velocity == "falling" and st_side == "yes") or (_velocity == "rising" and st_side == "no"):
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=p_ev,
+                reason=f"gate_a_velocity: {st_side} opposed by contract velocity={_velocity}",
+                contributing_signals={
+                    **base_signals,
+                    "velocity": _velocity,
+                    "ev_pass": True,
+                    "vol_pass": True,
+                    "gate_a_block": True,
+                    "final_decision": "skip",
+                    "skip_reason": "gate_a_velocity",
                 },
                 expected_value=side_ev,
             )

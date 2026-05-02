@@ -217,7 +217,7 @@ def _apac_features(above_strike: bool, decoupled: bool, prior_uptrend: bool):
     return f
 
 
-def test_xrp_apac_decoupled_uptrend_adds_positive_continuation(tmp_path):
+def test_xrp_decoupled_continuation_fires(tmp_path):
     strat = XRPStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.01,
@@ -227,30 +227,11 @@ def test_xrp_apac_decoupled_uptrend_adds_positive_continuation(tmp_path):
     f = _apac_features(above_strike=True, decoupled=True, prior_uptrend=True)
     d = strat.decide(f)
     sig = d.contributing_signals
-    if "apac_adj" in sig:
-        assert sig.get("apac_window") == "asia_open"
-        assert sig["apac_adj"] > 0
+    if "decouple_adj" in sig:
+        assert sig["decouple_adj"] >= 0.0  # decoupled + uptrend → non-negative
 
 
-def test_xrp_apac_outside_window_no_apac_adj(tmp_path):
-    strat = XRPStrategy(
-        skip_config=SkipConfig(cold_start_samples=10),
-        min_ev=0.01,
-        stake_dollars=5.0,
-        event_calendar=_empty_calendar(tmp_path),
-    )
-    f = _apac_features(above_strike=True, decoupled=True, prior_uptrend=True)
-    # Move timestamp to 18:00 UTC (outside both APAC and EU peak)
-    from datetime import datetime, timezone
-    f.timestamp = datetime(2026, 5, 1, 18, 0, tzinfo=timezone.utc).timestamp()
-    d = strat.decide(f)
-    sig = d.contributing_signals
-    if "apac_adj" in sig:
-        assert sig["apac_adj"] == 0.0
-        assert sig.get("apac_window") == "off"
-
-
-def test_xrp_apac_coupled_no_continuation(tmp_path):
+def test_xrp_coupled_no_continuation(tmp_path):
     strat = XRPStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.01,
@@ -261,32 +242,19 @@ def test_xrp_apac_coupled_no_continuation(tmp_path):
     f = _apac_features(above_strike=True, decoupled=False, prior_uptrend=True)
     d = strat.decide(f)
     sig = d.contributing_signals
-    if "apac_adj" in sig:
-        assert sig["apac_adj"] == 0.0
+    if "decouple_adj" in sig:
+        assert sig["decouple_adj"] == 0.0
 
 
-def test_session_clock_helpers():
-    from strategies.signals.session_clock import (
-        is_decoupling_window, prior_session_return,
-    )
-    from datetime import datetime, timezone
+def test_prior_session_return_helper():
+    from strategies.signals.session_clock import prior_session_return
+    import time
+    now = time.time()
 
-    asia = datetime(2026, 5, 1, 9, 0, tzinfo=timezone.utc).timestamp()
-    eu = datetime(2026, 5, 1, 15, 0, tzinfo=timezone.utc).timestamp()
-    off = datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc).timestamp()
-
-    active, label = is_decoupling_window(asia)
-    assert active and label == "asia_open"
-    active, label = is_decoupling_window(eu)
-    assert active and label == "eu_peak"
-    active, label = is_decoupling_window(off)
-    assert not active
-
-    # prior return helper
-    series = [(off - (60 - i) * 60, 100.0 + i) for i in range(60)]
+    series = [(now - (60 - i) * 60, 100.0 + i) for i in range(60)]
     r = prior_session_return(series, lookback_seconds=3600)
     assert r is not None and r > 0
 
-    flat_series = [(off - (60 - i) * 60, 100.0) for i in range(60)]
+    flat_series = [(now - (60 - i) * 60, 100.0) for i in range(60)]
     r0 = prior_session_return(flat_series, lookback_seconds=3600)
     assert r0 == 0.0

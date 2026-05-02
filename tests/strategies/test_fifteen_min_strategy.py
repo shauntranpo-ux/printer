@@ -16,11 +16,12 @@ from strategies.features import MarketFeatures
 from strategies.skip_layer import SkipConfig
 
 
-def _mock_15m_signal(side: str = "yes", raw_p: float = 0.70):
-    """Patch compute_15m_signal to return a fixed (side, raw_p) tuple."""
+def _mock_15m_signal(side: str = "yes", raw_p: float = 0.70, vote_count: int = 5):
+    """Patch compute_15m_signal to return a fixed (side, raw_p, vote_count) 3-tuple.
+    vote_count=5 ensures Gate B always passes in these tests."""
     return _patch(
         "strategies.signals.fifteen_min_signal.compute_15m_signal",
-        return_value=(side, raw_p),
+        return_value=(side, raw_p, vote_count),
     )
 
 

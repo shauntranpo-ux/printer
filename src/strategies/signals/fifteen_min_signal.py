@@ -92,11 +92,11 @@ def _multi_tf_mom(prices: list[float]) -> Optional[float]:
 
 def compute_15m_signal(
     features: MarketFeatures,
-) -> Optional[tuple[str, float]]:
+) -> Optional[tuple[str, float, int]]:
     """
-    Returns (side, raw_p_yes) or None if 3-of-5 vote cannot be reached.
+    Returns (side, raw_p_yes, vote_count) or None if 3-of-5 vote cannot be reached.
 
-    Votes are mean-reversion: extended = expect down, depressed = expect up.
+    vote_count is the number of voters agreeing with the returned side (3–5).
     raw_p_yes is the un-calibrated BS probability; caller calibrates before EV gate.
     """
     prices_60m = list(features.prices_60m)
@@ -150,4 +150,5 @@ def compute_15m_signal(
     else:
         return None
 
-    return (side, bs_p)
+    vote_count = yes_votes if side == "yes" else no_votes
+    return (side, bs_p, vote_count)

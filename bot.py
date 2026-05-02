@@ -1618,6 +1618,7 @@ def _session_ev_adjustment() -> float:
 
 _STRATEGY_SINGLETONS: dict = {}  # keyed by asset name
 _config_mtime: float = 0.0
+_current_window: str = ""  # tracks active time window; cleared on boundary crossing
 
 
 def _strategy_name_for(asset, duration_min=15.0):
@@ -1627,7 +1628,7 @@ def _strategy_name_for(asset, duration_min=15.0):
 
 def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):
     """Lazily construct per-asset strategy singleton. Returns None on failure."""
-    global _config_mtime
+    global _config_mtime, _current_window
     try:
         mtime = os.path.getmtime(_CONFIG_FILE)
         if mtime != _config_mtime:
@@ -1636,6 +1637,16 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
             log.info("config.json changed — strategy singletons cleared")
     except OSError:
         pass
+    try:
+        from strategies.signals.time_windows import get_trading_window, get_window_params
+        import time as _tw_now
+        _new_window = get_trading_window(_tw_now.time(), config.get("timezone", "America/Los_Angeles"))
+        if _new_window != _current_window:
+            _STRATEGY_SINGLETONS.clear()
+            _current_window = _new_window
+            log.info("Trading window changed to %s — strategy singletons cleared", _current_window)
+    except Exception:
+        _new_window = _current_window or "normal"
 
     cache_key = asset
     if cache_key in _STRATEGY_SINGLETONS:
@@ -1646,9 +1657,18 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         if _src not in _sys.path:
             _sys.path.insert(0, _src)
         from strategies.skip_layer import SkipConfig
+        from strategies.signals.time_windows import get_window_params
 
         _min_price = float(config.get("min_entry_price_cents", 20.0))
         _max_price = float(config.get("max_entry_price_cents", 76.0))
+        _tw = _new_window
+        _wp = get_window_params(config, _tw)
+        _max_price = min(_max_price, float(_wp["max_entry_price_cents"]))
+        if _max_price <= _min_price:
+            log.warning(
+                "[%s] time_window=%s has max_entry=%.0fc <= min_entry=%.0fc — all entries will be blocked",
+                asset, _tw, _max_price, _min_price,
+            )
         skip_cfg = SkipConfig(
             max_spread_cents=float(config.get("max_spread_cents", 3.0)),
             min_seconds_left=float(config.get("min_seconds_left", 30.0)),
@@ -1659,12 +1679,13 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
         _ev_default = config.get("min_ev_base_15m", config.get("min_ev_base", 8))
-        _ev_base = float(overrides.get("min_ev_base", _ev_default))
+        _ev_base = float(overrides.get("min_ev_base", _ev_default)) + float(_wp["min_ev_delta"])
         _ct_default = config.get("confidence_threshold_15m", config.get("confidence_threshold", 0))
         _ct = float(overrides.get("confidence_threshold_15m",
                                   overrides.get("confidence_threshold", _ct_default)))
         min_ev = _ev_base / 100.0
         confidence_threshold = _ct / 100.0
+        min_votes = int(_wp.get("min_votes", 4))
         stake = float(config.get("trade_amount_dollars", 25))
         st_period    = int(get_asset_config(config, asset, "supertrend_atr_period", 10))
         st_mult      = float(get_asset_config(config, asset, "supertrend_atr_multiplier", 4.0))
@@ -1672,19 +1693,29 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
 
         if asset == "BTC":
             from src.strategies.btc_strategy import BTCStrategy
-            strat = BTCStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+            strat = BTCStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake, min_votes=min_votes)
         elif asset == "ETH":
-            from src.strategies.eth_strategy import ETHStrategy
-            strat = ETHStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+            from strategies.fifteen_min_strategy import FifteenMinStrategy
+            strat = FifteenMinStrategy(
+                asset=asset,
+                skip_config=skip_cfg,
+                min_ev=min_ev,
+                stake_dollars=stake,
+                confidence_threshold=confidence_threshold,
+                supertrend_atr_period=st_period,
+                supertrend_atr_multiplier=st_mult,
+                momentum_lookback=mom_lookback,
+                min_votes=min_votes,
+            )
         elif asset == "SOL":
             from src.strategies.sol_strategy import SOLStrategy
-            strat = SOLStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+            strat = SOLStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake, min_votes=min_votes)
         elif asset == "XRP":
             from src.strategies.xrp_strategy import XRPStrategy
-            strat = XRPStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+            strat = XRPStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake, min_votes=min_votes)
         elif asset == "DOGE":
             from src.strategies.doge_strategy import DOGEStrategy
-            strat = DOGEStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+            strat = DOGEStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake, min_votes=min_votes)
         else:
             from strategies.fifteen_min_strategy import FifteenMinStrategy
             strat = FifteenMinStrategy(
@@ -1696,6 +1727,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 supertrend_atr_period=st_period,
                 supertrend_atr_multiplier=st_mult,
                 momentum_lookback=mom_lookback,
+                min_votes=min_votes,
             )
 
         _STRATEGY_SINGLETONS[cache_key] = strat

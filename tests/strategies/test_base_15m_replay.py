@@ -58,7 +58,7 @@ def test_15m_path_uses_d3_hybrid():
     features = _make_features(n_prices=60, is_rising=True)
     with _patch(
         "strategies.signals.fifteen_min_signal.compute_15m_signal",
-        return_value=("yes", 0.72),
+        return_value=("yes", 0.72, 5),
     ):
         d = strat.decide(features)
     assert d.contributing_signals.get("signal_name") == "d3_hybrid"
@@ -89,7 +89,7 @@ def test_15m_calibrated_p_in_signals():
     features = _make_features(n_prices=60, is_rising=True)
     with _patch(
         "strategies.signals.fifteen_min_signal.compute_15m_signal",
-        return_value=("yes", 0.65),
+        return_value=("yes", 0.65, 5),
     ):
         d = strat.decide(features)
 
@@ -110,7 +110,7 @@ def test_15m_no_side_signal():
                                current_price=99_000.0, strike=99_500.0)
     with _patch(
         "strategies.signals.fifteen_min_signal.compute_15m_signal",
-        return_value=("no", 0.35),
+        return_value=("no", 0.35, 4),
     ):
         d = strat.decide(features)
     assert d.side != "yes" or d.action == "skip"

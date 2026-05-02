@@ -26,10 +26,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # (asset, signal_name, module_path, magnitude_const_name)
 ABLATION_TARGETS = [
-    ("ETH",  "beta_adj",       "strategies.eth_strategy",  "BETA_ADJ_MAX"),
-    ("ETH",  "regime_adj",     "strategies.eth_strategy",  "REGIME_ADJ"),
-    ("ETH",  "ratio_adj",      "strategies.eth_strategy",  "RATIO_ADJ_MAX"),
-    ("ETH",  "velocity_adj",   "strategies.eth_strategy",  "VELOCITY_ADJ"),
     ("SOL",  "beta_adj",       "strategies.sol_strategy",  "BETA_ADJ_MAX"),
     ("SOL",  "momentum_bias",  "strategies.sol_strategy",  "MOMENTUM_BIAS"),
     ("SOL",  "regime_adj",     "strategies.sol_strategy",  "REGIME_ADJ"),

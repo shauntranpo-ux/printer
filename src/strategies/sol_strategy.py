@@ -65,6 +65,7 @@ class SOLStrategy(BaseStrategy):
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
         funding_monitor: Optional[FundingDispersionMonitor] = None,
+        min_votes: int = 4,
     ):
         super().__init__(
             asset="SOL",
@@ -73,6 +74,7 @@ class SOLStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
+            min_votes=min_votes,
         )
         self.beta = load_beta("SOL")
         # Lazy-construct an empty monitor if the caller didn't inject one;
@@ -147,6 +149,19 @@ class SOLStrategy(BaseStrategy):
                     f"min={self.min_ev:+.3f})"
                 ),
                 contributing_signals=merged_signals,
+                expected_value=ev_result.best_ev,
+            )
+
+        # Gate A: contract velocity must not oppose the chosen side
+        _vel = merged_signals.get("velocity", "flat")
+        _chosen = ev_result.best_side
+        if (_chosen == "yes" and _vel == "falling") or (_chosen == "no" and _vel == "rising"):
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=calibrated_p_yes,
+                reason=f"gate_a_velocity: {_chosen} opposed by contract velocity={_vel}",
+                contributing_signals={**merged_signals, "gate_a_block": True},
                 expected_value=ev_result.best_ev,
             )
 

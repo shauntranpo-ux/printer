@@ -36,9 +36,10 @@ def test_uptrend_gives_no():
     features = _make_features(prices, prices[-1], 100.0, rv=0.0005)
     result = compute_15m_signal(features)
     if result is not None:
-        side, raw_p = result
+        side, raw_p, vote_count = result
         assert side == "no"
         assert 0.0 <= raw_p <= 1.0
+        assert 3 <= vote_count <= 5
 
 def test_downtrend_gives_yes():
     # Mean-reversion signal: downtrend → depressed → expect bounce up → YES
@@ -46,9 +47,10 @@ def test_downtrend_gives_yes():
     features = _make_features(prices, prices[-1], 100.0, rv=0.0005)
     result = compute_15m_signal(features)
     if result is not None:
-        side, raw_p = result
+        side, raw_p, vote_count = result
         assert side == "yes"
         assert 0.0 <= raw_p <= 1.0
+        assert 3 <= vote_count <= 5
 
 def test_flat_prices_may_return_none():
     prices = [100.0] * 60
@@ -65,5 +67,5 @@ def test_raw_p_in_unit_interval():
     features = _make_features(prices, prices[-1], 100.0, rv=0.001)
     result = compute_15m_signal(features)
     if result is not None:
-        _, raw_p = result
+        _, raw_p, _votes = result
         assert 0.0 <= raw_p <= 1.0

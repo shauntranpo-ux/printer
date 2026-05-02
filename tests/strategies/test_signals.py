@@ -405,32 +405,3 @@ def test_event_calendar_corrupt_file_ok(tmp_path):
     assert active is False
 
 
-# â”€â”€ Session awareness â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-from strategies.signals.session_awareness import (
-    current_session, session_min_ev_multiplier
-)
-from datetime import datetime, timezone as _tz
-
-
-def test_session_weekend_detected():
-    sat = datetime(2026, 4, 11, 12, 0, 0, tzinfo=_tz.utc).timestamp()
-    assert current_session(sat) == "weekend"
-    sun = datetime(2026, 4, 12, 20, 0, 0, tzinfo=_tz.utc).timestamp()
-    assert current_session(sun) == "weekend"
-
-
-def test_session_us_afternoon_detected():
-    ts = datetime(2026, 4, 14, 19, 0, 0, tzinfo=_tz.utc).timestamp()
-    assert current_session(ts) == "us_afternoon"
-
-
-def test_session_normal_detected():
-    ts = datetime(2026, 4, 15, 9, 0, 0, tzinfo=_tz.utc).timestamp()
-    assert current_session(ts) == "normal"
-
-
-def test_session_multipliers():
-    assert session_min_ev_multiplier("normal") == 1.0
-    assert session_min_ev_multiplier("weekend") == 1.25
-    assert session_min_ev_multiplier("us_afternoon") == 1.25

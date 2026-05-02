@@ -39,7 +39,6 @@ from strategies.signals.kalshi_velocity import (
 )
 from strategies.signals.event_calendar import EventCalendar
 from strategies.signals.session_clock import (
-    is_decoupling_window,
     prior_session_return,
     is_event_day,
 )
@@ -54,11 +53,11 @@ RATIO_ADJ_MAX              = 0.02
 VELOCITY_ADJ               = 0.02
 NEWS_MODE_CONTINUATION_ADJ = 0.06
 
-# X3 — APAC decoupling + event continuation
-APAC_DECOUPLING_CORR_MAX   = 0.35
-APAC_PRIOR_RETURN_MIN_ABS  = 0.005   # 0.5% over the trailing-60m proxy
-APAC_CONTINUATION_ADJ      = 0.05
-APAC_EVENT_DAY_BOOST       = 0.02
+# X3 — decoupling + event continuation (fires whenever XRP is decoupled from BTC)
+DECOUPLE_CORR_MAX             = 0.35
+DECOUPLE_PRIOR_RETURN_MIN_ABS = 0.005   # 0.5% over the trailing-60m proxy
+DECOUPLE_CONTINUATION_ADJ     = 0.05
+DECOUPLE_EVENT_DAY_BOOST      = 0.02
 
 
 class XRPStrategy(BaseStrategy):
@@ -70,6 +69,7 @@ class XRPStrategy(BaseStrategy):
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
         event_calendar: Optional[EventCalendar] = None,
+        min_votes: int = 4,
     ):
         super().__init__(
             asset="XRP",
@@ -78,6 +78,7 @@ class XRPStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
+            min_votes=min_votes,
         )
         self.beta = load_beta("XRP")
         self.event_calendar = event_calendar or EventCalendar()
@@ -144,6 +145,20 @@ class XRPStrategy(BaseStrategy):
                     f"(min={self.min_ev:+.3f})"
                 ),
                 contributing_signals=merged_signals,
+                expected_value=ev_result.best_ev,
+            )
+
+        # Gate A: contract velocity must not oppose the chosen side
+        # XRP stores velocity as velocity_label (may be "suppressed_news_mode")
+        _vel = merged_signals.get("velocity", "flat")
+        _chosen = ev_result.best_side
+        if (_chosen == "yes" and _vel == "falling") or (_chosen == "no" and _vel == "rising"):
+            return Decision(
+                action="skip",
+                side=None,
+                p_model=calibrated_p_yes,
+                reason=f"gate_a_velocity: {_chosen} opposed by contract velocity={_vel}",
+                contributing_signals={**merged_signals, "gate_a_block": True},
                 expected_value=ev_result.best_ev,
             )
 
@@ -264,36 +279,32 @@ class XRPStrategy(BaseStrategy):
         signals["velocity_adj"] = velocity_adj
         p_yes += velocity_adj * taper
 
-        # ── Step G: X3 APAC decoupling + event continuation ─────────────
+        # ── Step G: X3 decoupling + event continuation ───────────────────
         # Trade prior-session direction continuation when XRP is decoupled
-        # from BTC during the Asia-open or EU-peak windows. News-mode
-        # already provides its own continuation nudge, so suppress this
-        # signal when news_mode is active to avoid double-counting.
-        apac_active, apac_label = is_decoupling_window(features.timestamp)
-        signals["apac_window"] = apac_label or "off"
-        apac_adj = 0.0
-        if apac_active and not is_news:
-            corr_for_apac = correlation
+        # from BTC. News-mode already provides its own continuation nudge,
+        # so suppress this signal when news_mode is active.
+        decouple_adj = 0.0
+        if not is_news:
             prior_ret = prior_session_return(list(features.prices_60m))
             event_day = is_event_day(self.event_calendar, features.timestamp)
-            signals["apac_correlation"] = corr_for_apac
-            signals["apac_prior_return"] = prior_ret
-            signals["apac_event_day"] = event_day
+            signals["decouple_correlation"] = correlation
+            signals["decouple_prior_return"] = prior_ret
+            signals["decouple_event_day"] = event_day
             decoupled = (
-                corr_for_apac is not None
-                and corr_for_apac < APAC_DECOUPLING_CORR_MAX
+                correlation is not None
+                and correlation < DECOUPLE_CORR_MAX
             )
             sufficient = (
                 prior_ret is not None
-                and abs(prior_ret) >= APAC_PRIOR_RETURN_MIN_ABS
+                and abs(prior_ret) >= DECOUPLE_PRIOR_RETURN_MIN_ABS
             )
             if decoupled and sufficient:
-                magnitude = APAC_CONTINUATION_ADJ + (
-                    APAC_EVENT_DAY_BOOST if event_day else 0.0
+                magnitude = DECOUPLE_CONTINUATION_ADJ + (
+                    DECOUPLE_EVENT_DAY_BOOST if event_day else 0.0
                 )
-                apac_adj = magnitude if prior_ret > 0 else -magnitude
-        signals["apac_adj"] = apac_adj
-        p_yes += apac_adj * taper
+                decouple_adj = magnitude if prior_ret > 0 else -magnitude
+        signals["decouple_adj"] = decouple_adj
+        p_yes += decouple_adj * taper
 
         p_yes = max(0.05, min(0.95, p_yes))
         signals["final_p_yes"] = p_yes

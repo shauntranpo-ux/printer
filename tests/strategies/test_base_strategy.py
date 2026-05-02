@@ -40,13 +40,15 @@ def _make_features(trend: float = 0.0, **overrides):
 
 def _mock_signal(side: str):
     """
-    Patch compute_15m_signal to return a fixed direction.
-    The second element is signal strength in the predicted direction (not raw p_yes).
-    base.py flips it for NO: p_model_for_ev = 1 - 0.70 = 0.30 → no_ev = 0.70 - no_ask.
+    Patch compute_15m_signal to return a fixed (side, raw_p_yes, vote_count).
+    raw_p_yes is always P(YES wins): 0.70 for YES signals, 0.30 for NO signals.
+    ev.py uses (1 - p_model) for the NO leg, so NO at p_yes=0.30 → no_ev = 0.70 - no_ask.
+    vote_count=5 ensures Gate B always passes in these tests.
     """
+    p_yes = 0.70 if side == "yes" else 0.30
     return _patch(
         "strategies.signals.fifteen_min_signal.compute_15m_signal",
-        return_value=(side, 0.70),
+        return_value=(side, p_yes, 5),
     )
 
 
@@ -62,7 +64,7 @@ def test_trade_when_ev_positive():
 
 def test_trade_flips_to_no_when_signal_is_down():
     strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0)
-    # no_ask=37c, trend down → signal=no, momentum aligned, EV positive
+    # no_ask=37c, trend down → signal=no (raw_p_yes=0.30), momentum aligned, no_ev=0.70-0.37-fee>0
     features = _make_features(trend=-10.0, yes_ask=65.0, no_ask=37.0, yes_bid=64.0, no_bid=36.0)
     with _mock_signal("no"):
         decision = strat.decide(features)
@@ -88,3 +90,97 @@ def test_skip_when_momentum_misaligned():
         decision = strat.decide(features)
     assert decision.action == "skip"
     assert "momentum" in decision.reason
+
+
+# ── Gate B tests ──────────────────────────────────────────────────────────────
+
+def _mock_signal_with_votes(side: str, vote_count: int):
+    p_yes = 0.70 if side == "yes" else 0.30
+    return _patch(
+        "strategies.signals.fifteen_min_signal.compute_15m_signal",
+        return_value=(side, p_yes, vote_count),
+    )
+
+
+def test_gate_b_blocks_when_votes_insufficient():
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0,
+                          min_votes=4)
+    features = _make_features(trend=10.0, yes_ask=55.0, no_ask=47.0, yes_bid=54.0, no_bid=46.0)
+    with _mock_signal_with_votes("yes", vote_count=3):
+        decision = strat.decide(features)
+    assert decision.action == "skip"
+    assert "gate_b" in decision.reason
+
+
+def test_gate_b_allows_when_votes_met():
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0,
+                          min_votes=4)
+    features = _make_features(trend=10.0, yes_ask=55.0, no_ask=47.0, yes_bid=54.0, no_bid=46.0)
+    with _mock_signal_with_votes("yes", vote_count=4):
+        decision = strat.decide(features)
+    assert decision.action == "trade"
+
+
+def test_gate_b_blocks_at_five_threshold():
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0,
+                          min_votes=5)
+    features = _make_features(trend=10.0, yes_ask=55.0, no_ask=47.0, yes_bid=54.0, no_bid=46.0)
+    with _mock_signal_with_votes("yes", vote_count=4):
+        decision = strat.decide(features)
+    assert decision.action == "skip"
+    assert "gate_b" in decision.reason
+
+
+# ── Gate A tests ──────────────────────────────────────────────────────────────
+
+def _make_kalshi_history(direction: str, n: int = 40):
+    """Build a kalshi_price_history deque that produces the requested velocity."""
+    if direction == "rising":
+        prices = [(float(i), 50.0 + i * 0.1) for i in range(n)]  # +8% over 40 ticks
+    elif direction == "falling":
+        prices = [(float(i), 50.0 - i * 0.1) for i in range(n)]  # -8% over 40 ticks
+    else:
+        prices = [(float(i), 50.0) for i in range(n)]
+    return prices
+
+
+def test_gate_a_blocks_yes_when_velocity_falling():
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0,
+                          momentum_lookback=0)
+    features = _make_features(trend=0.0, yes_ask=55.0, no_ask=47.0, yes_bid=54.0, no_bid=46.0)
+    features.kalshi_price_history.extend(_make_kalshi_history("falling"))
+    with _mock_signal_with_votes("yes", vote_count=5):
+        decision = strat.decide(features)
+    assert decision.action == "skip"
+    assert "gate_a_velocity" in decision.reason
+
+
+def test_gate_a_blocks_no_when_velocity_rising():
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0,
+                          momentum_lookback=0)
+    features = _make_features(trend=0.0, yes_ask=65.0, no_ask=37.0, yes_bid=64.0, no_bid=36.0)
+    features.kalshi_price_history.extend(_make_kalshi_history("rising"))
+    with _mock_signal_with_votes("no", vote_count=5):
+        decision = strat.decide(features)
+    assert decision.action == "skip"
+    assert "gate_a_velocity" in decision.reason
+
+
+def test_gate_a_allows_yes_when_velocity_flat():
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0,
+                          momentum_lookback=0)
+    features = _make_features(trend=0.0, yes_ask=55.0, no_ask=47.0, yes_bid=54.0, no_bid=46.0)
+    features.kalshi_price_history.extend(_make_kalshi_history("flat"))
+    with _mock_signal_with_votes("yes", vote_count=5):
+        decision = strat.decide(features)
+    assert decision.action == "trade"
+
+
+def test_gate_a_allows_yes_when_velocity_rising():
+    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0,
+                          momentum_lookback=0)
+    features = _make_features(trend=0.0, yes_ask=55.0, no_ask=47.0, yes_bid=54.0, no_bid=46.0)
+    features.kalshi_price_history.extend(_make_kalshi_history("rising"))
+    with _mock_signal_with_votes("yes", vote_count=5):
+        decision = strat.decide(features)
+    assert decision.action == "trade"
