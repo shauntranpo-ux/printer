@@ -1755,7 +1755,8 @@ document.getElementById('equity-seg').querySelectorAll('button').forEach(b=>{
 
 // ── Market state (live fetch, 30s poll) ───────────────────────────────────────
 function mapAssetState(sym, a) {
-  const secs = a.secs_left || 0;
+  const rawSecs = a.secs_left || 0;
+  const secs = Math.floor(rawSecs);
   const mins = Math.floor(secs / 60), s = secs % 60;
   const timer = secs > 0 ? `${mins}m ${s}s` : '—';
   const ex  = MARKETS.find(m => m.sym === sym) || {};
@@ -1768,8 +1769,8 @@ function mapAssetState(sym, a) {
     pnlToday: a.daily?.pnl ?? ex.pnlToday ?? 0,
     ev:       a.ev        ?? dec.yes_ev   ?? ex.ev    ?? 0,
     wp:       a.win_prob  ?? dec.win_prob ?? ex.wp    ?? 0.5,
-    yesAsk:   a.yes_ask   ?? dec.yes_ask  ?? ex.yesAsk ?? 50,
-    noAsk:    a.no_ask    ?? dec.no_ask   ?? ex.noAsk  ?? 50,
+    yesAsk:   Math.round(a.yes_ask   ?? dec.yes_ask  ?? ex.yesAsk ?? 50),
+    noAsk:    Math.round(a.no_ask    ?? dec.no_ask   ?? ex.noAsk  ?? 50),
     vol:      a.vol       ?? ex.vol       ?? 1.0,
     side:     a.side      ?? ex.side      ?? '—',
     sig:      { ...(ex.sig || {}), ...dec },
