@@ -1006,11 +1006,12 @@ function renderMarketStrip(){
       : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12 L18 12"/></svg>';
     const inTrade = m.phase === 'LOCKED';
     // ── battle bar ──
-    const total = (m.yesAsk||0) + (m.noAsk||0);
-    const yesPct = total > 0 ? (m.yesAsk/total)*100 : 50;
+    const hasAsk = m.yesAsk != null && m.noAsk != null;
+    const total = hasAsk ? (m.yesAsk + m.noAsk) : 100;
+    const yesPct = hasAsk ? (m.yesAsk / total) * 100 : 50;
     const offline = m.phase === 'OFFLINE';
     let dotColor = '#9a988f';
-    if(!offline){
+    if (!offline && hasAsk) {
       if(yesPct <= 35){
         const t = yesPct/35;
         const r = Math.round(214 + (136-214)*t), g = Math.round(57 + (136-57)*t), b = Math.round(73 + (136-73)*t);
@@ -1027,14 +1028,15 @@ function renderMarketStrip(){
     if(m.phase === 'OFFLINE'){
       footRight = `<span style="color:var(--ink-4);">offline</span>`;
     } else if(m.phase === 'DONE'){
-      const yesWon = yesPct >= 50;
-      footRight = `<span class="result ${yesWon?'win':'loss'}">${yesWon?'✓ YES':'✗ NO'}</span>`;
+      footRight = `<span style="color:var(--ink-3);">settled</span>`;
     } else if(m.phase === 'LOCKED'){
       footRight = `<span class="locked-tag">LOCKED</span>`;
     } else {
       const warn = (m.timer||'').match(/^[0-5]?[0-9]s$/) || (m.timer||'').match(/^0m/);
       footRight = `<span class="timer ${warn?'warn':''}">⏱ ${m.timer||'—'}</span>`;
     }
+    const yesLabel = hasAsk ? `${m.yesAsk}¢` : '—';
+    const noLabel  = hasAsk ? `${m.noAsk}¢`  : '—';
     const battleHTML = `
       <div class="mc-battle" style="${offline?'opacity:0.5;':''}">
         <div class="mc-battle-track-wrap">
@@ -1042,7 +1044,7 @@ function renderMarketStrip(){
           <div class="mc-battle-marker" style="left:${yesPct.toFixed(1)}%;background-color:${dotColor};"></div>
         </div>
         <div class="mc-battle-foot">
-          <span><span class="yes">${m.yesAsk||0}¢</span><span class="sep"> / </span><span class="no">${m.noAsk||0}¢</span></span>
+          <span><span class="yes">${yesLabel}</span><span class="sep"> / </span><span class="no">${noLabel}</span></span>
           ${footRight}
         </div>
       </div>`;
@@ -1320,10 +1322,11 @@ function renderMarketPanel(sym){
     </svg>`;
 
   // signal score gauge (semicircle)
-  const gAngle = (session.score/100)*Math.PI;
+  const _score = session.score ?? 0;
+  const gAngle = (_score/100)*Math.PI;
   const gx = 80 + 70*Math.cos(Math.PI - gAngle);
   const gy = 80 - 70*Math.sin(Math.PI - gAngle);
-  const gColor = session.score>=70?'oklch(0.55 0.16 245)':session.score>=50?'oklch(0.82 0.16 75)':'oklch(0.55 0.20 20)';
+  const gColor = _score>=70?'oklch(0.55 0.16 245)':_score>=50?'oklch(0.82 0.16 75)':'oklch(0.55 0.20 20)';
   const gaugeHTML = `
     <div class="gauge-wrap">
       <svg class="gauge-svg" viewBox="0 0 160 90">
@@ -1331,7 +1334,7 @@ function renderMarketPanel(sym){
         <path d="M 10,80 A 70,70 0 0 1 ${gx.toFixed(1)},${gy.toFixed(1)}" fill="none" stroke="${gColor}" stroke-width="10" stroke-linecap="round"/>
         <circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="5" fill="${gColor}"/>
       </svg>
-      <div class="gauge-val" style="color:${gColor};">${session.score}</div>
+      <div class="gauge-val" style="color:${gColor};">${session.score ?? '—'}</div>
       <div class="gauge-label">Confidence</div>
     </div>`;
 
@@ -1573,16 +1576,20 @@ function renderTrades(filter='all'){
 //  TAB SWITCHING
 // ════════════════════════════════════════════════════
 const MARKET_SYMS = ['BTC','ETH','SOL','XRP','DOGE'];
+let _activeMarketSym = null;
 function switchTab(tab){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active', t.dataset.tab===tab));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
 
   if(tab==='overview'){
+    _activeMarketSym = null;
     document.getElementById('panel-overview').classList.add('active');
     requestAnimationFrame(renderEquity);
   } else if(tab==='trades'){
+    _activeMarketSym = null;
     document.getElementById('panel-trades').classList.add('active');
   } else if(MARKET_SYMS.includes(tab)){
+    _activeMarketSym = tab;
     document.getElementById('panel-market').classList.add('active');
     renderMarketPanel(tab);
     fetchMarketDetail(tab);
@@ -1768,9 +1775,9 @@ function mapAssetState(sym, a) {
     timer,
     pnlToday: a.daily?.pnl ?? ex.pnlToday ?? 0,
     ev:       a.ev        ?? dec.yes_ev   ?? ex.ev    ?? 0,
-    wp:       a.win_prob  ?? dec.win_prob ?? ex.wp    ?? 0.5,
-    yesAsk:   Math.round(a.yes_ask   ?? dec.yes_ask  ?? ex.yesAsk ?? 50),
-    noAsk:    Math.round(a.no_ask    ?? dec.no_ask   ?? ex.noAsk  ?? 50),
+    wp:       a.win_prob != null ? a.win_prob / 100 : (dec.win_prob != null ? dec.win_prob / 100 : (ex.wp ?? 0.5)),
+    yesAsk:   a.yes_ask != null ? Math.round(a.yes_ask) : (dec.yes_ask != null ? Math.round(dec.yes_ask) : (ex.yesAsk ?? null)),
+    noAsk:    a.no_ask  != null ? Math.round(a.no_ask)  : (dec.no_ask  != null ? Math.round(dec.no_ask)  : (ex.noAsk  ?? null)),
     vol:      a.vol       ?? ex.vol       ?? 1.0,
     side:     a.side      ?? ex.side      ?? '—',
     sig:      { ...(ex.sig || {}), ...dec },
@@ -1780,7 +1787,20 @@ async function fetchMarketState() {
   try {
     const data = await fetch('/api/market-state').then(r => r.json());
     if (data.assets) {
-      MARKETS = Object.entries(data.assets).map(([sym, a]) => mapAssetState(sym, a));
+      const CANONICAL = ['BTC','ETH','SOL','XRP','DOGE'];
+      MARKETS = CANONICAL.map(sym => {
+        const a = data.assets[sym];
+        if (!a) return MARKETS.find(m => m.sym === sym) || {
+          sym, phase:'OFFLINE', px:null, ch24:0, dist:0, strike:null,
+          ev:0, wp:0.5, timer:'—', pnlToday:0, side:'—',
+          yesAsk:50, noAsk:50, vol:0,
+          sig:{ final_decision:'skip', vote_count:0, min_votes:5, ev_pass:false,
+                gate_a_block:false, skip_reason:null, decision_mode:'d3_hybrid',
+                raw_p_yes:0.5, p_ev:0.5, market_prob:0.5, yes_ev:0, no_ev:0,
+                supertrend:0, velocity:'flat' }
+        };
+        return mapAssetState(sym, a);
+      });
     }
     renderMarketStrip();
     renderAllocation();
@@ -1877,11 +1897,23 @@ async function fetchEventLog() {
 async function fetchMarketDetail(sym) {
   try {
     const data = await fetch(`/api/market/${sym}`).then(r => r.json());
+    if (sym !== _activeMarketSym) return;  // user switched tabs during fetch
     if (data.error) return;
     const ex = MARKET_DATA[sym] || {};
+    // Merge API sessions over mock defaults — keep null mock fields when API returns null
+    const mergedSessions = data.sessions?.length ? data.sessions.map((s, i) => {
+      const base = (ex.sessions || [])[i] || {};
+      const merged = { ...base };
+      for (const [k, v] of Object.entries(s)) {
+        if (v !== null && v !== undefined) merged[k] = v;
+      }
+      // bot writes win_prob as 0-100; normalize to 0-1 for render
+      if (s.wp != null) merged.wp = s.wp / 100;
+      return merged;
+    }) : ex.sessions;
     MARKET_DATA[sym] = {
       ...ex,
-      sessions: data.sessions?.length ? data.sessions : ex.sessions,
+      sessions: mergedSessions,
       log:      data.log?.length      ? data.log      : ex.log,
       stats:    data.stats ? { ...ex.stats, ...data.stats } : ex.stats,
       outcomes: data.outcomes ?? ex.outcomes,
