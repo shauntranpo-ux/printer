@@ -839,8 +839,8 @@ function cryptoLogo(sym){
 // MARKETS — live state replaced by fetchMarketState() every 30s
 let MARKETS = ['BTC','ETH','SOL','XRP','DOGE'].map(sym => ({
   sym, phase: 'OFFLINE', px: null, ch24: 0, dist: 0, strike: null,
-  ev: 0, wp: 0.5, timer: '—', pnlToday: 0, side: '—',
-  yesAsk: 50, noAsk: 50, vol: 0,
+  ev: 0, wp: null, timer: '—', pnlToday: 0, side: '—',
+  yesAsk: null, noAsk: null, vol: 0,
   sig: { final_decision: 'skip', vote_count: 0, min_votes: 5, ev_pass: false,
          gate_a_block: false, skip_reason: null, decision_mode: 'd3_hybrid',
          raw_p_yes: 0.5, p_ev: 0.5, market_prob: 0.5, yes_ev: 0, no_ev: 0,
@@ -1061,7 +1061,7 @@ function renderMarketStrip(){
       <div class="mc-body">
         <div class="mc-price">
           <span class="mc-price-label">Win prob</span>
-          <span class="mc-price-val">${(m.wp*100).toFixed(1)}<span class="mc-price-unit">%</span></span>
+          <span class="mc-price-val">${m.wp != null ? (m.wp*100).toFixed(1) : '—'}<span class="mc-price-unit">${m.wp != null ? '%' : ''}</span></span>
         </div>
         <div class="mc-trend ${trend}">${arrow}</div>
       </div>
@@ -1416,10 +1416,10 @@ function renderMarketPanel(sym){
 
     <div class="mkpi-grid">
       <div class="mkpi"><div class="mkpi-l">Strike</div><div class="mkpi-v">${fmtPx(sym,session.strike)}</div><div class="mkpi-sub">${session.expires}</div></div>
-      <div class="mkpi"><div class="mkpi-l">Distance</div><div class="mkpi-v ${session.dist>=0?'up':'down'}">${session.dist>=0?'+':''}${session.dist.toFixed(2)}%</div></div>
-      <div class="mkpi"><div class="mkpi-l">EV</div><div class="mkpi-v ${session.ev>=7?'up':session.ev>=5?'':'down'}">${session.ev.toFixed(1)}%</div><div class="mkpi-sub">floor 7.0%</div></div>
-      <div class="mkpi"><div class="mkpi-l">Win Prob</div><div class="mkpi-v">${(session.wp*100).toFixed(1)}%</div></div>
-      <div class="mkpi"><div class="mkpi-l">Vol Gate</div><div class="mkpi-v ${session.vol>=1.8?'up':session.vol>=1.2?'':'down'}">${session.vol.toFixed(2)}</div><div class="mkpi-sub">thresh 1.80</div></div>
+      <div class="mkpi"><div class="mkpi-l">Distance</div><div class="mkpi-v ${(session.dist??0)>=0?'up':'down'}">${session.dist!=null?((session.dist>=0?'+':'')+session.dist.toFixed(2)+'%'):'—'}</div></div>
+      <div class="mkpi"><div class="mkpi-l">EV</div><div class="mkpi-v ${(session.ev??0)>=7?'up':(session.ev??0)>=5?'':'down'}">${session.ev!=null?session.ev.toFixed(1)+'%':'—'}</div><div class="mkpi-sub">floor 7.0%</div></div>
+      <div class="mkpi"><div class="mkpi-l">Win Prob</div><div class="mkpi-v">${session.wp != null ? (session.wp*100).toFixed(1)+'%' : '—'}</div></div>
+      <div class="mkpi"><div class="mkpi-l">Vol Gate</div><div class="mkpi-v ${(session.vol??0)>=1.8?'up':(session.vol??0)>=1.2?'':'down'}">${session.vol!=null?session.vol.toFixed(2):'—'}</div><div class="mkpi-sub">thresh 1.80</div></div>
       <div class="mkpi"><div class="mkpi-l">Position</div><div class="mkpi-v">${session.qty>0?session.qty:'—'}</div><div class="mkpi-sub">${session.qty>0?'YES @ '+session.yesAsk+'¢':'flat'}</div></div>
     </div>
 
@@ -1514,7 +1514,7 @@ function renderMarketPanel(sym){
         <div>
           <div class="sig-row"><div class="sig-dot ${session.ev>=7?'on':'off'}"></div><div class="sig-name">EV ≥ floor</div><div class="sig-val">${session.ev.toFixed(1)}% / 7.0%</div></div>
           <div class="sig-row"><div class="sig-dot ${session.vol>=1.2?'on':'warn'}"></div><div class="sig-name">Vol gate</div><div class="sig-val">${session.vol.toFixed(2)} / 1.80</div></div>
-          <div class="sig-row"><div class="sig-dot ${session.wp>=0.55?'on':'off'}"></div><div class="sig-name">Win prob</div><div class="sig-val">${(session.wp*100).toFixed(1)}%</div></div>
+          <div class="sig-row"><div class="sig-dot ${session.wp!=null&&session.wp>=0.55?'on':'off'}"></div><div class="sig-name">Win prob</div><div class="sig-val">${session.wp!=null?(session.wp*100).toFixed(1)+'%':'—'}</div></div>
           <div class="sig-row"><div class="sig-dot ${session.score>=60?'on':'warn'}"></div><div class="sig-name">Confidence</div><div class="sig-val">${session.score}/100</div></div>
           <div class="sig-row"><div class="sig-dot ${Math.abs(session.dist)<0.5?'on':'warn'}"></div><div class="sig-name">Strike distance</div><div class="sig-val">${session.dist>=0?'+':''}${session.dist.toFixed(2)}%</div></div>
           <div class="sig-row"><div class="sig-dot on"></div><div class="sig-name">Price validation</div><div class="sig-val">OK</div></div>
@@ -1775,7 +1775,7 @@ function mapAssetState(sym, a) {
     timer,
     pnlToday: a.daily?.pnl ?? ex.pnlToday ?? 0,
     ev:       a.ev        ?? dec.yes_ev   ?? ex.ev    ?? 0,
-    wp:       a.win_prob != null ? a.win_prob / 100 : (dec.win_prob != null ? dec.win_prob / 100 : (ex.wp ?? 0.5)),
+    wp:       a.win_prob != null ? a.win_prob / 100 : (dec.win_prob != null ? dec.win_prob / 100 : (ex.wp ?? null)),
     yesAsk:   a.yes_ask != null ? Math.round(a.yes_ask) : (dec.yes_ask != null ? Math.round(dec.yes_ask) : (ex.yesAsk ?? null)),
     noAsk:    a.no_ask  != null ? Math.round(a.no_ask)  : (dec.no_ask  != null ? Math.round(dec.no_ask)  : (ex.noAsk  ?? null)),
     vol:      a.vol       ?? ex.vol       ?? 1.0,
@@ -1792,8 +1792,8 @@ async function fetchMarketState() {
         const a = data.assets[sym];
         if (!a) return MARKETS.find(m => m.sym === sym) || {
           sym, phase:'OFFLINE', px:null, ch24:0, dist:0, strike:null,
-          ev:0, wp:0.5, timer:'—', pnlToday:0, side:'—',
-          yesAsk:50, noAsk:50, vol:0,
+          ev:0, wp:null, timer:'—', pnlToday:0, side:'—',
+          yesAsk:null, noAsk:null, vol:0,
           sig:{ final_decision:'skip', vote_count:0, min_votes:5, ev_pass:false,
                 gate_a_block:false, skip_reason:null, decision_mode:'d3_hybrid',
                 raw_p_yes:0.5, p_ev:0.5, market_prob:0.5, yes_ev:0, no_ev:0,
