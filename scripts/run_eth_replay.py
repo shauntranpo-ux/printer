@@ -1,19 +1,19 @@
 ﻿"""
-ETH strategy replay backtest — uses the actual live ETHStrategy.compute_raw_p_model().
+ETH strategy replay backtest — uses the live FifteenMinStrategy (D3 hybrid).
 
-Unlike run_ev_sweep.py (Supertrend/fixed P_MODEL) or backtest.py (BV3 tables),
-this script instantiates the real ETHStrategy and calls decide() on historical
+Instantiates FifteenMinStrategy(asset="ETH") and calls decide() on historical
 1m data, producing results that reflect what the bot actually does live.
 
 Outputs:
   backtesting/output/eth_replay_full.csv      — per-trade rows for all min_ev
   backtesting/output/eth_replay_baseline.csv  — baseline-only mode (signals zeroed)
-  backtesting/output/ev_sweep_eth_replay.csv  — sweep summary (n, wr, pnl) per min_ev
-  backtesting/output/eth_calibration_rows.csv — (raw_p_yes, outcome) for Fix 2
+  backtesting/output/ev_sweep_eth_replay_full.csv    — directional accuracy sweep
+  backtesting/output/ev_sweep_eth_replay_baseline.csv
+  backtesting/output/eth_calibration_rows.csv — (raw_p_yes, outcome) for calibrator refit
 
 Usage:
-  py run_eth_replay.py
-  py run_eth_replay.py --start 2024-04-01 --end 2026-01-01
+  py scripts/run_eth_replay.py
+  py scripts/run_eth_replay.py --start 2024-04-01 --end 2026-01-01
 """
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
@@ -65,7 +65,7 @@ def _load_1m(asset: str, start: str, end: str) -> pd.DataFrame:
 
 
 def _run_replay(eth: pd.DataFrame, btc: pd.DataFrame, baseline_only: bool) -> pd.DataFrame:
-    from strategies.eth_strategy import ETHStrategy
+    from strategies.fifteen_min_strategy import FifteenMinStrategy
     from strategies.skip_layer import SkipConfig
     from strategies.features import MarketFeatures
     from strategies.baseline import brownian_bridge_prob_above
@@ -79,7 +79,8 @@ def _run_replay(eth: pd.DataFrame, btc: pd.DataFrame, baseline_only: bool) -> pd
         cold_start_samples=60,
         vol_ratio_threshold=99.0,   # no vol gate — we gate with EV only
     )
-    strat = ETHStrategy(
+    strat = FifteenMinStrategy(
+        asset="ETH",
         skip_config=skip_cfg,
         min_ev=0.001,   # accept everything; we sweep min_ev in post-processing
         stake_dollars=25.0,
@@ -182,11 +183,14 @@ def _run_replay(eth: pd.DataFrame, btc: pd.DataFrame, baseline_only: bool) -> pd
 
         if baseline_only:
             raw_p_yes = baseline_p
+            calibrated_p_yes = baseline_p
             signals = {"baseline_p_above": baseline_p}
         else:
-            raw_p_yes, signals = strat.compute_raw_p_model(features, baseline_p)
-
-        calibrated_p_yes = strat.calibrator.calibrate(raw_p_yes)
+            _decision = strat.decide(features)
+            _cs = _decision.contributing_signals or {}
+            raw_p_yes = float(_cs.get("raw_p_yes", baseline_p))
+            calibrated_p_yes = float(_cs.get("calibrated_p_yes", raw_p_yes))
+            signals = _cs
 
         # Outcome
         outcome = 1 if exit_price > strike else 0
