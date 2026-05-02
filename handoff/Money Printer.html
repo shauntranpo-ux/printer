@@ -836,22 +836,18 @@ function cryptoLogo(sym){
 // ════════════════════════════════════════════════════
 //  MOCK DATA  (representative — wire to real bot API)
 // ════════════════════════════════════════════════════
-const MARKETS = [
-// Phase model: WATCH (early window) → READY (signal qualified, awaiting entry) → LOCKED (in trade) → DONE (resolved) → OFFLINE
-// Each market also carries the full D3 hybrid decision context.
-  { sym:'BTC',  px:78312.40, ch24:+0.84, dist:+0.11, strike:78250,   ev:7.6, wp:0.624, phase:'READY',   timer:'6m 28s', pnlToday:+24.40, side:'YES/UP',  yesAsk:54, noAsk:48, vol:1.42,
-    sig:{ raw_p_yes:0.612, p_ev:0.598, market_prob:0.530, yes_ev:7.6,  no_ev:-3.2, supertrend:+1, velocity:'rising',  vote_count:4, min_votes:5, ev_pass:true,  gate_a_block:false, final_decision:'trade', skip_reason:null,                  decision_mode:'d3_hybrid' } },
-  { sym:'ETH',  px:2304.18,  ch24:-0.42, dist:-0.13, strike:2306.00, ev:5.1, wp:0.581, phase:'WATCH',   timer:'6m 28s', pnlToday:+12.80, side:'NO/DOWN', yesAsk:46, noAsk:56, vol:1.18,
-    sig:{ raw_p_yes:0.448, p_ev:0.461, market_prob:0.471, yes_ev:-1.0, no_ev:5.1,  supertrend:-1, velocity:'falling', vote_count:3, min_votes:5, ev_pass:true,  gate_a_block:false, final_decision:'skip',  skip_reason:'votes_below_threshold', decision_mode:'d3_hybrid' } },
-  { sym:'SOL',  px:83.78,    ch24:+1.62, dist:+0.07, strike:83.72,   ev:9.4, wp:0.667, phase:'LOCKED',  timer:'6m 28s', pnlToday:+38.20, side:'YES/UP',  yesAsk:58, noAsk:44, vol:1.74,
-    sig:{ raw_p_yes:0.694, p_ev:0.681, market_prob:0.580, yes_ev:9.4,  no_ev:-4.8, supertrend:+1, velocity:'rising',  vote_count:5, min_votes:5, ev_pass:true,  gate_a_block:false, final_decision:'trade', skip_reason:null,                  decision_mode:'d3_hybrid' } },
-  { sym:'XRP',  px:1.39,     ch24:-0.21, dist:+0.08, strike:1.388,   ev:4.2, wp:0.553, phase:'WATCH',   timer:'6m 28s', pnlToday: +6.10, side:'YES/UP',  yesAsk:51, noAsk:51, vol:0.92,
-    sig:{ raw_p_yes:0.541, p_ev:0.538, market_prob:0.510, yes_ev:4.2,  no_ev:-2.4, supertrend:+1, velocity:'flat',    vote_count:3, min_votes:5, ev_pass:false, gate_a_block:false, final_decision:'skip',  skip_reason:'ev_below_threshold',    decision_mode:'d3_hybrid' } },
-  { sym:'DOGE', px:0.1080,   ch24:+0.32, dist:+0.16, strike:0.1078,  ev:3.6, wp:0.541, phase:'OFFLINE', timer:'6m 28s', pnlToday: +3.10, side:'—',       yesAsk:52, noAsk:50, vol:0.78,
-    sig:{ raw_p_yes:0.520, p_ev:0.515, market_prob:0.515, yes_ev:3.6,  no_ev:-2.0, supertrend:-1, velocity:'falling', vote_count:2, min_votes:5, ev_pass:false, gate_a_block:true,  final_decision:'skip',  skip_reason:'gate_a_velocity_block', decision_mode:'d3_hybrid' } }
-];
+// MARKETS — live state replaced by fetchMarketState() every 30s
+let MARKETS = ['BTC','ETH','SOL','XRP','DOGE'].map(sym => ({
+  sym, phase: 'OFFLINE', px: null, ch24: 0, dist: 0, strike: null,
+  ev: 0, wp: 0.5, timer: '—', pnlToday: 0, side: '—',
+  yesAsk: 50, noAsk: 50, vol: 0,
+  sig: { final_decision: 'skip', vote_count: 0, min_votes: 5, ev_pass: false,
+         gate_a_block: false, skip_reason: null, decision_mode: 'd3_hybrid',
+         raw_p_yes: 0.5, p_ev: 0.5, market_prob: 0.5, yes_ev: 0, no_ev: 0,
+         supertrend: 0, velocity: 'flat' }
+}));
 
-// Phase explainers
+// Phase explainers// Phase explainers
 const PHASE_TIP = {
   WATCH:   'Bot is monitoring this asset. Window not yet at the entry minute.',
   READY:   'Signal qualified for trade — waiting for the entry minute (5 of 15).',
@@ -895,34 +891,11 @@ function genEquity(seed, len, drift, vol){
   }
   return pts;
 }
-const EQ = {
-  '1d':  genEquity(7,  96,  0.9, 4.0),
-  '1w':  genEquity(11, 168, 1.1, 6.0),
-  '1m':  genEquity(23, 240, 1.6, 9.0),
-  'all': genEquity(41, 300, 2.0, 12.0),
-};
+// EQ — populated by fetchEquity(), starts empty so chart shows no-data state
+const EQ = { '1d': [], '1w': [], '1m': [], 'all': [] };
 
-// trades data
-const TRADES = (()=>{
-  const out=[]; let t=Date.now();
-  const reasons=['signal_strong','ev_threshold','momentum_break','reversion','vol_expansion','price_action','strategy_15m','strategy_h1'];
-  const r=(s=>()=>{s=(s*9301+49297)%233280;return s/233280;})(7);
-  for(let i=0;i<140;i++){
-    const symIdx=Math.floor(r()*5);
-    const sym=['BTC','ETH','SOL','XRP','DOGE'][symIdx];
-    const dir=r()>0.5?'UP':'DOWN';
-    const qty=Math.floor(r()*8)+1;
-    const entry=Math.floor(40+r()*40);
-    const win=r()>0.38;
-    const exit=win?100:0;
-    const pnl=win?(qty*(100-entry)/100*0.95):(-qty*entry/100);
-    const reason=reasons[Math.floor(r()*reasons.length)];
-    const fill=r()>0.95?'pending':r()>0.97?'failed':'filled';
-    t -= (1+Math.floor(r()*30))*60*1000;
-    out.push({ts:t,sym,dir,qty,entry,exit,ev:(3+r()*8).toFixed(1),fill,reason,pnl:pnl});
-  }
-  return out;
-})();
+// trades data — populated by fetchTrades()
+let TRADES = [];
 
 // per-market data
 const MARKET_DATA = {
@@ -1102,7 +1075,11 @@ function renderMarketStrip(){
 // equity chart
 function renderEquity(range='1d'){
   const wrap = document.getElementById('equity-chart');
-  const pts = EQ[range] || EQ['1d'];
+  const pts = EQ[range];
+  if (!pts || pts.length < 2) {
+    wrap.innerHTML = `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--ink-4);font-size:11px;font-family:'Montserrat',monospace;letter-spacing:0.08em;text-transform:uppercase;">No trades yet</div>`;
+    return;
+  }
   const w = wrap.clientWidth || 800, h = 200;
   const padL=44, padR=12, padT=18, padB=22;
   const max = Math.max(...pts, 0), min = Math.min(...pts, 0), rng = Math.max(1, max-min);
@@ -1157,7 +1134,13 @@ function renderEquity(range='1d'){
 // allocation donut
 function renderAllocation(){
   const data = MARKETS.map(m=>({sym:m.sym, val:Math.abs(m.pnlToday), pos:m.pnlToday>=0}));
-  const total = data.reduce((s,d)=>s+d.val,0)||1;
+  const totalPnl = data.reduce((s,d)=>s+d.val,0);
+  if (!totalPnl) {
+    document.getElementById('alloc-donut').innerHTML = '';
+    document.getElementById('alloc-list').innerHTML = '<div style="color:var(--ink-4);font-size:11px;padding:12px 0;text-align:center;">No trades yet</div>';
+    return;
+  }
+  const total = totalPnl;
   const colors = {BTC:'oklch(0.72 0.16 60)', ETH:'oklch(0.55 0.12 270)', SOL:'oklch(0.42 0.22 300)', XRP:'oklch(0.6 0.012 250)', DOGE:'oklch(0.72 0.13 85)'};
 
   // pie: filled wedges, no center hole
@@ -1370,8 +1353,15 @@ function renderMarketPanel(sym){
     </tr>`;
   }).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--ink-3);padding:24px;">No trades yet for ${sym}</td></tr>`;
 
-  // hourly heatmap (last 60 buckets)
-  const heat = genSpark(sym.charCodeAt(0)*3, 60).map(v=>{
+  // hourly heatmap (last 60 buckets) — uses real outcomes when available
+  const _outcomes = MARKET_DATA[sym]?.outcomes;
+  const heat = (_outcomes && _outcomes.length > 0)
+    ? [..._outcomes].reverse().map(o => {
+        if(o === 'win')    return 'oklch(0.55 0.16 245)';
+        if(o === 'loss')   return 'oklch(0.65 0.20 20)';
+        return 'oklch(0.82 0 0)';
+      })
+    : genSpark(sym.charCodeAt(0)*3, 60).map(v=>{
     const norm=(v+0.5);
     if(norm>0.62) return 'oklch(0.55 0.16 245)';
     if(norm>0.5) return 'oklch(0.78 0.18 145 / 0.4)';
@@ -1595,6 +1585,7 @@ function switchTab(tab){
   } else if(MARKET_SYMS.includes(tab)){
     document.getElementById('panel-market').classList.add('active');
     renderMarketPanel(tab);
+    fetchMarketDetail(tab);
   }
   window.scrollTo(0,0);
 }
@@ -1662,7 +1653,7 @@ document.getElementById('panel-market').addEventListener('click', e => {
 async function fetchEquity(range='1d'){
   try {
     const data = await fetch(`/api/equity?range=${range}`).then(r=>r.json());
-    if(data.points && data.points.length > 1) EQ[range] = data.points;
+    EQ[range] = (data.points && data.points.length > 1) ? data.points : [];
   } catch(e){}
   renderEquity(range);
 }
@@ -1768,7 +1759,7 @@ function mapAssetState(sym, a) {
   const mins = Math.floor(secs / 60), s = secs % 60;
   const timer = secs > 0 ? `${mins}m ${s}s` : '—';
   const ex  = MARKETS.find(m => m.sym === sym) || {};
-  const dec = a.decision || {};
+  const dec = a.signals || a.decision || {};
   return {
     ...ex, sym,
     phase:    (a.phase || 'OFFLINE').toUpperCase(),
@@ -1878,6 +1869,24 @@ async function fetchEventLog() {
       events.push([fmtT(t.ts), 'exit', `${t.asset}${pnlStr} · ${t.outcome} @ ${t.entry_price_cents}¢`]);
     }
     if (events.length) renderEventLog(events);
+  } catch(e) {}
+}
+
+// ── Per-asset detail (live fetch on tab click) ───────────────────────────────
+async function fetchMarketDetail(sym) {
+  try {
+    const data = await fetch(`/api/market/${sym}`).then(r => r.json());
+    if (data.error) return;
+    const ex = MARKET_DATA[sym] || {};
+    MARKET_DATA[sym] = {
+      ...ex,
+      sessions: data.sessions?.length ? data.sessions : ex.sessions,
+      log:      data.log?.length      ? data.log      : ex.log,
+      stats:    data.stats ? { ...ex.stats, ...data.stats } : ex.stats,
+      outcomes: data.outcomes ?? ex.outcomes,
+      ladder:   ex.ladder,  // keep mock until Kalshi orderbook feed is built
+    };
+    renderMarketPanel(sym);
   } catch(e) {}
 }
 

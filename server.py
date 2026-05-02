@@ -71,6 +71,20 @@ if not os.path.exists("config.json"):
     except Exception as _cfg_err:
         logging.warning(f"Could not create default config.json: {_cfg_err}")
 
+# On every startup: force bot_enabled=False and mode=paper (safety for Railway redeploys)
+try:
+    if os.path.exists("config.json"):
+        with open("config.json", "r", encoding="utf-8") as _f:
+            _cfg = json.load(_f)
+        if _cfg.get("bot_enabled") or _cfg.get("mode", "paper") != "paper":
+            _cfg["bot_enabled"] = False
+            _cfg["mode"] = "paper"
+            with open("config.json", "w", encoding="utf-8") as _f:
+                json.dump(_cfg, _f, indent=2)
+            log.info("Startup safety reset: bot_enabled=False, mode=paper")
+except Exception as _rst_err:
+    logging.warning(f"Could not apply startup safety reset: {_rst_err}")
+
 app = Flask(__name__)
 
 # â”€â”€ Bot subprocess tracking â”€â”€
@@ -256,13 +270,24 @@ def api_trades():
     Return the last 100 trades ordered by ts descending.
     Optional query parameter: mode=live|paper.
     """
-    mode = request.args.get("mode")
+    mode  = request.args.get("mode")
+    asset = request.args.get("asset", "").upper() or None
     try:
         conn = get_db()
-        if mode:
+        if mode and asset:
             rows = conn.execute(
-                "SELECT * FROM trades WHERE mode = ? ORDER BY ts DESC LIMIT 500",
+                "SELECT * FROM trades WHERE mode=? AND asset=? ORDER BY ts DESC LIMIT 500",
+                (mode, asset),
+            ).fetchall()
+        elif mode:
+            rows = conn.execute(
+                "SELECT * FROM trades WHERE mode=? ORDER BY ts DESC LIMIT 500",
                 (mode,),
+            ).fetchall()
+        elif asset:
+            rows = conn.execute(
+                "SELECT * FROM trades WHERE asset=? ORDER BY ts DESC LIMIT 500",
+                (asset,),
             ).fetchall()
         else:
             rows = conn.execute(
@@ -683,6 +708,120 @@ def api_market_pulse():
         return jsonify(result)
     except Exception as exc:
         log.error(f"api_market_pulse error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/market/<sym>")
+def api_market_sym(sym):
+    """
+    Per-asset detail: sessions, stats, recent log, last 60 outcomes for heatmap.
+    Ladder returns empty (requires live Kalshi orderbook feed).
+    """
+    sym = sym.upper()
+    try:
+        state  = read_state()
+        a      = state.get("assets", {}).get(sym, {})
+        today  = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        secs = a.get("secs_left", 0) or 0
+        if secs > 0:
+            exp_dt  = datetime.now(timezone.utc) + timedelta(seconds=secs)
+            expires = exp_dt.strftime("%H:%M:%S UTC")
+        else:
+            expires = "—"
+
+        sessions = [{
+            "type":       "15m",
+            "active":     a.get("phase") == "LOCKED",
+            "expires":    expires,
+            "strike":     a.get("strike"),
+            "dist":       a.get("distance_pct"),
+            "ev":         a.get("ev"),
+            "wp":         a.get("win_prob"),
+            "yesAsk":     a.get("yes_ask"),
+            "noAsk":      a.get("no_ask"),
+            "qty":        0,
+            "vol":        None,
+            "score":      None,
+            "skipReason": a.get("skip_reason"),
+        }]
+
+        conn = get_db()
+
+        # Stats
+        try:
+            all_rows = conn.execute(
+                "SELECT outcome, pnl_dollars, model_prob FROM trades "
+                "WHERE asset=? AND outcome IN ('win','loss') AND pnl_dollars IS NOT NULL",
+                (sym,)
+            ).fetchall()
+            today_rows = conn.execute(
+                "SELECT pnl_dollars FROM trades "
+                "WHERE asset=? AND ts LIKE ? AND outcome IN ('win','loss') AND pnl_dollars IS NOT NULL",
+                (sym, today + "%")
+            ).fetchall()
+            wins    = sum(1 for r in all_rows if r["outcome"] == "win")
+            total   = len(all_rows)
+            losses  = total - wins
+            wr      = round(wins / total, 3) if total else 0.0
+            today_p = round(sum(r["pnl_dollars"] for r in today_rows), 2)
+            avg_ev  = round(sum((r["model_prob"] or 0) * 100 for r in all_rows) / total, 1) if total else 0.0
+            best    = round(max((r["pnl_dollars"] for r in all_rows), default=0.0), 2)
+            worst   = round(min((r["pnl_dollars"] for r in all_rows), default=0.0), 2)
+            stats   = {
+                "wins": wins, "losses": losses, "wr": wr,
+                "todayPnl": today_p, "avgEV": avg_ev,
+                "bestExit": f"+${best:.2f}" if best >= 0 else f"-${abs(best):.2f}",
+                "worstDD": worst,
+            }
+        except Exception:
+            stats = {"wins": 0, "losses": 0, "wr": 0.0, "todayPnl": 0.0,
+                     "avgEV": 0.0, "bestExit": "+$0.00", "worstDD": 0.0}
+
+        # Recent log
+        try:
+            log_rows = conn.execute(
+                "SELECT ts, phase, action, skip_reason, confidence_score FROM market_log "
+                "WHERE market_id LIKE ? ORDER BY ts DESC LIMIT 8",
+                (f"%{sym}%",)
+            ).fetchall()
+            log_entries = []
+            for r in log_rows:
+                t = (r["ts"] or "")
+                time_str = t[11:16] if len(t) >= 16 else "—"
+                if r["action"] in ("trade", "entry"):
+                    tag = "entry"
+                elif r["action"] in ("skip", "watch"):
+                    tag = "skip"
+                else:
+                    tag = "signal"
+                msg = r["skip_reason"] or r["action"] or r["phase"] or ""
+                log_entries.append([time_str, tag, msg])
+        except Exception:
+            log_entries = []
+
+        # Last 60 outcomes for heatmap (newest first)
+        try:
+            heat_rows = conn.execute(
+                "SELECT outcome FROM trades WHERE asset=? ORDER BY ts DESC LIMIT 60",
+                (sym,)
+            ).fetchall()
+            outcomes = [r["outcome"] for r in heat_rows]
+        except Exception:
+            outcomes = []
+
+        conn.close()
+
+        return jsonify({
+            "sym":      sym,
+            "sessions": sessions,
+            "ladder":   {"asks": [], "bids": []},
+            "log":      log_entries,
+            "stats":    stats,
+            "outcomes": outcomes,
+        })
+    except Exception as exc:
+        log.error(f"api_market_sym({sym}) error: {exc}", exc_info=True)
         return jsonify({"error": str(exc)}), 500
 
 
