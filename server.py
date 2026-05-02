@@ -56,7 +56,7 @@ except Exception as _dir_err:
 
 # Write default config.json if it doesn't exist (e.g. fresh Railway deploy)
 _FULL_CONFIG_DEFAULT = {
-    "bot_enabled": False,
+    "bot_enabled": True,
     "mode": "paper",
     "trade_amount_dollars": 25,
     "confidence_threshold": 72,
@@ -71,17 +71,17 @@ if not os.path.exists("config.json"):
     except Exception as _cfg_err:
         logging.warning(f"Could not create default config.json: {_cfg_err}")
 
-# On every startup: force bot_enabled=False and mode=paper (safety for Railway redeploys)
+# On startup: if mode was live, reset to paper (safety — never auto-start real trades on redeploy).
+# bot_enabled is intentionally preserved so the bot resumes running in paper mode after redeploy.
 try:
     if os.path.exists("config.json"):
         with open("config.json", "r", encoding="utf-8") as _f:
             _cfg = json.load(_f)
-        if _cfg.get("bot_enabled") or _cfg.get("mode", "paper") != "paper":
-            _cfg["bot_enabled"] = False
+        if _cfg.get("mode", "paper") == "live":
             _cfg["mode"] = "paper"
             with open("config.json", "w", encoding="utf-8") as _f:
                 json.dump(_cfg, _f, indent=2)
-            log.info("Startup safety reset: bot_enabled=False, mode=paper")
+            log.info("Startup safety reset: live → paper mode")
 except Exception as _rst_err:
     logging.warning(f"Could not apply startup safety reset: {_rst_err}")
 
@@ -252,6 +252,7 @@ def api_status():
     paper_pnl_total = sum(r["state"].get("today_paper_pnl", 0.0) for r in results)
     demo_pnl_total  = sum(r["state"].get("today_demo_pnl",  0.0) for r in results)
 
+    cfg = read_config()
     return jsonify({
         "strategies": results,
         "summary": {
@@ -261,6 +262,8 @@ def api_status():
             "today_paper_pnl":   round(paper_pnl_total, 2),
             "today_demo_pnl":    round(demo_pnl_total,  2),
         },
+        "running": cfg.get("bot_enabled", True),
+        "mode":    cfg.get("mode", "paper"),
     })
 
 
