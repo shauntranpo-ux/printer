@@ -72,3 +72,22 @@ def test_btc_obi_signal_present_in_signals():
     if d.action == "trade":
         assert "obi" in d.contributing_signals
         assert "obi_adj" in d.contributing_signals
+
+
+# ── Gate A integration test ───────────────────────────────────────────────────
+
+def test_gate_a_blocks_yes_when_kalshi_falling():
+    """Gate A: falling velocity must block a YES trade for BTC."""
+    strat = BTCStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.001,
+        stake_dollars=5.0,
+    )
+    f = _btc_features(above_strike=True, yes_ask=55.0, no_ask=47.0, yes_bid=54.0, no_bid=46.0)
+    # Overwrite kalshi_price_history with a falling series
+    f.kalshi_price_history.clear()
+    for i in range(40):
+        f.kalshi_price_history.append((float(i), 55.0 - i * 0.3))
+    d = strat.decide(f)
+    assert d.action == "skip"
+    assert "gate_a" in d.reason

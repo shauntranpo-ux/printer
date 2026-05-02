@@ -220,3 +220,22 @@ def test_sol_disagreeing_signals_attenuate_beta(mock_health):
     sig = d.contributing_signals
     if "beta_adj_attenuated" in sig:
         assert sig["beta_adj_attenuated"] is True
+
+
+# ── Gate A integration test ───────────────────────────────────────────────────
+
+@patch("strategies.sol_strategy.check_solana_health", return_value=(True, "ok"))
+def test_gate_a_blocks_yes_when_kalshi_falling(mock_health):
+    """Gate A: falling velocity must block a YES trade for SOL."""
+    strat = SOLStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.001,
+        stake_dollars=5.0,
+    )
+    f = _sol_features(above_strike=True)
+    f.kalshi_price_history.clear()
+    for i in range(40):
+        f.kalshi_price_history.append((float(i), 60.0 - i * 0.3))
+    d = strat.decide(f)
+    assert d.action == "skip"
+    assert "gate_a" in d.reason

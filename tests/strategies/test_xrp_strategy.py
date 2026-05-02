@@ -1,4 +1,4 @@
-import time
+﻿import time
 import json
 import random
 from pathlib import Path
@@ -160,7 +160,7 @@ def test_xrp_clamps_p_yes(tmp_path):
     assert 0.05 <= d.p_model <= 0.95
 
 
-# ── X3 APAC decoupling + event continuation tests ─────────────────────────
+# â”€â”€ X3 APAC decoupling + event continuation tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 def _apac_features(above_strike: bool, decoupled: bool, prior_uptrend: bool):
     """
@@ -200,7 +200,7 @@ def _apac_features(above_strike: bool, decoupled: bool, prior_uptrend: bool):
         f.prices_60m.append((ts, xrp))
         f.prices_1m.append((ts, xrp))
 
-    # Build BTC series — flat if decoupled, trending with XRP if coupled.
+    # Build BTC series â€” flat if decoupled, trending with XRP if coupled.
     for i in range(60):
         ts = apac_now - (60 - i) * 60
         if decoupled:
@@ -228,7 +228,7 @@ def test_xrp_decoupled_continuation_fires(tmp_path):
     d = strat.decide(f)
     sig = d.contributing_signals
     if "decouple_adj" in sig:
-        assert sig["decouple_adj"] >= 0.0  # decoupled + uptrend → non-negative
+        assert sig["decouple_adj"] >= 0.0  # decoupled + uptrend â†’ non-negative
 
 
 def test_xrp_coupled_no_continuation(tmp_path):
@@ -238,7 +238,7 @@ def test_xrp_coupled_no_continuation(tmp_path):
         stake_dollars=5.0,
         event_calendar=_empty_calendar(tmp_path),
     )
-    # XRP and BTC moving together → high correlation, decoupling fails
+    # XRP and BTC moving together â†’ high correlation, decoupling fails
     f = _apac_features(above_strike=True, decoupled=False, prior_uptrend=True)
     d = strat.decide(f)
     sig = d.contributing_signals
@@ -258,3 +258,25 @@ def test_prior_session_return_helper():
     flat_series = [(now - (60 - i) * 60, 100.0) for i in range(60)]
     r0 = prior_session_return(flat_series, lookback_seconds=3600)
     assert r0 == 0.0
+
+
+# â”€â”€ Gate A integration test â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+def test_gate_a_blocks_yes_when_kalshi_falling(tmp_path):
+    """Gate A: falling velocity must block a YES trade for XRP."""
+    strat = XRPStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.001,
+        stake_dollars=5.0,
+        event_calendar=_empty_calendar(tmp_path),
+    )
+    f = _xrp_features(above_strike=True)
+    f.kalshi_price_history.clear()
+    # Drop ~3.3% over 30-sample window — above contract_velocity 2% threshold,
+    # below extreme_velocity_event 5% threshold.
+    for i in range(40):
+        f.kalshi_price_history.append((float(i), 62.0 - i * 0.07))
+    d = strat.decide(f)
+    assert d.action == "skip"
+    assert "gate_a" in d.reason
+

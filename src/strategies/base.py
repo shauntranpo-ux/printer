@@ -43,7 +43,7 @@ class BaseStrategy(ABC):
         supertrend_atr_period: int = 10,
         supertrend_atr_multiplier: float = 4.0,
         momentum_lookback: int = 4,
-        min_votes: int = 4,
+        min_votes: int = 4,  # Gate B: only enforced in BaseStrategy.decide() — inert for strategies that override decide()
     ):
         self.asset = asset
         self.skip_config = skip_config

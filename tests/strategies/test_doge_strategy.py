@@ -104,3 +104,21 @@ def test_doge_clamps_p_yes():
     f.realized_vol_1min = 0.0005
     d = strat.decide(f)
     assert 0.05 <= d.p_model <= 0.95
+
+
+# ── Gate A integration test ───────────────────────────────────────────────────
+
+def test_gate_a_blocks_yes_when_kalshi_falling():
+    """Gate A: falling velocity must block a YES trade for DOGE."""
+    strat = DOGEStrategy(
+        skip_config=SkipConfig(cold_start_samples=10),
+        min_ev=0.001,
+        stake_dollars=5.0,
+    )
+    f = _doge_features(above_strike=True)
+    f.kalshi_price_history.clear()
+    for i in range(40):
+        f.kalshi_price_history.append((float(i), 58.0 - i * 0.3))
+    d = strat.decide(f)
+    assert d.action == "skip"
+    assert "gate_a" in d.reason

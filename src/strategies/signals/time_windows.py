@@ -33,7 +33,7 @@ def get_window_params(config: dict, window: str) -> dict:
         "strictest": {"min_ev_delta": 8, "max_entry_price_cents": 60, "min_votes": 5},
     }
     windows = config.get("time_windows", defaults)
-    params = windows.get(window, defaults["normal"])
+    params = windows.get(window, defaults.get(window, defaults["normal"]))
     # backfill min_votes if config pre-dates this field
     if "min_votes" not in params:
         params = {**params, "min_votes": defaults[window]["min_votes"]}
