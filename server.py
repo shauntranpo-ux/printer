@@ -434,7 +434,7 @@ def api_export_trades():
 def index():
     """Serve the dashboard HTML."""
     try:
-        path = os.path.join(_BASE_DIR, "dashboard.html")
+        path = os.path.join(_BASE_DIR, "handoff", "Money Printer.html")
         with open(path, "r", encoding="utf-8") as fh:
             content = fh.read()
         from flask import Response
