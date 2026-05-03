@@ -1,18 +1,17 @@
 """
-Runs each D3 sub-signal independently on historical 1-min bars,
+Runs each live voter from compute_15m_signal independently on historical 1-min bars,
 returning p_yes predictions for IC analysis.
-
-Signals requiring live Kalshi/cross-venue data fall back to p=0.5 (neutral).
-IC for these signals will always be uninformative and expected to FAIL.
 """
 from __future__ import annotations
 
 import logging
+import math
 import os
 import sys
+from typing import Dict, List, Optional
+
 import numpy as np
 import pandas as pd
-from typing import Dict
 
 _log = logging.getLogger(__name__)
 
@@ -21,97 +20,153 @@ if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
 SIGNAL_NAMES = [
-    'supertrend_direction',
-    'bs_probability',
-    'momentum_delta',
-    'exhaustion_fade',
-    'ratio_divergence',
-    'rolling_beta',
-    'variance_ratio_signal',
-    'volume_spike',
+    'v1_bs_prob',
+    'v2_mtf_momentum',
+    'v3_rsi',
+    'v4_bollinger',
+    'v5_mtf_magnitude',
 ]
 
-
-def _supertrend_predictions(bars: pd.DataFrame, atr_period: int = 10, multiplier: float = 3.0) -> np.ndarray:
-    try:
-        closes = bars['close'].values
-        highs = bars['high'].values
-        lows = bars['low'].values
-        n = len(bars)
-
-        tr = [highs[0] - lows[0]]
-        for i in range(1, n):
-            h, lo, pc = highs[i], lows[i], closes[i - 1]
-            tr.append(max(h - lo, abs(h - pc), abs(lo - pc)))
-
-        atr_vals = [None] * n
-        for i in range(atr_period - 1, n):
-            atr_vals[i] = sum(tr[i - atr_period + 1: i + 1]) / atr_period
-
-        start = atr_period - 1
-        hl2 = [(highs[i] + lows[i]) / 2.0 for i in range(n)]
-
-        upper_final = [None] * n
-        lower_final = [None] * n
-        direction = [None] * n
-
-        for i in range(start, n):
-            av = atr_vals[i]
-            if av is None:
-                continue
-            raw_upper = hl2[i] + multiplier * av
-            raw_lower = hl2[i] - multiplier * av
-            if i == start:
-                upper_final[i] = raw_upper
-                lower_final[i] = raw_lower
-                direction[i] = 1 if closes[i] >= hl2[i] else -1
-                continue
-            pu, pl, prev_dir = upper_final[i - 1], lower_final[i - 1], direction[i - 1]
-            upper_final[i] = min(raw_upper, pu) if pu is not None and closes[i - 1] <= pu else raw_upper
-            lower_final[i] = max(raw_lower, pl) if pl is not None and closes[i - 1] >= pl else raw_lower
-            if prev_dir == -1 and closes[i] > upper_final[i]:
-                direction[i] = 1
-            elif prev_dir == 1 and closes[i] < lower_final[i]:
-                direction[i] = -1
-            else:
-                direction[i] = prev_dir
-
-        preds = np.full(n, 0.5)
-        for i, d in enumerate(direction):
-            if d == 1:
-                preds[i] = 0.70
-            elif d == -1:
-                preds[i] = 0.30
-        return preds
-    except Exception as exc:
-        _log.warning("_supertrend_predictions failed, returning neutral: %s", exc)
-        return np.full(len(bars), 0.5)
+# Mirrored from fifteen_min_signal.py — update both if thresholds change
+_MTF_THRESHOLDS  = {'BTC': 0.0005, 'ETH': 0.0005, 'SOL': 0.0005, 'XRP': 0.0005}
+_RSI_THRESHOLDS  = {'BTC': 5.0,    'ETH': 8.0,     'SOL': 10.0,   'XRP': 8.0}
+_BOLL_THRESHOLDS = {'BTC': 0.75,   'ETH': 0.50,    'SOL': 0.50,   'XRP': 0.35}
+_MTF_DEFAULT     = 0.0005
+_RSI_DEFAULT     = 8.0
+_BOLL_DEFAULT    = 0.50
 
 
-def _bs_predictions(bars: pd.DataFrame, strike: float, seconds_left: float = 900.0) -> np.ndarray:
+# ── helpers copied verbatim from fifteen_min_signal.py ─────────────────────────
+
+def _rsi(prices: List[float], period: int = 14) -> Optional[float]:
+    if len(prices) < period + 2:
+        return None
+    changes = [prices[i] - prices[i - 1] for i in range(1, len(prices))]
+    gains  = [max(0.0, c) for c in changes]
+    losses = [max(0.0, -c) for c in changes]
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    for i in range(period, len(changes)):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+    if avg_loss == 0:
+        return 100.0
+    return 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+
+
+def _boll_zscore(prices: List[float], period: int = 20) -> Optional[float]:
+    if len(prices) < period:
+        return None
+    recent = prices[-period:]
+    mean_p = sum(recent) / len(recent)
+    var_p  = sum((p - mean_p) ** 2 for p in recent) / (len(recent) - 1)
+    std_p  = math.sqrt(var_p) if var_p > 0 else 0.0
+    if std_p <= 0:
+        return None
+    return (prices[-1] - mean_p) / std_p
+
+
+def _multi_tf_mom(prices: List[float]) -> Optional[float]:
+    if len(prices) < 31:
+        return None
+    cur = prices[-1]
+    if cur <= 0:
+        return None
+    r5  = (cur - prices[-6])  / prices[-6]  if prices[-6]  > 0 else 0.0
+    r15 = (cur - prices[-16]) / prices[-16] if prices[-16] > 0 else 0.0
+    r30 = (cur - prices[-31]) / prices[-31] if prices[-31] > 0 else 0.0
+    return (r5 + r15 + r30) / 3.0
+
+
+# ── per-voter extractors ───────────────────────────────────────────────────────
+
+def _v1_predictions(bars: pd.DataFrame, strike: float, seconds_left: float = 900.0) -> np.ndarray:
+    """V1: BS p_yes directly (continuous)."""
     try:
         from strategies.signals.black_scholes import compute_bs_p_yes
         prices = bars['close'].values
         log_ret = np.diff(np.log(np.maximum(prices, 1e-8)))
         vol_1m = float(np.std(log_ret)) if len(log_ret) > 5 else 0.01
-        # Full-sample vol estimate; minor lookahead at early bars, acceptable for IC ranking.
         result = np.full(len(prices), 0.5)
         for i, p in enumerate(prices):
-            v = compute_bs_p_yes(current_price=p, strike=strike, realized_vol_1min=vol_1m, seconds_left=seconds_left)
+            v = compute_bs_p_yes(
+                current_price=p, strike=strike,
+                realized_vol_1min=vol_1m, seconds_left=seconds_left,
+            )
             if v is not None:
                 result[i] = v
         return result
     except Exception as exc:
-        _log.warning("_bs_predictions failed, returning neutral: %s", exc)
+        _log.warning("_v1_predictions failed: %s", exc)
         return np.full(len(bars), 0.5)
 
 
-def _momentum_predictions(bars: pd.DataFrame, lookback: int = 4) -> np.ndarray:
-    closes = bars['close'].values
-    preds = np.full(len(closes), 0.5)
-    for i in range(lookback, len(closes)):
-        delta = closes[i] - closes[i - lookback]
-        preds[i] = 0.65 if delta > 0 else 0.35
+def _v2_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
+    """V2: MTF momentum inverted — negative momentum → 0.65 (YES)."""
+    T = _MTF_THRESHOLDS.get(asset.upper(), _MTF_DEFAULT)
+    prices = bars['close'].tolist()
+    n = len(prices)
+    preds = np.full(n, 0.5)
+    for i in range(30, n):
+        mtf = _multi_tf_mom(prices[:i + 1])
+        if mtf is None:
+            continue
+        if mtf < -T:
+            preds[i] = 0.65
+        elif mtf > T:
+            preds[i] = 0.35
+    return preds
+
+
+def _v3_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
+    """V3: RSI deviation inverted — oversold (rsi_dev < -T) → 0.65 (YES)."""
+    T = _RSI_THRESHOLDS.get(asset.upper(), _RSI_DEFAULT)
+    prices = bars['close'].tolist()
+    n = len(prices)
+    preds = np.full(n, 0.5)
+    for i in range(15, n):
+        rsi = _rsi(prices[:i + 1])
+        if rsi is None:
+            continue
+        rsi_dev = rsi - 50.0
+        if rsi_dev < -T:
+            preds[i] = 0.65
+        elif rsi_dev > T:
+            preds[i] = 0.35
+    return preds
+
+
+def _v4_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
+    """V4: Bollinger z-score inverted — below lower band (z < -T) → 0.65 (YES)."""
+    T = _BOLL_THRESHOLDS.get(asset.upper(), _BOLL_DEFAULT)
+    prices = bars['close'].tolist()
+    n = len(prices)
+    preds = np.full(n, 0.5)
+    for i in range(19, n):
+        boll = _boll_zscore(prices[:i + 1])
+        if boll is None:
+            continue
+        if boll < -T:
+            preds[i] = 0.65
+        elif boll > T:
+            preds[i] = 0.35
+    return preds
+
+
+def _v5_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
+    """V5: MTF magnitude soft confirmation — uses T/2 threshold, inverted."""
+    T = _MTF_THRESHOLDS.get(asset.upper(), _MTF_DEFAULT) / 2.0
+    prices = bars['close'].tolist()
+    n = len(prices)
+    preds = np.full(n, 0.5)
+    for i in range(30, n):
+        mtf = _multi_tf_mom(prices[:i + 1])
+        if mtf is None:
+            continue
+        if mtf < -T:
+            preds[i] = 0.65
+        elif mtf > T:
+            preds[i] = 0.35
     return preds
 
 
@@ -123,18 +178,11 @@ def extract_all_signals(
     """
     Returns {signal_name: np.ndarray of p_yes} for all SIGNAL_NAMES.
     Each array has the same length as bars. Values clipped to [0, 1].
-    Signals requiring live data fall back to 0.5 (neutral / no-information).
     """
-    n = len(bars)
-    results: Dict[str, np.ndarray] = {}
-
-    results['supertrend_direction'] = np.clip(_supertrend_predictions(bars), 0.0, 1.0)
-    results['bs_probability']       = np.clip(_bs_predictions(bars, strike), 0.0, 1.0)
-    results['momentum_delta']       = np.clip(_momentum_predictions(bars), 0.0, 1.0)
-
-    # These signals require live Kalshi order book / cross-venue data unavailable in
-    # historical bars. They fall back to 0.5 (no-information). IC will always be ~0.
-    for name in ['exhaustion_fade', 'ratio_divergence', 'rolling_beta', 'variance_ratio_signal', 'volume_spike']:
-        results[name] = np.full(n, 0.5)
-
-    return results
+    return {
+        'v1_bs_prob':       np.clip(_v1_predictions(bars, strike), 0.0, 1.0),
+        'v2_mtf_momentum':  np.clip(_v2_predictions(bars, asset), 0.0, 1.0),
+        'v3_rsi':           np.clip(_v3_predictions(bars, asset), 0.0, 1.0),
+        'v4_bollinger':     np.clip(_v4_predictions(bars, asset), 0.0, 1.0),
+        'v5_mtf_magnitude': np.clip(_v5_predictions(bars, asset), 0.0, 1.0),
+    }
