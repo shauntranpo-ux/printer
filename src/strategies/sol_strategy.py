@@ -65,7 +65,6 @@ class SOLStrategy(BaseStrategy):
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
         funding_monitor: Optional[FundingDispersionMonitor] = None,
-        min_votes: int = 3,
     ):
         super().__init__(
             asset="SOL",
@@ -74,7 +73,6 @@ class SOLStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
-            min_votes=min_votes,
         )
         self.beta = load_beta("SOL")
         # Lazy-construct an empty monitor if the caller didn't inject one;

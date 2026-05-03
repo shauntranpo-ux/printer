@@ -32,7 +32,6 @@ class BTCStrategy(BaseStrategy):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
-        min_votes: int = 3,
     ):
         super().__init__(
             asset="BTC",
@@ -41,7 +40,6 @@ class BTCStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
-            min_votes=min_votes,
         )
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:

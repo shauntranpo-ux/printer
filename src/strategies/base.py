@@ -43,7 +43,6 @@ class BaseStrategy(ABC):
         supertrend_atr_period: int = 10,
         supertrend_atr_multiplier: float = 4.0,
         momentum_lookback: int = 4,
-        min_votes: int = 3,  # Gate B: only enforced in BaseStrategy.decide() — inert for strategies that override decide()
     ):
         self.asset = asset
         self.skip_config = skip_config
@@ -55,7 +54,6 @@ class BaseStrategy(ABC):
         self.supertrend_atr_period = supertrend_atr_period
         self.supertrend_atr_multiplier = supertrend_atr_multiplier
         self.momentum_lookback = momentum_lookback
-        self.min_votes = min_votes
         self._side_rolling: collections.deque = collections.deque(maxlen=_BIAS_WINDOW)
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
@@ -109,26 +107,6 @@ class BaseStrategy(ABC):
                         "momentum_delta": recent_delta,
                     },
                 )
-
-        # Gate B: D3 vote supermajority — require min_votes out of 5
-        if vote_count < self.min_votes:
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=market_prob,
-                reason=f"gate_b_votes: {vote_count}/{self.min_votes} votes for {st_side}",
-                contributing_signals={
-                    "supertrend_direction": st,
-                    "supertrend_side": st_side,
-                    "vote_count": vote_count,
-                    "min_votes": self.min_votes,
-                    "market_prob": market_prob,
-                    "ev_pass": False,
-                    "vol_pass": True,
-                    "final_decision": "skip",
-                    "skip_reason": "gate_b_votes",
-                },
-            )
 
         # Step 3: EV gate — calibrated BS p_yes
         p_ev = self.calibrator.calibrate(signal_raw_p_yes)

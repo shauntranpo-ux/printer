@@ -69,7 +69,6 @@ class XRPStrategy(BaseStrategy):
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
         event_calendar: Optional[EventCalendar] = None,
-        min_votes: int = 3,
     ):
         super().__init__(
             asset="XRP",
@@ -78,7 +77,6 @@ class XRPStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
-            min_votes=min_votes,
         )
         self.beta = load_beta("XRP")
         self.event_calendar = event_calendar or EventCalendar()

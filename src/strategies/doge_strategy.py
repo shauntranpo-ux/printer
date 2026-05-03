@@ -44,7 +44,6 @@ class DOGEStrategy(BaseStrategy):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
-        min_votes: int = 3,
     ):
         super().__init__(
             asset="DOGE",
@@ -53,7 +52,6 @@ class DOGEStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
-            min_votes=min_votes,
         )
         self.beta = load_beta("DOGE")
 
