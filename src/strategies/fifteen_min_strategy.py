@@ -32,7 +32,7 @@ class FifteenMinStrategy(BaseStrategy):
         supertrend_atr_period: int = 10,
         supertrend_atr_multiplier: float = 4.0,
         momentum_lookback: int = 4,
-        min_votes: int = 4,
+        min_votes: int = 3,
     ):
         super().__init__(
             asset=asset,

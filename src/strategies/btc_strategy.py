@@ -32,7 +32,7 @@ class BTCStrategy(BaseStrategy):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
-        min_votes: int = 4,
+        min_votes: int = 3,
     ):
         super().__init__(
             asset="BTC",
@@ -96,19 +96,6 @@ class BTCStrategy(BaseStrategy):
                 p_model=calibrated_p_yes,
                 reason=f"EV below threshold: best={ev.best_ev:+.3f} (min={self.min_ev:+.3f})",
                 contributing_signals=merged,
-                expected_value=ev.best_ev,
-            )
-
-        # Gate A: contract velocity must not oppose the chosen side
-        _vel = merged.get("velocity", "flat")
-        _chosen = ev.best_side
-        if (_chosen == "yes" and _vel == "falling") or (_chosen == "no" and _vel == "rising"):
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=calibrated_p_yes,
-                reason=f"gate_a_velocity: {_chosen} opposed by contract velocity={_vel}",
-                contributing_signals={**merged, "gate_a_block": True},
                 expected_value=ev.best_ev,
             )
 

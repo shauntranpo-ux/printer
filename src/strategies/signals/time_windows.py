@@ -28,9 +28,9 @@ def get_trading_window(ts: float | None = None, tz: str = "America/Los_Angeles")
 def get_window_params(config: dict, window: str) -> dict:
     """Return min_ev_delta, max_entry_price_cents, and min_votes for the given window."""
     defaults = {
-        "normal":    {"min_ev_delta": 0, "max_entry_price_cents": 75, "min_votes": 4},
-        "strict":    {"min_ev_delta": 4, "max_entry_price_cents": 70, "min_votes": 5},
-        "strictest": {"min_ev_delta": 8, "max_entry_price_cents": 60, "min_votes": 5},
+        "normal":    {"min_ev_delta": 0, "max_entry_price_cents": 75, "min_votes": 3},
+        "strict":    {"min_ev_delta": 4, "max_entry_price_cents": 70, "min_votes": 3},
+        "strictest": {"min_ev_delta": 8, "max_entry_price_cents": 60, "min_votes": 3},
     }
     windows = config.get("time_windows", defaults)
     params = windows.get(window, defaults.get(window, defaults["normal"]))

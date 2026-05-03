@@ -3238,6 +3238,15 @@ async def handle_locked_phase(
             "profit_percent": round(profit_pct, 2),
         })
 
+        # Clear position immediately — before notifications so a Telegram failure
+        # never leaves the asset stuck in LOCKED indefinitely.
+        if _use_state:
+            state["position"] = None
+            state["phase"] = "DONE"
+        else:
+            current_position = None
+            current_phase = "DONE"
+
         # Consecutive-loss circuit breaker
         global _consecutive_losses, _consecutive_loss_pause_until
         if outcome == "win":
@@ -3286,13 +3295,6 @@ async def handle_locked_phase(
             f"Entry: {pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
             f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}"
         )
-
-        if _use_state:
-            state["position"] = None
-            state["phase"] = "DONE"
-        else:
-            current_position = None
-            current_phase = "DONE"
         return
 
     # Still in the market — just hold and log

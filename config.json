@@ -30,9 +30,9 @@
   "cold_start_samples": 60,
   "timezone": "America/Los_Angeles",
   "time_windows": {
-    "normal":    { "min_ev_delta": 0, "max_entry_price_cents": 75, "min_votes": 4 },
-    "strict":    { "min_ev_delta": 4, "max_entry_price_cents": 70, "min_votes": 5 },
-    "strictest": { "min_ev_delta": 8, "max_entry_price_cents": 60, "min_votes": 5 }
+    "normal":    { "min_ev_delta": 0, "max_entry_price_cents": 75, "min_votes": 3 },
+    "strict":    { "min_ev_delta": 4, "max_entry_price_cents": 70, "min_votes": 3 },
+    "strictest": { "min_ev_delta": 8, "max_entry_price_cents": 60, "min_votes": 3 }
   },
   "confidence_threshold": 65,
   "confidence_threshold_15m": 65,

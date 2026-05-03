@@ -69,7 +69,7 @@ class XRPStrategy(BaseStrategy):
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
         event_calendar: Optional[EventCalendar] = None,
-        min_votes: int = 4,
+        min_votes: int = 3,
     ):
         super().__init__(
             asset="XRP",
@@ -145,20 +145,6 @@ class XRPStrategy(BaseStrategy):
                     f"(min={self.min_ev:+.3f})"
                 ),
                 contributing_signals=merged_signals,
-                expected_value=ev_result.best_ev,
-            )
-
-        # Gate A: contract velocity must not oppose the chosen side
-        # XRP stores velocity as velocity_label (may be "suppressed_news_mode")
-        _vel = merged_signals.get("velocity", "flat")
-        _chosen = ev_result.best_side
-        if (_chosen == "yes" and _vel == "falling") or (_chosen == "no" and _vel == "rising"):
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=calibrated_p_yes,
-                reason=f"gate_a_velocity: {_chosen} opposed by contract velocity={_vel}",
-                contributing_signals={**merged_signals, "gate_a_block": True},
                 expected_value=ev_result.best_ev,
             )
 
