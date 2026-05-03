@@ -879,6 +879,8 @@ def api_equity():
 
         if not points:
             points = [0.0]
+        else:
+            points = [0.0] + points  # ensure length ≥ 2 so dashboard renders the curve
 
         return jsonify({"range": range_, "points": points, "x_labels": labels})
     except Exception as exc:

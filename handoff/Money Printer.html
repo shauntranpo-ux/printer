@@ -841,8 +841,8 @@ let MARKETS = ['BTC','ETH','SOL','XRP','DOGE'].map(sym => ({
   sym, phase: 'OFFLINE', px: null, ch24: 0, dist: 0, strike: null,
   ev: 0, wp: null, timer: '—', pnlToday: 0, side: '—',
   yesAsk: null, noAsk: null, vol: 0,
-  sig: { final_decision: 'skip', vote_count: 0, min_votes: 5, ev_pass: false,
-         gate_a_block: false, skip_reason: null, decision_mode: 'd3_hybrid',
+  sig: { final_decision: 'skip', vote_count: 0, ev_pass: false,
+         skip_reason: null, decision_mode: 'd3_hybrid',
          raw_p_yes: 0.5, p_ev: 0.5, market_prob: 0.5, yes_ev: 0, no_ev: 0,
          supertrend: 0, velocity: 'flat' }
 }));
@@ -866,9 +866,7 @@ const FIELD_TIP = {
   supertrend:   'Supertrend direction. +1 up / −1 down.',
   velocity:     'Contract velocity — rising / falling / flat.',
   vote_count:   'D3 votes — number of sub-signals agreeing (0–5).',
-  min_votes:    'Vote threshold — min votes required (4 early, 5 mid/late session).',
   ev_pass:      'EV gate — did EV exceed minimum threshold?',
-  gate_a_block: 'Gate A — velocity-aligned with chosen side? Hard skip if blocked.',
   final_decision:'Final decision — trade or skip.',
   skip_reason:  'Why the trade was skipped (if any).',
   decision_mode:'Strategy mode (currently d3_hybrid).',
@@ -1135,7 +1133,9 @@ function renderEquity(range='1d'){
 
 // allocation donut
 function renderAllocation(){
-  const data = MARKETS.map(m=>({sym:m.sym, val:Math.abs(m.pnlToday), pos:m.pnlToday>=0}));
+  const pnlByAsset = {};
+  TRADES.forEach(t => { pnlByAsset[t.sym] = (pnlByAsset[t.sym] || 0) + (t.pnl || 0); });
+  const data = MARKETS.map(m => { const v = pnlByAsset[m.sym] || 0; return {sym:m.sym, val:Math.abs(v), pos:v>=0}; });
   const totalPnl = data.reduce((s,d)=>s+d.val,0);
   if (!totalPnl) {
     document.getElementById('alloc-donut').innerHTML = '';
@@ -1184,14 +1184,9 @@ function renderSignals(){
   const caret = '<svg class="ds-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4 L10 8 L6 12"/></svg>';
   const html = MARKETS.map(m=>{
     const s = m.sig;
-    const votesQualified = s.vote_count >= s.min_votes;
     const pips = Array.from({length:5}, (_,i)=>{
-      if(i < s.vote_count) return '<div class="pip on"></div>';
-      if(i < s.min_votes) return '<div class="pip short"></div>';
-      return '<div class="pip"></div>';
+      return i < s.vote_count ? '<div class="pip on"></div>' : '<div class="pip"></div>';
     }).join('');
-    const gateAState = s.gate_a_block ? 'fail' : 'pass';
-    const gateBState = votesQualified ? 'pass' : 'fail';
     const evState = s.ev_pass ? 'pass' : 'fail';
     const evVal = m.side==='NO/DOWN' ? s.no_ev : s.yes_ev;
     const evCls = evVal > 0 ? 'up' : evVal < 0 ? 'down' : 'idle';
@@ -1210,10 +1205,9 @@ function renderSignals(){
       </div>
       <div class="ds-votes" title="${FIELD_TIP.vote_count}">
         ${pips}
-        <span class="ds-votes-num">${s.vote_count}/${s.min_votes}</span>
+        <span class="ds-votes-num">${s.vote_count}/5</span>
       </div>
       <div></div>
-      <div class="ds-gate ${gateAState}" title="${FIELD_TIP.gate_a_block}">Gate A ${s.gate_a_block?'✕':'✓'}</div>
       <div class="ds-gate ${evState}" title="${FIELD_TIP.ev_pass}">EV ${s.ev_pass?'✓':'✕'}</div>
       <div class="ds-ev ${evCls}" title="${FIELD_TIP.yes_ev}">${evVal>=0?'+':''}${evVal.toFixed(1)}%</div>
       <div style="display:flex;align-items:center;gap:8px;">
@@ -1794,8 +1788,8 @@ async function fetchMarketState() {
           sym, phase:'OFFLINE', px:null, ch24:0, dist:0, strike:null,
           ev:0, wp:null, timer:'—', pnlToday:0, side:'—',
           yesAsk:null, noAsk:null, vol:0,
-          sig:{ final_decision:'skip', vote_count:0, min_votes:5, ev_pass:false,
-                gate_a_block:false, skip_reason:null, decision_mode:'d3_hybrid',
+          sig:{ final_decision:'skip', vote_count:0, ev_pass:false,
+                skip_reason:null, decision_mode:'d3_hybrid',
                 raw_p_yes:0.5, p_ev:0.5, market_prob:0.5, yes_ev:0, no_ev:0,
                 supertrend:0, velocity:'flat' }
         };
