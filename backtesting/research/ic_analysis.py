@@ -16,10 +16,12 @@ class ICResult:
 
 
 def compute_ic(predicted: np.ndarray, outcomes: np.ndarray) -> float:
-    """Point-biserial correlation between p_yes predictions and binary outcomes.
-
-    Equivalent to Pearson r for binary y; gives higher separation than Spearman
-    when predictions are well-calibrated probabilities for a 0/1 outcome.
+    """
+    Information Coefficient: correlation between p_yes predictions and binary outcomes.
+    Uses point-biserial correlation (Pearson r with binary dependent variable),
+    which is the statistically appropriate choice when outcomes are {0, 1}.
+    Point-biserial is mathematically equivalent to Spearman for binary outcomes
+    at large N; at small N it is more sensitive.
     """
     if len(predicted) < 5:
         return 0.0
@@ -37,7 +39,7 @@ def compute_icir(ic_series: np.ndarray) -> float:
 
 def compute_ic_tstat(ic: float, n: int) -> float:
     """t-stat = IC * sqrt(N). Threshold > 2.0 indicates significance."""
-    return ic * np.sqrt(n)
+    return float(ic * np.sqrt(n))
 
 
 def compute_rolling_ic(
@@ -46,6 +48,8 @@ def compute_rolling_ic(
     window: int = 30,
 ) -> np.ndarray:
     """Rolling IC computed over windows of size `window`."""
+    if window < 1 or len(predicted) < window:
+        return np.array([])
     ics = [
         compute_ic(predicted[i - window:i], outcomes[i - window:i])
         for i in range(window, len(predicted) + 1)
@@ -61,13 +65,16 @@ def evaluate_signal(
 ) -> ICResult:
     """Full IC evaluation for one signal against binary outcomes."""
     ic = compute_ic(predicted, outcomes)
-    rolling_ics = compute_rolling_ic(predicted, outcomes, window=min(rolling_window, len(predicted) // 3))
-    icir = compute_icir(rolling_ics)
+    rolling_ics = compute_rolling_ic(predicted, outcomes, window=max(1, min(rolling_window, len(predicted) // 3)))
+    icir = compute_icir(rolling_ics) if len(rolling_ics) > 0 else 0.0
     t_stat = compute_ic_tstat(ic, len(predicted))
-    ic_decay = [
-        compute_ic(predicted[:len(outcome_by_lag[lag])], outcome_by_lag[lag])
-        for lag in [1, 2, 4, 8]
-    ]
+    ic_decay = []
+    for lag in [1, 2, 4, 8]:
+        arr = outcome_by_lag.get(lag)
+        if arr is None or len(arr) == 0:
+            ic_decay.append(0.0)
+        else:
+            ic_decay.append(compute_ic(predicted[:len(arr)], arr))
 
     if t_stat > 2.0 and icir > 0.30:
         verdict = "PASS"
