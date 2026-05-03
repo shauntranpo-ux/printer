@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import pytest
 from backtesting.research.label_builder import build_binary_labels, build_lagged_labels, STRIKE_SPACING, nearest_strike
 
 def _bars(prices, freq='1min'):
@@ -23,6 +22,7 @@ def test_output_length():
     bars = _bars([100.0] * 40)
     labels = build_binary_labels(bars, strike=99.0, horizon_bars=15)
     assert len(labels) == 25  # 40 - 15
+    assert labels.dtype == np.int8
 
 def test_lagged_labels_keys():
     bars = _bars([100.0 + i * 0.1 for i in range(60)])

@@ -1,7 +1,7 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 # Nearest valid strike spacing per asset (dollars)
 STRIKE_SPACING: Dict[str, float] = {
@@ -35,7 +35,7 @@ def build_binary_labels(
 def build_lagged_labels(
     bars: pd.DataFrame,
     strike: float,
-    lags: List[int] = None,
+    lags: Optional[List[int]] = None,
 ) -> Dict[int, np.ndarray]:
     """
     Build binary labels at multiple lags for IC decay analysis.
