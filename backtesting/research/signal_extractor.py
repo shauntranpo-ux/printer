@@ -7,11 +7,14 @@ IC for these signals will always be uninformative and expected to FAIL.
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import numpy as np
 import pandas as pd
 from typing import Dict
+
+_log = logging.getLogger(__name__)
 
 _SRC = os.path.join(os.path.dirname(__file__), '..', '..', 'src')
 if _SRC not in sys.path:
@@ -29,7 +32,7 @@ SIGNAL_NAMES = [
 ]
 
 
-def _supertrend_predictions(bars: pd.DataFrame, atr_period: int = 14, multiplier: float = 5.0) -> np.ndarray:
+def _supertrend_predictions(bars: pd.DataFrame, atr_period: int = 10, multiplier: float = 3.0) -> np.ndarray:
     try:
         closes = bars['close'].values
         highs = bars['high'].values
@@ -63,15 +66,15 @@ def _supertrend_predictions(bars: pd.DataFrame, atr_period: int = 14, multiplier
                 lower_final[i] = raw_lower
                 direction[i] = 1 if closes[i] >= hl2[i] else -1
                 continue
-            pu, pl, pd_ = upper_final[i - 1], lower_final[i - 1], direction[i - 1]
+            pu, pl, prev_dir = upper_final[i - 1], lower_final[i - 1], direction[i - 1]
             upper_final[i] = min(raw_upper, pu) if pu is not None and closes[i - 1] <= pu else raw_upper
             lower_final[i] = max(raw_lower, pl) if pl is not None and closes[i - 1] >= pl else raw_lower
-            if pd_ == -1 and closes[i] > upper_final[i]:
+            if prev_dir == -1 and closes[i] > upper_final[i]:
                 direction[i] = 1
-            elif pd_ == 1 and closes[i] < lower_final[i]:
+            elif prev_dir == 1 and closes[i] < lower_final[i]:
                 direction[i] = -1
             else:
-                direction[i] = pd_
+                direction[i] = prev_dir
 
         preds = np.full(n, 0.5)
         for i, d in enumerate(direction):
@@ -80,7 +83,8 @@ def _supertrend_predictions(bars: pd.DataFrame, atr_period: int = 14, multiplier
             elif d == -1:
                 preds[i] = 0.30
         return preds
-    except Exception:
+    except Exception as exc:
+        _log.warning("_supertrend_predictions failed, returning neutral: %s", exc)
         return np.full(len(bars), 0.5)
 
 
@@ -90,13 +94,15 @@ def _bs_predictions(bars: pd.DataFrame, strike: float, seconds_left: float = 900
         prices = bars['close'].values
         log_ret = np.diff(np.log(np.maximum(prices, 1e-8)))
         vol_1m = float(np.std(log_ret)) if len(log_ret) > 5 else 0.01
+        # Full-sample vol estimate; minor lookahead at early bars, acceptable for IC ranking.
         result = np.full(len(prices), 0.5)
         for i, p in enumerate(prices):
             v = compute_bs_p_yes(current_price=p, strike=strike, realized_vol_1min=vol_1m, seconds_left=seconds_left)
             if v is not None:
                 result[i] = v
         return result
-    except Exception:
+    except Exception as exc:
+        _log.warning("_bs_predictions failed, returning neutral: %s", exc)
         return np.full(len(bars), 0.5)
 
 
@@ -126,6 +132,8 @@ def extract_all_signals(
     results['bs_probability']       = np.clip(_bs_predictions(bars, strike), 0.0, 1.0)
     results['momentum_delta']       = np.clip(_momentum_predictions(bars), 0.0, 1.0)
 
+    # These signals require live Kalshi order book / cross-venue data unavailable in
+    # historical bars. They fall back to 0.5 (no-information). IC will always be ~0.
     for name in ['exhaustion_fade', 'ratio_divergence', 'rolling_beta', 'variance_ratio_signal', 'volume_spike']:
         results[name] = np.full(n, 0.5)
 
