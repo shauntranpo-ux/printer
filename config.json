@@ -28,7 +28,8 @@
   ],
   "asset_overrides": {
     "ETH": {
-      "min_ev_base": 3
+      "min_ev_base": 19,
+      "max_spread_cents": 2
     },
     "SOL": {
       "min_ev_base": 4
