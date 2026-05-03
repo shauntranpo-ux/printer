@@ -108,7 +108,7 @@ def _v2_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
     n = len(prices)
     preds = np.full(n, 0.5)
     for i in range(30, n):
-        mtf = _multi_tf_mom(prices[:i + 1])
+        mtf = _multi_tf_mom(prices[max(0, i - 59):i + 1])
         if mtf is None:
             continue
         if mtf < -T:
@@ -125,7 +125,7 @@ def _v3_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
     n = len(prices)
     preds = np.full(n, 0.5)
     for i in range(15, n):
-        rsi = _rsi(prices[:i + 1])
+        rsi = _rsi(prices[max(0, i - 59):i + 1])
         if rsi is None:
             continue
         rsi_dev = rsi - 50.0
@@ -143,7 +143,7 @@ def _v4_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
     n = len(prices)
     preds = np.full(n, 0.5)
     for i in range(19, n):
-        boll = _boll_zscore(prices[:i + 1])
+        boll = _boll_zscore(prices[max(0, i - 59):i + 1])
         if boll is None:
             continue
         if boll < -T:
@@ -160,7 +160,7 @@ def _v5_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
     n = len(prices)
     preds = np.full(n, 0.5)
     for i in range(30, n):
-        mtf = _multi_tf_mom(prices[:i + 1])
+        mtf = _multi_tf_mom(prices[max(0, i - 59):i + 1])
         if mtf is None:
             continue
         if mtf < -T:
