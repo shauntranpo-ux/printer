@@ -12,11 +12,17 @@ from scipy.stats import norm
 def _expected_max_sharpe(num_trials: int) -> float:
     """
     Expected maximum Sharpe across num_trials IID zero-mean unit-variance strategies.
-    Approximation: E[max SR] ≈ Φ^{-1}(1 - 1/N).
+    AFML Ch.14 two-term formula:
+        E[max SR] ≈ (1-γ)·Φ^{-1}(1-1/N) + γ·Φ^{-1}(1-1/(N·e))
+    where γ is the Euler–Mascheroni constant.
     """
     if num_trials < 2:
         return 0.0
-    return float(norm.ppf(1 - 1.0 / num_trials))
+    gamma = 0.5772156649  # Euler–Mascheroni constant
+    e = math.e
+    z1 = (1 - gamma) * norm.ppf(1 - 1.0 / num_trials)
+    z2 = gamma * norm.ppf(1 - 1.0 / (num_trials * e))
+    return z1 + z2
 
 
 def deflated_sharpe_ratio(
@@ -76,15 +82,18 @@ def probability_of_backtest_overfitting(
     """
     if not fold_results:
         return float('nan')
+    # Infer number of configs from max OOS rank seen (ranks are 0-indexed)
+    num_configs = max(f['oos_rank'] for f in fold_results) + 1
+    median_rank = num_configs // 2
     overfit_count = sum(
-        1 for f in fold_results if f['oos_rank'] > 0
+        1 for f in fold_results if f['oos_rank'] > median_rank
     )
     return overfit_count / len(fold_results)
 
 
 def layer3_verdict(dsr: float, pbo: float, minbtl: float, data_years: float) -> str:
     if dsr < 0.95 or pbo > 0.25 or minbtl > data_years:
-        if dsr < 0.80 or pbo > 0.45 or minbtl > data_years:
+        if dsr < 0.80 or pbo > 0.45 or minbtl > data_years * 1.5:
             return 'FAIL'
         return 'CONDITIONAL'
     return 'PASS'

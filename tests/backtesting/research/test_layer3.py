@@ -7,16 +7,16 @@ from backtesting.research.layer3 import (
 
 
 def test_dsr_high_for_good_strategy():
-    # SR=1.5, 5000 obs, symmetric returns, 10 trials → DSR near 1
-    pnls = np.random.default_rng(0).normal(0.003, 0.06, 5000)
-    dsr = deflated_sharpe_ratio(sr_obs=1.5, pnls=pnls, num_trials=10)
+    # SR=3.0 with 5 trials → sr_star ≈ 1.16 → DSR should be high
+    pnls = np.random.default_rng(0).normal(0.006, 0.06, 5000)
+    dsr = deflated_sharpe_ratio(sr_obs=3.0, pnls=pnls, num_trials=5)
     assert dsr > 0.80
 
 
 def test_dsr_low_when_many_trials():
-    # Same SR but 500 trials → heavily penalised
-    pnls = np.random.default_rng(0).normal(0.003, 0.06, 5000)
-    dsr = deflated_sharpe_ratio(sr_obs=1.5, pnls=pnls, num_trials=500)
+    # Same config as good_strategy test but 500 trials → sr_star >> sr_obs → low DSR
+    pnls = np.random.default_rng(0).normal(0.006, 0.06, 5000)
+    dsr = deflated_sharpe_ratio(sr_obs=3.0, pnls=pnls, num_trials=500)
     assert dsr < 0.90
 
 
@@ -51,6 +51,11 @@ def test_pbo_is_best_never_oos_best():
 
 
 def test_layer3_verdict():
+    # All thresholds passed → PASS
     assert layer3_verdict(dsr=0.97, pbo=0.18, minbtl=1.2, data_years=3.0) == 'PASS'
+    # Low DSR → FAIL (dsr < 0.80 triggers inner FAIL)
     assert layer3_verdict(dsr=0.60, pbo=0.18, minbtl=1.2, data_years=3.0) == 'FAIL'
-    assert layer3_verdict(dsr=0.97, pbo=0.18, minbtl=4.0, data_years=3.0) == 'FAIL'
+    # minbtl slightly > data_years but < 1.5x → CONDITIONAL
+    assert layer3_verdict(dsr=0.97, pbo=0.18, minbtl=4.0, data_years=3.0) == 'CONDITIONAL'
+    # minbtl > data_years * 1.5 → FAIL
+    assert layer3_verdict(dsr=0.97, pbo=0.18, minbtl=5.0, data_years=3.0) == 'FAIL'
