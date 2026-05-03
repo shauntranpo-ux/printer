@@ -1676,7 +1676,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 asset, _tw, _max_price, _min_price,
             )
         skip_cfg = SkipConfig(
-            max_spread_cents=float(config.get("max_spread_cents", 3.0)),
+            max_spread_cents=float(get_asset_config(config, asset, "max_spread_cents", 3.0)),
             min_seconds_left=float(config.get("min_seconds_left", 30.0)),
             min_entry_price_cents=_min_price,
             max_entry_price_cents=_max_price,

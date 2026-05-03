@@ -90,6 +90,3 @@ def test_skip_when_momentum_misaligned():
         decision = strat.decide(features)
     assert decision.action == "skip"
     assert "momentum" in decision.reason
-
-
-    assert decision.action == "trade"

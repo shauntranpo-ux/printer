@@ -22,7 +22,6 @@ from strategies.features import MarketFeatures, Decision
 from strategies.skip_layer import check_entry_range, check_vol_ratio, SkipConfig
 from strategies.ev import compute_bidirectional_ev
 from strategies.calibration import AssetCalibrator
-from strategies.signals.kalshi_velocity import contract_velocity as _contract_velocity
 
 _log = logging.getLogger(__name__)
 _BIAS_WINDOW  = 50   # rolling trade window for YES-bias check
