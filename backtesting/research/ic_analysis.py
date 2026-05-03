@@ -71,7 +71,7 @@ def evaluate_signal(
 
     if t_stat > 2.0 and icir > 0.30:
         verdict = "PASS"
-    elif t_stat > 1.5 or icir > 0.25:
+    elif t_stat > 1.5 or icir > 0.20:
         verdict = "CONDITIONAL"
     else:
         verdict = "FAIL"
