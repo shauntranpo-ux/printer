@@ -20,7 +20,7 @@
   "enabled_assets": ["BTC", "ETH", "SOL", "XRP", "DOGE"],
   "asset_overrides": {
     "BTC": { "min_ev_base": 8, "supertrend_atr_period": 14, "supertrend_atr_multiplier": 5.0, "momentum_lookback": 3 },
-    "ETH": { "min_ev_base": 19, "supertrend_atr_period": 14, "supertrend_atr_multiplier": 5.0, "momentum_lookback": 0 },
+    "ETH": { "min_ev_base": 19, "max_spread_cents": 2, "supertrend_atr_period": 14, "supertrend_atr_multiplier": 5.0, "momentum_lookback": 0 },
     "SOL": { "min_ev_base": 20, "supertrend_atr_period": 20, "supertrend_atr_multiplier": 5.5, "allowed_sides": ["no"] },
     "XRP": { "min_ev_base": 20, "supertrend_atr_period": 14, "supertrend_atr_multiplier": 5.5, "allowed_sides": ["no"] },
     "DOGE": { "min_ev_base": 20 }
