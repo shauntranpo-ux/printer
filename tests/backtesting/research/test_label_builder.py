@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import pytest
-from backtesting.research.label_builder import build_binary_labels, build_lagged_labels, STRIKE_SPACING
+from backtesting.research.label_builder import build_binary_labels, build_lagged_labels, STRIKE_SPACING, nearest_strike
 
 def _bars(prices, freq='1min'):
     idx = pd.date_range('2025-01-01 00:00', periods=len(prices), freq=freq, tz='UTC')
@@ -34,3 +34,13 @@ def test_lagged_labels_keys():
 def test_strike_spacing_defined():
     assert 'BTC' in STRIKE_SPACING
     assert 'ETH' in STRIKE_SPACING
+
+
+def test_nearest_strike_btc():
+    assert nearest_strike(100_049.99, "BTC") == 100_000.0
+    assert nearest_strike(100_050.01, "BTC") == 100_100.0
+
+
+def test_nearest_strike_eth():
+    assert nearest_strike(3_497.3, "ETH") == 3_495.0
+    assert nearest_strike(3_502.6, "ETH") == 3_505.0
