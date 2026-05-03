@@ -1696,42 +1696,17 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         st_mult      = float(get_asset_config(config, asset, "supertrend_atr_multiplier", 4.0))
         mom_lookback = int(get_asset_config(config, asset, "momentum_lookback", 4))
 
-        if asset == "BTC":
-            from src.strategies.btc_strategy import BTCStrategy
-            strat = BTCStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
-        elif asset == "ETH":
-            from strategies.fifteen_min_strategy import FifteenMinStrategy
-            strat = FifteenMinStrategy(
-                asset=asset,
-                skip_config=skip_cfg,
-                min_ev=min_ev,
-                stake_dollars=stake,
-                confidence_threshold=confidence_threshold,
-                supertrend_atr_period=st_period,
-                supertrend_atr_multiplier=st_mult,
-                momentum_lookback=mom_lookback,
-            )
-        elif asset == "SOL":
-            from src.strategies.sol_strategy import SOLStrategy
-            strat = SOLStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
-        elif asset == "XRP":
-            from src.strategies.xrp_strategy import XRPStrategy
-            strat = XRPStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
-        elif asset == "DOGE":
-            from src.strategies.doge_strategy import DOGEStrategy
-            strat = DOGEStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
-        else:
-            from strategies.fifteen_min_strategy import FifteenMinStrategy
-            strat = FifteenMinStrategy(
-                asset=asset,
-                skip_config=skip_cfg,
-                min_ev=min_ev,
-                stake_dollars=stake,
-                confidence_threshold=confidence_threshold,
-                supertrend_atr_period=st_period,
-                supertrend_atr_multiplier=st_mult,
-                momentum_lookback=mom_lookback,
-            )
+        from strategies.fifteen_min_strategy import FifteenMinStrategy
+        strat = FifteenMinStrategy(
+            asset=asset,
+            skip_config=skip_cfg,
+            min_ev=min_ev,
+            stake_dollars=stake,
+            confidence_threshold=confidence_threshold,
+            supertrend_atr_period=st_period,
+            supertrend_atr_multiplier=st_mult,
+            momentum_lookback=mom_lookback,
+        )
 
         _STRATEGY_SINGLETONS[cache_key] = strat
         log.info(f"Strategy initialized: {cache_key} (15m, stake=${stake})")
