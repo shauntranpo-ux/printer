@@ -7,10 +7,6 @@ import pandas as pd
 
 from backtesting.metrics.trading import sharpe_ratio
 
-_ASIA_START, _ASIA_END     = 0,  5
-_LONDON_START, _LONDON_END = 5,  10
-
-
 def variance_ratio(prices: np.ndarray, q: int = 4) -> float:
     """
     Lo-MacKinlay (1988) variance ratio at aggregation lag q.
@@ -63,9 +59,9 @@ def session_label(ts: pd.Timestamp) -> str:
     """Classify UTC timestamp into Asia / London / US trading session."""
     ts_utc = ts.tz_convert('UTC') if ts.tzinfo else ts
     hour = ts_utc.hour
-    if _ASIA_START <= hour < _ASIA_END:
+    if hour < 4 or hour >= 20:  # 20:00–04:00 UTC (wraps midnight)
         return 'Asia'
-    if _LONDON_START <= hour < _LONDON_END:
+    if 4 <= hour < 9:
         return 'London'
     return 'US'
 

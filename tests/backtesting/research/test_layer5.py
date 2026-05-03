@@ -3,7 +3,7 @@ import pandas as pd
 import pytest
 from backtesting.research.layer5 import (
     variance_ratio, classify_vol_tercile, classify_trend_regime,
-    session_label, compute_regime_breakdown, run_layer5,
+    session_label, compute_regime_breakdown, run_layer5, layer5_verdict,
 )
 
 
@@ -49,6 +49,23 @@ def test_session_label():
     assert session_label(pd.Timestamp('2025-01-01 10:00', tz='UTC')) == 'US'
     assert session_label(pd.Timestamp('2025-01-01 05:00', tz='UTC')) == 'London'
     assert session_label(pd.Timestamp('2025-01-01 01:00', tz='UTC')) == 'Asia'
+
+
+def test_session_label_boundaries():
+    # Boundary hours
+    assert session_label(pd.Timestamp('2025-01-01 04:00', tz='UTC')) == 'London'   # start of London
+    assert session_label(pd.Timestamp('2025-01-01 09:00', tz='UTC')) == 'US'       # start of US
+    assert session_label(pd.Timestamp('2025-01-01 20:00', tz='UTC')) == 'Asia'     # start of Asia
+    assert session_label(pd.Timestamp('2025-01-01 23:00', tz='UTC')) == 'Asia'     # late Asia
+
+
+def test_layer5_verdict():
+    # All positive → PASS
+    assert layer5_verdict({'trending': 1.2, 'random': 0.8, 'mean_rev': 0.4}) == 'PASS'
+    # Majority negative → FAIL
+    assert layer5_verdict({'a': -0.5, 'b': -1.2, 'c': -0.8, 'd': 0.1}) == 'FAIL'
+    # Empty → INSUFFICIENT_DATA
+    assert layer5_verdict({}) == 'INSUFFICIENT_DATA'
 
 
 def test_compute_regime_breakdown_structure():
