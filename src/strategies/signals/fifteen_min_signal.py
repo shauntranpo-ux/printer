@@ -45,6 +45,10 @@ _MTF_DEFAULT  = 0.0005
 _RSI_DEFAULT  = 8.0
 _BOLL_DEFAULT = 0.50
 
+# V1 (BS p_yes) is only informative for BTC — real-IC sweep shows IC near zero
+# or negative for ETH/SOL/XRP, so it abstains rather than adding noise.
+_V1_ASSETS: frozenset[str] = frozenset({"BTC"})
+
 
 # ── feature helpers ────────────────────────────────────────────────────────────
 
@@ -124,8 +128,8 @@ def compute_15m_signal(
     rsi_dev = (float(rsi_val) - 50.0) if rsi_val is not None else None
     boll    = _boll_zscore(prices)
 
-    # V1: micro mean-reversion via BS (positive IC on real data — keep direction)
-    v1 = +1 if bs_p > 0.5 else -1
+    # V1: only predictive for BTC (ETH/SOL/XRP IC near zero / negative per real-IC sweep)
+    v1 = (+1 if bs_p > 0.5 else -1) if asset in _V1_ASSETS else 0
 
     # V2–V5: INVERTED — vote against momentum/trend (mean-reversion on real data)
     v2 = (-1 if mtf is not None and float(mtf) >  mtf_T else

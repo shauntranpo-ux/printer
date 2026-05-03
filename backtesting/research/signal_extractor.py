@@ -35,6 +35,9 @@ _MTF_DEFAULT     = 0.0005
 _RSI_DEFAULT     = 8.0
 _BOLL_DEFAULT    = 0.50
 
+# V1 (BS p_yes) only informative for BTC — mirrors fifteen_min_signal.py _V1_ASSETS
+_V1_ASSETS: frozenset[str] = frozenset({'BTC'})
+
 
 # ── helpers copied verbatim from fifteen_min_signal.py ─────────────────────────
 
@@ -80,8 +83,10 @@ def _multi_tf_mom(prices: List[float]) -> Optional[float]:
 
 # ── per-voter extractors ───────────────────────────────────────────────────────
 
-def _v1_predictions(bars: pd.DataFrame, strike: float, seconds_left: float = 900.0) -> np.ndarray:
-    """V1: BS p_yes directly (continuous)."""
+def _v1_predictions(bars: pd.DataFrame, strike: float, asset: str = 'BTC', seconds_left: float = 900.0) -> np.ndarray:
+    """V1: BS p_yes directly (continuous). Returns 0.5 for non-BTC assets (not informative)."""
+    if asset.upper() not in _V1_ASSETS:
+        return np.full(len(bars), 0.5)
     try:
         from strategies.signals.black_scholes import compute_bs_p_yes
         prices = bars['close'].values
@@ -180,7 +185,7 @@ def extract_all_signals(
     Each array has the same length as bars. Values clipped to [0, 1].
     """
     return {
-        'v1_bs_prob':       np.clip(_v1_predictions(bars, strike), 0.0, 1.0),
+        'v1_bs_prob':       np.clip(_v1_predictions(bars, strike, asset=asset), 0.0, 1.0),
         'v2_mtf_momentum':  np.clip(_v2_predictions(bars, asset), 0.0, 1.0),
         'v3_rsi':           np.clip(_v3_predictions(bars, asset), 0.0, 1.0),
         'v4_bollinger':     np.clip(_v4_predictions(bars, asset), 0.0, 1.0),
