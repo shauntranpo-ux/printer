@@ -47,14 +47,20 @@ def compute_rolling_ic(
     outcomes: np.ndarray,
     window: int = 30,
 ) -> np.ndarray:
-    """Rolling IC computed over windows of size `window`."""
+    """Rolling IC computed over windows of size `window`.
+
+    Uses pandas Cython rolling corr instead of a Python loop — orders of
+    magnitude faster on large bar arrays (4M+ rows).
+    """
     if window < 1 or len(predicted) < window:
         return np.array([])
-    ics = [
-        compute_ic(predicted[i - window:i], outcomes[i - window:i])
-        for i in range(window, len(predicted) + 1)
-    ]
-    return np.array(ics)
+    import pandas as pd
+    s_pred = pd.Series(predicted, dtype=float)
+    s_out  = pd.Series(outcomes.astype(float))
+    # iloc[window-1:] drops the leading NaN rows; fillna(0.0) handles
+    # windows that are constant (correlation undefined → treat as IC=0).
+    rolling_corr = s_pred.rolling(window).corr(s_out).iloc[window - 1:].fillna(0.0)
+    return rolling_corr.to_numpy()
 
 
 def evaluate_signal(
