@@ -1691,7 +1691,6 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                                   overrides.get("confidence_threshold", _ct_default)))
         min_ev = _ev_base / 100.0
         confidence_threshold = _ct / 100.0
-        min_votes = int(_wp.get("min_votes", 4))
         stake = float(config.get("trade_amount_dollars", 25))
         st_period    = int(get_asset_config(config, asset, "supertrend_atr_period", 10))
         st_mult      = float(get_asset_config(config, asset, "supertrend_atr_multiplier", 4.0))
@@ -1699,7 +1698,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
 
         if asset == "BTC":
             from src.strategies.btc_strategy import BTCStrategy
-            strat = BTCStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake, min_votes=min_votes)
+            strat = BTCStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
         elif asset == "ETH":
             from strategies.fifteen_min_strategy import FifteenMinStrategy
             strat = FifteenMinStrategy(
@@ -1711,17 +1710,16 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 supertrend_atr_period=st_period,
                 supertrend_atr_multiplier=st_mult,
                 momentum_lookback=mom_lookback,
-                min_votes=min_votes,
             )
         elif asset == "SOL":
             from src.strategies.sol_strategy import SOLStrategy
-            strat = SOLStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake, min_votes=min_votes)
+            strat = SOLStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
         elif asset == "XRP":
             from src.strategies.xrp_strategy import XRPStrategy
-            strat = XRPStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake, min_votes=min_votes)
+            strat = XRPStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
         elif asset == "DOGE":
             from src.strategies.doge_strategy import DOGEStrategy
-            strat = DOGEStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake, min_votes=min_votes)
+            strat = DOGEStrategy(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
         else:
             from strategies.fifteen_min_strategy import FifteenMinStrategy
             strat = FifteenMinStrategy(
@@ -1733,7 +1731,6 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
                 supertrend_atr_period=st_period,
                 supertrend_atr_multiplier=st_mult,
                 momentum_lookback=mom_lookback,
-                min_votes=min_votes,
             )
 
         _STRATEGY_SINGLETONS[cache_key] = strat

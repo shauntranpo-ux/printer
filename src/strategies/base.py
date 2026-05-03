@@ -154,26 +154,6 @@ class BaseStrategy(ABC):
                 expected_value=side_ev,
             )
 
-        # Gate A: Kalshi contract velocity must not oppose the chosen side
-        _velocity = _contract_velocity(list(features.kalshi_price_history))
-        if (_velocity == "falling" and st_side == "yes") or (_velocity == "rising" and st_side == "no"):
-            return Decision(
-                action="skip",
-                side=None,
-                p_model=p_ev,
-                reason=f"gate_a_velocity: {st_side} opposed by contract velocity={_velocity}",
-                contributing_signals={
-                    **base_signals,
-                    "velocity": _velocity,
-                    "ev_pass": True,
-                    "vol_pass": True,
-                    "gate_a_block": True,
-                    "final_decision": "skip",
-                    "skip_reason": "gate_a_velocity",
-                },
-                expected_value=side_ev,
-            )
-
         # Step 4: vol ratio gate (buffer durability)
         vol_skip = check_vol_ratio(features, self.skip_config)
         if vol_skip:

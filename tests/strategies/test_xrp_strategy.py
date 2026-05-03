@@ -258,25 +258,3 @@ def test_prior_session_return_helper():
     flat_series = [(now - (60 - i) * 60, 100.0) for i in range(60)]
     r0 = prior_session_return(flat_series, lookback_seconds=3600)
     assert r0 == 0.0
-
-
-# â”€â”€ Gate A integration test â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-def test_gate_a_blocks_yes_when_kalshi_falling(tmp_path):
-    """Gate A: falling velocity must block a YES trade for XRP."""
-    strat = XRPStrategy(
-        skip_config=SkipConfig(cold_start_samples=10),
-        min_ev=0.001,
-        stake_dollars=5.0,
-        event_calendar=_empty_calendar(tmp_path),
-    )
-    f = _xrp_features(above_strike=True)
-    f.kalshi_price_history.clear()
-    # Drop ~3.3% over 30-sample window — above contract_velocity 2% threshold,
-    # below extreme_velocity_event 5% threshold.
-    for i in range(40):
-        f.kalshi_price_history.append((float(i), 62.0 - i * 0.07))
-    d = strat.decide(f)
-    assert d.action == "skip"
-    assert "gate_a" in d.reason
-

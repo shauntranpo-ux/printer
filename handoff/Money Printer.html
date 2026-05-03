@@ -639,7 +639,7 @@ tbody tr:last-child td{border-bottom:none;}
         <button data-mode="live">LIVE</button>
       </div>
       <div class="clock" id="clock">--:--:--</div>
-      <button class="icon-btn" title="Reset P&L" id="resetPnlBtn" onclick="(function(btn){apiPost('/api/reset_pnl',{}).then(()=>{btn.textContent='✓ reset';btn.disabled=true;setTimeout(()=>{btn.innerHTML='<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><polyline points=\'1 4 1 10 7 10\'/><path d=\'M3.51 15a9 9 0 1 0 2.13-9.36L1 10\'/></svg> P&L';btn.disabled=false;},2000)});btn.textContent='…'})(this)">
+      <button class="icon-btn" title="Reset P&L" id="resetPnlBtn" onclick="(function(btn){apiPost('/api/reset_pnl',{mode:'all'}).then(()=>{btn.textContent='✓ reset';btn.disabled=true;setTimeout(()=>{btn.innerHTML='<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><polyline points=\'1 4 1 10 7 10\'/><path d=\'M3.51 15a9 9 0 1 0 2.13-9.36L1 10\'/></svg> P&L';btn.disabled=false;},2000)});btn.textContent='…'})(this)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> P&amp;L
       </button>
     </div>
