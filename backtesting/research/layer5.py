@@ -76,7 +76,9 @@ def compute_regime_breakdown(
     regime_series: Series with DatetimeIndex, values = regime label strings.
     """
     if 'timestamp' in trade_log.columns:
-        trade_log = trade_log.set_index('timestamp')
+        trade_log = trade_log.copy()
+        trade_log.index = pd.to_datetime(trade_log['timestamp'], utc=True)
+        trade_log = trade_log.drop(columns=['timestamp'])
 
     regime_sharpes: Dict[str, float] = {}
     session_sharpes: Dict[str, float] = {}

@@ -97,7 +97,14 @@ def main():
             df = pd.read_csv(f)
             if 'sharpe' in df.columns:
                 wfa_sharpes.extend(df['sharpe'].dropna().tolist())
-        data_years = max((bars.index[-1] - bars.index[0]).days / 365.25, 0.1)
+        if hasattr(bars.index, 'freq') or str(bars.index.dtype).startswith('datetime'):
+            data_years = max((bars.index[-1] - bars.index[0]).days / 365.25, 0.1)
+        elif 'timestamp' in bars.columns:
+            t0 = pd.to_datetime(bars['timestamp'].iloc[0])
+            t1 = pd.to_datetime(bars['timestamp'].iloc[-1])
+            data_years = max((t1 - t0).days / 365.25, 0.1)
+        else:
+            data_years = 3.0
         results['layer3'] = run_layer3(trade_log, wfa_sharpes=wfa_sharpes,
                                        data_years=data_years, num_trials=_count_trials(asset))
         print(f"  → {results['layer3']['verdict']} (DSR={results['layer3']['dsr']:.3f})")
