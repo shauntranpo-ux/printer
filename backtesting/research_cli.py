@@ -11,7 +11,7 @@ import os
 import sys
 from pathlib import Path
 
-# Ensure UTF-8 stdout on Windows (handles → and other Unicode in print statements)
+# Ensure UTF-8 stdout on Windows
 if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf-8-sig'):
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
@@ -24,6 +24,7 @@ import pandas as pd
 from backtesting.data.loaders import load_bars
 from backtesting.research.label_builder import STRIKE_SPACING, nearest_strike
 from backtesting.research.layer1 import run_layer1
+from backtesting.research.layer1_real import load_settlements, run_layer1_real
 from backtesting.research.layer2 import run_layer2
 from backtesting.research.layer3 import run_layer3
 from backtesting.research.layer4 import run_layer4
@@ -44,6 +45,8 @@ def main():
     parser.add_argument('--asset', required=True, choices=['BTC', 'ETH', 'SOL', 'XRP', 'DOGE'])
     parser.add_argument('--layers', default='1,2,3,4,5', help='Comma-separated layer numbers')
     parser.add_argument('--iters', type=int, default=1000, help='Permutation iterations (layer 4)')
+    parser.add_argument('--use-real-settlements', action='store_true',
+                        help='Use real Kalshi YES/NO outcomes for Layer 1 IC (requires settlements parquet)')
     args = parser.parse_args()
 
     layers = [int(x.strip()) for x in args.layers.split(',')]
@@ -56,31 +59,45 @@ def main():
     if bars.empty:
         sys.exit(f'[research] ERROR: no bar data found for {asset}')
 
-    # Use median price as ATM strike approximation
+    # Use median price as ATM strike approximation (for synthetic-label layers)
     strike = nearest_strike(float(bars['close'].median()), asset)
     print(f'[research] Strike (ATM approx): {strike}')
 
     results = {}
 
     if 1 in layers:
-        print('[research] Running Layer 1 — Signal IC...')
-        results['layer1'] = run_layer1(bars, strike=strike, asset=asset)
-        print(f"  → {results['layer1']['verdict']} ({results['layer1']['n_failing']} failing signals)")
+        print('[research] Running Layer 1 - Signal IC...')
+        if args.use_real_settlements:
+            try:
+                settlements = load_settlements(asset)
+                t0 = settlements['window_open'].min().date()
+                t1 = settlements['window_open'].max().date()
+                print(f'[research] Real settlements: {len(settlements):,} windows ({t0} -> {t1})')
+                results['layer1'] = run_layer1_real(bars, settlements, asset=asset)
+                r1 = results['layer1']
+                print(f"  -> {r1['verdict']} ({r1['n_failing']}/{r1['n_signals']} failing, "
+                      f"{r1.get('n_windows', '?')} windows, {r1.get('n_skipped', '?')} skipped)")
+            except FileNotFoundError as exc:
+                print(f'[research] WARNING: {exc}')
+                print('[research] Falling back to synthetic labels...')
+                results['layer1'] = run_layer1(bars, strike=strike, asset=asset)
+                print(f"  -> {results['layer1']['verdict']} ({results['layer1']['n_failing']} failing signals)")
+        else:
+            results['layer1'] = run_layer1(bars, strike=strike, asset=asset)
+            print(f"  -> {results['layer1']['verdict']} ({results['layer1']['n_failing']} failing signals)")
 
-    # Build synthetic trade log for layers 2-4 if not already present from layer 2
+    # Build trade log for layers 2-4
     trade_log: pd.DataFrame | None = None
 
     if 2 in layers:
-        print('[research] Running Layer 2 — Null Hypothesis...')
-        # For layer 2 null simulation, use a dummy trade log from existing WFA trades
-        # if available; otherwise skip null (require real backtest run first)
+        print('[research] Running Layer 2 - Null Hypothesis...')
         wfa_log_path = _ROOT / 'backtesting' / 'output' / f'{asset.lower()}_trades.csv'
         if wfa_log_path.exists():
             trade_log = pd.read_csv(wfa_log_path)
             results['layer2'] = run_layer2(trade_log, asset=asset, n_iter=args.iters)
-            print(f"  → {results['layer2']['verdict']} (p={results['layer2']['p_value']:.4f})")
+            print(f"  -> {results['layer2']['verdict']} (p={results['layer2']['p_value']:.4f})")
         else:
-            print(f'  [SKIP] No trade log at {wfa_log_path} — run WFA first')
+            print(f'  [SKIP] No trade log at {wfa_log_path} - run WFA first')
             results['layer2'] = {'verdict': 'SKIPPED', 'reason': 'no_trade_log'}
 
     if trade_log is None:
@@ -89,7 +106,7 @@ def main():
             trade_log = pd.read_csv(wfa_log_path)
 
     if 3 in layers and trade_log is not None:
-        print('[research] Running Layer 3 — WFA Significance...')
+        print('[research] Running Layer 3 - WFA Significance...')
         import glob
         wfa_files = glob.glob(str(_ROOT / 'backtesting' / 'output' / f'ev_wfa_{asset.lower()}*.csv'))
         wfa_sharpes = []
@@ -107,17 +124,17 @@ def main():
             data_years = 3.0
         results['layer3'] = run_layer3(trade_log, wfa_sharpes=wfa_sharpes,
                                        data_years=data_years, num_trials=_count_trials(asset))
-        print(f"  → {results['layer3']['verdict']} (DSR={results['layer3']['dsr']:.3f})")
+        print(f"  -> {results['layer3']['verdict']} (DSR={results['layer3']['dsr']:.3f})")
 
     if 4 in layers and trade_log is not None:
-        print('[research] Running Layer 4 — Permutation Test...')
+        print('[research] Running Layer 4 - Permutation Test...')
         results['layer4'] = run_layer4(trade_log, n_iter=args.iters)
-        print(f"  → {results['layer4']['verdict']} (p_block={results['layer4']['p_value_block']:.4f})")
+        print(f"  -> {results['layer4']['verdict']} (p_block={results['layer4']['p_value_block']:.4f})")
 
     if 5 in layers and trade_log is not None:
-        print('[research] Running Layer 5 — Regime Robustness...')
+        print('[research] Running Layer 5 - Regime Robustness...')
         results['layer5'] = run_layer5(trade_log, bars)
-        print(f"  → {results['layer5']['verdict']}")
+        print(f"  -> {results['layer5']['verdict']}")
 
     write_research_report(asset, results, output_dir=output_dir)
     print(f'[research] Report written to {output_dir}/research_report.md')
