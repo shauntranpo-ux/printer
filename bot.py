@@ -1895,37 +1895,51 @@ def _get_or_make_strategy_s1(asset: str, config):
     if cache_key in _S1_SINGLETONS:
         return _S1_SINGLETONS[cache_key]
 
+    _ASSET_CLASS_MAP = {
+        "BTC":  ("strategies.original.btc_strategy",  "BTCStrategy"),
+        "ETH":  ("strategies.original.eth_strategy",  "ETHStrategy"),
+        "SOL":  ("strategies.original.sol_strategy",  "SOLStrategy"),
+        "XRP":  ("strategies.original.xrp_strategy",  "XRPStrategy"),
+        "DOGE": ("strategies.original.doge_strategy", "DOGEStrategy"),
+    }
+    if asset not in _ASSET_CLASS_MAP:
+        return None
+
     try:
         from strategies.skip_layer import SkipConfig
+        from strategies.signals.time_windows import get_window_params
+
+        _min_price = float(config.get("min_entry_price_cents", 20.0))
+        _max_price = float(config.get("max_entry_price_cents", 76.0))
+        _tw = _s1_window or "normal"
+        _wp = get_window_params(config, _tw)
+        _max_price = min(_max_price, float(_wp["max_entry_price_cents"]))
+        if _max_price <= _min_price:
+            log.warning(
+                "[S1:%s] time_window=%s has max_entry=%.0fc <= min_entry=%.0fc — all entries will be blocked",
+                asset, _tw, _max_price, _min_price,
+            )
         skip_cfg = SkipConfig(
             max_spread_cents=float(get_asset_config(config, asset, "max_spread_cents", 3.0)),
             min_seconds_left=float(config.get("min_seconds_left", 30.0)),
-            min_entry_price_cents=float(config.get("min_entry_price_cents", 20.0)),
-            max_entry_price_cents=float(config.get("max_entry_price_cents", 76.0)),
+            min_entry_price_cents=_min_price,
+            max_entry_price_cents=_max_price,
             cold_start_samples=int(config.get("cold_start_samples", 60)),
             vol_ratio_threshold=float(get_asset_config(config, asset, "vol_gate_thresh", 1.80)),
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
         _ev_default = config.get("min_ev_base_15m", config.get("min_ev_base", 8))
-        min_ev = float(overrides.get("min_ev_base", _ev_default)) / 100.0
+        min_ev = (float(overrides.get("min_ev_base", _ev_default)) + float(_wp["min_ev_delta"])) / 100.0
         stake = float(config.get("trade_amount_dollars", 25))
 
-        _ASSET_CLASS_MAP = {
-            "BTC":  ("strategies.original.btc_strategy",  "BTCStrategy"),
-            "ETH":  ("strategies.original.eth_strategy",  "ETHStrategy"),
-            "SOL":  ("strategies.original.sol_strategy",  "SOLStrategy"),
-            "XRP":  ("strategies.original.xrp_strategy",  "XRPStrategy"),
-            "DOGE": ("strategies.original.doge_strategy", "DOGEStrategy"),
-        }
-        if asset not in _ASSET_CLASS_MAP:
-            return None
         module_path, class_name = _ASSET_CLASS_MAP[asset]
         import importlib
         mod = importlib.import_module(module_path)
         cls = getattr(mod, class_name)
         strat = cls(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
         _S1_SINGLETONS[cache_key] = strat
-        log.info(f"S1 Strategy initialized: {cache_key}")
+        log.info("S1 Strategy initialized: %s (window=%s, max_entry=%.0fc, min_ev=%.2f%%)",
+                 cache_key, _tw, _max_price, min_ev * 100)
         return strat
     except Exception as exc:
         log.warning(f"S1 {asset} strategy init failed: {exc}")
@@ -2347,7 +2361,7 @@ async def place_order(
             _phase_for_eth(asset, _placed_elapsed),
         )
         asyncio.create_task(send_telegram(
-            f"<b>{_placed_ctx} MARKET ORDER PLACED</b>\n"
+            f"<b>[S2 D3 Hybrid] {_placed_ctx} MARKET ORDER PLACED</b>\n"
             f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts\n"
             f"Expires in {_placed_mins}m {_placed_secs}s"
         ))
@@ -2422,7 +2436,7 @@ async def place_order(
                     _phase_for_eth(asset, _failed_elapsed),
                 )
                 await send_telegram(
-                    f"<b>{_failed_ctx} MARKET ORDER FAILED</b>  —  {err_code}\n"
+                    f"<b>[S2 D3 Hybrid] {_failed_ctx} MARKET ORDER FAILED</b>  —  {err_code}\n"
                     f"{side.upper()}  {contracts}x"
                 )
                 break
@@ -2551,7 +2565,7 @@ async def place_order(
         _phase_for_eth(asset, _nofill_elapsed),
     )
     await send_telegram(
-        f"<b>{_nofill_ctx} MARKET ORDER NOT FILLED</b>  —  no liquidity\n"
+        f"<b>[S2 D3 Hybrid] {_nofill_ctx} MARKET ORDER NOT FILLED</b>  —  no liquidity\n"
         f"{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}  {contracts}x"
     )
     return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
@@ -3565,7 +3579,7 @@ async def handle_locked_phase(
                     _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
                 )
                 await send_telegram(
-                    f"<b>{_cl_ctx} {_consecutive_losses} consecutive losses</b> — pausing for 15 min.\n"
+                    f"<b>[S2 D3 Hybrid] {_cl_ctx} {_consecutive_losses} consecutive losses</b> — pausing for 15 min.\n"
                     f"Resumes at {_resume_str}"
                 )
 
