@@ -35,29 +35,29 @@ def test_output_length_matches_bars():
 
 
 def test_v2_inverted_downtrend_produces_high_prob():
-    # Strong downtrend → MTF momentum negative → V2 inverted → 0.65 (YES)
+    # Strong downtrend -> MTF momentum negative -> V2 continuous tanh -> p_yes > 0.5
     result = extract_all_signals(_bars(n=200, trend=-500.0), strike=200_000.0, asset='BTC')
     v2 = result['v2_mtf_momentum']
     late = v2[50:]
-    assert np.any(late == 0.65), "Expected v2_mtf_momentum=0.65 in downtrend (inverted)"
+    assert np.any(late > 0.6), "Expected v2_mtf_momentum > 0.6 in downtrend (mean-reversion)"
 
 
 def test_v3_inverted_downtrend_produces_high_prob():
-    # Strong downtrend → RSI oversold → V3 inverted → 0.65 (YES)
+    # Strong downtrend -> RSI oversold -> V3 continuous tanh -> p_yes > 0.5
     result = extract_all_signals(_bars(n=200, trend=-500.0), strike=200_000.0, asset='BTC')
     v3 = result['v3_rsi']
     late = v3[30:]
-    assert np.any(late == 0.65), "Expected v3_rsi=0.65 (oversold) in downtrend"
+    assert np.any(late > 0.6), "Expected v3_rsi > 0.6 (oversold) in downtrend"
 
 
-def test_v5_fires_at_least_as_often_as_v2():
-    # V5 threshold = MTF_threshold/2 so it fires more often than V2
+def test_v5_at_least_as_extreme_as_v2():
+    # V5 uses T/2 threshold so its tanh output is always >= V2's output in magnitude
     result = extract_all_signals(_bars(n=200, trend=-500.0), strike=200_000.0, asset='BTC')
     v2 = result['v2_mtf_momentum']
     v5 = result['v5_mtf_magnitude']
-    # Where V2 fires YES, V5 must also fire YES (V5 has a lower threshold)
-    v2_yes_mask = v2 == 0.65
-    assert np.all(v5[v2_yes_mask] == 0.65), "V5 must fire YES everywhere V2 fires YES"
+    # Where V2 leans YES (> 0.5), V5 must be at least as high (more sensitive threshold)
+    v2_yes_mask = v2 > 0.5
+    assert np.all(v5[v2_yes_mask] >= v2[v2_yes_mask]), "V5 must be >= V2 everywhere V2 > 0.5"
 
 
 def test_asset_thresholds_differ():

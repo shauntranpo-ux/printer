@@ -15,8 +15,8 @@ Failing signals: 1/5
 
 | Signal | IC | ICIR | t-stat | Verdict |
 |--------|----|------|--------|---------|
-| v1_bs_prob | -0.017 | -0.016 | -1.19 | FAIL |
-| v2_mtf_momentum | 0.065 | 0.535 | 4.62 | PASS |
-| v3_rsi | 0.062 | 0.509 | 4.38 | PASS |
-| v4_bollinger | 0.060 | 0.471 | 4.29 | PASS |
-| v5_mtf_magnitude | 0.061 | 0.501 | 4.34 | PASS |
+| v1_bs_prob | 0.000 | 0.000 | 0.00 | FAIL |
+| v2_mtf_momentum | 0.068 | 0.587 | 4.86 | PASS |
+| v3_rsi | 0.065 | 0.548 | 4.63 | PASS |
+| v4_bollinger | 0.053 | 0.420 | 3.75 | PASS |
+| v5_mtf_magnitude | 0.067 | 0.557 | 4.76 | PASS |

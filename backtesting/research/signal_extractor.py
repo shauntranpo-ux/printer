@@ -38,6 +38,10 @@ _BOLL_DEFAULT    = 0.50
 # V1 (BS p_yes) only informative for BTC — mirrors fifteen_min_signal.py _V1_ASSETS
 _V1_ASSETS: frozenset[str] = frozenset({'BTC'})
 
+# Tanh scale: at |signal| = threshold, output = 0.5 ± 0.5*tanh(1/_TANH_SCALE) = 0.65 or 0.35.
+# This makes continuous outputs backward-compatible with the old ternary threshold values.
+_TANH_SCALE: float = 1.0 / math.atanh(0.3)  # ≈ 3.23
+
 
 # ── helpers copied verbatim from fifteen_min_signal.py ─────────────────────────
 
@@ -107,7 +111,7 @@ def _v1_predictions(bars: pd.DataFrame, strike: float, asset: str = 'BTC', secon
 
 
 def _v2_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V2: MTF momentum inverted — negative momentum → 0.65 (YES)."""
+    """V2: MTF momentum continuous via tanh. Negative momentum -> high p_yes."""
     T = _MTF_THRESHOLDS.get(asset.upper(), _MTF_DEFAULT)
     prices = bars['close'].tolist()
     n = len(prices)
@@ -116,15 +120,12 @@ def _v2_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
         mtf = _multi_tf_mom(prices[max(0, i - 59):i + 1])
         if mtf is None:
             continue
-        if mtf < -T:
-            preds[i] = 0.65
-        elif mtf > T:
-            preds[i] = 0.35
+        preds[i] = 0.5 + 0.5 * math.tanh(-float(mtf) / (T * _TANH_SCALE))
     return preds
 
 
 def _v3_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V3: RSI deviation inverted — oversold (rsi_dev < -T) → 0.65 (YES)."""
+    """V3: RSI deviation continuous via tanh. Oversold (rsi_dev < 0) -> high p_yes."""
     T = _RSI_THRESHOLDS.get(asset.upper(), _RSI_DEFAULT)
     prices = bars['close'].tolist()
     n = len(prices)
@@ -134,15 +135,12 @@ def _v3_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
         if rsi is None:
             continue
         rsi_dev = rsi - 50.0
-        if rsi_dev < -T:
-            preds[i] = 0.65
-        elif rsi_dev > T:
-            preds[i] = 0.35
+        preds[i] = 0.5 + 0.5 * math.tanh(-rsi_dev / (T * _TANH_SCALE))
     return preds
 
 
 def _v4_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V4: Bollinger z-score inverted — below lower band (z < -T) → 0.65 (YES)."""
+    """V4: Bollinger z-score continuous via tanh. Below band (z < 0) -> high p_yes."""
     T = _BOLL_THRESHOLDS.get(asset.upper(), _BOLL_DEFAULT)
     prices = bars['close'].tolist()
     n = len(prices)
@@ -151,15 +149,12 @@ def _v4_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
         boll = _boll_zscore(prices[max(0, i - 59):i + 1])
         if boll is None:
             continue
-        if boll < -T:
-            preds[i] = 0.65
-        elif boll > T:
-            preds[i] = 0.35
+        preds[i] = 0.5 + 0.5 * math.tanh(-float(boll) / (T * _TANH_SCALE))
     return preds
 
 
 def _v5_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V5: MTF magnitude soft confirmation — uses T/2 threshold, inverted."""
+    """V5: MTF magnitude continuous via tanh, T/2 threshold — more sensitive than V2."""
     T = _MTF_THRESHOLDS.get(asset.upper(), _MTF_DEFAULT) / 2.0
     prices = bars['close'].tolist()
     n = len(prices)
@@ -168,10 +163,7 @@ def _v5_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
         mtf = _multi_tf_mom(prices[max(0, i - 59):i + 1])
         if mtf is None:
             continue
-        if mtf < -T:
-            preds[i] = 0.65
-        elif mtf > T:
-            preds[i] = 0.35
+        preds[i] = 0.5 + 0.5 * math.tanh(-float(mtf) / (T * _TANH_SCALE))
     return preds
 
 
