@@ -38,6 +38,9 @@ _BOLL_DEFAULT    = 0.50
 # V1 (BS p_yes) only informative for BTC — mirrors fifteen_min_signal.py _V1_ASSETS
 _V1_ASSETS: frozenset[str] = frozenset({'BTC'})
 
+# V4 Bollinger abstains for BTC — IC=0.005, t=0.33 (FAIL). Mirrors _V4_SKIP_ASSETS.
+_V4_SKIP_ASSETS: frozenset[str] = frozenset({'BTC'})
+
 # Tanh scale: at |signal| = threshold, output = 0.5 ± 0.5*tanh(1/_TANH_SCALE) = 0.65 or 0.35.
 # This makes continuous outputs backward-compatible with the old ternary threshold values.
 _TANH_SCALE: float = 1.0 / math.atanh(0.3)  # ≈ 3.23
@@ -140,7 +143,9 @@ def _v3_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
 
 
 def _v4_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V4: Bollinger z-score continuous via tanh. Below band (z < 0) -> high p_yes."""
+    """V4: Bollinger z-score continuous via tanh. Returns 0.5 for BTC (not informative)."""
+    if asset.upper() in _V4_SKIP_ASSETS:
+        return np.full(len(bars), 0.5)
     T = _BOLL_THRESHOLDS.get(asset.upper(), _BOLL_DEFAULT)
     prices = bars['close'].tolist()
     n = len(prices)

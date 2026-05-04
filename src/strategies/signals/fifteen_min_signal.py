@@ -49,6 +49,10 @@ _BOLL_DEFAULT = 0.50
 # or negative for ETH/SOL/XRP, so it abstains rather than adding noise.
 _V1_ASSETS: frozenset[str] = frozenset({"BTC"})
 
+# V4 Bollinger abstains for BTC — IC=0.005, t=0.33 (FAIL) across both ternary
+# and continuous evaluations. Passes for ETH/SOL/XRP (t=3.5–3.9).
+_V4_SKIP_ASSETS: frozenset[str] = frozenset({"BTC"})
+
 
 # ── feature helpers ────────────────────────────────────────────────────────────
 
@@ -138,8 +142,9 @@ def compute_15m_signal(
     v3 = (-1 if rsi_dev is not None and rsi_dev >  rsi_T else
           (+1 if rsi_dev is not None and rsi_dev < -rsi_T else 0))
 
-    v4 = (-1 if boll is not None and float(boll) >  boll_T else
-          (+1 if boll is not None and float(boll) < -boll_T else 0))
+    v4 = (0 if asset in _V4_SKIP_ASSETS else
+          (-1 if boll is not None and float(boll) >  boll_T else
+           (+1 if boll is not None and float(boll) < -boll_T else 0)))
 
     v5 = (-1 if mtf is not None and abs(float(mtf)) > mtf_T / 2 and float(mtf) >  0 else
           (+1 if mtf is not None and abs(float(mtf)) > mtf_T / 2 and float(mtf) < 0 else 0))
