@@ -1624,6 +1624,8 @@ _S1_SINGLETONS: dict = {}  # keyed by asset name — original per-asset strategi
 _s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts}
 _config_mtime: float = 0.0
 _current_window: str = ""  # tracks active time window; cleared on boundary crossing
+_s1_config_mtime: float = 0.0
+_s1_window: str = ""
 
 
 def _strategy_name_for(asset, duration_min=15.0):
@@ -1862,12 +1864,32 @@ def strategy_brain_s2(
 
 def _get_or_make_strategy_s1(asset: str, config):
     """Lazily construct original per-asset strategy singleton. Returns None on failure."""
+    global _s1_config_mtime, _s1_window
     import sys as _sys
     _src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
     if _src not in _sys.path:
         for _k in [k for k in _sys.modules if k == "strategies" or k.startswith("strategies.")]:
             del _sys.modules[_k]
         _sys.path.insert(0, _src)
+
+    try:
+        mtime = os.path.getmtime(_CONFIG_FILE)
+        if mtime != _s1_config_mtime:
+            _S1_SINGLETONS.clear()
+            _s1_config_mtime = mtime
+            log.info("config.json changed — S1 strategy singletons cleared")
+    except OSError:
+        pass
+    try:
+        from strategies.signals.time_windows import get_trading_window
+        import time as _tw_now
+        _cur_win = get_trading_window(_tw_now.time(), config.get("timezone", "America/Los_Angeles"))
+        if _cur_win != _s1_window:
+            _S1_SINGLETONS.clear()
+            _s1_window = _cur_win
+            log.info("Trading window changed to %s — S1 strategy singletons cleared", _cur_win)
+    except Exception:
+        pass
 
     cache_key = asset
     if cache_key in _S1_SINGLETONS:
@@ -2854,7 +2876,7 @@ async def _execute_s1_shadow(
 
     import json as _json
     trade_data = {
-        "ts":                   __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ts":                   datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
         "market_id":            ticker,
         "market_title":         ticker,
         "mode":                 mode,
@@ -2888,7 +2910,7 @@ async def _execute_s1_shadow(
         "strike":            strike,
         "asset":             asset,
         "mode":              mode,
-        "entry_ts":          __import__("time").time(),
+        "entry_ts":          time.time(),
     }
 
     mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
@@ -2896,14 +2918,14 @@ async def _execute_s1_shadow(
     _payout   = round((100 - entry_price_cents) * contracts / 100, 2)
     _cost     = round(entry_price_cents * contracts / 100, 2)
     log.info(f"[S1] {ticker}: shadow trade logged — {side.upper()} {contracts}x @ {entry_price_cents}c")
-    asyncio.create_task(send_telegram(
+    await send_telegram(
         f"<b>[S1 Original] {asset} {mode_icon} ORDER FILLED</b>\n"
         f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{int(entry_price_cents)}c</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
         f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s"
-    ))
+    )
 
 
 async def _db_settle_corollary_trades(
@@ -2940,12 +2962,10 @@ async def _db_settle_corollary_trades(
     outcome_str = "WIN" if pnl >= 0 else "LOSS"
     pct_str     = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
     mode_icon   = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
-    _time_str   = __import__("datetime").datetime.now(
-        __import__("datetime").timezone(__import__("datetime").timedelta(hours=-7))
-    ).strftime("%b %d %I:%M %p PST")
-    _dur_secs   = int(__import__("time").time() - s1_pos.get("entry_ts", __import__("time").time()))
+    _time_str   = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+    _now        = time.time()
+    _dur_secs   = int(_now - s1_pos.get("entry_ts", _now))
     _dur_str    = f"{_dur_secs // 60}m {_dur_secs % 60}s"
-    _btc_price  = s2_pos.get("btc_price_at_entry") if s2_pos else 0.0
     await send_telegram(
         f"<b>[S1 Original] {asset} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
         f"{s1_pos['side'].upper()}  {s1_pos['contracts']} contracts  |  held {_dur_str}\n"
@@ -3140,6 +3160,10 @@ async def handle_ready_phase(
                      max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                      asset=asset)
     brain_s1 = strategy_brain_s1(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)
+    await _execute_s1_shadow(
+        brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
+        elapsed, secs_left, asset, config, mode, ob,
+    )
     side     = brain["side"]
     score    = brain["confidence"]
     do_trade = brain["action"] == "trade"
@@ -3406,10 +3430,6 @@ async def handle_ready_phase(
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
         f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s -> {_expiry_str}"
-    )
-    await _execute_s1_shadow(
-        brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
-        elapsed, secs_left, asset, config, mode, ob,
     )
 
 
