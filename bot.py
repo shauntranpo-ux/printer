@@ -1621,6 +1621,7 @@ def _session_ev_adjustment() -> float:
 
 _S2_SINGLETONS: dict = {}  # keyed by asset name — current D3 hybrid
 _S1_SINGLETONS: dict = {}  # keyed by asset name — original per-asset strategies
+_s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts}
 _config_mtime: float = 0.0
 _current_window: str = ""  # tracks active time window; cleared on boundary crossing
 
@@ -2815,6 +2816,144 @@ async def _log_entry(
     })
 
 
+async def _execute_s1_shadow(
+    brain_s1: dict,
+    ticker: str,
+    btc_price: float,
+    strike: float,
+    yes_ask: float,
+    no_ask: float,
+    elapsed_seconds: float,
+    secs_left: float,
+    asset: str,
+    config: dict,
+    mode: str,
+    ob: dict,
+) -> None:
+    """Log an S1 original-strategy shadow trade to the DB without placing a real order."""
+    global _s1_pending_trades
+    if brain_s1.get("action") != "trade":
+        return
+    if ticker in _s1_pending_trades:
+        return  # already have an open S1 shadow on this ticker
+
+    side = brain_s1.get("side", "yes")
+    entry_price_cents = yes_ask if side == "yes" else no_ask
+    avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
+    trade_amount = float(config.get("trade_amount_dollars", 25))
+    contracts, dollars_used = calculate_contracts(trade_amount, int(entry_price_cents), avail_liquidity)
+    if contracts == 0:
+        return
+
+    _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
+    _entry_p  = entry_price_cents / 100.0
+    _fee      = _fee_rate * (1.0 - _entry_p)
+    win_prob  = brain_s1.get("win_prob", 0.5)
+    ev_val    = round((win_prob - _entry_p - _fee) * 100, 1)
+    _ev_str   = f"+{ev_val}%" if ev_val >= 0 else f"{ev_val}%"
+
+    import json as _json
+    trade_data = {
+        "ts":                   __import__("datetime").datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "market_id":            ticker,
+        "market_title":         ticker,
+        "mode":                 mode,
+        "side":                 side,
+        "contracts":            contracts,
+        "entry_price_cents":    int(entry_price_cents),
+        "trade_amount_dollars": round(dollars_used, 2),
+        "confidence_score":     brain_s1.get("confidence", 50),
+        "model_prob":           win_prob,
+        "implied_prob":         _entry_p,
+        "btc_price_at_entry":   btc_price,
+        "strike":               strike,
+        "seconds_left_at_entry": int(secs_left),
+        "fill_confirmed":       1,
+        "outcome":              "pending",
+        "order_id":             None,
+        "asset":                asset,
+        "raw_p_yes":            brain_s1.get("raw_p_yes"),
+        "entry_signals":        _json.dumps(brain_s1.get("signals", {})),
+        "strategy_variant":     "strategy1",
+    }
+    trade_id = await db_write_trade(trade_data)
+    if trade_id is None:
+        return
+
+    _s1_pending_trades[ticker] = {
+        "trade_id":          trade_id,
+        "side":              side,
+        "entry_price_cents": int(entry_price_cents),
+        "contracts":         contracts,
+        "strike":            strike,
+        "asset":             asset,
+        "mode":              mode,
+        "entry_ts":          __import__("time").time(),
+    }
+
+    mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
+    _win_pct  = int(win_prob * 100)
+    _payout   = round((100 - entry_price_cents) * contracts / 100, 2)
+    _cost     = round(entry_price_cents * contracts / 100, 2)
+    log.info(f"[S1] {ticker}: shadow trade logged — {side.upper()} {contracts}x @ {entry_price_cents}c")
+    asyncio.create_task(send_telegram(
+        f"<b>[S1 Original] {asset} {mode_icon} ORDER FILLED</b>\n"
+        f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{int(entry_price_cents)}c</b>\n"
+        f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
+        f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
+        f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
+        f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s"
+    ))
+
+
+async def _db_settle_corollary_trades(
+    ticker: str,
+    outcome: str,
+    s2_pos: dict,
+    config: dict,
+    asset: str,
+) -> None:
+    """Settle any pending S1 shadow trade for this ticker and send outcome Telegram."""
+    global _s1_pending_trades
+    s1_pos = _s1_pending_trades.pop(ticker, None)
+    if s1_pos is None:
+        return
+
+    exit_price = 100 if outcome == "win" else 0
+    _entry_p   = s1_pos["entry_price_cents"] / 100.0
+    _fee_rate  = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
+    fee  = math.ceil(_fee_rate * s1_pos["contracts"] * _entry_p * (1.0 - _entry_p) * 100) / 100
+    pnl  = (exit_price - s1_pos["entry_price_cents"]) * s1_pos["contracts"] / 100 - fee
+    profit_pct = (exit_price - s1_pos["entry_price_cents"]) / s1_pos["entry_price_cents"] * 100 \
+                 if s1_pos["entry_price_cents"] else 0
+
+    await db_update_trade(s1_pos["trade_id"], {
+        "exit_price_cents": exit_price,
+        "exit_reason":      "expiry",
+        "outcome":          outcome,
+        "pnl_dollars":      round(pnl, 2),
+        "profit_percent":   round(profit_pct, 2),
+    })
+    log.info(f"[S1] {ticker}: shadow trade settled — {outcome}, P&L=${pnl:.2f}")
+
+    pnl_str     = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+    outcome_str = "WIN" if pnl >= 0 else "LOSS"
+    pct_str     = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
+    mode_icon   = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
+    _time_str   = __import__("datetime").datetime.now(
+        __import__("datetime").timezone(__import__("datetime").timedelta(hours=-7))
+    ).strftime("%b %d %I:%M %p PST")
+    _dur_secs   = int(__import__("time").time() - s1_pos.get("entry_ts", __import__("time").time()))
+    _dur_str    = f"{_dur_secs // 60}m {_dur_secs % 60}s"
+    _btc_price  = s2_pos.get("btc_price_at_entry") if s2_pos else 0.0
+    await send_telegram(
+        f"<b>[S1 Original] {asset} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+        f"{s1_pos['side'].upper()}  {s1_pos['contracts']} contracts  |  held {_dur_str}\n"
+        f"Entry: {s1_pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
+        f"Strike: ${s1_pos['strike']:,.0f}"
+    )
+
+
 async def handle_ready_phase(
     session: aiohttp.ClientSession,
     config: dict,
@@ -3000,6 +3139,7 @@ async def handle_ready_phase(
                      min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
                      max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                      asset=asset)
+    brain_s1 = strategy_brain_s1(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)
     side     = brain["side"]
     score    = brain["confidence"]
     do_trade = brain["action"] == "trade"
@@ -3260,12 +3400,16 @@ async def handle_ready_phase(
         _phase_for_eth(asset, elapsed),
     )
     await send_telegram(
-        f"<b>{_fill_ctx} {mode_icon} {_strat_tag}</b>  —  {_time_str}\n"
+        f"<b>[S2 D3 Hybrid] {_fill_ctx} {mode_icon} {_strat_tag}</b>  —  {_time_str}\n"
         f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
         f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s -> {_expiry_str}"
+    )
+    await _execute_s1_shadow(
+        brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
+        elapsed, secs_left, asset, config, mode, ob,
     )
 
 
@@ -3419,11 +3563,12 @@ async def handle_locked_phase(
             _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
         )
         await send_telegram(
-            f"<b>{_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"<b>[S2 D3 Hybrid] {_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
             f"{pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
             f"Entry: {pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
             f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}"
         )
+        await _db_settle_corollary_trades(ticker, outcome, pos, config, asset)
         return
 
     # Still in the market — just hold and log
