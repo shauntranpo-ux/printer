@@ -432,7 +432,8 @@ def init_db() -> None:
                 order_id              TEXT,
                 asset                 TEXT DEFAULT 'BTC',
                 raw_p_yes             REAL,
-                entry_signals         TEXT
+                entry_signals         TEXT,
+                strategy_variant      TEXT DEFAULT 'strategy2'
             )
         """)
 
@@ -500,6 +501,7 @@ def init_db() -> None:
             ("entry_signals",    "TEXT"),                # JSON snapshot of entry signals
             ("calibrated_p_yes",  "REAL"),               # post-calibration p_yes used in EV gate
             ("signal_name",       "TEXT"),               # which signal fired (d3_hybrid / supertrend)
+            ("strategy_variant",  "TEXT DEFAULT 'strategy2'"),  # strategy1=original, strategy2=D3 hybrid
         ):
             try:
                 c.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")
@@ -576,8 +578,8 @@ async def db_write_trade(trade: dict) -> int | None:
                     model_prob, implied_prob, btc_price_at_entry, strike,
                     seconds_left_at_entry, fill_confirmed,
                     exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                    order_id, asset, raw_p_yes, entry_signals
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    order_id, asset, raw_p_yes, entry_signals, strategy_variant
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
                 trade.get("mode"), trade.get("side"), trade.get("contracts"),
@@ -591,6 +593,7 @@ async def db_write_trade(trade: dict) -> int | None:
                 trade.get("profit_percent"),
                 trade.get("order_id"), trade.get("asset", "BTC"),
                 trade.get("raw_p_yes"), trade.get("entry_signals"),
+                trade.get("strategy_variant", "strategy2"),
             ))
             await db.commit()
             return cur.lastrowid
@@ -1686,15 +1689,8 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         overrides = config.get("asset_overrides", {}).get(asset, {})
         _ev_default = config.get("min_ev_base_15m", config.get("min_ev_base", 8))
         _ev_base = float(overrides.get("min_ev_base", _ev_default)) + float(_wp["min_ev_delta"])
-        _ct_default = config.get("confidence_threshold_15m", config.get("confidence_threshold", 0))
-        _ct = float(overrides.get("confidence_threshold_15m",
-                                  overrides.get("confidence_threshold", _ct_default)))
         min_ev = _ev_base / 100.0
-        confidence_threshold = _ct / 100.0
         stake = float(config.get("trade_amount_dollars", 25))
-        st_period    = int(get_asset_config(config, asset, "supertrend_atr_period", 10))
-        st_mult      = float(get_asset_config(config, asset, "supertrend_atr_multiplier", 4.0))
-        mom_lookback = int(get_asset_config(config, asset, "momentum_lookback", 4))
 
         from strategies.fifteen_min_strategy import FifteenMinStrategy
         strat = FifteenMinStrategy(
@@ -1702,10 +1698,6 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
             skip_config=skip_cfg,
             min_ev=min_ev,
             stake_dollars=stake,
-            confidence_threshold=confidence_threshold,
-            supertrend_atr_period=st_period,
-            supertrend_atr_multiplier=st_mult,
-            momentum_lookback=mom_lookback,
         )
 
         _STRATEGY_SINGLETONS[cache_key] = strat
