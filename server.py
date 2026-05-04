@@ -270,32 +270,27 @@ def api_status():
 @app.route("/api/trades")
 def api_trades():
     """
-    Return the last 100 trades ordered by ts descending.
-    Optional query parameter: mode=live|paper.
+    Return the last 500 trades ordered by ts descending.
+    Optional query parameters: mode=live|paper, asset=BTC|ETH|..., strategy=1|2.
     """
     mode  = request.args.get("mode")
-    asset = request.args.get("asset", "").upper() or None
+    asset    = request.args.get("asset", "").upper() or None
+    strategy = request.args.get("strategy", "")
+    strategy_variant = {"1": "strategy1", "2": "strategy2"}.get(strategy)
     try:
         conn = get_db()
-        if mode and asset:
-            rows = conn.execute(
-                "SELECT * FROM trades WHERE mode=? AND asset=? ORDER BY ts DESC LIMIT 500",
-                (mode, asset),
-            ).fetchall()
-        elif mode:
-            rows = conn.execute(
-                "SELECT * FROM trades WHERE mode=? ORDER BY ts DESC LIMIT 500",
-                (mode,),
-            ).fetchall()
-        elif asset:
-            rows = conn.execute(
-                "SELECT * FROM trades WHERE asset=? ORDER BY ts DESC LIMIT 500",
-                (asset,),
-            ).fetchall()
-        else:
-            rows = conn.execute(
-                "SELECT * FROM trades ORDER BY ts DESC LIMIT 500"
-            ).fetchall()
+        clauses, params = [], []
+        if mode:
+            clauses.append("mode=?"); params.append(mode)
+        if asset:
+            clauses.append("asset=?"); params.append(asset)
+        if strategy_variant:
+            clauses.append("strategy_variant=?"); params.append(strategy_variant)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        rows = conn.execute(
+            f"SELECT * FROM trades {where} ORDER BY ts DESC LIMIT 500",
+            params,
+        ).fetchall()
         conn.close()
         return jsonify([dict(r) for r in rows])
     except Exception as exc:
@@ -512,6 +507,8 @@ def api_pnl():
       - alltime: all-time totals
       - win_rate: overall win rate (resolved trades only)
     """
+    strategy = request.args.get("strategy", "")
+    strategy_variant = {"1": "strategy1", "2": "strategy2"}.get(strategy)
     try:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         conn = get_db()
@@ -520,7 +517,11 @@ def api_pnl():
         ).fetchall()
         conn.close()
 
-        all_trades = [dict(r) for r in rows]
+        all_raw    = [dict(r) for r in rows]
+        all_trades = (
+            [t for t in all_raw if t.get("strategy_variant", "strategy2") == strategy_variant]
+            if strategy_variant else all_raw
+        )
 
         def _pnl(trades):
             resolved = [t for t in trades if t.get("outcome") not in ("pending", None) and t.get("pnl_dollars") is not None]
@@ -550,7 +551,7 @@ def api_pnl():
         alltime_paper = _pnl([t for t in all_trades if t.get("mode") == "paper"])
         alltime_demo  = _pnl([t for t in all_trades if t.get("mode") == "demo"])
 
-        return jsonify({
+        response = {
             "today": {
                 "live":     today_live,
                 "paper":    today_paper,
@@ -563,7 +564,21 @@ def api_pnl():
                 "paper": alltime_paper,
                 "demo":  alltime_demo,
             },
-        })
+        }
+
+        # When no strategy filter, include per-strategy breakdown for dashboard
+        if not strategy_variant:
+            by_strategy = {}
+            for sv in ("strategy1", "strategy2"):
+                sv_trades = [t for t in all_raw if t.get("strategy_variant", "strategy2") == sv]
+                sv_today  = [t for t in sv_trades if (t.get("ts") or "").startswith(today)]
+                by_strategy[sv] = {
+                    "today":   _pnl(sv_today),
+                    "alltime": _pnl(sv_trades),
+                }
+            response["by_strategy"] = by_strategy
+
+        return jsonify(response)
     except Exception as exc:
         if "no such table" in str(exc).lower():
             empty = {"pnl": 0.0, "trades": 0, "wins": 0, "win_rate": 0.0}
@@ -571,6 +586,10 @@ def api_pnl():
             return jsonify({
                 "today":   {"live": empty, "paper": empty, "demo": empty, "by_asset": {}, "date": today},
                 "alltime": {"live": empty, "paper": empty, "demo": empty},
+                "by_strategy": {
+                    "strategy1": {"today": empty, "alltime": empty},
+                    "strategy2": {"today": empty, "alltime": empty},
+                },
             })
         log.error(f"api_pnl error: {exc}", exc_info=True)
         return jsonify({"error": str(exc)}), 500
