@@ -3821,22 +3821,6 @@ async def main_loop() -> None:
             try:
                 midnight_reset()
 
-                # Re-calibrate every 5 completed trades
-                try:
-                    async with aiosqlite.connect(_DB_FILE) as _cal_db:
-                        await _cal_db.execute("PRAGMA journal_mode=WAL")
-                        async with _cal_db.execute(
-                            "SELECT COUNT(*) FROM trades WHERE outcome IN ('win','loss')"
-                        ) as _cal_cur:
-                            _cal_row = await _cal_cur.fetchone()
-                    completed = _cal_row[0] if _cal_row else 0
-                    if completed >= _adaptive["last_calibrated_count"] + 20:
-                        await calibrate_from_history()
-                        await recalibrate_asset_strategies()
-                    if completed >= _brain_cal["last_count"] + 5:
-                        await calibrate_brain()
-                except Exception:
-                    pass
 
                 # Fresh config read
                 try:
