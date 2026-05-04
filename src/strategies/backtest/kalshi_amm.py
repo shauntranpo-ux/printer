@@ -10,7 +10,24 @@ from __future__ import annotations
 import math
 from typing import NamedTuple, Optional
 
-from strategies.baseline import brownian_bridge_prob_above
+from scipy.stats import norm
+
+
+def brownian_bridge_prob_above(
+    current_price: float,
+    strike: float,
+    seconds_left: float,
+    vol_1min: float,
+) -> float:
+    if seconds_left <= 0:
+        return 0.999 if current_price > strike else (0.001 if current_price < strike else 0.5)
+    if vol_1min <= 0:
+        return 0.999 if current_price > strike else (0.001 if current_price < strike else 0.5)
+    if current_price == strike:
+        return 0.5
+    minutes_left = seconds_left / 60.0
+    z = math.log(current_price / strike) / (vol_1min * math.sqrt(minutes_left))
+    return max(0.001, min(0.999, norm.cdf(z)))
 
 
 class SimulatedOrderbook(NamedTuple):

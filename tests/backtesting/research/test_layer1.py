@@ -28,7 +28,7 @@ def test_run_layer1_returns_all_signals():
 def test_run_layer1_result_structure():
     bars = _bars()
     result = run_layer1(bars, strike=100_000.0, asset='BTC')
-    sig = result['signals']['supertrend_direction']
+    sig = result['signals']['v2_mtf_momentum']
     assert 'ic' in sig
     assert 'icir' in sig
     assert 't_stat' in sig
