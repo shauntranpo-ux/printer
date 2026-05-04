@@ -1571,13 +1571,13 @@ async def recalibrate_asset_strategies() -> None:
     per asset, then refits isotonic/Platt calibration. Requires >= 15 trades
     per asset to fit (AssetCalibrator's own minimum).
     """
-    if not _STRATEGY_SINGLETONS:
+    if not _S2_SINGLETONS:
         log.debug("recalibrate_asset_strategies: no active strategy singletons — skipping")
         return
     try:
         async with aiosqlite.connect(_DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
-            for asset, strat in list(_STRATEGY_SINGLETONS.items()):
+            for asset, strat in list(_S2_SINGLETONS.items()):
                 async with db.execute("""
                     SELECT raw_p_yes, side, outcome
                     FROM trades
@@ -1619,7 +1619,8 @@ def _session_ev_adjustment() -> float:
     return 0.0
 
 
-_STRATEGY_SINGLETONS: dict = {}  # keyed by asset name
+_S2_SINGLETONS: dict = {}  # keyed by asset name — current D3 hybrid
+_S1_SINGLETONS: dict = {}  # keyed by asset name — original per-asset strategies
 _config_mtime: float = 0.0
 _current_window: str = ""  # tracks active time window; cleared on boundary crossing
 
@@ -1629,7 +1630,7 @@ def _strategy_name_for(asset, duration_min=15.0):
     return {"BTC": "B3", "ETH": "E1", "SOL": "S1", "XRP": "X3", "DOGE": "D3"}.get(asset, "15m")
 
 
-def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0):
+def _get_or_make_strategy_s2(asset: str, config, market_duration_min: float = 15.0):
     """Lazily construct per-asset strategy singleton. Returns None on failure."""
     global _config_mtime, _current_window
     # Fix sys.path FIRST so every strategies.* import resolves to src/strategies/.
@@ -1645,7 +1646,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
     try:
         mtime = os.path.getmtime(_CONFIG_FILE)
         if mtime != _config_mtime:
-            _STRATEGY_SINGLETONS.clear()
+            _S2_SINGLETONS.clear()
             _config_mtime = mtime
             log.info("config.json changed — strategy singletons cleared")
     except OSError:
@@ -1655,15 +1656,15 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         import time as _tw_now
         _new_window = get_trading_window(_tw_now.time(), config.get("timezone", "America/Los_Angeles"))
         if _new_window != _current_window:
-            _STRATEGY_SINGLETONS.clear()
+            _S2_SINGLETONS.clear()
             _current_window = _new_window
             log.info("Trading window changed to %s — strategy singletons cleared", _current_window)
     except Exception:
         _new_window = _current_window or "normal"
 
     cache_key = asset
-    if cache_key in _STRATEGY_SINGLETONS:
-        return _STRATEGY_SINGLETONS[cache_key]
+    if cache_key in _S2_SINGLETONS:
+        return _S2_SINGLETONS[cache_key]
     try:
         from strategies.skip_layer import SkipConfig
         from strategies.signals.time_windows import get_window_params
@@ -1700,7 +1701,7 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
             stake_dollars=stake,
         )
 
-        _STRATEGY_SINGLETONS[cache_key] = strat
+        _S2_SINGLETONS[cache_key] = strat
         log.info(f"Strategy initialized: {cache_key} (15m, stake=${stake})")
         return strat
     except Exception as exc:
@@ -1708,18 +1709,18 @@ def _get_or_make_strategy(asset: str, config, market_duration_min: float = 15.0)
         return None
 
 
-def strategy_brain(
+def strategy_brain_s2(
     btc_price, strike, yes_ask, no_ask,
     elapsed_seconds, secs_left, ticker,
     min_ev_base=3.0, vol_gate_thresh=1.80, kalshi_fee=0.07,
     asset="BTC", max_entry_price_cents=100.0,
     min_reward_cents=0.0, max_risk_reward_ratio=999.0,
 ):
-    """Dispatch to FifteenMinStrategy via Supertrend. Returns brain dict."""
+    """Dispatch to FifteenMinStrategy (D3 hybrid). Returns brain dict tagged strategy2."""
     config = read_config()
 
     market_duration_min = (elapsed_seconds + secs_left) / 60.0
-    strat = _get_or_make_strategy(asset, config, market_duration_min=market_duration_min)
+    strat = _get_or_make_strategy_s2(asset, config, market_duration_min=market_duration_min)
     if strat is None:
         # No validated strategy for this asset/duration. Skipping is better than
         # using the legacy printer_brain which has no calibrated edge on these markets
@@ -1854,6 +1855,170 @@ def strategy_brain(
         "_rv": features.realized_vol_1min,
         "_vol_ratio": None,
         "price_filter_skip": False,
+        "strategy_variant": "strategy2",
+    }
+
+
+def _get_or_make_strategy_s1(asset: str, config):
+    """Lazily construct original per-asset strategy singleton. Returns None on failure."""
+    import sys as _sys
+    _src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+    if _src not in _sys.path:
+        for _k in [k for k in _sys.modules if k == "strategies" or k.startswith("strategies.")]:
+            del _sys.modules[_k]
+        _sys.path.insert(0, _src)
+
+    cache_key = asset
+    if cache_key in _S1_SINGLETONS:
+        return _S1_SINGLETONS[cache_key]
+
+    try:
+        from strategies.skip_layer import SkipConfig
+        skip_cfg = SkipConfig(
+            max_spread_cents=float(get_asset_config(config, asset, "max_spread_cents", 3.0)),
+            min_seconds_left=float(config.get("min_seconds_left", 30.0)),
+            min_entry_price_cents=float(config.get("min_entry_price_cents", 20.0)),
+            max_entry_price_cents=float(config.get("max_entry_price_cents", 76.0)),
+            cold_start_samples=int(config.get("cold_start_samples", 60)),
+            vol_ratio_threshold=float(get_asset_config(config, asset, "vol_gate_thresh", 1.80)),
+        )
+        overrides = config.get("asset_overrides", {}).get(asset, {})
+        _ev_default = config.get("min_ev_base_15m", config.get("min_ev_base", 8))
+        min_ev = float(overrides.get("min_ev_base", _ev_default)) / 100.0
+        stake = float(config.get("trade_amount_dollars", 25))
+
+        _ASSET_CLASS_MAP = {
+            "BTC":  ("strategies.original.btc_strategy",  "BTCStrategy"),
+            "ETH":  ("strategies.original.eth_strategy",  "ETHStrategy"),
+            "SOL":  ("strategies.original.sol_strategy",  "SOLStrategy"),
+            "XRP":  ("strategies.original.xrp_strategy",  "XRPStrategy"),
+            "DOGE": ("strategies.original.doge_strategy", "DOGEStrategy"),
+        }
+        if asset not in _ASSET_CLASS_MAP:
+            return None
+        module_path, class_name = _ASSET_CLASS_MAP[asset]
+        import importlib
+        mod = importlib.import_module(module_path)
+        cls = getattr(mod, class_name)
+        strat = cls(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+        _S1_SINGLETONS[cache_key] = strat
+        log.info(f"S1 Strategy initialized: {cache_key}")
+        return strat
+    except Exception as exc:
+        log.warning(f"S1 {asset} strategy init failed: {exc}")
+        return None
+
+
+def strategy_brain_s1(
+    btc_price, strike, yes_ask, no_ask,
+    elapsed_seconds, secs_left, ticker,
+    asset="BTC",
+):
+    """Dispatch to original per-asset strategy. Returns brain dict tagged strategy1."""
+    config = read_config()
+    strat = _get_or_make_strategy_s1(asset, config)
+    if strat is None:
+        _above = btc_price > strike if strike > 0 else False
+        return {
+            "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
+            "reasoning": f"s1_no_strategy:{asset}",
+            "key_signals": [], "signals": {}, "win_prob": 0.5,
+            "mom_label": "no_strategy", "mom_pct": 0.0, "vel_signal": "neutral",
+            "raw_p_yes": None, "mins_left": secs_left / 60.0,
+            "abs_pct": abs(btc_price - strike) / strike if strike > 0 else 0.0,
+            "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+            "strategy_variant": "strategy1",
+        }
+
+    from strategies.feature_builder import build_features_from_bot_state
+    try:
+        if asset == "BTC":
+            prices_deque = btc_prices
+            current_price = btc_price
+        else:
+            prices_deque = asset_manager._prices.get(asset)
+            if not prices_deque:
+                _above = btc_price > strike if strike > 0 else False
+                return {
+                    "action": "skip", "side": "no", "confidence": 50,
+                    "reasoning": f"s1_no_price_feed:{asset}",
+                    "key_signals": [], "signals": {}, "win_prob": 0.5,
+                    "mom_label": "no_data", "mom_pct": 0.0, "vel_signal": "neutral",
+                    "raw_p_yes": None, "mins_left": secs_left / 60.0,
+                    "abs_pct": 0.0, "above": False, "_rv": None, "_vol_ratio": None,
+                    "price_filter_skip": False, "strategy_variant": "strategy1",
+                }
+            current_price = prices_deque[-1][1]
+
+        features = build_features_from_bot_state(
+            asset=asset,
+            ticker=ticker,
+            current_price=current_price,
+            strike=strike,
+            btc_price=btc_price,
+            seconds_left=secs_left,
+            elapsed_seconds=elapsed_seconds,
+            yes_ask=yes_ask,
+            no_ask=no_ask,
+            yes_bid=max(0.0, yes_ask - 1.0),
+            no_bid=max(0.0, no_ask - 1.0),
+            prices_deque=prices_deque,
+            contract_history=_contract_price_history.get(ticker),
+            btc_prices_deque=btc_prices,
+        )
+    except Exception as exc:
+        log.warning(f"S1 {asset} feature_builder failed: {exc}")
+        _above = btc_price > strike if strike > 0 else False
+        return {
+            "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
+            "reasoning": f"s1_feature_error:{exc.__class__.__name__}",
+            "key_signals": [], "signals": {}, "win_prob": 0.5,
+            "mom_label": "error", "mom_pct": 0.0, "vel_signal": "neutral",
+            "raw_p_yes": None, "mins_left": secs_left / 60.0,
+            "abs_pct": abs(btc_price - strike) / strike if strike > 0 else 0.0,
+            "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+            "strategy_variant": "strategy1",
+        }
+
+    try:
+        decision = strat.decide(features)
+    except Exception as exc:
+        log.warning(f"S1 {asset} strat.decide() failed: {exc}")
+        _above = current_price > strike if strike > 0 else False
+        return {
+            "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
+            "reasoning": f"s1_decide_error:{exc.__class__.__name__}",
+            "key_signals": [], "signals": {}, "win_prob": 0.5,
+            "mom_label": "error", "mom_pct": 0.0, "vel_signal": "neutral",
+            "raw_p_yes": None, "mins_left": secs_left / 60.0,
+            "abs_pct": abs(current_price - strike) / strike if strike > 0 else 0.0,
+            "above": _above, "_rv": None, "_vol_ratio": None,
+            "price_filter_skip": False, "strategy_variant": "strategy1",
+        }
+
+    above = current_price > strike
+    naive = "yes" if above else "no"
+    abs_pct = abs(current_price - strike) / strike if strike > 0 else 0.0
+    true_p = decision.p_model if decision.side == "yes" else (1.0 - decision.p_model)
+    return {
+        "action": decision.action,
+        "side": decision.side if decision.side else naive,
+        "confidence": int(round(true_p * 100)),
+        "reasoning": decision.reason,
+        "key_signals": [f"{k}: {v}" for k, v in decision.contributing_signals.items()],
+        "signals": dict(decision.contributing_signals),
+        "win_prob": float(true_p),
+        "mom_label": decision.contributing_signals.get("regime", "neutral"),
+        "mom_pct": float(decision.contributing_signals.get("regime_adj", 0.0)),
+        "vel_signal": decision.contributing_signals.get("velocity", "neutral"),
+        "raw_p_yes": decision.contributing_signals.get("raw_p_yes"),
+        "mins_left": secs_left / 60.0,
+        "abs_pct": abs_pct,
+        "above": above,
+        "_rv": features.realized_vol_1min,
+        "_vol_ratio": None,
+        "price_filter_skip": False,
+        "strategy_variant": "strategy1",
     }
 
 
@@ -2724,7 +2889,7 @@ async def handle_ready_phase(
                         c_ob = await fetch_orderbook(session, c_ticker, candidate)
                         if c_ob is None:
                             continue
-                        c_brain = strategy_brain(
+                        c_brain = strategy_brain_s2(
                             btc_price, c_strike,
                             c_ob["best_yes_ask"], c_ob["best_no_ask"],
                             c_elapsed, c_secs_left, c_ticker,
@@ -2827,7 +2992,7 @@ async def handle_ready_phase(
     track_contract_price(ticker, yes_ask)
 
     # â”€â”€ Printer Brain — primary decision engine (always runs, no API needed) â”€â”€
-    brain = strategy_brain(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
+    brain = strategy_brain_s2(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
                      min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
                      vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
                      kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
