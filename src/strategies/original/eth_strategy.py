@@ -20,7 +20,7 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-from strategies.base import BaseStrategy
+from strategies.original.base import BaseStrategy
 from strategies.features import MarketFeatures
 from strategies.skip_layer import SkipConfig
 from strategies.calibration import AssetCalibrator
