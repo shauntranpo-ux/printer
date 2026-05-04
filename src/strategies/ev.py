@@ -53,7 +53,7 @@ def compute_bidirectional_ev(
 
     # Compute yes side
     if yes_price <= 0 or yes_price >= 1.0:
-        yes_ev = -float("inf")
+        yes_ev = -9.999
         yes_contracts = 0
         yes_stake_actual = 0.0
     else:
@@ -64,7 +64,7 @@ def compute_bidirectional_ev(
 
     # Compute no side
     if no_price <= 0 or no_price >= 1.0:
-        no_ev = -float("inf")
+        no_ev = -9.999
         no_contracts = 0
         no_stake_actual = 0.0
     else:
