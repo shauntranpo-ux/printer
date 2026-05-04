@@ -1340,12 +1340,12 @@ function renderMarketPanel(sym){
     return `<tr>
       <td>${time}</td>
       <td><span class="td-dir ${t.dir==='UP'?'up':'down'}">${t.dir}</span></td>
-      <td>${t.qty}</td>
-      <td>${t.entry}¢</td>
-      <td>${t.exit}¢</td>
-      <td>${t.ev}%</td>
+      <td>${t.qty || '—'}</td>
+      <td>${t.entry != null ? t.entry+'¢' : '—'}</td>
+      <td>${t.exit  != null ? t.exit +'¢' : '—'}</td>
+      <td>${t.ev ? t.ev+'%' : '—'}</td>
       <td><span class="td-fill ${t.fill==='filled'?'':t.fill}">${t.fill}</span></td>
-      <td>${t.reason}</td>
+      <td>${t.reason || '—'}</td>
       <td style="text-align:right;" class="td-pnl ${t.pnl>=0?'up':'down'}">${fmtMoney(t.pnl)}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--ink-3);padding:24px;">No trades yet for ${sym}</td></tr>`;
@@ -1555,12 +1555,12 @@ function renderTrades(filter='all'){
       <td><div>${time}</div><div style="font-size:9px;color:var(--ink-3);">${date}</div></td>
       <td><span class="td-sym"><span class="swatch" style="background:${colors[t.sym]};"></span>${t.sym}</span></td>
       <td><span class="td-dir ${t.dir==='UP'?'up':'down'}">${t.dir}</span></td>
-      <td>${t.qty}</td>
-      <td>${t.entry}¢</td>
-      <td>${t.exit}¢</td>
-      <td>${t.ev}%</td>
+      <td>${t.qty || '—'}</td>
+      <td>${t.entry != null ? t.entry+'¢' : '—'}</td>
+      <td>${t.exit  != null ? t.exit +'¢' : '—'}</td>
+      <td>${t.ev ? t.ev+'%' : '—'}</td>
       <td><span class="td-fill ${t.fill==='filled'?'':t.fill}">${t.fill}</span></td>
-      <td>${t.reason}</td>
+      <td>${t.reason || '—'}</td>
       <td style="text-align:right;" class="td-pnl ${t.pnl>=0?'up':'down'}">${fmtMoney(t.pnl)}</td>
     </tr>`;
   }).join('');
@@ -1805,17 +1805,24 @@ async function fetchMarketState() {
 
 // ── Trades (live fetch) ────────────────────────────────────────────────────
 function mapTrade(t) {
+  let evPct = 0;
+  try {
+    const sigs = t.entry_signals ? JSON.parse(t.entry_signals) : {};
+    const rawEv = t.side === 'yes' ? sigs.yes_ev : sigs.no_ev;
+    evPct = rawEv != null ? +(rawEv * 100).toFixed(1) : 0;
+  } catch(e) {}
+  const done = t.outcome === 'win' || t.outcome === 'loss';
   return {
     ts:     t.ts,
     sym:    t.asset,
-    dir:    (t.side === 'YES' || t.side === 'UP') ? 'UP' : 'DOWN',
-    qty:    t.qty   || 0,
-    entryC: t.entry_price_cents || 0,
-    exitC:  t.exit_price_cents  || 0,
+    dir:    t.side === 'yes' ? 'UP' : 'DOWN',
+    qty:    t.contracts    || 0,
+    entry:  t.entry_price_cents,
+    exit:   t.exit_price_cents,
     pnl:    t.pnl_dollars  ?? 0,
-    ev:     t.ev_pct       ?? 0,
-    fill:   t.fill_status  || 'pending',
-    reason: t.reason       || '',
+    ev:     evPct,
+    fill:   done ? 'filled' : (t.fill_confirmed ? 'active' : 'pending'),
+    reason: t.exit_reason  || '',
     mode:   t.mode         || 'paper',
   };
 }
