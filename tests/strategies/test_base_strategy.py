@@ -80,13 +80,3 @@ def test_skip_when_ev_below_threshold():
         decision = strat.decide(features)
     assert decision.action == "skip"
     assert "EV" in decision.reason
-
-
-def test_skip_when_momentum_misaligned():
-    strat = DummyStrategy(asset="BTC", skip_config=SkipConfig(), min_ev=0.05, stake_dollars=5.0)
-    # Signal says YES but prices are trending down → momentum misalign skip
-    features = _make_features(trend=-10.0, yes_ask=55.0, no_ask=47.0, yes_bid=54.0, no_bid=46.0)
-    with _mock_signal("yes"):
-        decision = strat.decide(features)
-    assert decision.action == "skip"
-    assert "momentum" in decision.reason

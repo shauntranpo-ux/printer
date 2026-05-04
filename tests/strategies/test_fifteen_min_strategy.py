@@ -25,11 +25,6 @@ def _mock_15m_signal(side: str = "yes", raw_p: float = 0.70, vote_count: int = 5
     )
 
 
-def _mock_supertrend(direction: int = 1):
-    return _patch(
-        "strategies.signals.supertrend.supertrend_direction",
-        return_value=direction,
-    )
 
 
 def _features(
@@ -66,13 +61,12 @@ def _features(
     return f
 
 
-def _strat(asset="ETH", min_ev=0.05, confidence_threshold=0.0):
+def _strat(asset="ETH", min_ev=0.05):
     return FifteenMinStrategy(
         asset=asset,
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=min_ev,
         stake_dollars=25.0,
-        confidence_threshold=confidence_threshold,
     )
 
 
@@ -103,12 +97,6 @@ def test_signal_no_picks_no():
         assert d.side == "no"
 
 
-def test_confidence_gate_skips_when_enabled():
-    """confidence_threshold=0.74 skips YES when calibrated p_ev < 0.74."""
-    with _mock_15m_signal("yes", 0.70):
-        d = _strat(confidence_threshold=0.74).decide(_features())
-    assert d.action == "skip"
-    assert "confidence" in d.reason
 
 
 def test_entry_range_rejects_76c_entry():

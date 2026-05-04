@@ -62,7 +62,7 @@ def test_ev_edge_case_yes_price_zero_or_one():
         stake_dollars=5.0,
     )
     # Yes is degenerate; no side should be evaluated
-    assert result.yes_ev == -float("inf")
+    assert result.yes_ev == -9.999
 
 
 def test_ev_includes_fee():

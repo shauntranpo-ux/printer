@@ -6,9 +6,8 @@ Pipeline (enforced by BaseStrategy.decide):
   2. Direction     — D3-hybrid ensemble vote (compute_15m_signal)
   3. EV gate       — calibrated BS p_yes; per-asset minimum threshold
   4. Vol ratio     — buffer durability: rv * sqrt(mins) / dist < threshold
-  5. Confidence    — disabled by default (confidence_threshold_15m=0)
-  6. Entry range   — entry must be in [20c, 76c)
-  7. Trade
+  5. Entry range   — entry must be in [20c, 76c)
+  6. Trade
 """
 
 from __future__ import annotations
@@ -28,10 +27,6 @@ class FifteenMinStrategy(BaseStrategy):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
-        confidence_threshold: float = 0.0,
-        supertrend_atr_period: int = 10,
-        supertrend_atr_multiplier: float = 4.0,
-        momentum_lookback: int = 4,
     ):
         super().__init__(
             asset=asset,
@@ -40,8 +35,4 @@ class FifteenMinStrategy(BaseStrategy):
             stake_dollars=stake_dollars,
             calibrator=calibrator,
             maker=maker,
-            confidence_threshold=confidence_threshold,
-            supertrend_atr_period=supertrend_atr_period,
-            supertrend_atr_multiplier=supertrend_atr_multiplier,
-            momentum_lookback=momentum_lookback,
         )

@@ -6,7 +6,6 @@
   "daily_loss_limit_dollars": 500,
   "daily_profit_target_dollars": 5000,
   "max_consecutive_losses": 5,
-  "enable_reversal_signal": false,
   "min_ev_base": 7,
   "_note_min_ev_base": "in percent, e.g. 8 = 0.08 minimum EV threshold",
   "kalshi_fee_per_contract_cents": 7,
@@ -19,10 +18,10 @@
   "allowed_sides": ["yes", "no"],
   "enabled_assets": ["BTC", "ETH", "SOL", "XRP", "DOGE"],
   "asset_overrides": {
-    "BTC": { "min_ev_base": 8, "supertrend_atr_period": 14, "supertrend_atr_multiplier": 5.0, "momentum_lookback": 0 },
-    "ETH": { "min_ev_base": 19, "max_spread_cents": 2, "supertrend_atr_period": 14, "supertrend_atr_multiplier": 5.0, "momentum_lookback": 0 },
-    "SOL": { "min_ev_base": 20, "supertrend_atr_period": 20, "supertrend_atr_multiplier": 5.5, "allowed_sides": ["no"] },
-    "XRP": { "min_ev_base": 20, "supertrend_atr_period": 14, "supertrend_atr_multiplier": 5.5, "allowed_sides": ["no"] },
+    "BTC": { "min_ev_base": 8 },
+    "ETH": { "min_ev_base": 19, "max_spread_cents": 2 },
+    "SOL": { "min_ev_base": 20, "allowed_sides": ["no"] },
+    "XRP": { "min_ev_base": 20, "allowed_sides": ["no"] },
     "DOGE": { "min_ev_base": 20 }
   },
   "max_spread_cents": 3.0,
@@ -34,10 +33,5 @@
     "strict":    { "min_ev_delta": 4, "max_entry_price_cents": 70 },
     "strictest": { "min_ev_delta": 8, "max_entry_price_cents": 60 }
   },
-  "confidence_threshold": 65,
-  "confidence_threshold_15m": 65,
-  "min_ev_base_15m": 9,
-  "supertrend_atr_period": 10,
-  "supertrend_atr_multiplier": 4.0,
-  "momentum_lookback": 0
+  "min_ev_base_15m": 9
 }

@@ -6,9 +6,8 @@ Decision pipeline (15m markets only):
   2. Direction       -- D3-hybrid ensemble vote (compute_15m_signal)
   3. EV check        -- calibrated BS p_yes
   4. Vol ratio gate  -- buffer durability
-  5. Confidence gate -- p_ev >= threshold (disabled by default; set in config)
-  6. Entry range     -- [20c, 76c)
-  7. Trade
+  5. Entry range     -- [20c, 76c)
+  6. Trade
 """
 
 from __future__ import annotations
@@ -38,10 +37,6 @@ class BaseStrategy(ABC):
         stake_dollars: float,
         calibrator: Optional[AssetCalibrator] = None,
         maker: bool = False,
-        confidence_threshold: float = 0.0,
-        supertrend_atr_period: int = 10,
-        supertrend_atr_multiplier: float = 4.0,
-        momentum_lookback: int = 4,
     ):
         self.asset = asset
         self.skip_config = skip_config
@@ -49,10 +44,6 @@ class BaseStrategy(ABC):
         self.stake_dollars = stake_dollars
         self.calibrator = calibrator or AssetCalibrator(asset)
         self.maker = maker
-        self.confidence_threshold = confidence_threshold
-        self.supertrend_atr_period = supertrend_atr_period
-        self.supertrend_atr_multiplier = supertrend_atr_multiplier
-        self.momentum_lookback = momentum_lookback
         self._side_rolling: collections.deque = collections.deque(maxlen=_BIAS_WINDOW)
 
     def decide(self, features: MarketFeatures, macro_event_active: bool = False) -> Decision:
@@ -83,29 +74,6 @@ class BaseStrategy(ABC):
         st_side, signal_raw_p_yes, vote_count = result_15m
         st = 1 if st_side == "yes" else -1
         features.supertrend_direction = st
-
-        # Step 2.5: short-term momentum alignment
-        # Require that the last `momentum_lookback` ticks are moving in the direction of the signal.
-        if self.momentum_lookback > 0 and len(features.prices_60m) >= self.momentum_lookback + 1:
-            recent_delta = features.prices_60m[-1][1] - features.prices_60m[-self.momentum_lookback][1]
-            aligned = (st_side == "yes" and recent_delta > 0) or (st_side == "no" and recent_delta < 0)
-            if not aligned:
-                return Decision(
-                    action="skip",
-                    side=None,
-                    p_model=market_prob,
-                    reason=f"momentum_misalign: {st_side} signal, {self.momentum_lookback}-tick delta={recent_delta:+.4f}",
-                    contributing_signals={
-                        "supertrend_direction": st,
-                        "supertrend_side": st_side,
-                        "market_prob": market_prob,
-                        "ev_pass": False,
-                        "vol_pass": True,
-                        "final_decision": "skip",
-                        "skip_reason": "momentum_misalign",
-                        "momentum_delta": recent_delta,
-                    },
-                )
 
         # Step 3: EV gate — calibrated BS p_yes
         p_ev = self.calibrator.calibrate(signal_raw_p_yes)
@@ -171,31 +139,7 @@ class BaseStrategy(ABC):
                 expected_value=side_ev,
             )
 
-        # Step 5: confidence gate (disabled by default; set confidence_threshold > 0 to enable)
-        if self.confidence_threshold > 0:
-            _ct = self.confidence_threshold
-            _below = (st_side == "yes" and p_ev < _ct)
-            _above = (st_side == "no"  and p_ev > 1.0 - _ct)
-            if _below or _above:
-                return Decision(
-                    action="skip",
-                    side=None,
-                    p_model=p_ev,
-                    reason=(
-                        f"confidence_gate: {st_side}_p_ev={p_ev:.3f} "
-                        f"outside threshold {_ct:.0%}/{1.0-_ct:.0%}"
-                    ),
-                    contributing_signals={
-                        **base_signals,
-                        "ev_pass": True,
-                        "vol_pass": True,
-                        "final_decision": "skip",
-                        "skip_reason": "confidence_gate",
-                    },
-                    expected_value=side_ev,
-                )
-
-        # Step 6: entry range [20c, 76c)
+        # Step 5: entry range [20c, 76c)
         range_reason = check_entry_range(entry_cents, st_side, self.skip_config)
         if range_reason:
             return Decision(
@@ -213,7 +157,7 @@ class BaseStrategy(ABC):
                 expected_value=side_ev,
             )
 
-        # Step 7: trade — update rolling bias guard before returning
+        # Step 6: trade — update rolling bias guard before returning
         self._side_rolling.append(1 if st_side == "yes" else 0)
         if len(self._side_rolling) == _BIAS_WINDOW:
             yes_frac = sum(self._side_rolling) / _BIAS_WINDOW

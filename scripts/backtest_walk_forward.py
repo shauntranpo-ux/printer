@@ -51,10 +51,6 @@ def make_strategy(asset: str, calibrator=None):
             min_ev=0.04,
             stake_dollars=stake,
             calibrator=calibrator,
-            confidence_threshold=0.65,
-            supertrend_atr_period=14,
-            supertrend_atr_multiplier=5.0,
-            momentum_lookback=0,
         )
     elif asset == "SOL":
         from strategies.sol_strategy import SOLStrategy
