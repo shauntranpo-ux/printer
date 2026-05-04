@@ -160,9 +160,7 @@ _brain_cal: dict = {
 # Config cache — fallback if config.json is corrupt mid-write
 _last_good_config: dict | None = None
 
-# Consecutive-loss circuit breaker
 _consecutive_losses: int = 0
-_consecutive_loss_pause_until: float | None = None  # unix ts; None = not paused
 
 # Consecutive price-filter skip counter (triggers Telegram warning at 20)
 _consecutive_price_skips: int = 0
@@ -2710,7 +2708,6 @@ async def write_state_file(
         "limit_reason": limit_reason,
         "open_position": current_position,
         "consecutive_losses": _consecutive_losses,
-        "consecutive_loss_pause_until": _consecutive_loss_pause_until,
     }
 
     # Per-asset snapshot for multi-asset dashboard display
@@ -3546,20 +3543,15 @@ async def handle_locked_phase(
             current_position = None
             current_phase = "DONE"
 
-        # Consecutive-loss circuit breaker
-        global _consecutive_losses, _consecutive_loss_pause_until
+        # Consecutive-loss tracker (no pause — informational only)
+        global _consecutive_losses
         if outcome == "win":
             _consecutive_losses = 0
         else:
             _consecutive_losses += 1
             max_cl = config.get("max_consecutive_losses", 5)
             if _consecutive_losses >= max_cl:
-                _consecutive_loss_pause_until = time.time() + 15 * 60
-                log.warning(f"{_consecutive_losses} consecutive losses — pausing trading for 15 min.")
-                _resume_str = datetime.fromtimestamp(
-                    _consecutive_loss_pause_until,
-                    tz=timezone(timedelta(hours=-7))
-                ).strftime("%I:%M %p PST")
+                _resume_str = "n/a"
                 # Prefer the stored market duration so the session label is
                 # stable regardless of how long the trade was held. Falls back
                 # to held-time for any positions created before this field.
@@ -3571,8 +3563,7 @@ async def handle_locked_phase(
                     _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
                 )
                 await send_telegram(
-                    f"<b>[S2 D3 Hybrid] {_cl_ctx} {_consecutive_losses} consecutive losses</b> — pausing for 15 min.\n"
-                    f"Resumes at {_resume_str}"
+                    f"<b>[S2 D3 Hybrid] {_cl_ctx} {_consecutive_losses} consecutive losses</b>"
                 )
 
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
@@ -3739,11 +3730,6 @@ async def _process_asset(
 
     # READY
     if st["phase"] == "READY":
-        # Global consecutive-loss pause applies to ALL assets
-        if _consecutive_loss_pause_until and time.time() < _consecutive_loss_pause_until:
-            _resume_in = int(_consecutive_loss_pause_until - time.time())
-            log.info(f"[{asset}] Consecutive-loss pause active — {_resume_in}s remaining. Skipping.")
-            return
         try:
             await handle_ready_phase(
                 session, config, market, ticker,
@@ -3798,7 +3784,7 @@ async def main_loop() -> None:
     global last_confidence_score, last_confidence_breakdown
     global last_action, last_skip_reason
     global _order_attempted_tickers
-    global _consecutive_losses, _consecutive_loss_pause_until
+    global _consecutive_losses
 
     prev_ticker: str | None = None
 
@@ -3817,19 +3803,9 @@ async def main_loop() -> None:
                 f"side={_saved_pos.get('side')} "
                 f"ticker={_saved_pos.get('ticker')}"
             )
-        # Restore consecutive-loss counter so the pause survives a restart.
         saved_cl = _saved.get("consecutive_losses", 0)
-        saved_pause = _saved.get("consecutive_loss_pause_until")
         if isinstance(saved_cl, int) and saved_cl > 0:
             _consecutive_losses = saved_cl
-            if saved_pause and time.time() < saved_pause:
-                _consecutive_loss_pause_until = saved_pause
-                log.warning(
-                    f"Restored consecutive-loss state: count={saved_cl}, "
-                    f"pause until {datetime.fromtimestamp(saved_pause, tz=timezone.utc).isoformat()}"
-                )
-            else:
-                _consecutive_loss_pause_until = None
     except Exception:
         pass  # fresh start, no state to recover
 
@@ -4034,15 +4010,6 @@ async def main_loop() -> None:
 
                 # â”€â”€ READY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
                 if current_phase == "READY":
-                    # Consecutive-loss pause check
-                    if _consecutive_loss_pause_until and time.time() < _consecutive_loss_pause_until:
-                        _resume_in = int(_consecutive_loss_pause_until - time.time())
-                        log.info(f"Consecutive-loss pause active — {_resume_in}s remaining. Skipping READY.")
-                        await write_state_file(config, market, current_phase, secs_left, btc_price,
-                                               last_confidence_score, last_confidence_breakdown,
-                                               "skip", f"consecutive_loss_pause ({_resume_in}s left)")
-                        await asyncio.sleep(10)
-                        continue
                     try:
                         await handle_ready_phase(
                             session, config, market, ticker,
