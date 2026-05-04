@@ -183,8 +183,14 @@ body[data-mode="demo"] .mode-badge{color:var(--accent);background:var(--accent-s
 body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2);border-color:var(--line);}
 
 /* ─── KPI STRIP ─── */
+.kpi-strip-label{
+  font-size:10px;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;
+  color:var(--accent);padding:0 0 10px 0;width:100%;border-bottom:1px solid var(--line);
+  margin-bottom:14px;
+}
+.kpi-strip-label.s1{color:var(--amber);}
 .kpi-strip{
-  display:flex;align-items:center;gap:0;
+  display:flex;align-items:center;gap:0;flex-wrap:wrap;
   background:var(--panel);border:1px solid var(--line);border-radius:11px;
   padding:18px 24px;margin-bottom:14px;box-shadow:var(--shadow);
 }
@@ -651,8 +657,9 @@ tbody tr:last-child td{border-bottom:none;}
 <!-- ═════════════════ OVERVIEW ═════════════════ -->
 <div class="panel active" id="panel-overview">
 
-  <!-- KPI STRIP -->
-  <div class="kpi-strip">
+  <!-- KPI STRIP — Strategy 2 (D3 Hybrid) -->
+  <div class="kpi-strip" id="kpi-strip-s2">
+    <div class="kpi-strip-label">Strategy 2 — D3 Hybrid</div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-alltime-val" class="kpi-cell-v up mono">+$1,847.20</div>
@@ -660,7 +667,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Win Rate · 30d</div>
+      <div class="kpi-cell-l">Win Rate · All-Time</div>
       <div id="kpi-wr-val" class="kpi-cell-v mono">62.4<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
       <div id="kpi-wr-sub" class="kpi-cell-s"><span class="kpi-trend up">▲ 1.8</span> 187 trades</div>
     </div>
@@ -669,6 +676,28 @@ tbody tr:last-child td{border-bottom:none;}
       <div class="kpi-cell-l">Today's P&amp;L<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-today-val" class="kpi-cell-v up mono">+$84.60</div>
       <div id="kpi-today-sub" class="kpi-cell-s"><span class="mono">12 trades</span> · 7W / 5L</div>
+    </div>
+  </div>
+
+  <!-- KPI STRIP — Strategy 1 (Original) -->
+  <div class="kpi-strip" id="kpi-strip-s1">
+    <div class="kpi-strip-label s1">Strategy 1 — Original (B3/E1/S1/X3/D3)</div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">—</div>
+      <div id="kpi-s1-alltime-sub" class="kpi-cell-s">—</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Win Rate · All-Time</div>
+      <div id="kpi-s1-wr-val" class="kpi-cell-v mono" style="color:var(--amber);">—<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
+      <div id="kpi-s1-wr-sub" class="kpi-cell-s">— trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Today's P&amp;L<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s1-today-val" class="kpi-cell-v mono" style="color:var(--amber);">—</div>
+      <div id="kpi-s1-today-sub" class="kpi-cell-s">— trades</div>
     </div>
   </div>
 
@@ -806,7 +835,7 @@ tbody tr:last-child td{border-bottom:none;}
     <div style="max-height:560px;overflow:auto;">
       <table id="trades-table">
         <thead><tr>
-          <th>Time</th><th>Market</th><th>Dir</th><th>Qty</th>
+          <th>Time</th><th>Market</th><th>Strat</th><th>Dir</th><th>Qty</th>
           <th>Entry</th><th>Exit</th><th>EV</th><th>Fill</th><th>Reason</th><th style="text-align:right;">P&amp;L</th>
         </tr></thead>
         <tbody></tbody>
@@ -1554,6 +1583,7 @@ function renderTrades(filter='all'){
     return `<tr>
       <td><div>${time}</div><div style="font-size:9px;color:var(--ink-3);">${date}</div></td>
       <td><span class="td-sym"><span class="swatch" style="background:${colors[t.sym]};"></span>${t.sym}</span></td>
+      <td><span class="badge" style="${(t.strategy_variant||'strategy2')==='strategy1'?'background:var(--amber-soft);color:var(--amber);':'background:var(--accent-soft);color:var(--accent);'}border:none;font-size:9px;">${(t.strategy_variant||'strategy2')==='strategy1'?'S1':'S2'}</span></td>
       <td><span class="td-dir ${t.dir==='UP'?'up':'down'}">${t.dir}</span></td>
       <td>${t.qty || '—'}</td>
       <td>${t.entry != null ? t.entry+'¢' : '—'}</td>
@@ -1736,6 +1766,7 @@ window.addEventListener('load', () => {
   fetchMarketState();
   fetchTrades();
   fetchPnl();
+  fetchPnlS1();
   fetchEventLog();
 });
 window.addEventListener('resize',()=>{
@@ -1837,10 +1868,10 @@ async function fetchTrades() {
   } catch(e) {}
 }
 
-// ── PnL KPI strip (live fetch, 60s poll) ──────────────────────────────────
+// ── PnL KPI strips (live fetch, 60s poll) ────────────────────────────────
 async function fetchPnl() {
   try {
-    const d    = await fetch('/api/pnl').then(r => r.json());
+    const d    = await fetch('/api/pnl?strategy=2').then(r => r.json());
     const mode = document.body.dataset.mode || 'paper';
     const today   = d.today?.[mode]   || {};
     const alltime = d.alltime?.[mode] || {};
@@ -1851,7 +1882,6 @@ async function fetchPnl() {
       atVal.className   = `kpi-cell-v mono ${v >= 0 ? 'up' : 'down'}`;
       atVal.textContent = fmtMoney(v);
     }
-
     const wrVal = document.getElementById('kpi-wr-val');
     if (wrVal) {
       const wr = alltime.win_rate ?? 0;
@@ -1867,6 +1897,41 @@ async function fetchPnl() {
       tdVal.textContent = fmtMoney(v);
     }
     const tdSub = document.getElementById('kpi-today-sub');
+    if (tdSub) {
+      const w = today.wins ?? 0, cnt = today.trades ?? 0, l = cnt - w;
+      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> · ${w}W / ${l}L`;
+    }
+  } catch(e) {}
+}
+
+async function fetchPnlS1() {
+  try {
+    const d    = await fetch('/api/pnl?strategy=1').then(r => r.json());
+    const mode = document.body.dataset.mode || 'paper';
+    const today   = d.today?.[mode]   || {};
+    const alltime = d.alltime?.[mode] || {};
+
+    const atVal = document.getElementById('kpi-s1-alltime-val');
+    if (atVal) {
+      const v = alltime.pnl ?? 0;
+      atVal.style.color = v >= 0 ? 'var(--amber)' : 'var(--down)';
+      atVal.textContent = fmtMoney(v);
+    }
+    const wrVal = document.getElementById('kpi-s1-wr-val');
+    if (wrVal) {
+      const wr = alltime.win_rate ?? 0;
+      wrVal.innerHTML = `${wr.toFixed(1)}<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span>`;
+    }
+    const wrSub = document.getElementById('kpi-s1-wr-sub');
+    if (wrSub) wrSub.innerHTML = `<span class="mono">${alltime.trades ?? 0} trades</span>`;
+
+    const tdVal = document.getElementById('kpi-s1-today-val');
+    if (tdVal) {
+      const v = today.pnl ?? 0;
+      tdVal.style.color = v >= 0 ? 'var(--amber)' : 'var(--down)';
+      tdVal.textContent = fmtMoney(v);
+    }
+    const tdSub = document.getElementById('kpi-s1-today-sub');
     if (tdSub) {
       const w = today.wins ?? 0, cnt = today.trades ?? 0, l = cnt - w;
       tdSub.innerHTML = `<span class="mono">${cnt} trades</span> · ${w}W / ${l}L`;
@@ -1931,6 +1996,7 @@ setInterval(fetchStatus,      10_000);
 setInterval(fetchMarketState, 30_000);
 setInterval(fetchEventLog,    30_000);
 setInterval(fetchPnl,         60_000);
+setInterval(fetchPnlS1,       60_000);
 </script>
 </body>
 </html>
