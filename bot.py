@@ -508,24 +508,15 @@ def init_db() -> None:
             except Exception:
                 pass  # column already exists
 
-        # Drop dead columns that were never populated (SQLite 3.35+)
+        # Drop dead columns (SQLite 3.35+)
         existing_cols = {row[1] for row in c.execute("PRAGMA table_info(trades)")}
-        for dead_col in ("claude_confidence", "stop_loss_price_cents"):
+        for dead_col in ("claude_confidence", "stop_loss_price_cents", "claude_signals"):
             if dead_col in existing_cols:
                 try:
                     c.execute(f"ALTER TABLE trades DROP COLUMN {dead_col}")
                     log.info("DB: dropped dead column %s from trades", dead_col)
                 except Exception as exc:
                     log.warning("DB: could not drop column %s: %s", dead_col, exc)
-
-        # Rename claude_signals -> entry_signals
-        existing_cols = {row[1] for row in c.execute("PRAGMA table_info(trades)")}
-        if "claude_signals" in existing_cols and "entry_signals" not in existing_cols:
-            try:
-                c.execute("ALTER TABLE trades RENAME COLUMN claude_signals TO entry_signals")
-                log.info("DB: renamed claude_signals -> entry_signals")
-            except Exception as exc:
-                log.warning("DB: could not rename claude_signals: %s", exc)
 
         conn.commit()
         conn.close()
@@ -3379,6 +3370,7 @@ async def handle_ready_phase(
             "p_ev":                 (brain.get("signals") or {}).get("p_ev"),
             "decision_mode":        (brain.get("signals") or {}).get("decision_mode"),
         }),
+        "strategy_variant": "strategy2",
     }
     trade_id = await db_write_trade(trade_data)
 
