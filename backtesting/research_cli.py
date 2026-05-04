@@ -133,7 +133,11 @@ def main():
 
     if 5 in layers and trade_log is not None:
         print('[research] Running Layer 5 - Regime Robustness...')
-        results['layer5'] = run_layer5(trade_log, bars)
+        bars_indexed = bars.copy()
+        if 'timestamp' in bars_indexed.columns and not isinstance(bars_indexed.index, pd.DatetimeIndex):
+            bars_indexed = bars_indexed.set_index(pd.to_datetime(bars_indexed['timestamp'], utc=True))
+            bars_indexed.index.name = 'timestamp'
+        results['layer5'] = run_layer5(trade_log, bars_indexed)
         print(f"  -> {results['layer5']['verdict']}")
 
     write_research_report(asset, results, output_dir=output_dir)

@@ -6,17 +6,42 @@
 
 | Layer | Verdict |
 |-------|---------|
-| Layer 1 — Signal IC | ✓ PASS |
+| Layer 2 — Null Hypothesis | ✓ PASS |
+| Layer 3 — WFA Significance | ✓ PASS |
+| Layer 4 — Permutation Test | ✓ PASS |
+| Layer 5 — Regime Robustness | ✓ PASS |
 
 ---
 
-## Layer 1 — Signal IC
-Failing signals: 1/5
+## Layer 2 — Null Hypothesis
+Real Sharpe: 4.307  Null 95th%: 0.575  p-value: 0.0000
 
-| Signal | IC | ICIR | t-stat | Verdict |
-|--------|----|------|--------|---------|
-| v1_bs_prob | 0.057 | 0.430 | 4.51 | PASS |
-| v2_mtf_momentum | 0.028 | 0.355 | 2.26 | PASS |
-| v3_rsi | 0.034 | 0.322 | 2.69 | PASS |
-| v4_bollinger | 0.000 | 0.000 | 0.00 | FAIL |
-| v5_mtf_magnitude | 0.029 | 0.331 | 2.28 | PASS |
+**Lookahead findings:**
+- [WARN] C:\Users\alxnt\kalshi-bot\backtesting\research\..\..\backtesting\output\models\btc_calibrated_model.pkl exists — verify calibrator was fit on training fold only, not full dataset, within WFA windows.
+- [WARN] feature_builder.py may reference future bars (found shift(- or "future").
+
+## Layer 3 — WFA Significance
+DSR: 1.000  PBO: 0.000  MinBTL: 0.1yr (have 8.7yr)
+
+## Layer 4 — Permutation Test
+Trades: 208353  Win rate: 53.4%  p-value (block): 0.0000
+
+## Layer 5 — Regime Robustness
+
+| Regime | Sharpe |
+|--------|--------|
+| high_mean_reverting | 6.504 |
+| high_random | 6.107 |
+| high_trending | 1.559 |
+| low_mean_reverting | 3.971 |
+| low_random | 2.145 |
+| low_trending | 2.173 |
+| mid_mean_reverting | 5.635 |
+| mid_random | 4.505 |
+| mid_trending | 3.410 |
+
+| Session | Sharpe |
+|---------|--------|
+| Asia | 2.715 |
+| London | 4.634 |
+| US | 5.322 |
