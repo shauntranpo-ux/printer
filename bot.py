@@ -2865,6 +2865,9 @@ async def _execute_s1_trade(
         return  # already have an open S1 trade on this ticker
 
     side = brain_s1.get("side", "yes")
+    _s1_allowed = get_asset_config(config, asset, "allowed_sides", config.get("allowed_sides"))
+    if _s1_allowed and side not in _s1_allowed:
+        return
     entry_price_cents = yes_ask if side == "yes" else no_ask
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
     trade_amount = float(config.get("trade_amount_dollars", 25))
