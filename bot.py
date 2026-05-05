@@ -2961,7 +2961,7 @@ async def _db_settle_corollary_trades(
     log.info(f"[S1] {ticker}: shadow trade settled — {outcome}, P&L=${pnl:.2f}")
 
     pnl_str     = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-    outcome_str = "WIN" if pnl >= 0 else "LOSS"
+    outcome_str = "✅ WIN" if pnl >= 0 else "❌ LOSS"
     pct_str     = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
     mode_icon   = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
     _time_str   = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
@@ -3523,7 +3523,7 @@ async def handle_locked_phase(
 
         log.info(f"{ticker} expired. Outcome={outcome}, P&L=${pnl:.2f} (fee=${fee:.2f})")
         pnl_str    = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-        outcome_str = "WIN" if pnl >= 0 else "LOSS"
+        outcome_str = "✅ WIN" if pnl >= 0 else "❌ LOSS"
 
 
         await db_update_trade(pos["trade_id"], {
