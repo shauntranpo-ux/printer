@@ -135,19 +135,19 @@ def compute_15m_signal(
     # V1: only predictive for BTC (ETH/SOL/XRP IC near zero / negative per real-IC sweep)
     v1 = (+1 if bs_p > 0.5 else -1) if asset in _V1_ASSETS else 0
 
-    # V2–V5: INVERTED — vote against momentum/trend (mean-reversion on real data)
-    v2 = (-1 if mtf is not None and float(mtf) >  mtf_T else
-          (+1 if mtf is not None and float(mtf) < -mtf_T else 0))
+    # V2–V5: momentum-following — vote WITH trend (mean-reversion failed live; switched to continuation)
+    v2 = (+1 if mtf is not None and float(mtf) >  mtf_T else
+          (-1 if mtf is not None and float(mtf) < -mtf_T else 0))
 
-    v3 = (-1 if rsi_dev is not None and rsi_dev >  rsi_T else
-          (+1 if rsi_dev is not None and rsi_dev < -rsi_T else 0))
+    v3 = (+1 if rsi_dev is not None and rsi_dev >  rsi_T else
+          (-1 if rsi_dev is not None and rsi_dev < -rsi_T else 0))
 
     v4 = (0 if asset in _V4_SKIP_ASSETS else
-          (-1 if boll is not None and float(boll) >  boll_T else
-           (+1 if boll is not None and float(boll) < -boll_T else 0)))
+          (+1 if boll is not None and float(boll) >  boll_T else
+           (-1 if boll is not None and float(boll) < -boll_T else 0)))
 
-    v5 = (-1 if mtf is not None and abs(float(mtf)) > mtf_T / 2 and float(mtf) >  0 else
-          (+1 if mtf is not None and abs(float(mtf)) > mtf_T / 2 and float(mtf) < 0 else 0))
+    v5 = (+1 if mtf is not None and abs(float(mtf)) > mtf_T / 2 and float(mtf) >  0 else
+          (-1 if mtf is not None and abs(float(mtf)) > mtf_T / 2 and float(mtf) < 0 else 0))
 
     yes_votes = sum(1 for v in [v1, v2, v3, v4, v5] if v == +1)
     no_votes  = sum(1 for v in [v1, v2, v3, v4, v5] if v == -1)

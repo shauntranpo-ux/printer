@@ -30,25 +30,25 @@ def test_insufficient_prices_returns_none():
     features = _make_features([100.0] * 20, 100.0, 98.0)
     assert compute_15m_signal(features) is None
 
-def test_uptrend_gives_no():
-    # Mean-reversion signal: uptrend → extended → expect reversion down → NO
+def test_uptrend_gives_yes():
+    # Momentum signal: uptrend -> continuation expected -> YES
     prices = _uptrend_prices(60, 90.0, 0.5)
     features = _make_features(prices, prices[-1], 100.0, rv=0.0005)
     result = compute_15m_signal(features)
     if result is not None:
         side, raw_p, vote_count = result
-        assert side == "no"
+        assert side == "yes"
         assert 0.0 <= raw_p <= 1.0
         assert 3 <= vote_count <= 5
 
-def test_downtrend_gives_yes():
-    # Mean-reversion signal: downtrend → depressed → expect bounce up → YES
+def test_downtrend_gives_no():
+    # Momentum signal: downtrend -> continuation expected -> NO
     prices = _downtrend_prices(60, 110.0, 0.5)
     features = _make_features(prices, prices[-1], 100.0, rv=0.0005)
     result = compute_15m_signal(features)
     if result is not None:
         side, raw_p, vote_count = result
-        assert side == "yes"
+        assert side == "no"
         assert 0.0 <= raw_p <= 1.0
         assert 3 <= vote_count <= 5
 
