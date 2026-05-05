@@ -1817,7 +1817,8 @@ def strategy_brain_s2(
         )
 
     abs_pct = abs(current_price - strike) / strike
-    true_p = decision.p_model if decision.side == "yes" else (1.0 - decision.p_model)
+    # new base.py sets p_model = P(chosen_side_wins) already; no inversion needed
+    true_p = decision.p_model
     if decision.action == "trade":
         _st = decision.contributing_signals.get("supertrend_direction")
         _mkt = decision.contributing_signals.get("market_prob")
@@ -2868,7 +2869,7 @@ async def _execute_s1_trade(
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
     trade_amount = float(config.get("trade_amount_dollars", 25))
     contracts, dollars_used = calculate_contracts(trade_amount, int(entry_price_cents), avail_liquidity)
-    if contracts == 0:
+    if contracts == 0 or dollars_used < trade_amount * 0.90:
         return
 
     result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market, asset=asset, secs_left=secs_left)
@@ -2931,7 +2932,7 @@ async def _execute_s1_trade(
     _win_pct  = int(win_prob * 100)
     _payout   = round((100 - fill_price) * contracts / 100, 2)
     _cost     = round(fill_price * contracts / 100, 2)
-    log.info(f"[S1] {ticker}: ORDER FILLED -- — {side.upper()} {contracts}x @ {entry_price_cents}c")
+    log.info(f"[S1] {ticker}: ORDER FILLED -- {side.upper()} {contracts}x @ {fill_price}c")
     await send_telegram(
         f"<b>[S1 Original] {asset} {mode_icon} ORDER FILLED</b>\n"
         f"<b>{side.upper()} -- {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
@@ -3748,7 +3749,7 @@ async def _process_asset(
         else:
             log.info(f"[{asset}] New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
             if prev_ticker in _s1_pending_trades:
-                asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, btc_price, config, asset))
+                asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, price, config, asset))
             st["phase"] = "WATCH"
             st["position"] = None
             st["order_attempted"].discard(prev_ticker)
