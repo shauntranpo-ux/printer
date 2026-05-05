@@ -2351,7 +2351,7 @@ async def place_order(
             _phase_for_eth(asset, _placed_elapsed),
         )
         asyncio.create_task(send_telegram(
-            f"<b>[S2 D3 Hybrid] {_placed_ctx} MARKET ORDER PLACED</b>\n"
+            f"<b>🔵 [S2 D3 Hybrid] {_placed_ctx} MARKET ORDER PLACED</b>\n"
             f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts\n"
             f"Expires in {_placed_mins}m {_placed_secs}s"
         ))
@@ -2426,7 +2426,7 @@ async def place_order(
                     _phase_for_eth(asset, _failed_elapsed),
                 )
                 await send_telegram(
-                    f"<b>[S2 D3 Hybrid] {_failed_ctx} MARKET ORDER FAILED</b>  —  {err_code}\n"
+                    f"<b>🔵 [S2 D3 Hybrid] {_failed_ctx} MARKET ORDER FAILED</b>  —  {err_code}\n"
                     f"{side.upper()}  {contracts}x"
                 )
                 break
@@ -2555,7 +2555,7 @@ async def place_order(
         _phase_for_eth(asset, _nofill_elapsed),
     )
     await send_telegram(
-        f"<b>[S2 D3 Hybrid] {_nofill_ctx} MARKET ORDER NOT FILLED</b>  —  no liquidity\n"
+        f"<b>🔵 [S2 D3 Hybrid] {_nofill_ctx} MARKET ORDER NOT FILLED</b>  —  no liquidity\n"
         f"{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}  {contracts}x"
     )
     return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
@@ -2940,8 +2940,8 @@ async def _execute_s1_trade(
     _cost     = round(fill_price * contracts / 100, 2)
     log.info(f"[S1] {ticker}: ORDER FILLED -- {side.upper()} {contracts}x @ {fill_price}c")
     await send_telegram(
-        f"<b>[S1 Original] {asset} {mode_icon} ORDER FILLED</b>\n"
-        f"<b>{side.upper()} -- {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
+        f"<b>🟡 [S1 Original] {asset} {mode_icon} ORDER FILLED</b>\n"
+        f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
@@ -2990,7 +2990,7 @@ async def _settle_s1_trade(
     log.info(f"[S1] {ticker}: settled -- {outcome}, P&L=${pnl:.2f}")
 
     pnl_str     = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-    outcome_str = "WIN" if outcome == "win" else "LOSS"
+    outcome_str = "✅ WIN" if outcome == "win" else "❌ LOSS"
     pct_str     = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
     mode_icon   = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
     _time_str   = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
@@ -2998,7 +2998,7 @@ async def _settle_s1_trade(
     _dur_secs   = int(_now - s1_pos.get("entry_ts", _now))
     _dur_str    = f"{_dur_secs // 60}m {_dur_secs % 60}s"
     await send_telegram(
-        f"<b>[S1 Original] {asset} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  --  {_time_str}\n"
+        f"<b>🟡 [S1 Original] {asset} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
         f"{s1_pos['side'].upper()}  {s1_pos['contracts']} contracts  |  held {_dur_str}\n"
         f"Entry: {s1_pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
         f"Strike: ${s1_pos['strike']:,.0f}"
@@ -3485,7 +3485,7 @@ async def handle_ready_phase(
         _phase_for_eth(asset, elapsed),
     )
     await send_telegram(
-        f"<b>[S2 D3 Hybrid] {_fill_ctx} {mode_icon} {_strat_tag}</b>  —  {_time_str}\n"
+        f"<b>🔵 [S2 D3 Hybrid] {_fill_ctx} {mode_icon} {_strat_tag}</b>  —  {_time_str}\n"
         f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
@@ -3581,7 +3581,7 @@ async def handle_locked_phase(
 
         log.info(f"{ticker} expired. Outcome={outcome}, P&L=${pnl:.2f} (fee=${fee:.2f})")
         pnl_str    = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-        outcome_str = "✅ WIN" if pnl >= 0 else "❌ LOSS"
+        outcome_str = "✅ WIN" if outcome == "win" else "❌ LOSS"
 
 
         await db_update_trade(pos["trade_id"], {
@@ -3621,7 +3621,7 @@ async def handle_locked_phase(
                     _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
                 )
                 await send_telegram(
-                    f"<b>[S2 D3 Hybrid] {_cl_ctx} {_consecutive_losses} consecutive losses</b>"
+                    f"<b>🔵 [S2 D3 Hybrid] {_cl_ctx} {_consecutive_losses} consecutive losses</b>"
                 )
 
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
@@ -3638,7 +3638,7 @@ async def handle_locked_phase(
             _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
         )
         await send_telegram(
-            f"<b>[S2 D3 Hybrid] {_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"<b>🔵 [S2 D3 Hybrid] {_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
             f"{pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
             f"Entry: {pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
             f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}"
