@@ -34,7 +34,6 @@ from strategies.calibration import AssetCalibrator
 from strategies.original.signals.rolling_beta import log_returns_from_prices
 from strategies.original.signals.variance_ratio import variance_ratio, variance_ratio_to_regime
 from strategies.original.signals.solana_health import check_solana_health
-from strategies.original.signals.exhaustion_fade import exhaustion_fade_adjustment
 from strategies.original.signals.kalshi_velocity import contract_velocity
 from strategies.original.signals.beta_cache import load_beta
 from strategies.original.signals.btc_context import three_min_return
@@ -212,8 +211,6 @@ class SOLStrategy(BaseStrategy):
         regime_adj = 0.0
         if regime == "momentum":
             regime_adj = +REGIME_ADJ if above else -REGIME_ADJ
-        elif regime == "reversion":
-            regime_adj = -REGIME_ADJ if above else +REGIME_ADJ
         signals["variance_ratio"] = vr
         signals["regime"] = regime
         signals["regime_adj"] = regime_adj
@@ -235,15 +232,8 @@ class SOLStrategy(BaseStrategy):
         p_yes += velocity_adj * taper
 
         # ── Component 4: exhaustion fade ────────────────────────────────
-        exh_adj, exh_signals = exhaustion_fade_adjustment(
-            features.prices_1m,
-            features.realized_vol_1min,
-            features.seconds_left,
-            adj_magnitude=EXHAUSTION_ADJ,
-        )
-        signals.update(exh_signals)
+        exh_adj = 0.0
         signals["exhaustion_adj"] = exh_adj
-        p_yes += exh_adj * taper
 
         p_yes = max(0.05, min(0.95, p_yes))
         signals["final_p_yes"] = p_yes

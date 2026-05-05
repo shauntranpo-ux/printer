@@ -225,8 +225,6 @@ class XRPStrategy(BaseStrategy):
         regime_adj = 0.0
         if regime == "momentum":
             regime_adj = +REGIME_ADJ if above else -REGIME_ADJ
-        elif regime == "reversion":
-            regime_adj = -REGIME_ADJ if above else +REGIME_ADJ
         signals["variance_ratio"] = vr
         signals["regime"] = regime
         signals["regime_adj"] = regime_adj
@@ -239,12 +237,8 @@ class XRPStrategy(BaseStrategy):
             lookback_minutes=240,
         )
         ratio_adj = 0.0
-        if z is not None:
-            z_clip = max(-3.0, min(3.0, z))
-            ratio_adj = -z_clip * (RATIO_ADJ_MAX / 3.0)
         signals["ratio_z"] = z
         signals["ratio_adj"] = ratio_adj
-        p_yes += ratio_adj * taper
 
         # ── Step F: Kalshi velocity (non-extreme) ───────────────────────
         velocity_adj = 0.0

@@ -108,8 +108,6 @@ class ETHStrategy(BaseStrategy):
         regime_adj = 0.0
         if regime == "momentum":
             regime_adj = +REGIME_ADJ if above else -REGIME_ADJ
-        elif regime == "reversion":
-            regime_adj = -REGIME_ADJ if above else +REGIME_ADJ
         signals["variance_ratio"] = vr
         signals["regime"] = regime
         signals["regime_adj"] = regime_adj
@@ -128,21 +126,9 @@ class ETHStrategy(BaseStrategy):
         signals["e1_realized_vol_1min"] = rv
 
         ratio_adj = 0.0
-        ratio_band_active = False
-        if z is not None and not is_trending:
-            if abs(z) >= E1_BAND_Z_THRESHOLD:
-                # E1 band fired: saturated mean-revert with the boosted cap.
-                ratio_adj = -E1_RATIO_ADJ_MAX if z > 0 else +E1_RATIO_ADJ_MAX
-                ratio_band_active = True
-            else:
-                # Inside the band: keep the legacy linear scaling so the
-                # signal degrades gracefully rather than cliff-edging at 1.2.
-                z_clip = max(-3.0, min(3.0, z))
-                ratio_adj = -z_clip * (RATIO_ADJ_MAX / 3.0)
         signals["ratio_z"] = z
         signals["ratio_adj"] = ratio_adj
-        signals["e1_band_active"] = ratio_band_active
-        p_yes += ratio_adj * taper
+        signals["e1_band_active"] = False
 
         # ── Component 4: Kalshi contract velocity ───────────────────────
         velocity = contract_velocity(

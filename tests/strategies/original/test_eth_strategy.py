@@ -134,6 +134,7 @@ def _eth_features_with_ratio_overshoot(z_sign: int, vol: float):
 
 
 def test_e1_band_fires_in_low_vol_overshoot_up():
+    # Ratio divergence signal is disabled (momentum-only mode); band never fires.
     strat = ETHStrategy(
         skip_config=SkipConfig(cold_start_samples=10),
         min_ev=0.001,
@@ -142,11 +143,8 @@ def test_e1_band_fires_in_low_vol_overshoot_up():
     f = _eth_features_with_ratio_overshoot(z_sign=+1, vol=0.001)
     d = strat.decide(f)
     sig = d.contributing_signals
-    if "ratio_z" in sig and sig["ratio_z"] is not None and abs(sig["ratio_z"]) >= 1.2:
-        assert sig["e1_vol_regime"] == "ranging"
-        assert sig["e1_band_active"] is True
-        # Overshoot up → mean-revert nudge points down (negative ratio_adj)
-        assert sig["ratio_adj"] < 0
+    assert sig["e1_band_active"] is False
+    assert sig["ratio_adj"] == 0.0
 
 
 def test_e1_band_suppressed_in_trending_high_vol():
@@ -174,10 +172,8 @@ def test_e1_band_inactive_below_threshold_falls_back_to_linear():
     f.realized_vol_1min = 0.001  # ranging
     d = strat.decide(f)
     sig = d.contributing_signals
-    if "ratio_z" in sig and sig["ratio_z"] is not None and abs(sig["ratio_z"]) < 1.2:
-        assert sig["e1_band_active"] is False
-        # Linear scaling path is still active inside the band
-        assert isinstance(sig["ratio_adj"], float)
+    assert sig["e1_band_active"] is False
+    assert sig["ratio_adj"] == 0.0
 
 
 

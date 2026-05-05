@@ -3221,22 +3221,6 @@ async def handle_ready_phase(
                      asset=asset)
     brain_s1 = strategy_brain_s1(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)
 
-    # D3 direction gate: S1 may only trade when the D3 hybrid signal agrees on direction.
-    # Momentum (D3) is more reliable than S1's OBI/velocity signals; conflicting signals
-    # mean the two models are reading the market oppositely — the safer call is to sit out.
-    # When D3 has no signal (insufficient_data), S1 is unconstrained.
-    _d3_side = brain.get("contributing_signals", {}).get("supertrend_side")
-    if (
-        _d3_side is not None
-        and brain_s1.get("action") == "trade"
-        and brain_s1.get("side") != _d3_side
-    ):
-        log.info(
-            "[S1] %s: direction conflict — S1=%s vs D3=%s — skipping S1",
-            ticker, brain_s1.get("side"), _d3_side,
-        )
-        brain_s1 = {**brain_s1, "action": "skip",
-                    "reasoning": f"s1_d3_conflict:{brain_s1.get('side')}_vs_{_d3_side}"}
 
     await _execute_s1_trade(
         session, brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
