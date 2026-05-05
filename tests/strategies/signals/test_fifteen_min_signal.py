@@ -35,22 +35,22 @@ def test_uptrend_gives_yes():
     prices = _uptrend_prices(60, 90.0, 0.5)
     features = _make_features(prices, prices[-1], 100.0, rv=0.0005)
     result = compute_15m_signal(features)
-    if result is not None:
-        side, raw_p, vote_count = result
-        assert side == "yes"
-        assert 0.0 <= raw_p <= 1.0
-        assert 3 <= vote_count <= 5
+    assert result is not None, "strong uptrend should fire the signal"
+    side, raw_p, vote_count = result
+    assert side == "yes"
+    assert 0.0 <= raw_p <= 1.0
+    assert 3 <= vote_count <= 5
 
 def test_downtrend_gives_no():
     # Momentum signal: downtrend -> continuation expected -> NO
     prices = _downtrend_prices(60, 110.0, 0.5)
     features = _make_features(prices, prices[-1], 100.0, rv=0.0005)
     result = compute_15m_signal(features)
-    if result is not None:
-        side, raw_p, vote_count = result
-        assert side == "no"
-        assert 0.0 <= raw_p <= 1.0
-        assert 3 <= vote_count <= 5
+    assert result is not None, "strong downtrend should fire the signal"
+    side, raw_p, vote_count = result
+    assert side == "no"
+    assert 0.0 <= raw_p <= 1.0
+    assert 3 <= vote_count <= 5
 
 def test_flat_prices_may_return_none():
     prices = [100.0] * 60

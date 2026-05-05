@@ -1,18 +1,17 @@
 """
-D3-hybrid 15-minute signal — mean-reversion ensemble.
+D3-hybrid 15-minute signal — momentum-continuation ensemble.
 
-Real-data IC sweep (4.5M+ windows per asset) confirmed 15m Kalshi markets
-are mean-reverting, not trend-following. V2-V5 vote AGAINST momentum:
-extended price → expect reversion, depressed price → expect bounce.
+Mean-reversion thesis rejected by live data (14.5% win rate on S2).
+V2–V5 now vote WITH momentum (continuation), not against it.
 
 Direction voters (3-of-5 required):
-  V1  BS p_yes > 0.5        (micro mean-reversion: last tick vs entry bar)
-  V2  MTF momentum < -T     → YES  (momentum exhausted, expect bounce)
-  V3  RSI < 50 - T          → YES  (oversold, expect bounce)
-  V4  Bollinger z < -T      → YES  (below band, expect reversion up)
-  V5  MTF magnitude < -T/2  → YES  (soft confirmation of V2)
+  V1  BS p_yes > 0.5        (BTC only; ETH/SOL/XRP IC near zero)
+  V2  MTF momentum > +T     → YES  (upward momentum, expect continuation)
+  V3  RSI dev > +T          → YES  (RSI above midline, bullish momentum)
+  V4  Bollinger z > +T      → YES  (ETH/SOL/XRP only; above band, bullish)
+  V5  MTF magnitude > +T/2  → YES  (soft confirmation of V2)
 
-Returns (side, raw_p_yes) or None if fewer than 3 voters agree.
+Returns (side, raw_p_yes, vote_count) or None if fewer than 3 voters agree.
 """
 from __future__ import annotations
 
