@@ -2840,7 +2840,8 @@ async def _log_entry(
     })
 
 
-async def _execute_s1_shadow(
+async def _execute_s1_trade(
+    session: "aiohttp.ClientSession",
     brain_s1: dict,
     ticker: str,
     btc_price: float,
@@ -2853,13 +2854,14 @@ async def _execute_s1_shadow(
     config: dict,
     mode: str,
     ob: dict,
+    market: "dict | None" = None,
 ) -> None:
-    """Log an S1 original-strategy shadow trade to the DB without placing a real order."""
+    """Place a real S1 order alongside S2 and track it in _s1_pending_trades."""
     global _s1_pending_trades
     if brain_s1.get("action") != "trade":
         return
     if ticker in _s1_pending_trades:
-        return  # already have an open S1 shadow on this ticker
+        return  # already have an open S1 trade on this ticker
 
     side = brain_s1.get("side", "yes")
     entry_price_cents = yes_ask if side == "yes" else no_ask
@@ -2869,8 +2871,17 @@ async def _execute_s1_shadow(
     if contracts == 0:
         return
 
+    result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market, asset=asset, secs_left=secs_left)
+    if not result["fill_confirmed"]:
+        log.info(f"[S1] {ticker}: order not filled -- skipping")
+        return
+    _fp = result.get("fill_price_cents")
+    fill_price = _fp if _fp is not None else int(entry_price_cents)
+    _fc = result.get("filled_contracts")
+    contracts = _fc if _fc is not None else contracts
+
     _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
-    _entry_p  = entry_price_cents / 100.0
+    _entry_p  = fill_price / 100.0
     _fee      = _fee_rate * (1.0 - _entry_p)
     win_prob  = brain_s1.get("win_prob", 0.5)
     ev_val    = round((win_prob - _entry_p - _fee) * 100, 1)
@@ -2884,7 +2895,7 @@ async def _execute_s1_shadow(
         "mode":                 mode,
         "side":                 side,
         "contracts":            contracts,
-        "entry_price_cents":    int(entry_price_cents),
+        "entry_price_cents":    fill_price,
         "trade_amount_dollars": round(dollars_used, 2),
         "confidence_score":     brain_s1.get("confidence", 50),
         "model_prob":           win_prob,
@@ -2894,7 +2905,7 @@ async def _execute_s1_shadow(
         "seconds_left_at_entry": int(secs_left),
         "fill_confirmed":       1,
         "outcome":              "pending",
-        "order_id":             None,
+        "order_id":             result.get("order_id"),
         "asset":                asset,
         "raw_p_yes":            brain_s1.get("raw_p_yes"),
         "entry_signals":        _json.dumps(brain_s1.get("signals", {})),
@@ -2907,22 +2918,23 @@ async def _execute_s1_shadow(
     _s1_pending_trades[ticker] = {
         "trade_id":          trade_id,
         "side":              side,
-        "entry_price_cents": int(entry_price_cents),
+        "entry_price_cents": fill_price,
         "contracts":         contracts,
         "strike":            strike,
         "asset":             asset,
         "mode":              mode,
         "entry_ts":          time.time(),
+        "market_close_time": (market or {}).get("close_time", ""),
     }
 
     mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
     _win_pct  = int(win_prob * 100)
-    _payout   = round((100 - entry_price_cents) * contracts / 100, 2)
-    _cost     = round(entry_price_cents * contracts / 100, 2)
-    log.info(f"[S1] {ticker}: shadow trade logged — {side.upper()} {contracts}x @ {entry_price_cents}c")
+    _payout   = round((100 - fill_price) * contracts / 100, 2)
+    _cost     = round(fill_price * contracts / 100, 2)
+    log.info(f"[S1] {ticker}: ORDER FILLED -- — {side.upper()} {contracts}x @ {entry_price_cents}c")
     await send_telegram(
         f"<b>[S1 Original] {asset} {mode_icon} ORDER FILLED</b>\n"
-        f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{int(entry_price_cents)}c</b>\n"
+        f"<b>{side.upper()} -- {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
@@ -2930,18 +2942,28 @@ async def _execute_s1_shadow(
     )
 
 
-async def _db_settle_corollary_trades(
+async def _settle_s1_trade(
     ticker: str,
-    outcome: str,
-    s2_pos: dict,
+    market_result: "str | None",
+    btc_price: float,
     config: dict,
     asset: str,
 ) -> None:
-    """Settle any pending S1 shadow trade for this ticker and send outcome Telegram."""
+    """Settle a pending S1 real trade. market_result is 'yes', 'no', or None (price fallback)."""
     global _s1_pending_trades
     s1_pos = _s1_pending_trades.pop(ticker, None)
     if s1_pos is None:
         return
+
+    if market_result == "yes":
+        outcome = "win" if s1_pos["side"] == "yes" else "loss"
+    elif market_result == "no":
+        outcome = "win" if s1_pos["side"] == "no" else "loss"
+    else:
+        outcome = "win" if (
+            (s1_pos["side"] == "yes" and btc_price > s1_pos["strike"]) or
+            (s1_pos["side"] == "no"  and btc_price <= s1_pos["strike"])
+        ) else "loss"
 
     exit_price = 100 if outcome == "win" else 0
     _entry_p   = s1_pos["entry_price_cents"] / 100.0
@@ -2958,10 +2980,10 @@ async def _db_settle_corollary_trades(
         "pnl_dollars":      round(pnl, 2),
         "profit_percent":   round(profit_pct, 2),
     })
-    log.info(f"[S1] {ticker}: shadow trade settled — {outcome}, P&L=${pnl:.2f}")
+    log.info(f"[S1] {ticker}: settled -- {outcome}, P&L=${pnl:.2f}")
 
     pnl_str     = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-    outcome_str = "✅ WIN" if pnl >= 0 else "❌ LOSS"
+    outcome_str = "WIN" if pnl >= 0 else "LOSS"
     pct_str     = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
     mode_icon   = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
     _time_str   = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
@@ -2969,12 +2991,40 @@ async def _db_settle_corollary_trades(
     _dur_secs   = int(_now - s1_pos.get("entry_ts", _now))
     _dur_str    = f"{_dur_secs // 60}m {_dur_secs % 60}s"
     await send_telegram(
-        f"<b>[S1 Original] {asset} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+        f"<b>[S1 Original] {asset} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  --  {_time_str}\n"
         f"{s1_pos['side'].upper()}  {s1_pos['contracts']} contracts  |  held {_dur_str}\n"
         f"Entry: {s1_pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
         f"Strike: ${s1_pos['strike']:,.0f}"
     )
 
+
+async def _try_settle_orphaned_s1(
+    session: "aiohttp.ClientSession",
+    ticker: str,
+    btc_price: float,
+    config: dict,
+    asset: str,
+) -> None:
+    """Settle an S1 trade when the market expired but S2 never locked."""
+    if ticker not in _s1_pending_trades:
+        return
+    market_result = None
+    for _attempt in range(3):
+        try:
+            _path = f"/markets/{ticker}"
+            async with session.get(
+                KALSHI_BASE_URL + _path,
+                headers=kalshi_headers("GET", _path),
+                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+            ) as _resp:
+                _mdata = await _resp.json()
+            market_result = (_mdata.get("market") or _mdata).get("result")
+            if market_result in ("yes", "no"):
+                break
+        except Exception as _exc:
+            log.warning(f"[S1 orphan] market result fetch error (attempt {_attempt}): {_exc}")
+        await asyncio.sleep(5)
+    await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
 
 async def handle_ready_phase(
     session: aiohttp.ClientSession,
@@ -3162,9 +3212,9 @@ async def handle_ready_phase(
                      max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                      asset=asset)
     brain_s1 = strategy_brain_s1(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)
-    await _execute_s1_shadow(
-        brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
-        elapsed, secs_left, asset, config, mode, ob,
+    await _execute_s1_trade(
+        session, brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
+        elapsed, secs_left, asset, config, mode, ob, market,
     )
     side     = brain["side"]
     score    = brain["confidence"]
@@ -3585,7 +3635,7 @@ async def handle_locked_phase(
             f"Entry: {pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
             f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}"
         )
-        await _db_settle_corollary_trades(ticker, outcome, pos, config, asset)
+        await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
         return
 
     # Still in the market — just hold and log
@@ -3697,6 +3747,8 @@ async def _process_asset(
             market = st.get("market") or market
         else:
             log.info(f"[{asset}] New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
+            if prev_ticker in _s1_pending_trades:
+                asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, btc_price, config, asset))
             st["phase"] = "WATCH"
             st["position"] = None
             st["order_attempted"].discard(prev_ticker)
@@ -3914,6 +3966,8 @@ async def main_loop() -> None:
                         market = _market_cache if _market_cache and _market_cache.get("ticker") == prev_ticker else market
                     else:
                         log.info(f"New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
+                        if prev_ticker in _s1_pending_trades:
+                            asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, btc_price, config, "BTC"))
                         current_phase = "WATCH"
                         current_position = None
                         _order_attempted_tickers.discard(prev_ticker)
