@@ -1610,7 +1610,7 @@ def _session_ev_adjustment() -> float:
 
 _S2_SINGLETONS: dict = {}  # keyed by asset name — current D3 hybrid
 _S1_SINGLETONS: dict = {}  # keyed by asset name — original per-asset strategies
-_s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts}
+_s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
 _config_mtime: float = 0.0
 _current_window: str = ""  # tracks active time window; cleared on boundary crossing
 _s1_config_mtime: float = 0.0
@@ -2915,12 +2915,10 @@ async def _execute_s1_trade(
         "entry_signals":        _json.dumps(brain_s1.get("signals", {})),
         "strategy_variant":     "strategy1",
     }
-    trade_id = await db_write_trade(trade_data)
-    if trade_id is None:
-        return
-
+    # Register in _s1_pending_trades BEFORE the DB write so that a transient
+    # SQLite error never leaves a real filled order untracked (funds already committed).
     _s1_pending_trades[ticker] = {
-        "trade_id":          trade_id,
+        "trade_id":          None,  # filled in below after successful DB write
         "side":              side,
         "entry_price_cents": fill_price,
         "contracts":         contracts,
@@ -2930,6 +2928,11 @@ async def _execute_s1_trade(
         "entry_ts":          time.time(),
         "market_close_time": (market or {}).get("close_time", ""),
     }
+    trade_id = await db_write_trade(trade_data)
+    if trade_id is None:
+        log.critical(f"[S1] {ticker}: DB write failed — position tracked in-memory only; reconcile manually")
+    else:
+        _s1_pending_trades[ticker]["trade_id"] = trade_id
 
     mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
     _win_pct  = int(win_prob * 100)
@@ -2987,7 +2990,7 @@ async def _settle_s1_trade(
     log.info(f"[S1] {ticker}: settled -- {outcome}, P&L=${pnl:.2f}")
 
     pnl_str     = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-    outcome_str = "WIN" if pnl >= 0 else "LOSS"
+    outcome_str = "WIN" if outcome == "win" else "LOSS"
     pct_str     = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
     mode_icon   = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
     _time_str   = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
@@ -3013,7 +3016,7 @@ async def _try_settle_orphaned_s1(
     if ticker not in _s1_pending_trades:
         return
     market_result = None
-    for _attempt in range(3):
+    for _attempt in range(6):
         try:
             _path = f"/markets/{ticker}"
             async with session.get(
@@ -3029,6 +3032,7 @@ async def _try_settle_orphaned_s1(
             log.warning(f"[S1 orphan] market result fetch error (attempt {_attempt}): {_exc}")
         await asyncio.sleep(5)
     await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
+
 
 async def handle_ready_phase(
     session: aiohttp.ClientSession,
@@ -3864,6 +3868,26 @@ async def main_loop() -> None:
             _consecutive_losses = saved_cl
     except Exception:
         pass  # fresh start, no state to recover
+
+    # Warn about S1 positions that were open when the bot last stopped.
+    # These are financially live on Kalshi but untracked in _s1_pending_trades.
+    # Manual reconciliation against the Kalshi fills API may be needed.
+    try:
+        import sqlite3 as _sqlite3
+        _s1_chk = _sqlite3.connect(_DB_FILE)
+        _s1_orphans = _s1_chk.execute(
+            "SELECT id, market_id, asset FROM trades "
+            "WHERE strategy_variant='strategy1' AND outcome='pending'"
+        ).fetchall()
+        _s1_chk.close()
+        for _row in _s1_orphans:
+            log.warning(
+                "S1 orphan from prior session — trade_id=%s market=%s asset=%s "
+                "(outcome still pending; check Kalshi fills manually)",
+                _row[0], _row[1], _row[2],
+            )
+    except Exception as _s1_chk_exc:
+        log.debug(f"S1 orphan check skipped: {_s1_chk_exc}")
 
     # TCPConnector with keepalive_timeout prevents stale pooled connections
     # from silently breaking API calls after many hours of uptime.
