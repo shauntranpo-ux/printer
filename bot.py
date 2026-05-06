@@ -36,6 +36,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 
 from obi_monitor import OBIMonitor
 import asset_manager
+import bot_state
 from asset_manager import (
     ASSET_CONFIG,
     get_price           as _am_get_price,
@@ -58,119 +59,6 @@ brain_log.propagate = False   # don't bleed into the main bot log
 _brain_fh = logging.FileHandler("brain.log", encoding="utf-8")
 _brain_fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
 brain_log.addHandler(_brain_fh)
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-KALSHI_LIVE_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
-KALSHI_DEMO_BASE_URL = "https://demo-api.kalshi.co/trade-api/v2"
-KALSHI_BASE_URL      = KALSHI_LIVE_BASE_URL  # overwritten at startup based on mode
-KALSHI_PATH_PREFIX = "/trade-api/v2"  # included in signature but not in the path arg
-API_TIMEOUT = 10          # seconds for every Kalshi HTTP call
-MARKET_CACHE_TTL = 30     # seconds to cache the active market
-WATCH_PHASE_SECONDS = 30   # wait 30s into each 15-min session before evaluating
-
-# Kalshi platform fee: ~7c per $1 contract, subtracted from gross EV.
-# Without this, every EV calculation was 7% optimistic — trades that looked
-# +5% edge were actually -2% after fees.
-KALSHI_FEE = 0.07
-
-
-# â”€â”€ Telegram notifications (optional — set env vars to enable) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-TELEGRAM_CHAT_ID   = os.environ.get("TELEGRAM_CHAT_ID",   "")
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ file paths (env-overridable for multi-strategy) â”€â”€
-_CONFIG_FILE = os.environ.get("BOT_CONFIG_FILE", "config.json")
-_DB_FILE     = os.environ.get("BOT_DB_FILE",     "kalshi_bot.db")
-_STATE_FILE  = os.environ.get("BOT_STATE_FILE",  "bot_state.json")
-
-# Derive data directory from DB path so all persistent files land together.
-# On Railway: BOT_DB_FILE=/app/data/kalshi_bot.db  → _DATA_DIR=/app/data (volume).
-# Local dev:  BOT_DB_FILE not set, DB at cwd/kalshi_bot.db → _DATA_DIR=cwd.
-_DATA_DIR = os.path.dirname(os.path.abspath(_DB_FILE))
-
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ global state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# btc_prices is an alias to asset_manager's BTC price deque.
-# All existing code that reads btc_prices (momentum, vol, feed) works unchanged.
-btc_prices: deque = asset_manager._prices["BTC"]
-
-# OBI and funding monitors — started as background tasks in main()
-_obi_monitor: "OBIMonitor | None" = None
-_funding_monitor_btc = None  # FundingDispersionMonitor | None
-_funding_monitor_eth = None  # FundingDispersionMonitor | None
-
-private_key = None    # loaded on startup
-api_key: str = ""
-
-# Market / phase
-current_market: dict | None = None
-current_phase: str = "DONE"   # WATCH | READY | LOCKED | DONE
-current_position: dict | None = None
-_order_attempted_tickers: set = set()  # tickers where an order was attempted this session
-_asset_states: dict[str, dict] = {}    # per-asset state dicts for non-BTC assets
-
-# Market cache
-_market_cache: dict | None = None
-_market_cache_ts: float = 0.0
-_all_markets_cache: list = []
-_all_markets_cache_ts: float = 0.0
-
-# Daily-limit tracking
-limit_triggered: bool = False
-limit_reason: str = ""
-pre_limit_mode: str | None = None
-daily_reset_date = None
-
-# Price-validator CSV — counts rows collected and running totals for summary
-_PRICE_VAL_CSV = os.path.join(_DATA_DIR, "price_validation_log.csv")
-_price_val_count: int = 0
-_price_val_gap_n: int = 0      # rows where real_yes is not None (valid gap count)
-_price_val_sim_sum: float = 0.0
-_price_val_real_sum: float = 0.0
-_price_val_gap_sum: float = 0.0
-
-
-# Last evaluation info (written to state file)
-last_confidence_score: int = 0
-last_confidence_breakdown: dict = {}
-last_action: str = ""
-last_skip_reason: str = ""
-# Per-asset eval snapshots for dashboard market cards (keyed by asset ticker)
-_asset_eval: dict = {}
-
-# Contract price history — tracks YES ask over time per ticker for velocity signal
-_contract_price_history: dict = {}   # ticker → deque[(ts, price)]
-
-# Adaptive weights — updated every 20 completed trades from DB analysis
-_adaptive: dict = {
-    "last_calibrated_count": 0,
-    "low_price_wins":    False,
-    "near_strike_wins":  False,
-    "threshold_adjust":  0,
-}
-
-# Brain self-calibration — one dict per strategy, updated every 5 completed trades
-_CAL_DEFAULTS: dict = {
-    "last_count":        0,
-    "prob_scale":        1.0,
-    "min_edge_override": None,
-    "confidence_bonus":  0,
-    "reward_tier":       0,
-    "overall_wr":        0.0,
-    "condition_wr":      {},
-    "bullish_wr":        0.5,
-    "bearish_wr":        0.5,
-}
-_brain_cal_s1: dict = {**_CAL_DEFAULTS}  # BV3 printer_brain (strategy1)
-_brain_cal_s2: dict = {**_CAL_DEFAULTS}  # D3 hybrid (strategy2)
-
-# Config cache — fallback if config.json is corrupt mid-write
-_last_good_config: dict | None = None
-
-_consecutive_losses: int = 0
-
-# Consecutive price-filter skip counter (triggers Telegram warning at 20)
-_consecutive_price_skips: int = 0
-
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Atomic JSON write utility
@@ -247,14 +135,13 @@ def _log_price_validation(
     Columns: ts, ticker, btc_price, strike, abs_pct, mins_remaining,
              sim_yes_ask, sim_no_ask, real_yes_ask, real_no_ask, price_gap_cents
     """
-    global _price_val_count, _price_val_gap_n, _price_val_sim_sum, _price_val_real_sum, _price_val_gap_sum
 
     gap     = (real_yes - sim_yes) if (real_yes is not None) else None
     abs_pct = round(abs((btc_price - strike) / strike) * 100, 4) if strike else 0.0
 
-    file_exists = os.path.isfile(_PRICE_VAL_CSV)
+    file_exists = os.path.isfile(bot_state._PRICE_VAL_CSV)
     try:
-        with open(_PRICE_VAL_CSV, "a", newline="", encoding="utf-8") as fh:
+        with open(bot_state._PRICE_VAL_CSV, "a", newline="", encoding="utf-8") as fh:
             writer = _csv_module.writer(fh)
             if not file_exists:
                 writer.writerow([
@@ -276,18 +163,18 @@ def _log_price_validation(
         log.warning(f"Price validation CSV write error: {exc}")
         return
 
-    _price_val_count += 1
-    _price_val_sim_sum += sim_yes
+    bot_state._price_val_count += 1
+    bot_state._price_val_sim_sum += sim_yes
     if real_yes is not None:
-        _price_val_real_sum += real_yes
-        _price_val_gap_sum  += gap
-        _price_val_gap_n    += 1
+        bot_state._price_val_real_sum += real_yes
+        bot_state._price_val_gap_sum  += gap
+        bot_state._price_val_gap_n    += 1
 
-    if _price_val_count % 50 == 0:
-        n        = _price_val_count
-        avg_sim  = _price_val_sim_sum / n
-        avg_real = _price_val_real_sum / _price_val_gap_n if _price_val_gap_n > 0 else 0.0
-        avg_gap  = _price_val_gap_sum  / _price_val_gap_n if _price_val_gap_n > 0 else 0.0
+    if bot_state._price_val_count % 50 == 0:
+        n        = bot_state._price_val_count
+        avg_sim  = bot_state._price_val_sim_sum / n
+        avg_real = bot_state._price_val_real_sum / bot_state._price_val_gap_n if bot_state._price_val_gap_n > 0 else 0.0
+        avg_gap  = bot_state._price_val_gap_sum  / bot_state._price_val_gap_n if bot_state._price_val_gap_n > 0 else 0.0
         verdict  = ("✓ within 3c" if abs(avg_gap) < 3
                     else "⚠ 3-7c gap — edge marginal" if abs(avg_gap) < 7
                     else "✗ >7c gap — strategy likely unprofitable")
@@ -305,32 +192,31 @@ def _log_price_validation(
 
 def read_config() -> dict:
     """Read and return the contents of the config file.
-    Falls back to _last_good_config if the file is transiently corrupt
+    Falls back to bot_state._last_good_config if the file is transiently corrupt
     (e.g. a partial write in progress). Raises only on startup failure
     when no cached config is available yet.
     """
-    global _last_good_config
     try:
-        with open(_CONFIG_FILE, "r") as fh:
+        with open(bot_state._CONFIG_FILE, "r") as fh:
             cfg = json.load(fh)
         cfg.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
-        _last_good_config = cfg
+        bot_state._last_good_config = cfg
         return cfg
     except json.JSONDecodeError as exc:
         log.warning(f"Config JSON decode error: {exc}. Using last known good config.")
-        if _last_good_config is not None:
-            return _last_good_config
+        if bot_state._last_good_config is not None:
+            return bot_state._last_good_config
         raise
     except Exception as exc:
         log.warning(f"Config read error: {exc}. Using last known good config.")
-        if _last_good_config is not None:
-            return _last_good_config
+        if bot_state._last_good_config is not None:
+            return bot_state._last_good_config
         raise
 
 
 def write_config(data: dict) -> None:
     """Write a dict to the config file atomically (temp+replace)."""
-    atomic_write_json(data, _CONFIG_FILE)
+    atomic_write_json(data, bot_state._CONFIG_FILE)
 
 
 def get_asset_config(config: dict, asset: str, field: str, default=None):
@@ -347,7 +233,7 @@ def _init_config() -> None:
 
     Set BOT_MODE=live and BOT_ENABLED=true in Railway environment variables
     so live mode survives every redeploy without manual editing.
-    Daily loss limits still work — they set limit_triggered in memory which
+    Daily loss limits still work — they set bot_state.limit_triggered in memory which
     is checked independently of the mode flag.
     """
     # Build defaults
@@ -366,9 +252,9 @@ def _init_config() -> None:
     }
 
     # Load existing config or start from defaults
-    if os.path.exists(_CONFIG_FILE):
+    if os.path.exists(bot_state._CONFIG_FILE):
         try:
-            with open(_CONFIG_FILE) as fh:
+            with open(bot_state._CONFIG_FILE) as fh:
                 cfg = json.load(fh)
         except Exception:
             cfg = defaults.copy()
@@ -377,7 +263,7 @@ def _init_config() -> None:
 
     # Persistent bot_enabled from Railway volume — survives redeploys
     # (written by server.py whenever the dashboard toggle changes)
-    _data_dir = os.path.dirname(os.path.abspath(_DB_FILE))
+    _data_dir = os.path.dirname(os.path.abspath(bot_state._DB_FILE))
     _be_state = os.path.join(_data_dir, "bot_enabled.state")
     if os.path.exists(_be_state):
         try:
@@ -406,7 +292,7 @@ def _init_config() -> None:
 def init_db() -> None:
     """Create the database and all required tables if they do not exist."""
     try:
-        conn = sqlite3.connect(_DB_FILE)
+        conn = sqlite3.connect(bot_state._DB_FILE)
         conn.execute("PRAGMA journal_mode=WAL")
         c = conn.cursor()
 
@@ -538,7 +424,7 @@ def test_db_write() -> None:
     silently loop on a broken DB.
     """
     try:
-        conn = sqlite3.connect(_DB_FILE)
+        conn = sqlite3.connect(bot_state._DB_FILE)
         conn.execute("PRAGMA journal_mode=WAL")
         cur = conn.cursor()
         cur.execute(
@@ -554,10 +440,10 @@ def test_db_write() -> None:
         cur.execute("DELETE FROM trades WHERE id = ?", (test_id,))
         conn.commit()
         conn.close()
-        log.info(f"DB self-test PASSED  path={os.path.abspath(_DB_FILE)}")
+        log.info(f"DB self-test PASSED  path={os.path.abspath(bot_state._DB_FILE)}")
     except Exception as exc:
         log.error(f"DB self-test FAILED: {exc}")
-        log.error(f"DB path: {os.path.abspath(_DB_FILE)}")
+        log.error(f"DB path: {os.path.abspath(bot_state._DB_FILE)}")
         log.error("Cannot write trades — halting to prevent silent data loss.")
         sys.exit(2)
 
@@ -565,7 +451,7 @@ def test_db_write() -> None:
 async def db_write_trade(trade: dict) -> int | None:
     """Insert a trade record. Returns the new row id."""
     try:
-        async with aiosqlite.connect(_DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             cur = await db.execute("""
                 INSERT INTO trades (
@@ -601,7 +487,7 @@ async def db_write_trade(trade: dict) -> int | None:
 async def db_update_trade(trade_id: int, fields: dict) -> None:
     """Update named columns on an existing trade row."""
     try:
-        async with aiosqlite.connect(_DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             set_clause = ", ".join(f"{k} = ?" for k in fields)
             await db.execute(
@@ -616,7 +502,7 @@ async def db_update_trade(trade_id: int, fields: dict) -> None:
 async def db_write_market_log(entry: dict) -> None:
     """Append one row to market_log."""
     try:
-        async with aiosqlite.connect(_DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("""
                 INSERT INTO market_log (
@@ -640,7 +526,7 @@ async def db_get_today_pnl(mode: str) -> float:
     """Sum pnl_dollars for completed trades in the given mode today (UTC)."""
     try:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        async with aiosqlite.connect(_DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             async with db.execute(
                 "SELECT COALESCE(SUM(pnl_dollars), 0) FROM trades "
@@ -739,16 +625,16 @@ async def _maybe_fill_verification_notify(
 
 async def send_telegram(text: str) -> None:
     """Send a Telegram notification with up to 3 retries on failure."""
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+    if not bot_state.TELEGRAM_BOT_TOKEN or not bot_state.TELEGRAM_CHAT_ID:
         return  # silently skip — Telegram is optional
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{bot_state.TELEGRAM_BOT_TOKEN}/sendMessage"
     for attempt in range(1, 4):
         try:
             log.info(f"Telegram: sending (attempt {attempt}/3)…")
             async with aiohttp.ClientSession() as tg:
                 async with tg.post(
                     url,
-                    json={"chat_id": TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
+                    json={"chat_id": bot_state.TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
                     timeout=aiohttp.ClientTimeout(total=8),
                 ) as resp:
                     body = await resp.text()
@@ -778,7 +664,6 @@ def load_credentials(mode: str = "paper") -> None:
     Credential values may be a PEM string or a path to a PEM file.
     Exits with a clear error message if required variables are missing.
     """
-    global api_key, private_key, KALSHI_BASE_URL
 
     if mode == "paper":
         # Paper mode simulates fills but still reads real Kalshi market data.
@@ -787,31 +672,31 @@ def load_credentials(mode: str = "paper") -> None:
         _key = os.environ.get("KALSHI_API_KEY", "").strip()
         _pem = os.environ.get("KALSHI_PRIVATE_KEY", "").strip()
         if _key and _pem:
-            api_key = _key
+            bot_state.api_key = _key
             try:
                 pem_bytes = open(_pem, "rb").read() if os.path.exists(_pem) else _pem.encode()
-                private_key = serialization.load_pem_private_key(pem_bytes, password=None)
+                bot_state.private_key = serialization.load_pem_private_key(pem_bytes, password=None)
                 log.info("Paper mode: Kalshi credentials loaded for market data access.")
             except Exception as exc:
                 log.warning(f"Paper mode: credential load failed ({exc}) — market data unavailable.")
         return
 
     if mode == "demo":
-        KALSHI_BASE_URL = KALSHI_DEMO_BASE_URL
+        bot_state.KALSHI_BASE_URL = bot_state.KALSHI_DEMO_BASE_URL
         key_id_var = "KALSHI_DEMO_API_KEY"
         pem_var    = "KALSHI_DEMO_PRIVATE_KEY"
         label      = "DEMO"
     else:  # live
-        KALSHI_BASE_URL = KALSHI_LIVE_BASE_URL
+        bot_state.KALSHI_BASE_URL = bot_state.KALSHI_LIVE_BASE_URL
         key_id_var = "KALSHI_API_KEY"
         pem_var    = "KALSHI_PRIVATE_KEY"
         label      = "LIVE"
 
-    api_key = os.environ.get(key_id_var, "").strip()
+    bot_state.api_key = os.environ.get(key_id_var, "").strip()
     pem_val = os.environ.get(pem_var, "").strip()
 
-    if not api_key or not pem_val:
-        missing = key_id_var if not api_key else pem_var
+    if not bot_state.api_key or not pem_val:
+        missing = key_id_var if not bot_state.api_key else pem_var
         if mode == "demo":
             # Demo creds not set in environment — degrade gracefully to paper mode
             # so the bot doesn't crash-loop. Set KALSHI_DEMO_API_KEY and
@@ -823,7 +708,7 @@ def load_credentials(mode: str = "paper") -> None:
             try:
                 cfg = read_config()
                 cfg["mode"] = "paper"
-                with open(_CONFIG_FILE, "w", encoding="utf-8") as fh:
+                with open(bot_state._CONFIG_FILE, "w", encoding="utf-8") as fh:
                     import json as _json
                     _json.dump(cfg, fh, indent=2)
             except Exception as _ce:
@@ -832,25 +717,25 @@ def load_credentials(mode: str = "paper") -> None:
             _key = os.environ.get("KALSHI_API_KEY", "").strip()
             _pem = os.environ.get("KALSHI_PRIVATE_KEY", "").strip()
             if _key and _pem:
-                api_key = _key
+                bot_state.api_key = _key
                 try:
                     pem_bytes = open(_pem, "rb").read() if os.path.exists(_pem) else _pem.encode()
-                    private_key = serialization.load_pem_private_key(pem_bytes, password=None)
+                    bot_state.private_key = serialization.load_pem_private_key(pem_bytes, password=None)
                     log.info("Paper fallback: loaded live credentials for market data access.")
                 except Exception as exc:
                     log.warning(f"Paper fallback: live credential load failed ({exc}).")
-            KALSHI_BASE_URL = KALSHI_LIVE_BASE_URL
+            bot_state.KALSHI_BASE_URL = bot_state.KALSHI_LIVE_BASE_URL
             return
         else:
             print(f"ERROR: {missing} is not set (required for {label} mode).")
             sys.exit(1)
 
     # Safety assertions — fail loudly rather than silently routing to the wrong endpoint
-    if mode == "demo" and KALSHI_BASE_URL != KALSHI_DEMO_BASE_URL:
-        print(f"SAFETY ERROR: demo mode must use demo URL; got {KALSHI_BASE_URL}")
+    if mode == "demo" and bot_state.KALSHI_BASE_URL != bot_state.KALSHI_DEMO_BASE_URL:
+        print(f"SAFETY ERROR: demo mode must use demo URL; got {bot_state.KALSHI_BASE_URL}")
         sys.exit(1)
-    if mode == "live" and KALSHI_BASE_URL != KALSHI_LIVE_BASE_URL:
-        print(f"SAFETY ERROR: live mode must use live URL; got {KALSHI_BASE_URL}")
+    if mode == "live" and bot_state.KALSHI_BASE_URL != bot_state.KALSHI_LIVE_BASE_URL:
+        print(f"SAFETY ERROR: live mode must use live URL; got {bot_state.KALSHI_BASE_URL}")
         sys.exit(1)
 
     if os.path.exists(pem_val):
@@ -861,10 +746,10 @@ def load_credentials(mode: str = "paper") -> None:
         pem_bytes = pem_val.encode()
         log.info(f"Loaded {label} private key from environment variable string.")
 
-    private_key = serialization.load_pem_private_key(pem_bytes, password=None)
+    bot_state.private_key = serialization.load_pem_private_key(pem_bytes, password=None)
 
-    masked = api_key[:6] + "..." if len(api_key) > 6 else "***"
-    print(f"[{label} MODE] Base URL : {KALSHI_BASE_URL}")
+    masked = bot_state.api_key[:6] + "..." if len(bot_state.api_key) > 6 else "***"
+    print(f"[{label} MODE] Base URL : {bot_state.KALSHI_BASE_URL}")
     print(f"[{label} MODE] API key  : {masked}")
     log.info(f"{label} credentials loaded successfully.")
 
@@ -882,10 +767,10 @@ def kalshi_headers(method: str, path: str) -> dict:
     """
     ts = str(int(time.time() * 1000))
     # Kalshi signs the full URL path including the /trade-api/v2 prefix
-    full_path = KALSHI_PATH_PREFIX + path
+    full_path = bot_state.KALSHI_PATH_PREFIX + path
     msg = (ts + method.upper() + full_path).encode()
     sig = b64encode(
-        private_key.sign(
+        bot_state.private_key.sign(
             msg,
             padding.PSS(
                 mgf=padding.MGF1(hashes.SHA256()),
@@ -895,7 +780,7 @@ def kalshi_headers(method: str, path: str) -> dict:
         )
     ).decode()
     return {
-        "KALSHI-ACCESS-KEY": api_key,
+        "KALSHI-ACCESS-KEY": bot_state.api_key,
         "KALSHI-ACCESS-TIMESTAMP": ts,
         "KALSHI-ACCESS-SIGNATURE": sig,
         "Content-Type": "application/json",
@@ -918,7 +803,7 @@ def get_btc_price() -> float | None:
 async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool = False) -> dict | None | list:
     """
     Fetch open BTC 15-minute market(s) from Kalshi.
-    Results are cached for MARKET_CACHE_TTL seconds to avoid hammering the API.
+    Results are cached for bot_state.MARKET_CACHE_TTL seconds to avoid hammering the API.
 
     Args:
         return_all: if True, return the full sorted list of valid markets.
@@ -928,11 +813,10 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         Market dict (or None) when return_all=False.
         List of market dicts (possibly empty) when return_all=True.
     """
-    global _market_cache, _market_cache_ts, _all_markets_cache, _all_markets_cache_ts
 
     now = time.time()
-    if _market_cache and (now - _market_cache_ts) < MARKET_CACHE_TTL:
-        return _all_markets_cache if return_all else _market_cache
+    if bot_state._market_cache and (now - bot_state._market_cache_ts) < bot_state.MARKET_CACHE_TTL:
+        return bot_state._all_markets_cache if return_all else bot_state._market_cache
 
     path = "/markets"
     _SERIES_SEARCH_ORDER = ("KXBTC15M", "KXBTCD", "BTCD-B")
@@ -945,10 +829,10 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
         params = {"series_ticker": series, "status": "open", "limit": 20}
         try:
             async with session.get(
-                KALSHI_BASE_URL + path,
+                bot_state.KALSHI_BASE_URL + path,
                 headers=kalshi_headers("GET", path),
                 params=params,
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
             ) as resp:
                 if resp.status != 200:
                     body = await resp.text()
@@ -971,7 +855,7 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
 
     if not all_markets:
         log.warning("All series tickers returned no markets.")
-        return _all_markets_cache if return_all else _market_cache
+        return bot_state._all_markets_cache if return_all else bot_state._market_cache
 
     # Log all markets with their close times so we can see what's available
     now_utc = datetime.now(timezone.utc)
@@ -1062,15 +946,15 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
                      f"(duration â‰¤ {min_dur + 5:.0f}m, dropping {len(pool) - len(focused)} longer-duration markets)")
             pool = focused
 
-    _market_cache    = pool[0]
-    _market_cache_ts = now
-    _all_markets_cache    = pool
-    _all_markets_cache_ts = now
+    bot_state._market_cache    = pool[0]
+    bot_state._market_cache_ts = now
+    bot_state._all_markets_cache    = pool
+    bot_state._all_markets_cache_ts = now
     log.info(
-        f"Active market: {_market_cache.get('ticker')} | {_market_cache.get('title')} "
-        f"| closes {_market_cache.get('close_time')} | ({len(pool)} window(s) total)"
+        f"Active market: {bot_state._market_cache.get('ticker')} | {bot_state._market_cache.get('title')} "
+        f"| closes {bot_state._market_cache.get('close_time')} | ({len(pool)} window(s) total)"
     )
-    return pool if return_all else _market_cache
+    return pool if return_all else bot_state._market_cache
 
 
 async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> dict | None:
@@ -1088,10 +972,10 @@ async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> 
         params = {"series_ticker": series, "status": "open", "limit": 20}
         try:
             async with session.get(
-                KALSHI_BASE_URL + path,
+                bot_state.KALSHI_BASE_URL + path,
                 headers=kalshi_headers("GET", path),
                 params=params,
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
             ) as resp:
                 if resp.status != 200:
                     continue
@@ -1238,9 +1122,9 @@ async def fetch_orderbook(
     ob_path = f"/markets/{ticker}/orderbook"
     try:
         async with session.get(
-            KALSHI_BASE_URL + ob_path,
+            bot_state.KALSHI_BASE_URL + ob_path,
             headers=kalshi_headers("GET", ob_path),
-            timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+            timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
         ) as resp:
             if resp.status != 200:
                 body = await resp.text()
@@ -1270,9 +1154,9 @@ async def fetch_orderbook(
         mkt_path = f"/markets/{ticker}"
         try:
             async with session.get(
-                KALSHI_BASE_URL + mkt_path,
+                bot_state.KALSHI_BASE_URL + mkt_path,
                 headers=kalshi_headers("GET", mkt_path),
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
             ) as resp:
                 if resp.status == 200:
                     body = await resp.json()
@@ -1392,9 +1276,9 @@ async def fetch_orderbook(
 
 def track_contract_price(ticker: str, price: float) -> None:
     """Record the latest contract ask price for velocity and lag analysis."""
-    if ticker not in _contract_price_history:
-        _contract_price_history[ticker] = deque(maxlen=60)
-    _contract_price_history[ticker].append((time.time(), price))
+    if ticker not in bot_state._contract_price_history:
+        bot_state._contract_price_history[ticker] = deque(maxlen=60)
+    bot_state._contract_price_history[ticker].append((time.time(), price))
 
 
 
@@ -1409,7 +1293,7 @@ async def calibrate_from_history() -> None:
     """
     global _adaptive
     try:
-        async with aiosqlite.connect(_DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             async with db.execute("""
                 SELECT entry_price_cents, seconds_left_at_entry, outcome
@@ -1459,7 +1343,7 @@ async def calibrate_from_history() -> None:
 
 async def _calibrate_one_brain(variant: str, cal: dict) -> None:
     """Run calibration for one strategy variant, mutating cal in-place."""
-    async with aiosqlite.connect(_DB_FILE) as db:
+    async with aiosqlite.connect(bot_state._DB_FILE) as db:
         await db.execute("PRAGMA journal_mode=WAL")
         async with db.execute("""
             SELECT side, entry_price_cents, seconds_left_at_entry,
@@ -1518,10 +1402,9 @@ async def _calibrate_one_brain(variant: str, cal: dict) -> None:
 
 async def calibrate_brain() -> None:
     """Self-calibration for both strategy brains. Runs every 5 completed trades."""
-    global _brain_cal_s1, _brain_cal_s2
     try:
-        await _calibrate_one_brain("strategy1", _brain_cal_s1)
-        await _calibrate_one_brain("strategy2", _brain_cal_s2)
+        await _calibrate_one_brain("strategy1", bot_state._brain_cal_s1)
+        await _calibrate_one_brain("strategy2", bot_state._brain_cal_s2)
     except Exception as exc:
         log.error(f"Brain calibration error: {exc}")
 
@@ -1534,13 +1417,13 @@ async def recalibrate_asset_strategies() -> None:
     per asset, then refits isotonic/Platt calibration. Requires >= 15 trades
     per asset to fit (AssetCalibrator's own minimum).
     """
-    if not _S2_SINGLETONS:
+    if not bot_state._S2_SINGLETONS:
         log.debug("recalibrate_asset_strategies: no active strategy singletons — skipping")
         return
     try:
-        async with aiosqlite.connect(_DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
-            for asset, strat in list(_S2_SINGLETONS.items()):
+            for asset, strat in list(bot_state._S2_SINGLETONS.items()):
                 async with db.execute("""
                     SELECT raw_p_yes, side, outcome
                     FROM trades
@@ -1582,10 +1465,7 @@ def _session_ev_adjustment() -> float:
     return 0.0
 
 
-_S2_SINGLETONS: dict = {}  # keyed by asset name — current D3 hybrid
 _s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
-_config_mtime: float = 0.0
-_current_window: str = ""  # tracks active time window; cleared on boundary crossing
 
 
 
@@ -1596,7 +1476,6 @@ def _strategy_name_for(asset, duration_min=15.0):
 
 def _get_or_make_strategy_s2(asset: str, config, market_duration_min: float = 15.0):
     """Lazily construct per-asset strategy singleton. Returns None on failure."""
-    global _config_mtime, _current_window
     # Fix sys.path FIRST so every strategies.* import resolves to src/strategies/.
     # The root strategies/ directory (YAML configs) would otherwise be picked up as a
     # namespace package and poison sys.modules['strategies'] before src/ is on the path.
@@ -1608,10 +1487,10 @@ def _get_or_make_strategy_s2(asset: str, config, market_duration_min: float = 15
             del _sys.modules[_k]
         _sys.path.insert(0, _src)
     try:
-        mtime = os.path.getmtime(_CONFIG_FILE)
-        if mtime != _config_mtime:
-            _S2_SINGLETONS.clear()
-            _config_mtime = mtime
+        mtime = os.path.getmtime(bot_state._CONFIG_FILE)
+        if mtime != bot_state._config_mtime:
+            bot_state._S2_SINGLETONS.clear()
+            bot_state._config_mtime = mtime
             log.info("config.json changed — strategy singletons cleared")
     except OSError:
         pass
@@ -1619,16 +1498,16 @@ def _get_or_make_strategy_s2(asset: str, config, market_duration_min: float = 15
         from strategies.signals.time_windows import get_trading_window, get_window_params
         import time as _tw_now
         _new_window = get_trading_window(_tw_now.time(), config.get("timezone", "America/Los_Angeles"))
-        if _new_window != _current_window:
-            _S2_SINGLETONS.clear()
-            _current_window = _new_window
-            log.info("Trading window changed to %s — strategy singletons cleared", _current_window)
+        if _new_window != bot_state._current_window:
+            bot_state._S2_SINGLETONS.clear()
+            bot_state._current_window = _new_window
+            log.info("Trading window changed to %s — strategy singletons cleared", bot_state._current_window)
     except Exception:
-        _new_window = _current_window or "normal"
+        _new_window = bot_state._current_window or "normal"
 
     cache_key = asset
-    if cache_key in _S2_SINGLETONS:
-        return _S2_SINGLETONS[cache_key]
+    if cache_key in bot_state._S2_SINGLETONS:
+        return bot_state._S2_SINGLETONS[cache_key]
     try:
         from strategies.skip_layer import SkipConfig
         from strategies.signals.time_windows import get_window_params
@@ -1665,7 +1544,7 @@ def _get_or_make_strategy_s2(asset: str, config, market_duration_min: float = 15
             stake_dollars=stake,
         )
 
-        _S2_SINGLETONS[cache_key] = strat
+        bot_state._S2_SINGLETONS[cache_key] = strat
         log.info(f"Strategy initialized: {cache_key} (15m, stake=${stake})")
         return strat
     except Exception as exc:
@@ -1717,7 +1596,7 @@ def strategy_brain_s2(
     from strategies.feature_builder import build_features_from_bot_state
     try:
         if asset == "BTC":
-            prices_deque = btc_prices
+            prices_deque = bot_state.btc_prices
             current_price = btc_price
         else:
             prices_deque = asset_manager._prices.get(asset)
@@ -1746,8 +1625,8 @@ def strategy_brain_s2(
             yes_bid=max(0.0, yes_ask - 1.0),
             no_bid=max(0.0, no_ask - 1.0),
             prices_deque=prices_deque,
-            contract_history=_contract_price_history.get(ticker),
-            btc_prices_deque=btc_prices,
+            contract_history=bot_state._contract_price_history.get(ticker),
+            btc_prices_deque=bot_state.btc_prices,
         )
     except Exception as exc:
         log.warning(f"{asset} feature_builder failed — skipping (not falling back to legacy): {exc}")
@@ -1821,13 +1700,10 @@ def strategy_brain_s2(
         "_vol_ratio": None,
         "price_filter_skip": False,
         "strategy_variant": "strategy2",
-        "strategy_version":  _S2_VERSION,
+        "strategy_version":  bot_state._S2_VERSION,
     }
 
 
-# Strategy version tags — bump when logic changes so trades are correctly bucketed
-_S1_VERSION = "bv3-2026-05-06"    # S1: BV3 empirical table + EV fix
-_S2_VERSION = "d3-hybrid-2026-05-06"  # S2: D3 hybrid mean-reversion
 
 # ── S1: BV3 printer_brain constants (April 2026 profitable strategy) ──────────
 _S1_BV3_TABLE = [
@@ -1845,21 +1721,10 @@ _S1_BV3_TABLE = [
 ]
 _S1_BV3_DIST_BOUNDS = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.0075, 0.010, 0.0125]
 
-# Relative 15-min vol ratio vs BTC — used to normalise abs_pct before BV3 lookup.
-# SOL at 0.5% distance is much less safe than BTC at 0.5% because SOL has ~2x
-# the intra-period vol, so we look up a smaller effective distance in the table.
-_S1_ASSET_VOL_RATIO: dict = {
-    "BTC":  1.00,
-    "ETH":  1.10,
-    "SOL":  2.20,
-    "XRP":  1.80,
-    "DOGE": 2.60,
-}
-
 
 def _s1_empirical_win_prob(asset: str, abs_pct: float, mins_left: float) -> float:
     """BV3 table lookup with live-correction via _brain_cal prob_scale."""
-    vol_ratio = _S1_ASSET_VOL_RATIO.get(asset, 1.0)
+    vol_ratio = bot_state._S1_ASSET_VOL_RATIO.get(asset, 1.0)
     effective_pct = abs_pct / vol_ratio  # normalise to BTC-equivalent risk distance
     row = len(_S1_BV3_DIST_BOUNDS)
     for i, bound in enumerate(_S1_BV3_DIST_BOUNDS):
@@ -1868,7 +1733,7 @@ def _s1_empirical_win_prob(asset: str, abs_pct: float, mins_left: float) -> floa
             break
     col = max(0, min(12, int(round(mins_left)) - 1))
     base_prob = _S1_BV3_TABLE[row][col]
-    prob_scale = _brain_cal_s1.get("prob_scale", 1.0)
+    prob_scale = bot_state._brain_cal_s1.get("prob_scale", 1.0)
     return float(0.50 + (base_prob - 0.50) * prob_scale)
 
 
@@ -1906,7 +1771,7 @@ def _s1_realized_vol(prices, window_minutes: int = 10) -> float:
 
 def _s1_contract_velocity(ticker: str) -> str:
     """favorable/unfavorable/neutral based on recent contract price trend."""
-    history = _contract_price_history.get(ticker)
+    history = bot_state._contract_price_history.get(ticker)
     if not history or len(history) < 4:
         return "neutral"
     prices = [p for _, p in history]
@@ -1938,7 +1803,7 @@ def strategy_brain_s1(
 
     # price feed
     if asset == "BTC":
-        prices_list = list(btc_prices)
+        prices_list = list(bot_state.btc_prices)
     else:
         raw = asset_manager._prices.get(asset)
         prices_list = list(raw) if raw else []
@@ -2012,15 +1877,15 @@ def strategy_brain_s1(
 
     # OBI adjustment: near-ATM only, top-10 Coinbase orderbook imbalance.
     # Positive OBI (bid-heavy) supports continuation when price is above strike.
-    if _obi_monitor is not None and abs_pct < 0.004:
-        _obi_val = _obi_monitor.get_obi(asset)
+    if bot_state._obi_monitor is not None and abs_pct < 0.004:
+        _obi_val = bot_state._obi_monitor.get_obi(asset)
         if _obi_val is not None:
             _obi_adj = 0.02 * _obi_val if above else -0.02 * _obi_val
             win_prob = max(0.05, min(0.98, win_prob + _obi_adj))
 
     # BTC/ETH funding dispersion adjustment (cross-venue imbalance signal).
     if asset in ("BTC", "ETH"):
-        _fm = _funding_monitor_btc if asset == "BTC" else _funding_monitor_eth
+        _fm = bot_state._funding_monitor_btc if asset == "BTC" else bot_state._funding_monitor_eth
         if _fm is not None:
             from strategies.original.signals.funding_dispersion import funding_dispersion_adjustment as _fda
             _fdisp = _fm.current_dispersion()
@@ -2033,9 +1898,9 @@ def strategy_brain_s1(
     yes_ev = (win_prob if above else 1.0 - win_prob) - (yes_ask / 100.0) - 0.07
     no_ev = (1.0 - win_prob if above else win_prob) - (no_ask / 100.0) - 0.07
     ev = win_prob - (_entry_price / 100.0) - 0.07
-    if above and _brain_cal_s1.get("bullish_wr", 0.5) < 0.35:
+    if above and bot_state._brain_cal_s1.get("bullish_wr", 0.5) < 0.35:
         ev -= 0.04
-    if not above and _brain_cal_s1.get("bearish_wr", 0.5) < 0.35:
+    if not above and bot_state._brain_cal_s1.get("bearish_wr", 0.5) < 0.35:
         ev -= 0.04
 
     # continuation direction only
@@ -2149,9 +2014,9 @@ async def _portfolio_has_position(
     try:
         pos_path = f"/portfolio/positions?ticker={ticker}"
         async with session.get(
-            KALSHI_BASE_URL + pos_path,
+            bot_state.KALSHI_BASE_URL + pos_path,
             headers=kalshi_headers("GET", pos_path),
-            timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+            timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
         ) as resp:
             if resp.status != 200:
                 return False
@@ -2188,9 +2053,9 @@ async def _verify_order_fill(
     try:
         chk_path = f"/portfolio/orders/{order_id}"
         async with session.get(
-            KALSHI_BASE_URL + chk_path,
+            bot_state.KALSHI_BASE_URL + chk_path,
             headers=kalshi_headers("GET", chk_path),
-            timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+            timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
         ) as resp:
             if resp.status != 200:
                 log.warning(f"_verify_order_fill: GET {order_id} HTTP {resp.status} — checking portfolio")
@@ -2295,10 +2160,10 @@ async def place_order(
         log.info(f"[demo] market {side.upper()} {contracts}x on {ticker}")
         try:
             async with session.post(
-                KALSHI_BASE_URL + path,
+                bot_state.KALSHI_BASE_URL + path,
                 headers=kalshi_headers("POST", path),
                 json=body,
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
             ) as resp:
                 data = await resp.json()
                 http_status = resp.status
@@ -2325,9 +2190,9 @@ async def place_order(
             try:
                 chk_path = f"/portfolio/orders/{order_id}"
                 async with session.get(
-                    KALSHI_BASE_URL + chk_path,
+                    bot_state.KALSHI_BASE_URL + chk_path,
                     headers=kalshi_headers("GET", chk_path),
-                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                    timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
                 ) as chk_resp:
                     chk_data = await chk_resp.json()
                 chk_order = chk_data.get("order") or chk_data
@@ -2343,9 +2208,9 @@ async def place_order(
             try:
                 del_path = f"/portfolio/orders/{order_id}"
                 async with session.delete(
-                    KALSHI_BASE_URL + del_path,
+                    bot_state.KALSHI_BASE_URL + del_path,
                     headers=kalshi_headers("DELETE", del_path),
-                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                    timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
                 ) as del_resp:
                     await del_resp.json()
             except Exception as ce:
@@ -2406,10 +2271,10 @@ async def place_order(
 
         try:
             async with session.post(
-                KALSHI_BASE_URL + path,
+                bot_state.KALSHI_BASE_URL + path,
                 headers=kalshi_headers("POST", path),
                 json=body,
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
             ) as resp:
                 data = await resp.json()
                 http_status = resp.status
@@ -2418,9 +2283,9 @@ async def place_order(
             try:
                 chk_path = f"/portfolio/positions?ticker={ticker}"
                 async with session.get(
-                    KALSHI_BASE_URL + chk_path,
+                    bot_state.KALSHI_BASE_URL + chk_path,
                     headers=kalshi_headers("GET", chk_path),
-                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                    timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
                 ) as chk_resp:
                     chk_data = await chk_resp.json()
                 positions = chk_data.get("market_positions") or chk_data.get("positions") or []
@@ -2480,9 +2345,9 @@ async def place_order(
                 try:
                     _op = f"/portfolio/orders/{order_id}"
                     async with session.get(
-                        KALSHI_BASE_URL + _op,
+                        bot_state.KALSHI_BASE_URL + _op,
                         headers=kalshi_headers("GET", _op),
-                        timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                        timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
                     ) as _r:
                         _d = await _r.json()
                     _polled = _d.get("order") or _d
@@ -2497,9 +2362,9 @@ async def place_order(
                 try:
                     del_path = f"/portfolio/orders/{order_id}"
                     async with session.delete(
-                        KALSHI_BASE_URL + del_path,
+                        bot_state.KALSHI_BASE_URL + del_path,
                         headers=kalshi_headers("DELETE", del_path),
-                        timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                        timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
                     ) as _del_resp:
                         await _del_resp.json()
                 except Exception as _de:
@@ -2558,9 +2423,9 @@ async def place_order(
     try:
         pos_path = f"/portfolio/positions?ticker={ticker}"
         async with session.get(
-            KALSHI_BASE_URL + pos_path,
+            bot_state.KALSHI_BASE_URL + pos_path,
             headers=kalshi_headers("GET", pos_path),
-            timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+            timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
         ) as resp:
             pos_data = await resp.json()
         positions = pos_data.get("market_positions") or pos_data.get("positions") or []
@@ -2606,7 +2471,6 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
     Returns:
         (triggered: bool, reason: str)
     """
-    global limit_triggered, limit_reason, pre_limit_mode
 
     mode = config.get("mode", "paper")
     if mode == "paper":
@@ -2615,10 +2479,10 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
     pnl = await db_get_today_pnl(mode)
 
     if pnl < 0 and abs(pnl) >= config.get("daily_loss_limit_dollars", 20):
-        if not limit_triggered:
-            limit_triggered = True
-            limit_reason = "daily loss limit reached"
-            pre_limit_mode = mode
+        if not bot_state.limit_triggered:
+            bot_state.limit_triggered = True
+            bot_state.limit_reason = "daily loss limit reached"
+            bot_state.pre_limit_mode = mode
             cfg = read_config()
             if mode == "demo":
                 cfg["bot_enabled"] = False
@@ -2638,18 +2502,18 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
                     f"PnL today: <b>${pnl:.2f}</b>\n"
                     f"Switched to paper mode."
                 )
-        return True, limit_reason
+        return True, bot_state.limit_reason
 
     if pnl > 0 and pnl >= config.get("daily_profit_target_dollars", 50):
-        if not limit_triggered:
-            limit_triggered = True
-            limit_reason = "daily profit target reached"
-            pre_limit_mode = mode
+        if not bot_state.limit_triggered:
+            bot_state.limit_triggered = True
+            bot_state.limit_reason = "daily profit target reached"
+            bot_state.pre_limit_mode = mode
             cfg = read_config()
             cfg["mode"] = "paper"
             write_config(cfg)
             log.info(f"Daily profit target hit (${pnl:.2f}). Switched to paper mode.")
-        return True, limit_reason
+        return True, bot_state.limit_reason
 
     return False, ""
 
@@ -2659,24 +2523,23 @@ def midnight_reset() -> None:
     Reset daily-limit state at UTC midnight.
     Restores the pre-limit mode if limits had previously triggered.
     """
-    global limit_triggered, limit_reason, pre_limit_mode, daily_reset_date
 
     today = datetime.now(timezone.utc).date()
-    if daily_reset_date is None:
-        daily_reset_date = today
+    if bot_state.daily_reset_date is None:
+        bot_state.daily_reset_date = today
         return
 
-    if today > daily_reset_date:
-        daily_reset_date = today
+    if today > bot_state.daily_reset_date:
+        bot_state.daily_reset_date = today
         log.info("Midnight UTC: resetting daily limits.")
-        if limit_triggered and pre_limit_mode:
+        if bot_state.limit_triggered and bot_state.pre_limit_mode:
             cfg = read_config()
-            cfg["mode"] = pre_limit_mode
+            cfg["mode"] = bot_state.pre_limit_mode
             write_config(cfg)
-            log.info(f"Restored mode to '{pre_limit_mode}' after midnight reset.")
-        limit_triggered = False
-        limit_reason = ""
-        pre_limit_mode = None
+            log.info(f"Restored mode to '{bot_state.pre_limit_mode}' after midnight reset.")
+        bot_state.limit_triggered = False
+        bot_state.limit_reason = ""
+        bot_state.pre_limit_mode = None
 
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -2723,12 +2586,12 @@ async def write_state_file(
         "btc_price": btc_price,
         "confidence_score": score,
         "confidence_breakdown": breakdown,
-        "reward_tier": _brain_cal_s2["reward_tier"],
-        "brain_wr": _brain_cal_s2["overall_wr"],
-        "brain_min_edge": _brain_cal_s2["min_edge_override"],
-        "brain_n": _brain_cal_s2["last_count"],
-        "last_action": action,
-        "last_skip_reason": skip_reason,
+        "reward_tier": bot_state._brain_cal_s2["reward_tier"],
+        "brain_wr": bot_state._brain_cal_s2["overall_wr"],
+        "brain_min_edge": bot_state._brain_cal_s2["min_edge_override"],
+        "brain_n": bot_state._brain_cal_s2["last_count"],
+        "bot_state.last_action": action,
+        "bot_state.last_skip_reason": skip_reason,
         "mode": config.get("mode", "paper"),
         "today_live_pnl": await db_get_today_pnl("live"),
         "today_paper_pnl": await db_get_today_pnl("paper"),
@@ -2736,16 +2599,16 @@ async def write_state_file(
         "config": {**config,
                    "min_ev_pct": round((config.get("min_ev_base", 3.0) / 100.0 + _session_ev_adjustment()) * 100),
                    "vol_gate_thresh": config.get("vol_gate_thresh", 1.80)},
-        "limit_triggered": limit_triggered,
-        "limit_reason": limit_reason,
-        "open_position": current_position,
-        "consecutive_losses": _consecutive_losses,
+        "bot_state.limit_triggered": bot_state.limit_triggered,
+        "bot_state.limit_reason": bot_state.limit_reason,
+        "open_position": bot_state.current_position,
+        "consecutive_losses": bot_state._consecutive_losses,
     }
 
     # Per-asset snapshot for multi-asset dashboard display
     assets_snap: dict = {}
-    # Non-BTC assets — pulled from the in-memory _asset_states dict
-    for _a, _st in _asset_states.items():
+    # Non-BTC assets — pulled from the in-memory bot_state._asset_states dict
+    for _a, _st in bot_state._asset_states.items():
         _m  = _st.get("market")
         _sl = seconds_remaining(_m) if _m else 0
         _ev = _st.get("eval", {})
@@ -2791,8 +2654,8 @@ async def write_state_file(
             "phase_label":  _a_window_phase,
             "window_phase": _a_window_phase,
         }
-    # BTC — uses separate globals; _asset_eval["BTC"] holds last eval snapshot
-    _btc_ev = _asset_eval.get("BTC", {})
+    # BTC — uses separate globals; bot_state._asset_eval["BTC"] holds last eval snapshot
+    _btc_ev = bot_state._asset_eval.get("BTC", {})
     _btc_status = "TRADING" if phase == "LOCKED" else (_btc_ev.get("status") or phase)
     _btc_ticker = market.get("ticker", "") if market else ""
     try:
@@ -2825,7 +2688,7 @@ async def write_state_file(
         "status":       _btc_status,
         "skip_reason":  skip_reason or _btc_ev.get("skip_reason", ""),
         "signals":      _btc_ev.get("signals", {}),
-        "position":     current_position,
+        "position":     bot_state.current_position,
         "session_type": _btc_session_type,
         "strategy_name": _btc_strategy_name,
         "phase_label":  _btc_window_phase,
@@ -2834,7 +2697,7 @@ async def write_state_file(
     state["assets"] = assets_snap
 
     try:
-        atomic_write_json(state, _STATE_FILE)
+        atomic_write_json(state, bot_state._STATE_FILE)
     except Exception as exc:
         log.error(f"State file write error: {exc}")
 
@@ -2945,7 +2808,7 @@ async def _execute_s1_trade(
         "raw_p_yes":            brain_s1.get("raw_p_yes"),
         "entry_signals":        _json.dumps(brain_s1.get("signals", {})),
         "strategy_variant":     "strategy1",
-        "strategy_version":     _S1_VERSION,
+        "strategy_version":     bot_state._S1_VERSION,
     }
     # Register in _s1_pending_trades BEFORE the DB write so that a transient
     # SQLite error never leaves a real filled order untracked (funds already committed).
@@ -3052,9 +2915,9 @@ async def _try_settle_orphaned_s1(
         try:
             _path = f"/markets/{ticker}"
             async with session.get(
-                KALSHI_BASE_URL + _path,
+                bot_state.KALSHI_BASE_URL + _path,
                 headers=kalshi_headers("GET", _path),
-                timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
             ) as _resp:
                 _mdata = await _resp.json()
             market_result = (_mdata.get("market") or _mdata).get("result")
@@ -3086,9 +2949,6 @@ async def handle_ready_phase(
     state: per-asset state dict (non-BTC); mutations go here instead of globals.
            Must contain keys: "phase", "position", "order_attempted" (set).
     """
-    global current_phase, current_position
-    global last_confidence_score, last_confidence_breakdown
-    global last_action, last_skip_reason
 
     _use_state = state is not None
     mode = config.get("mode", "paper")
@@ -3097,7 +2957,7 @@ async def handle_ready_phase(
     if secs_left < 90:
         log.info(f"{ticker}: < 90s remaining. Moving to DONE.")
         if _use_state: state["phase"] = "DONE"
-        else: current_phase = "DONE"
+        else: bot_state.current_phase = "DONE"
         return
 
     # Early-window gate — skip first 90s while price is still anchoring
@@ -3111,7 +2971,6 @@ async def handle_ready_phase(
     # and trade the one with the highest EV. Falls back to primary market if
     # only one window is open or fetching alternatives fails.
     # Non-BTC assets use a single market per cycle (no multi-window support).
-    global current_market
     if asset == "BTC":
         try:
             all_windows = await fetch_current_market(session, return_all=True)
@@ -3174,7 +3033,7 @@ async def handle_ready_phase(
                     strike   = best_strike
                     secs_left = seconds_remaining(best_market)
                     elapsed   = seconds_elapsed(best_market)
-                    current_market = best_market
+                    bot_state.current_market = best_market
                 ob = best_ob
             else:
                 ob = None  # fetch below
@@ -3206,15 +3065,15 @@ async def handle_ready_phase(
             log.error(f"[{asset}] Orderbook error in READY: {exc}")
             _snap = _no_data_eval(f"orderbook error: {exc}")
             if _use_state: state["eval"] = _snap
-            else: _asset_eval[asset] = _snap
+            else: bot_state._asset_eval[asset] = _snap
             return
 
     if ob is None:
         log.warning(f"[{asset}] {ticker}: orderbook returned no price data — retrying next cycle")
         _snap = _no_data_eval("no orderbook data — retrying")
         if _use_state: state["eval"] = _snap
-        else: _asset_eval[asset] = _snap
-        last_action, last_skip_reason = "watching", "no price data — retrying"
+        else: bot_state._asset_eval[asset] = _snap
+        bot_state.last_action, bot_state.last_skip_reason = "watching", "no price data — retrying"
         return
 
     yes_ask = ob["best_yes_ask"]
@@ -3274,17 +3133,16 @@ async def handle_ready_phase(
 
 
     # â”€â”€ Consecutive price-filter skip tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    global _consecutive_price_skips
     if brain.get("price_filter_skip"):
-        _consecutive_price_skips += 1
-        if _consecutive_price_skips == 20:
+        bot_state._consecutive_price_skips += 1
+        if bot_state._consecutive_price_skips == 20:
             _max_ep = get_asset_config(config, asset, "max_entry_price_cents", 82)
             log.warning(
-                f"Price filter: {_consecutive_price_skips} consecutive skips — "
+                f"Price filter: {bot_state._consecutive_price_skips} consecutive skips — "
                 f"all entry prices > {_max_ep}c"
             )
     else:
-        _consecutive_price_skips = 0
+        bot_state._consecutive_price_skips = 0
 
     entry_price_cents = yes_ask if side == "yes" else no_ask
     _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100
@@ -3337,8 +3195,8 @@ async def handle_ready_phase(
         "vol_ratio":      round(_brain_vol_ratio, 3) if _brain_vol_ratio is not None else None,
     }
 
-    last_confidence_score = score
-    last_confidence_breakdown = breakdown
+    bot_state.last_confidence_score = score
+    bot_state.last_confidence_breakdown = breakdown
 
     raw_win_pct = int(brain.get("win_prob", 0) * 100)
     conf_threshold = int(get_asset_config(config, asset, "confidence_threshold", config.get("confidence_threshold", 65)))
@@ -3355,8 +3213,8 @@ async def handle_ready_phase(
                          int(entry_price_cents), score, "skip", skip_reason_ai, mode)
         _eval_snap.update({"status": "SKIPPED", "skip_reason": skip_reason_ai})
         if _use_state: state["eval"] = dict(_eval_snap)
-        else: _asset_eval[asset] = dict(_eval_snap)
-        last_action, last_skip_reason = "watching", skip_reason_ai
+        else: bot_state._asset_eval[asset] = dict(_eval_snap)
+        bot_state.last_action, bot_state.last_skip_reason = "watching", skip_reason_ai
         return
 
     # Daily limits — may flip mode to paper
@@ -3387,14 +3245,14 @@ async def handle_ready_phase(
                          int(entry_price_cents), score, "skip", reason, mode)
         _eval_snap.update({"status": "SKIPPED", "skip_reason": reason})
         if _use_state: state["eval"] = dict(_eval_snap)
-        else: _asset_eval[asset] = dict(_eval_snap)
-        last_action, last_skip_reason = "skip", reason
+        else: bot_state._asset_eval[asset] = dict(_eval_snap)
+        bot_state.last_action, bot_state.last_skip_reason = "skip", reason
         return
 
     # Place order — mark ticker as attempted BEFORE placing so re-entry is blocked
     # even if the bot crashes or fill_confirmed comes back False
     if _use_state: state["order_attempted"].add(ticker)
-    else: _order_attempted_tickers.add(ticker)
+    else: bot_state._order_attempted_tickers.add(ticker)
     log.info(f"{ticker}: TRADE {side} {contracts}x @ {int(entry_price_cents)}c (score={score}, mode={mode})")
     result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market, asset=asset, secs_left=secs_left)
 
@@ -3418,11 +3276,11 @@ async def handle_ready_phase(
 
     if not fill_confirmed:
         if _use_state: state["phase"] = "DONE"
-        else: current_phase = "DONE"
+        else: bot_state.current_phase = "DONE"
         _eval_snap.update({"status": "SKIPPED", "skip_reason": "order not filled"})
         if _use_state: state["eval"] = dict(_eval_snap)
-        else: _asset_eval[asset] = dict(_eval_snap)
-        last_action, last_skip_reason = "skip", "order not filled"
+        else: bot_state._asset_eval[asset] = dict(_eval_snap)
+        bot_state.last_action, bot_state.last_skip_reason = "skip", "order not filled"
         log.info(f"{ticker}: order not filled. Moving to DONE.")
         return
 
@@ -3495,12 +3353,12 @@ async def handle_ready_phase(
         state["position"] = _new_position
         state["phase"] = "LOCKED"
     else:
-        current_position = _new_position
-        current_phase = "LOCKED"
+        bot_state.current_position = _new_position
+        bot_state.current_phase = "LOCKED"
     _eval_snap.update({"status": "TRADING", "skip_reason": ""})
     if _use_state: state["eval"] = dict(_eval_snap)
-    else: _asset_eval[asset] = dict(_eval_snap)
-    last_action, last_skip_reason = "trade", ""
+    else: bot_state._asset_eval[asset] = dict(_eval_snap)
+    bot_state.last_action, bot_state.last_skip_reason = "trade", ""
     log.info(f"{ticker}: LOCKED.")
     mode_icon  = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
     dir_icon   = "YES" if side == "yes" else "NO"
@@ -3545,15 +3403,14 @@ async def handle_locked_phase(
     asset: which asset this position is for ("BTC", "ETH", etc.)
     state: per-asset state dict (non-BTC); mutations go here instead of globals.
     """
-    global current_phase, current_position
 
     _use_state = state is not None
-    _cur_pos = state["position"] if _use_state else current_position
+    _cur_pos = state["position"] if _use_state else bot_state.current_position
 
     if _cur_pos is None:
         log.warning("LOCKED phase with no position. Moving to DONE.")
         if _use_state: state["phase"] = "DONE"
-        else: current_phase = "DONE"
+        else: bot_state.current_phase = "DONE"
         return
 
     pos = _cur_pos
@@ -3580,9 +3437,9 @@ async def handle_locked_phase(
             try:
                 _path = f"/markets/{ticker}"
                 async with session.get(
-                    KALSHI_BASE_URL + _path,
+                    bot_state.KALSHI_BASE_URL + _path,
                     headers=kalshi_headers("GET", _path),
-                    timeout=aiohttp.ClientTimeout(total=API_TIMEOUT),
+                    timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
                 ) as _resp:
                     _mdata = await _resp.json()
                 market_result = (_mdata.get("market") or _mdata).get("result")
@@ -3632,17 +3489,16 @@ async def handle_locked_phase(
             state["position"] = None
             state["phase"] = "DONE"
         else:
-            current_position = None
-            current_phase = "DONE"
+            bot_state.current_position = None
+            bot_state.current_phase = "DONE"
 
         # Consecutive-loss tracker (no pause — informational only)
-        global _consecutive_losses
         if outcome == "win":
-            _consecutive_losses = 0
+            bot_state._consecutive_losses = 0
         else:
-            _consecutive_losses += 1
+            bot_state._consecutive_losses += 1
             max_cl = config.get("max_consecutive_losses", 5)
-            if _consecutive_losses >= max_cl:
+            if bot_state._consecutive_losses >= max_cl:
                 _resume_str = "n/a"
                 # Prefer the stored market duration so the session label is
                 # stable regardless of how long the trade was held. Falls back
@@ -3655,7 +3511,7 @@ async def handle_locked_phase(
                     _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
                 )
                 await send_telegram(
-                    f"<b>🔵 [S2 D3 Hybrid] {_cl_ctx} {_consecutive_losses} consecutive losses</b>"
+                    f"<b>🔵 [S2 D3 Hybrid] {_cl_ctx} {bot_state._consecutive_losses} consecutive losses</b>"
                 )
 
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
@@ -3711,10 +3567,9 @@ async def _process_asset(
     Run one iteration of the trading state machine for a non-BTC asset.
     Called every cycle from _non_btc_asset_loop.
     """
-    global _asset_states
-    if asset not in _asset_states:
-        _asset_states[asset] = _init_asset_state(asset)
-    st = _asset_states[asset]
+    if asset not in bot_state._asset_states:
+        bot_state._asset_states[asset] = _init_asset_state(asset)
+    st = bot_state._asset_states[asset]
 
     # Price check
     price = _am_get_price(asset)
@@ -3798,7 +3653,7 @@ async def _process_asset(
 
     # WATCH
     if st["phase"] == "WATCH":
-        if elapsed > WATCH_PHASE_SECONDS:
+        if elapsed > bot_state.WATCH_PHASE_SECONDS:
             log.info(f"[{asset}] {ticker}: elapsed {elapsed:.0f}s → READY.")
             st["phase"] = "READY"
         else:
@@ -3847,10 +3702,10 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
                 for _pa in config.get("enabled_assets", ["ETH", "SOL", "XRP"]):
                     if _pa == "BTC":
                         continue
-                    if _pa not in _asset_states:
-                        _asset_states[_pa] = {"phase": "PAUSED", "market": None, "eval": {}}
+                    if _pa not in bot_state._asset_states:
+                        bot_state._asset_states[_pa] = {"phase": "PAUSED", "market": None, "eval": {}}
                     else:
-                        _asset_states[_pa]["phase"] = "PAUSED"
+                        bot_state._asset_states[_pa]["phase"] = "PAUSED"
                 await asyncio.sleep(10)
                 continue
             for asset in config.get("enabled_assets", ["ETH", "SOL", "XRP"]):
@@ -3874,23 +3729,18 @@ async def main_loop() -> None:
     Permanent 10-second loop driving all trading logic.
     All exceptions are caught per-iteration to prevent crashes.
     """
-    global current_market, current_phase, current_position
-    global last_confidence_score, last_confidence_breakdown
-    global last_action, last_skip_reason
-    global _order_attempted_tickers
-    global _consecutive_losses
 
     prev_ticker: str | None = None
 
     # â”€â”€ Recover open position and consecutive-loss state after a crash/restart â”€
     try:
-        with open(_STATE_FILE, "r") as _sf:
+        with open(bot_state._STATE_FILE, "r") as _sf:
             _saved = json.load(_sf)
         _saved_pos = _saved.get("open_position")
         _saved_phase = _saved.get("phase", "")
         if _saved_pos and _saved_phase == "LOCKED" and _saved_pos.get("trade_id"):
-            current_position = _saved_pos
-            current_phase    = "LOCKED"
+            bot_state.current_position = _saved_pos
+            bot_state.current_phase    = "LOCKED"
             log.warning(
                 f"Recovered open position from state file: "
                 f"trade_id={_saved_pos.get('trade_id')} "
@@ -3899,7 +3749,7 @@ async def main_loop() -> None:
             )
         saved_cl = _saved.get("consecutive_losses", 0)
         if isinstance(saved_cl, int) and saved_cl > 0:
-            _consecutive_losses = saved_cl
+            bot_state._consecutive_losses = saved_cl
     except Exception:
         pass  # fresh start, no state to recover
 
@@ -3908,7 +3758,7 @@ async def main_loop() -> None:
     # Manual reconciliation against the Kalshi fills API may be needed.
     try:
         import sqlite3 as _sqlite3
-        _s1_chk = _sqlite3.connect(_DB_FILE)
+        _s1_chk = _sqlite3.connect(bot_state._DB_FILE)
         _s1_orphans = _s1_chk.execute(
             "SELECT id, market_id, asset FROM trades "
             "WHERE strategy_variant='strategy1' AND outcome='pending'"
@@ -3945,9 +3795,9 @@ async def main_loop() -> None:
                     continue
 
                 if not config.get("bot_enabled", False):
-                    await write_state_file(config, current_market, "PAUSED", 0,
-                                           get_btc_price(), last_confidence_score,
-                                           last_confidence_breakdown, last_action, last_skip_reason)
+                    await write_state_file(config, bot_state.current_market, "PAUSED", 0,
+                                           get_btc_price(), bot_state.last_confidence_score,
+                                           bot_state.last_confidence_breakdown, bot_state.last_action, bot_state.last_skip_reason)
                     await asyncio.sleep(10)
                     continue
 
@@ -3960,18 +3810,18 @@ async def main_loop() -> None:
                 btc_price = get_btc_price()
                 if btc_price is None:
                     log.warning("Waiting for BTC price...")
-                    await write_state_file(config, current_market, current_phase, 0,
-                                           None, last_confidence_score,
-                                           last_confidence_breakdown, last_action, last_skip_reason)
+                    await write_state_file(config, bot_state.current_market, bot_state.current_phase, 0,
+                                           None, bot_state.last_confidence_score,
+                                           bot_state.last_confidence_breakdown, bot_state.last_action, bot_state.last_skip_reason)
                     await asyncio.sleep(10)
                     continue
                 _btc_age = _am_price_age("BTC")
                 if _btc_age is not None and _btc_age > 60:
                     age = int(_btc_age)
                     log.warning(f"BTC price stale ({age}s old) — skipping cycle.")
-                    await write_state_file(config, current_market, current_phase, 0,
-                                           btc_price, last_confidence_score,
-                                           last_confidence_breakdown, "skip", f"btc_stale_{age}s")
+                    await write_state_file(config, bot_state.current_market, bot_state.current_phase, 0,
+                                           btc_price, bot_state.last_confidence_score,
+                                           bot_state.last_confidence_breakdown, "skip", f"btc_stale_{age}s")
                     await asyncio.sleep(10)
                     continue
 
@@ -3988,8 +3838,8 @@ async def main_loop() -> None:
                     # locked-phase handler so the trade can settle even when no new market
                     # is visible. Repeated warnings each cycle until close_time elapses
                     # are expected — not errors.
-                    if current_phase == "LOCKED" and current_position is not None:
-                        _close_time = current_position.get("market_close_time", "")
+                    if bot_state.current_phase == "LOCKED" and bot_state.current_position is not None:
+                        _close_time = bot_state.current_position.get("market_close_time", "")
                         if not _close_time:
                             log.error("LOCKED position missing market_close_time — cannot safely settle without market. Skipping.")
                         else:
@@ -3998,41 +3848,41 @@ async def main_loop() -> None:
                                 await handle_locked_phase(session, btc_price, 0, config)
                             except Exception as exc:
                                 log.error(f"LOCKED phase error (no market): {exc}", exc_info=True)
-                        await write_state_file(config, None, current_phase, 0, btc_price,
-                                               last_confidence_score, last_confidence_breakdown,
-                                               last_action, last_skip_reason)
+                        await write_state_file(config, None, bot_state.current_phase, 0, btc_price,
+                                               bot_state.last_confidence_score, bot_state.last_confidence_breakdown,
+                                               bot_state.last_action, bot_state.last_skip_reason)
                     else:
                         log.warning("No active BTC markets found.")
                         await write_state_file(config, None, "DONE", 0, btc_price,
-                                               last_confidence_score, last_confidence_breakdown,
-                                               last_action, last_skip_reason)
+                                               bot_state.last_confidence_score, bot_state.last_confidence_breakdown,
+                                               bot_state.last_action, bot_state.last_skip_reason)
                     await asyncio.sleep(10)
                     continue
 
-                current_market = market
+                bot_state.current_market = market
                 ticker = market.get("ticker", "")
 
                 # Detect new market (different ticker)
                 if prev_ticker is None:
                     prev_ticker = ticker
-                    if current_phase == "DONE":
-                        current_phase = "WATCH"
+                    if bot_state.current_phase == "DONE":
+                        bot_state.current_phase = "WATCH"
                         log.info(f"First market: {ticker}. Starting WATCH.")
                 elif ticker != prev_ticker:
-                    if current_phase == "LOCKED":
+                    if bot_state.current_phase == "LOCKED":
                         # Never reset a live position when the market rolls over.
                         # The position is on the OLD ticker — keep monitoring it.
                         log.info(f"Market rolled to {ticker} but position still open on {prev_ticker} — staying LOCKED.")
                         # Keep using the old market object for SL monitoring this cycle
                         ticker = prev_ticker
-                        market = _market_cache if _market_cache and _market_cache.get("ticker") == prev_ticker else market
+                        market = bot_state._market_cache if bot_state._market_cache and bot_state._market_cache.get("ticker") == prev_ticker else market
                     else:
                         log.info(f"New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
                         if prev_ticker in _s1_pending_trades:
                             asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, btc_price, config, "BTC"))
-                        current_phase = "WATCH"
-                        current_position = None
-                        _order_attempted_tickers.discard(prev_ticker)
+                        bot_state.current_phase = "WATCH"
+                        bot_state.current_position = None
+                        bot_state._order_attempted_tickers.discard(prev_ticker)
                         prev_ticker = ticker
 
                 secs_left = seconds_remaining(market)
@@ -4061,55 +3911,55 @@ async def main_loop() -> None:
                         continue
 
                 # â”€â”€ WATCH â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                if current_phase == "WATCH":
-                    if elapsed > WATCH_PHASE_SECONDS:
+                if bot_state.current_phase == "WATCH":
+                    if elapsed > bot_state.WATCH_PHASE_SECONDS:
                         log.info(f"{ticker}: elapsed {elapsed:.0f}s → READY.")
-                        current_phase = "READY"
+                        bot_state.current_phase = "READY"
                     else:
                         log.info(f"{ticker}: WATCH ({elapsed:.0f}s elapsed).")
                         await _log_entry(market, "WATCH", secs_left, btc_price, strike,
                                          None, 0, "skip", f"WATCH phase, {elapsed:.0f}s elapsed",
                                          config.get("mode", "paper"))
-                        await write_state_file(config, market, current_phase, secs_left,
+                        await write_state_file(config, market, bot_state.current_phase, secs_left,
                                                btc_price, 0, {}, "watch", "")
                         await asyncio.sleep(10)
                         continue
 
                 # â”€â”€ LOCKED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                if current_phase == "LOCKED":
+                if bot_state.current_phase == "LOCKED":
                     try:
                         await handle_locked_phase(
                             session, btc_price, secs_left, config
                         )
                     except Exception as exc:
                         log.error(f"LOCKED phase error: {exc}", exc_info=True)
-                    await write_state_file(config, market, current_phase, secs_left, btc_price,
-                                           last_confidence_score, last_confidence_breakdown,
-                                           last_action, last_skip_reason)
+                    await write_state_file(config, market, bot_state.current_phase, secs_left, btc_price,
+                                           bot_state.last_confidence_score, bot_state.last_confidence_breakdown,
+                                           bot_state.last_action, bot_state.last_skip_reason)
                     await asyncio.sleep(10)
                     continue
 
                 # â”€â”€ DONE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                if current_phase == "DONE":
+                if bot_state.current_phase == "DONE":
                     # Re-enter READY only if no order was attempted for this ticker.
                     # This prevents duplicate orders when fill_confirmed=False but
                     # the order actually went through on Kalshi.
-                    if secs_left > 3 * 60 and ticker not in _order_attempted_tickers:
+                    if secs_left > 3 * 60 and ticker not in bot_state._order_attempted_tickers:
                         log.info(
                             f"DONE → READY re-entry: {ticker} has {secs_left:.0f}s left."
                         )
-                        current_phase = "READY"
+                        bot_state.current_phase = "READY"
                         # Fall through to READY handler below
                     else:
                         log.info(f"DONE phase. {secs_left:.0f}s left — waiting for next market.")
-                        await write_state_file(config, market, current_phase, secs_left, btc_price,
-                                               last_confidence_score, last_confidence_breakdown,
-                                               last_action, last_skip_reason)
+                        await write_state_file(config, market, bot_state.current_phase, secs_left, btc_price,
+                                               bot_state.last_confidence_score, bot_state.last_confidence_breakdown,
+                                               bot_state.last_action, bot_state.last_skip_reason)
                         await asyncio.sleep(10)
                         continue
 
                 # â”€â”€ READY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-                if current_phase == "READY":
+                if bot_state.current_phase == "READY":
                     try:
                         await handle_ready_phase(
                             session, config, market, ticker,
@@ -4118,11 +3968,11 @@ async def main_loop() -> None:
                     except Exception as exc:
                         log.error(f"READY phase error: {exc}", exc_info=True)
 
-                await write_state_file(config, market, current_phase, secs_left, btc_price,
-                                       last_confidence_score, last_confidence_breakdown,
-                                       last_action, last_skip_reason)
+                await write_state_file(config, market, bot_state.current_phase, secs_left, btc_price,
+                                       bot_state.last_confidence_score, bot_state.last_confidence_breakdown,
+                                       bot_state.last_action, bot_state.last_skip_reason)
 
-                if current_phase == "READY":
+                if bot_state.current_phase == "READY":
                     await asyncio.sleep(5)
                     continue
 
@@ -4142,7 +3992,7 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
     balance_path = "/portfolio/balance"
     try:
         async with session.get(
-            KALSHI_BASE_URL + balance_path,
+            bot_state.KALSHI_BASE_URL + balance_path,
             headers=kalshi_headers("GET", balance_path),
             timeout=aiohttp.ClientTimeout(total=10),
         ) as resp:
@@ -4171,7 +4021,7 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
     for series in ("KXBTCD", "BTCD-B", "KXBTC15M", "KXBTC", "BTC15M", "BTC", "BTCUSD", "KXBTCUSD", "KXBTCUSD15M"):
         try:
             async with session.get(
-                KALSHI_BASE_URL + path,
+                bot_state.KALSHI_BASE_URL + path,
                 headers=kalshi_headers("GET", path),
                 params={"series_ticker": series, "status": "open", "limit": 20},
                 timeout=aiohttp.ClientTimeout(total=10),
@@ -4195,7 +4045,7 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
     for scan_series in ("KXBTCD", "BTCD-B", "KXBTC", "KXBTC15M", "BTC"):
         try:
             async with session.get(
-                KALSHI_BASE_URL + path,
+                bot_state.KALSHI_BASE_URL + path,
                 headers=kalshi_headers("GET", path),
                 params={"status": "open", "series_ticker": scan_series, "limit": 100},
                 timeout=aiohttp.ClientTimeout(total=10),
@@ -4221,7 +4071,7 @@ async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
     # 3. /series endpoint — find any BTC-related series
     try:
         async with session.get(
-            KALSHI_BASE_URL + "/series",
+            bot_state.KALSHI_BASE_URL + "/series",
             headers=kalshi_headers("GET", "/series"),
             params={"limit": 200},
             timeout=aiohttp.ClientTimeout(total=10),
@@ -4257,14 +4107,14 @@ async def run_preflight_checks(config: dict) -> None:
     W = 60
 
     # â”€â”€ Check 1: Price validation data â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    if not os.path.isfile(_PRICE_VAL_CSV):
+    if not os.path.isfile(bot_state._PRICE_VAL_CSV):
         issues.append(
             "NO PRICE VALIDATION DATA — price_validation_log.csv does not exist. "
             "Run paper mode for 200+ cycles first."
         )
     else:
         try:
-            with open(_PRICE_VAL_CSV, encoding="utf-8") as _f:
+            with open(bot_state._PRICE_VAL_CSV, encoding="utf-8") as _f:
                 row_count = max(0, sum(1 for _ in _f) - 1)   # minus header
         except Exception:
             row_count = 0
@@ -4347,7 +4197,7 @@ async def main() -> None:
     # Clean up zombie "pending" trades from prior crashed sessions.
     # Any trade still pending after 30+ minutes never settled — mark it as expired.
     try:
-        conn = sqlite3.connect(_DB_FILE)
+        conn = sqlite3.connect(bot_state._DB_FILE)
         cleaned = conn.execute(
             """UPDATE trades
                SET outcome         = 'expired_untracked',
@@ -4382,9 +4232,8 @@ async def main() -> None:
     asyncio.create_task(coinbase_price_task(_feed_assets))
 
     # OBI monitor (Coinbase Exchange level2 WebSocket)
-    global _obi_monitor, _funding_monitor_btc, _funding_monitor_eth
-    _obi_monitor = OBIMonitor(["BTC", "ETH", "SOL", "XRP", "DOGE"])
-    asyncio.create_task(_obi_monitor.run())
+    bot_state._obi_monitor = OBIMonitor(["BTC", "ETH", "SOL", "XRP", "DOGE"])
+    asyncio.create_task(bot_state._obi_monitor.run())
     log.info("OBI monitor started for BTC, ETH, SOL, XRP, DOGE")
 
     # BTC/ETH funding dispersion monitors (Hyperliquid + Binance)
@@ -4393,14 +4242,14 @@ async def main() -> None:
     if _src_path not in _sys_fm.path:
         _sys_fm.path.insert(0, _src_path)
     from strategies.original.signals.funding_dispersion import FundingDispersionMonitor as _FDM
-    _funding_monitor_btc = _FDM("BTC")
-    _funding_monitor_eth = _FDM("ETH")
+    bot_state._funding_monitor_btc = _FDM("BTC")
+    bot_state._funding_monitor_eth = _FDM("ETH")
 
     async def _funding_refresh_loop() -> None:
         while True:
             try:
-                await _funding_monitor_btc.refresh()
-                await _funding_monitor_eth.refresh()
+                await bot_state._funding_monitor_btc.refresh()
+                await bot_state._funding_monitor_eth.refresh()
             except Exception as _fe:
                 log.warning(f"funding refresh (BTC/ETH) error: {_fe}")
             await asyncio.sleep(60)
