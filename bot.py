@@ -1,4 +1,4 @@
-"""
+﻿"""
 bot.py — Core trading logic for the Kalshi 15-minute prediction market bot.
 
 Connects to Coinbase for live crypto prices, polls Kalshi for the
@@ -4383,9 +4383,9 @@ async def main() -> None:
 
     # OBI monitor (Coinbase Exchange level2 WebSocket)
     global _obi_monitor, _funding_monitor_btc, _funding_monitor_eth
-    _obi_monitor = OBIMonitor(["BTC", "ETH"])
+    _obi_monitor = OBIMonitor(["BTC", "ETH", "SOL", "XRP", "DOGE"])
     asyncio.create_task(_obi_monitor.run())
-    log.info("OBI monitor started for BTC, ETH")
+    log.info("OBI monitor started for BTC, ETH, SOL, XRP, DOGE")
 
     # BTC/ETH funding dispersion monitors (Hyperliquid + Binance)
     _src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")

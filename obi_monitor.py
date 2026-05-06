@@ -26,10 +26,11 @@ from typing import Optional
 log = logging.getLogger("obi_monitor")
 
 _ASSET_TO_PRODUCT: dict[str, str] = {
-    "BTC": "BTC-USD",
-    "ETH": "ETH-USD",
-    "SOL": "SOL-USD",
-    "XRP": "XRP-USD",
+    "BTC":  "BTC-USD",
+    "ETH":  "ETH-USD",
+    "SOL":  "SOL-USD",
+    "XRP":  "XRP-USD",
+    "DOGE": "DOGE-USD",
 }
 
 _WS_URL = "wss://ws-feed.exchange.coinbase.com"
