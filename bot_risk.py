@@ -1,4 +1,4 @@
-"""bot_risk.py — Daily limits, midnight reset, state file, strike parser."""
+﻿"""bot_risk.py â€” Daily limits, midnight reset, state file, strike parser."""
 import json
 import logging
 import re
@@ -22,16 +22,16 @@ _STRIKE_RE_T_SUFFIX       = re.compile(r"-T(\d+)$")
 _STRIKE_RE_NUMERIC_SUFFIX = re.compile(r"-(\d+)$")
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Daily limits
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def check_daily_limits(config: dict) -> tuple[bool, str]:
     """
     Check daily loss limit and profit target for live/demo mode.
 
-    live  — DLL/profit target flips mode to 'paper' in config.json
-    demo  — DLL disables bot entirely and fires Telegram; profit target flips to paper
+    live  â€” DLL/profit target flips mode to 'paper' in config.json
+    demo  â€” DLL disables bot entirely and fires Telegram; profit target flips to paper
 
     Returns:
         (triggered: bool, reason: str)
@@ -54,7 +54,7 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
                 write_config(cfg)
                 log.warning(f"Demo DLL hit (${pnl:.2f}). Bot disabled.")
                 await send_telegram(
-                    f"<b>[DEMO] Daily loss limit — bot disabled</b>\n"
+                    f"<b>[DEMO] Daily loss limit â€” bot disabled</b>\n"
                     f"PnL today: <b>${pnl:.2f}</b>\n"
                     f"Bot has been disabled. Re-enable manually in config."
                 )
@@ -107,9 +107,9 @@ def midnight_reset() -> None:
         bot_state.pre_limit_mode = None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  State file
-# ══════════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 def _parse_strike_from_ticker(ticker):
     """Parse strike price out of a Kalshi ticker.
@@ -169,7 +169,7 @@ async def write_state_file(
 
     # Per-asset snapshot for multi-asset dashboard display
     assets_snap: dict = {}
-    # Non-BTC assets — pulled from the in-memory bot_state._asset_states dict
+    # Non-BTC assets â€” pulled from the in-memory bot_state._asset_states dict
     for _a, _st in bot_state._asset_states.items():
         _m  = _st.get("market")
         _sl = seconds_remaining(_m) if _m else 0
@@ -216,7 +216,7 @@ async def write_state_file(
             "phase_label":  _a_window_phase,
             "window_phase": _a_window_phase,
         }
-    # BTC — uses separate globals; bot_state._asset_eval["BTC"] holds last eval snapshot
+    # BTC â€” uses separate globals; bot_state._asset_eval["BTC"] holds last eval snapshot
     _btc_ev = bot_state._asset_eval.get("BTC", {})
     _btc_status = "TRADING" if phase == "LOCKED" else (_btc_ev.get("status") or phase)
     _btc_ticker = market.get("ticker", "") if market else ""
@@ -291,3 +291,4 @@ async def _log_entry(
         "skip_reason": skip_reason,
         "mode": mode,
     })
+
