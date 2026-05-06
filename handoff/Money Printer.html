@@ -704,11 +704,11 @@ tbody tr:last-child td{border-bottom:none;}
   <!-- MARKET STRIP -->
   <div class="market-strip" id="market-strip"></div>
 
-  <!-- EQUITY + ALLOCATION + SIGNALS -->
-  <div class="grid-2">
+  <!-- EQUITY + ALLOCATION — Strategy 2 -->
+  <div class="grid-2" style="margin-bottom:8px;">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve</div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 — D3 Hybrid</span></div>
         <div class="seg" id="equity-seg">
           <button class="active" data-range="1d">1D</button>
           <button data-range="1w">1W</button>
@@ -716,17 +716,36 @@ tbody tr:last-child td{border-bottom:none;}
           <button data-range="all">ALL</button>
         </div>
       </div>
-      <div class="chart-wrap" id="equity-chart"></div>
+      <div class="chart-wrap" id="equity-chart-s2"></div>
     </div>
-
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation</div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 — D3 Hybrid</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
-        <svg id="alloc-donut" width="120" height="120" viewBox="0 0 120 120"></svg>
-        <div class="alloc-list" id="alloc-list"></div>
+        <svg id="alloc-donut-s2" width="120" height="120" viewBox="0 0 120 120"></svg>
+        <div class="alloc-list" id="alloc-list-s2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EQUITY + ALLOCATION — Strategy 1 -->
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 — Original</span></div>
+      </div>
+      <div class="chart-wrap" id="equity-chart-s1"></div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 — Original</span></div>
+        <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
+      </div>
+      <div class="alloc-wrap">
+        <svg id="alloc-donut-s1" width="120" height="120" viewBox="0 0 120 120"></svg>
+        <div class="alloc-list" id="alloc-list-s1"></div>
       </div>
     </div>
   </div>
@@ -1101,56 +1120,65 @@ function renderMarketStrip(){
   });
 }
 
-// equity chart
-function renderEquity(range='1d'){
-  const wrap = document.getElementById('equity-chart');
-  const pts = EQ[range];
-  if (!pts || pts.length < 2) {
+// Build cumulative equity series from TRADES for a given strategy variant + range
+function buildStrategyEquity(sv, range) {
+  const now = Date.now();
+  const cutoff = { '1d': now-86400000, '1w': now-7*86400000, '1m': now-30*86400000, 'all': 0 }[range] || 0;
+  let pool = TRADES.filter(t => t.pnl != null && t.fill === 'filled' && (!sv || t.sv === sv));
+  if (cutoff) pool = pool.filter(t => t.ts && new Date(t.ts).getTime() >= cutoff);
+  pool.sort((a,b) => (a.ts||'').localeCompare(b.ts||''));
+  const pts = [0]; let cum = 0;
+  pool.forEach(t => { cum = +(cum + t.pnl).toFixed(2); pts.push(cum); });
+  return pts.length > 1 ? pts : [];
+}
+
+// equity chart — renders to containerId using provided pts array
+function renderEquity(range, containerId, pts){
+  const wrap = document.getElementById(containerId);
+  if (!wrap) return;
+  const data = (pts && pts.length >= 2) ? pts : [];
+  if (data.length < 2) {
     wrap.innerHTML = `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--ink-4);font-size:11px;font-family:'Montserrat',monospace;letter-spacing:0.08em;text-transform:uppercase;">No trades yet</div>`;
     return;
   }
+  const gradId = 'cgrad-' + containerId;
   const w = wrap.clientWidth || 800, h = 200;
   const padL=44, padR=12, padT=18, padB=22;
-  const max = Math.max(...pts, 0), min = Math.min(...pts, 0), rng = Math.max(1, max-min);
-  const xy = pts.map((v,i)=>{
-    const x = padL + (i/(pts.length-1))*(w-padL-padR);
+  const max = Math.max(...data, 0), min = Math.min(...data, 0), rng = Math.max(1, max-min);
+  const xy = data.map((v,i)=>{
+    const x = padL + (i/(data.length-1))*(w-padL-padR);
     const y = padT + (1-((v-min)/rng))*(h-padT-padB);
     return [x,y];
   });
   const linePath = xy.map((p,i)=>(i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
   const areaPath = linePath+` L${xy[xy.length-1][0].toFixed(1)},${h-padB} L${xy[0][0].toFixed(1)},${h-padB} Z`;
-
-  // gridlines
   const gridY=[];
   for(let i=0;i<5;i++){
     const y = padT + (i/4)*(h-padT-padB);
     const v = max - (i/4)*rng;
     gridY.push(`<line class="chart-grid" x1="${padL}" x2="${w-padR}" y1="${y}" y2="${y}"/><text class="chart-axis" x="${padL-6}" y="${y+3}" text-anchor="end">${v>=0?'+':''}$${v.toFixed(0)}</text>`);
   }
-  // x-axis labels
   const xLabels = ['09:30','11:00','12:30','14:00','15:30'];
   const xTicks = xLabels.map((l,i)=>{
     const x = padL + (i/(xLabels.length-1))*(w-padL-padR);
     return `<text class="chart-axis" x="${x}" y="${h-6}" text-anchor="middle">${l}</text>`;
   }).join('');
-
   const lastPt = xy[xy.length-1];
-  const lastV  = pts[pts.length-1];
+  const lastV  = data[data.length-1];
   const isUp   = lastV>=0;
   const lineColor = isUp ? 'oklch(0.55 0.16 245)' : 'oklch(0.55 0.20 20)';
   const fillColor = isUp ? 'oklch(0.55 0.16 245 / 0.18)' : 'oklch(0.55 0.20 20 / 0.18)';
-
   wrap.innerHTML = `
     <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
       <defs>
-        <linearGradient id="cgrad" x1="0" x2="0" y1="0" y2="1">
+        <linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stop-color="${fillColor}"/>
           <stop offset="100%" stop-color="${fillColor.replace('0.18','0.0')}"/>
         </linearGradient>
       </defs>
       ${gridY.join('')}
       ${xTicks}
-      <path d="${areaPath}" fill="url(#cgrad)"/>
+      <path d="${areaPath}" fill="url(#${gradId})"/>
       <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="1.75"/>
       <circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="3" fill="${lineColor}"/>
       <circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="6" fill="${lineColor}" opacity="0.25">
@@ -1160,52 +1188,44 @@ function renderEquity(range='1d'){
     </svg>`;
 }
 
-// allocation donut
-function renderAllocation(){
+// allocation donut — renders one donut for a given strategy variant
+function renderAllocForStrategy(sv, donutId, listId) {
+  const colors = {BTC:'oklch(0.72 0.16 60)', ETH:'oklch(0.55 0.12 270)', SOL:'oklch(0.42 0.22 300)', XRP:'oklch(0.6 0.012 250)', DOGE:'oklch(0.72 0.13 85)'};
+  const pool = sv ? TRADES.filter(t => t.sv === sv) : TRADES;
   const pnlByAsset = {};
-  TRADES.forEach(t => { pnlByAsset[t.sym] = (pnlByAsset[t.sym] || 0) + (t.pnl || 0); });
+  pool.forEach(t => { pnlByAsset[t.sym] = (pnlByAsset[t.sym] || 0) + (t.pnl || 0); });
   const data = MARKETS.map(m => { const v = pnlByAsset[m.sym] || 0; return {sym:m.sym, val:Math.abs(v), pos:v>=0}; });
   const totalPnl = data.reduce((s,d)=>s+d.val,0);
+  const donutEl = document.getElementById(donutId);
+  const listEl  = document.getElementById(listId);
+  if (!donutEl || !listEl) return;
   if (!totalPnl) {
-    document.getElementById('alloc-donut').innerHTML = '';
-    document.getElementById('alloc-list').innerHTML = '<div style="color:var(--ink-4);font-size:11px;padding:12px 0;text-align:center;">No trades yet</div>';
+    donutEl.innerHTML = '';
+    listEl.innerHTML = '<div style="color:var(--ink-4);font-size:11px;padding:12px 0;text-align:center;">No trades yet</div>';
     return;
   }
-  const total = totalPnl;
-  const colors = {BTC:'oklch(0.72 0.16 60)', ETH:'oklch(0.55 0.12 270)', SOL:'oklch(0.42 0.22 300)', XRP:'oklch(0.6 0.012 250)', DOGE:'oklch(0.72 0.13 85)'};
-
-  // pie: filled wedges, no center hole
   const cx=60, cy=60, r=56;
-  let a0 = -Math.PI/2; // start at 12 o'clock
+  let a0 = -Math.PI/2;
   const segs = data.map(d=>{
-    const frac = (d.val/total) || 0;
+    const frac = (d.val/totalPnl) || 0;
     if(frac <= 0) return '';
     const a1 = a0 + frac * Math.PI*2;
-    // full-circle edge case
-    if(frac >= 0.999){
-      const seg = `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colors[d.sym]}"/>`;
-      a0 = a1;
-      return seg;
-    }
-    const x0 = cx + r*Math.cos(a0), y0 = cy + r*Math.sin(a0);
-    const x1 = cx + r*Math.cos(a1), y1 = cy + r*Math.sin(a1);
-    const large = (a1 - a0) > Math.PI ? 1 : 0;
-    const path = `M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`;
-    a0 = a1;
+    if(frac >= 0.999){ const seg=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colors[d.sym]}"/>`; a0=a1; return seg; }
+    const x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0),x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);
+    const large=(a1-a0)>Math.PI?1:0;
+    const path=`M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`;
+    a0=a1;
     return `<path d="${path}" fill="${colors[d.sym]}" stroke="var(--panel)" stroke-width="1.25"/>`;
   }).join('');
-
-  document.getElementById('alloc-donut').innerHTML = segs;
-
-  document.getElementById('alloc-list').innerHTML = data.map(d=>{
-    const pct = (d.val/total*100).toFixed(0);
-    return `<div class="alloc-row">
-      <div class="alloc-sw">${cryptoLogo(d.sym)}</div>
-      <div class="alloc-name">${d.sym}</div>
-      <div class="alloc-bar"><div style="width:${pct}%;background:${colors[d.sym]};"></div></div>
-      <div class="alloc-pct">${pct}%</div>
-    </div>`;
+  donutEl.innerHTML = segs;
+  listEl.innerHTML = data.filter(d=>d.val>0).map(d=>{
+    const pct=(d.val/totalPnl*100).toFixed(0);
+    return `<div class="alloc-row"><div class="alloc-sw">${cryptoLogo(d.sym)}</div><div class="alloc-name">${d.sym}</div><div class="alloc-bar"><div style="width:${pct}%;background:${colors[d.sym]};"></div></div><div class="alloc-pct">${pct}%</div></div>`;
   }).join('');
+}
+function renderAllocation(){
+  renderAllocForStrategy('strategy2', 'alloc-donut-s2', 'alloc-list-s2');
+  renderAllocForStrategy('strategy1', 'alloc-donut-s1', 'alloc-list-s1');
 }
 
 // signals — per-asset Decision Pipeline summary on Overview
@@ -1608,7 +1628,11 @@ function switchTab(tab){
   if(tab==='overview'){
     _activeMarketSym = null;
     document.getElementById('panel-overview').classList.add('active');
-    requestAnimationFrame(renderEquity);
+    requestAnimationFrame(()=>{
+      const range = document.querySelector('#equity-seg .active')?.dataset.range || '1d';
+      renderEquity(range, 'equity-chart-s2', buildStrategyEquity('strategy2', range));
+      renderEquity(range, 'equity-chart-s1', buildStrategyEquity('strategy1', range));
+    });
   } else if(tab==='trades'){
     _activeMarketSym = null;
     document.getElementById('panel-trades').classList.add('active');
@@ -1686,7 +1710,8 @@ async function fetchEquity(range='1d'){
     const data = await fetch(`/api/equity?range=${range}`).then(r=>r.json());
     EQ[range] = (data.points && data.points.length > 1) ? data.points : [];
   } catch(e){}
-  renderEquity(range);
+  renderEquity(range, 'equity-chart-s2', buildStrategyEquity('strategy2', range));
+  renderEquity(range, 'equity-chart-s1', buildStrategyEquity('strategy1', range));
 }
 
 // ── Risk status (live fetch with DOM update) ──────────────────────────────────
@@ -1772,11 +1797,12 @@ window.addEventListener('load', () => {
 window.addEventListener('resize',()=>{
   if(document.getElementById('panel-overview').classList.contains('active')){
     const range = document.querySelector('#equity-seg .active')?.dataset.range || '1d';
-    fetchEquity(range);
+    renderEquity(range, 'equity-chart-s2', buildStrategyEquity('strategy2', range));
+    renderEquity(range, 'equity-chart-s1', buildStrategyEquity('strategy1', range));
   }
 });
 
-// equity seg buttons → fetch from API
+// equity seg buttons → rebuild per-strategy charts from TRADES
 document.getElementById('equity-seg').querySelectorAll('button').forEach(b=>{
   b.addEventListener('click',()=>{
     document.querySelectorAll('#equity-seg button').forEach(x=>x.classList.remove('active'));
@@ -1855,15 +1881,21 @@ function mapTrade(t) {
     fill:   done ? 'filled' : (t.fill_confirmed ? 'active' : 'pending'),
     reason: t.exit_reason  || '',
     mode:   t.mode         || 'paper',
+    sv:     t.strategy_variant || 'strategy2',
   };
 }
 async function fetchTrades() {
   try {
-    const rows = await fetch('/api/trades?limit=140').then(r => r.json());
+    const rows = await fetch('/api/trades?limit=500').then(r => r.json());
     if (Array.isArray(rows)) {
       TRADES = rows.map(mapTrade);
       const filter = document.querySelector('#trade-filter .active')?.dataset.f || 'all';
       renderTrades(filter);
+      // Re-render per-strategy equity and allocation whenever trades refresh
+      const range = document.querySelector('#equity-seg .active')?.dataset.range || '1d';
+      renderEquity(range, 'equity-chart-s2', buildStrategyEquity('strategy2', range));
+      renderEquity(range, 'equity-chart-s1', buildStrategyEquity('strategy1', range));
+      renderAllocation();
     }
   } catch(e) {}
 }
