@@ -419,6 +419,11 @@ tr:last-child td{border-bottom:none;}
               <button class="chart-tab active" id="ctab-paper" onclick="setChartTab('paper')">Paper</button>
               <button class="chart-tab"         id="ctab-live"  onclick="setChartTab('live')">Live</button>
             </div>
+            <div style="display:flex;gap:2px;background:var(--card-2);padding:3px;border-radius:8px;border:1px solid var(--line);">
+              <button class="chart-tab active" id="stab-all" onclick="setChartStrategy('all')">All</button>
+              <button class="chart-tab" id="stab-s1" onclick="setChartStrategy('s1')">S1</button>
+              <button class="chart-tab" id="stab-s2" onclick="setChartStrategy('s2')">S2</button>
+            </div>
           </div>
         </div>
         <canvas class="equity-chart" id="live-chart" style="display:none;"></canvas>
@@ -427,7 +432,14 @@ tr:last-child td{border-bottom:none;}
 
       <!-- Market Allocation donut -->
       <div class="card alloc-card" id="alloc-card">
-        <div class="alloc-title">Market Allocation <span style="font-weight:400;text-transform:none;letter-spacing:0;">by trades</span></div>
+        <div class="alloc-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <span>Market Allocation <span style="font-weight:400;text-transform:none;letter-spacing:0;">by trades</span></span>
+          <div style="display:flex;gap:2px;background:var(--card-2);padding:2px;border-radius:6px;border:1px solid var(--line);flex-shrink:0;">
+            <button class="chart-tab active" id="atab-all" onclick="setAllocStrategy('all')" style="padding:2px 7px;font-size:10px;">All</button>
+            <button class="chart-tab" id="atab-s1" onclick="setAllocStrategy('s1')" style="padding:2px 7px;font-size:10px;">S1</button>
+            <button class="chart-tab" id="atab-s2" onclick="setAllocStrategy('s2')" style="padding:2px 7px;font-size:10px;">S2</button>
+          </div>
+        </div>
         <div class="alloc-wrap">
           <svg id="alloc-donut-svg" viewBox="0 0 130 130" width="130" height="130" style="flex-shrink:0;"></svg>
           <div class="alloc-legend" id="alloc-legend"><div style="color:var(--ink-3);font-size:11px;">No trades yet</div></div>
@@ -664,6 +676,7 @@ let liveChartTarget={pts:[],pendingStart:0}, paperChartTarget={pts:[],pendingSta
 let liveChartCurrent={pts:[],pendingStart:0}, paperChartCurrent={pts:[],pendingStart:0};
 let chartAnimFrame=null, settingsPopulated=false;
 let _activeChartTab='paper', _chartView='daily', _resetMode=null;
+let _chartStrategy='all', _allocStrategy='all';
 let _openPosition=null;
 let _lastAssetsData={};
 let _selectedSignalAsset=null;
@@ -1098,6 +1111,8 @@ function buildEquityCurveByView(trades, mode, view) {
   const cutoff = _cutoffForView(view);
   let pool = trades.filter(t => t.mode === mode);
   if (cutoff) pool = pool.filter(t => t.ts && t.ts >= cutoff);
+  if (_chartStrategy === 's1') pool = pool.filter(t => t.strategy_variant === 'strategy1');
+  else if (_chartStrategy === 's2') pool = pool.filter(t => t.strategy_variant === 'strategy2');
   const resolved = pool.filter(t => t.outcome !== 'pending' && t.pnl_dollars != null)
     .sort((a,b) => (a.ts||'').localeCompare(b.ts||''));
   const pending = pool.filter(t => t.outcome === 'pending');
@@ -1141,6 +1156,22 @@ function setChartTab(tab) {
   const active = tab === 'live' ? liveChartCurrent : paperChartCurrent;
   drawChart('paper-chart', active);
 }
+function setChartStrategy(sv) {
+  _chartStrategy = sv;
+  ['all','s1','s2'].forEach(v => {
+    const el = document.getElementById('stab-'+v);
+    if (el) el.classList.toggle('active', v === sv);
+  });
+  updateChartsAndPnl();
+}
+function setAllocStrategy(sv) {
+  _allocStrategy = sv;
+  ['all','s1','s2'].forEach(v => {
+    const el = document.getElementById('atab-'+v);
+    if (el) el.classList.toggle('active', v === sv);
+  });
+  updateAllocation();
+}
 
 // â”€â”€ Formatters â”€â”€
 function fmtPnl(v) { if (v==null) return '—'; return v>=0?`+$${v.toFixed(2)}`:`-$${Math.abs(v).toFixed(2)}`; }
@@ -1175,7 +1206,9 @@ function drawAllocDonut(data) {
   }).join('');
 }
 function updateAllocation() {
-  const all = [...liveTradesData, ...paperTradesData];
+  let all = [...liveTradesData, ...paperTradesData];
+  if (_allocStrategy === 's1') all = all.filter(t => t.strategy_variant === 'strategy1');
+  else if (_allocStrategy === 's2') all = all.filter(t => t.strategy_variant === 'strategy2');
   const SYMS = ['BTC','ETH','SOL','XRP','DOGE'];
   const counts = Object.fromEntries(SYMS.map(s=>[s,0]));
   const wins   = Object.fromEntries(SYMS.map(s=>[s,0]));
