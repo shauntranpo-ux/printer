@@ -42,6 +42,7 @@ current_phase: str = "DONE"
 current_position: dict | None = None
 _order_attempted_tickers: set = set()
 _asset_states: dict = {}
+_s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
 
 _market_cache: dict | None = None
 _market_cache_ts: float = 0.0

@@ -1289,8 +1289,6 @@ def _session_ev_adjustment() -> float:
     return 0.0
 
 
-_s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
-
 
 
 def _strategy_name_for(asset, duration_min=15.0):
@@ -2576,10 +2574,9 @@ async def _execute_s1_trade(
     market: "dict | None" = None,
 ) -> None:
     """Place a real S1 order alongside S2 and track it in _s1_pending_trades."""
-    global _s1_pending_trades
     if brain_s1.get("action") != "trade":
         return
-    if ticker in _s1_pending_trades:
+    if ticker in bot_state._s1_pending_trades:
         return  # already have an open S1 trade on this ticker
 
     side = brain_s1.get("side", "yes")
@@ -2636,7 +2633,7 @@ async def _execute_s1_trade(
     }
     # Register in _s1_pending_trades BEFORE the DB write so that a transient
     # SQLite error never leaves a real filled order untracked (funds already committed).
-    _s1_pending_trades[ticker] = {
+    bot_state._s1_pending_trades[ticker] = {
         "trade_id":          None,  # filled in below after successful DB write
         "side":              side,
         "entry_price_cents": fill_price,
@@ -2651,7 +2648,7 @@ async def _execute_s1_trade(
     if trade_id is None:
         log.critical(f"[S1] {ticker}: DB write failed — position tracked in-memory only; reconcile manually")
     else:
-        _s1_pending_trades[ticker]["trade_id"] = trade_id
+        bot_state._s1_pending_trades[ticker]["trade_id"] = trade_id
 
     mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
     _win_pct  = int(win_prob * 100)
@@ -2676,8 +2673,7 @@ async def _settle_s1_trade(
     asset: str,
 ) -> None:
     """Settle a pending S1 real trade. market_result is 'yes', 'no', or None (price fallback)."""
-    global _s1_pending_trades
-    s1_pos = _s1_pending_trades.pop(ticker, None)
+    s1_pos = bot_state._s1_pending_trades.pop(ticker, None)
     if s1_pos is None:
         return
 
@@ -2732,7 +2728,7 @@ async def _try_settle_orphaned_s1(
     asset: str,
 ) -> None:
     """Settle an S1 trade when the market expired but S2 never locked."""
-    if ticker not in _s1_pending_trades:
+    if ticker not in bot_state._s1_pending_trades:
         return
     market_result = None
     for _attempt in range(6):
@@ -3468,7 +3464,7 @@ async def _process_asset(
             market = st.get("market") or market
         else:
             log.info(f"[{asset}] New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
-            if prev_ticker in _s1_pending_trades:
+            if prev_ticker in bot_state._s1_pending_trades:
                 asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, price, config, asset))
             st["phase"] = "WATCH"
             st["position"] = None
@@ -3702,7 +3698,7 @@ async def main_loop() -> None:
                         market = bot_state._market_cache if bot_state._market_cache and bot_state._market_cache.get("ticker") == prev_ticker else market
                     else:
                         log.info(f"New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
-                        if prev_ticker in _s1_pending_trades:
+                        if prev_ticker in bot_state._s1_pending_trades:
                             asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, btc_price, config, "BTC"))
                         bot_state.current_phase = "WATCH"
                         bot_state.current_position = None
