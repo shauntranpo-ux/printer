@@ -1845,12 +1845,25 @@ _S1_BV3_TABLE = [
 ]
 _S1_BV3_DIST_BOUNDS = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.0075, 0.010, 0.0125]
 
+# Relative 15-min vol ratio vs BTC — used to normalise abs_pct before BV3 lookup.
+# SOL at 0.5% distance is much less safe than BTC at 0.5% because SOL has ~2x
+# the intra-period vol, so we look up a smaller effective distance in the table.
+_S1_ASSET_VOL_RATIO: dict = {
+    "BTC":  1.00,
+    "ETH":  1.10,
+    "SOL":  2.20,
+    "XRP":  1.80,
+    "DOGE": 2.60,
+}
+
 
 def _s1_empirical_win_prob(asset: str, abs_pct: float, mins_left: float) -> float:
     """BV3 table lookup with live-correction via _brain_cal prob_scale."""
+    vol_ratio = _S1_ASSET_VOL_RATIO.get(asset, 1.0)
+    effective_pct = abs_pct / vol_ratio  # normalise to BTC-equivalent risk distance
     row = len(_S1_BV3_DIST_BOUNDS)
     for i, bound in enumerate(_S1_BV3_DIST_BOUNDS):
-        if abs_pct < bound:
+        if effective_pct < bound:
             row = i
             break
     col = max(0, min(12, int(round(mins_left)) - 1))
@@ -2028,8 +2041,13 @@ def strategy_brain_s1(
     # continuation direction only
     side = "yes" if above else "no"
 
-    # EV gate
-    _min_ev = float(config.get("min_ev_base_15m", config.get("min_ev_base", 8))) / 100.0
+    # EV gate — prefer asset-specific min_ev_base_s1, then asset min_ev_base,
+    # then global min_ev_base_15m. Lets S1 and S2 have independent per-asset thresholds.
+    _ev_s1_default = float(config.get("min_ev_base_15m", config.get("min_ev_base", 9)))
+    _asset_cfg_s1 = config.get("asset_overrides", {}).get(asset, {})
+    _min_ev = float(_asset_cfg_s1.get(
+        "min_ev_base_s1", _asset_cfg_s1.get("min_ev_base", _ev_s1_default)
+    )) / 100.0
     if ev < _min_ev:
         return {
             "action": "skip", "side": side,

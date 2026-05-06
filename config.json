@@ -18,11 +18,11 @@
   "allowed_sides": ["yes", "no"],
   "enabled_assets": ["BTC", "ETH", "SOL", "XRP", "DOGE"],
   "asset_overrides": {
-    "BTC": { "min_ev_base": 8 },
-    "ETH": { "min_ev_base": 19, "max_spread_cents": 2 },
-    "SOL": { "min_ev_base": 20, "allowed_sides": ["no"] },
-    "XRP": { "min_ev_base": 20, "allowed_sides": ["no"] },
-    "DOGE": { "min_ev_base": 20 }
+    "BTC":  { "min_ev_base": 15, "min_ev_base_s1": 12 },
+    "ETH":  { "min_ev_base": 17, "min_ev_base_s1": 17, "max_spread_cents": 2 },
+    "SOL":  { "min_ev_base": 14, "min_ev_base_s1": 7 },
+    "XRP":  { "min_ev_base": 16, "min_ev_base_s1": 12 },
+    "DOGE": { "min_ev_base": 18, "min_ev_base_s1": 15 }
   },
   "max_spread_cents": 3.0,
   "min_seconds_left": 30,
