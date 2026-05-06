@@ -1,68 +1,40 @@
-﻿"""
-bot.py — Core trading logic for the Kalshi 15-minute prediction market bot.
+"""
+bot.py — Entrypoint for the Kalshi 15-minute prediction market trading bot.
 
-Connects to Coinbase for live crypto prices, polls Kalshi for the
-soonest-expiring 15-minute markets (ETH, SOL, XRP), evaluates
-evidence-based strategy signals, places paper or live orders, and enforces
-daily loss / profit limits. Writes bot_state.json every cycle for server.py.
+All core logic has been extracted into focused sub-modules (bot_config,
+bot_db, bot_kalshi, bot_notify, bot_orders, bot_strategy, bot_risk,
+bot_trade, bot_preflight, bot_loops, bot_state, asset_manager,
+obi_monitor).  This file bootstraps the process and hands off to main_loop.
 
 Start via runner.py, not directly.
 """
 
 import asyncio
-import json
-import math
-import sqlite3
 import logging
 import os
-import re
+import sqlite3
 import sys
-import tempfile
-import time
-from base64 import b64encode
-from collections import deque
-from datetime import datetime, timezone, timedelta
 
-import aiosqlite
+import aiohttp
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
 
-import aiohttp
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import padding
-
 from obi_monitor import OBIMonitor
-import asset_manager
 import bot_state
-from bot_config import (
-    atomic_write_json, read_config, write_config,
-    get_asset_config, _init_config,
-)
-from bot_db import (
-    init_db, test_db_write, db_write_trade,
-    db_update_trade, db_write_market_log, db_get_today_pnl,
-)
-from asset_manager import (
-    ASSET_CONFIG,
-    get_price           as _am_get_price,
-    price_age_seconds   as _am_price_age,
-    coinbase_price_task,
-)
-from bot_kalshi import (
-    load_credentials, kalshi_headers, get_btc_price,
-    fetch_current_market, fetch_market_for_asset, parse_strike,
-    seconds_remaining, seconds_elapsed, fetch_orderbook,
-    _simulated_amm_midpoint, _log_price_validation,
-)
-from bot_notify import (
-    _phase_for_eth, _notify_ctx,
-    _maybe_fill_verification_notify, send_telegram,
-)
+import asset_manager
+from asset_manager import get_price as _am_get_price, coinbase_price_task
+from bot_config import read_config, _init_config
+from bot_db import init_db, test_db_write
+from bot_notify import send_telegram
+from bot_kalshi import load_credentials, get_btc_price
+from bot_preflight import verify_kalshi_connection, run_preflight_checks
+from bot_loops import main_loop
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ─────────────────────────────── logging ───────────────────────────────────
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
@@ -70,38 +42,10 @@ logging.basicConfig(
 )
 log = logging.getLogger("bot")
 
-from bot_strategy import (
-    track_contract_price, _session_ev_adjustment, _strategy_name_for,
-    _get_or_make_strategy_s2, strategy_brain_s2,
-    _s1_empirical_win_prob, _s1_calculate_momentum, _s1_realized_vol,
-    _s1_contract_velocity, strategy_brain_s1,
-)
 
-from bot_orders import (
-    calculate_contracts, implied_prob,
-    _portfolio_has_position, _verify_order_fill, place_order,
-)
-
-
-
-from bot_risk import (
-    check_daily_limits, midnight_reset, _parse_strike_from_ticker,
-    write_state_file, _log_entry,
-)
-
-from bot_trade import _execute_s1_trade, _settle_s1_trade, _try_settle_orphaned_s1
-from bot_preflight import verify_kalshi_connection, run_preflight_checks
-from bot_loops import (
-    handle_ready_phase, handle_locked_phase,
-    _init_asset_state, _process_asset,
-    _non_btc_asset_loop, main_loop,
-)
-
-
-
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═══════════════════════════════════════════════════════════════════════════
 #  Entry point
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ═══════════════════════════════════════════════════════════════════════════
 
 async def main() -> None:
     """Bootstrap: load credentials, init DB, start BTC feed, run main loop."""
@@ -200,5 +144,3 @@ async def main() -> None:
 
 if __name__ == "__main__":
     asyncio.run(main())
-
-
