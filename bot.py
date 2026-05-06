@@ -34,6 +34,7 @@ import aiohttp
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
+from obi_monitor import OBIMonitor
 import asset_manager
 from asset_manager import (
     ASSET_CONFIG,
@@ -91,6 +92,11 @@ _DATA_DIR = os.path.dirname(os.path.abspath(_DB_FILE))
 # btc_prices is an alias to asset_manager's BTC price deque.
 # All existing code that reads btc_prices (momentum, vol, feed) works unchanged.
 btc_prices: deque = asset_manager._prices["BTC"]
+
+# OBI and funding monitors — started as background tasks in main()
+_obi_monitor: "OBIMonitor | None" = None
+_funding_monitor_btc = None  # FundingDispersionMonitor | None
+_funding_monitor_eth = None  # FundingDispersionMonitor | None
 
 private_key = None    # loaded on startup
 api_key: str = ""
@@ -1990,6 +1996,24 @@ def strategy_brain_s1(
     diff = win_prob - mkt_implied
     if abs(diff) > 0.35:
         win_prob = win_prob - 0.15 * diff
+
+    # OBI adjustment: near-ATM only, top-10 Coinbase orderbook imbalance.
+    # Positive OBI (bid-heavy) supports continuation when price is above strike.
+    if _obi_monitor is not None and abs_pct < 0.004:
+        _obi_val = _obi_monitor.get_obi(asset)
+        if _obi_val is not None:
+            _obi_adj = 0.02 * _obi_val if above else -0.02 * _obi_val
+            win_prob = max(0.05, min(0.98, win_prob + _obi_adj))
+
+    # BTC/ETH funding dispersion adjustment (cross-venue imbalance signal).
+    if asset in ("BTC", "ETH"):
+        _fm = _funding_monitor_btc if asset == "BTC" else _funding_monitor_eth
+        if _fm is not None:
+            from strategies.original.signals.funding_dispersion import funding_dispersion_adjustment as _fda
+            _fdisp = _fm.current_dispersion()
+            _fadj, _ = _fda(_fdisp)
+            if _fadj != 0.0:
+                win_prob = max(0.05, min(0.98, win_prob + (_fadj if above else -_fadj)))
 
     # win_prob = P(continuation side wins): YES when above, NO when not above.
     # EV for each side for logging; ev is the actionable continuation EV.
@@ -4338,6 +4362,33 @@ async def main() -> None:
     from asset_manager import seed_price_history
     await seed_price_history(_feed_assets)
     asyncio.create_task(coinbase_price_task(_feed_assets))
+
+    # OBI monitor (Coinbase Exchange level2 WebSocket)
+    global _obi_monitor, _funding_monitor_btc, _funding_monitor_eth
+    _obi_monitor = OBIMonitor(["BTC", "ETH"])
+    asyncio.create_task(_obi_monitor.run())
+    log.info("OBI monitor started for BTC, ETH")
+
+    # BTC/ETH funding dispersion monitors (Hyperliquid + Binance)
+    _src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
+    import sys as _sys_fm
+    if _src_path not in _sys_fm.path:
+        _sys_fm.path.insert(0, _src_path)
+    from strategies.original.signals.funding_dispersion import FundingDispersionMonitor as _FDM
+    _funding_monitor_btc = _FDM("BTC")
+    _funding_monitor_eth = _FDM("ETH")
+
+    async def _funding_refresh_loop() -> None:
+        while True:
+            try:
+                await _funding_monitor_btc.refresh()
+                await _funding_monitor_eth.refresh()
+            except Exception as _fe:
+                log.warning(f"funding refresh (BTC/ETH) error: {_fe}")
+            await asyncio.sleep(60)
+
+    asyncio.create_task(_funding_refresh_loop())
+    log.info("BTC/ETH funding monitors started")
 
     # Wait for the first price from any enabled asset (timeout after 120s so Railway doesn't hang)
     _first_asset = _enabled[0] if _enabled else "ETH"
