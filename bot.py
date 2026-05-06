@@ -1852,8 +1852,8 @@ def strategy_brain_s2(
     }
 
 
-def _get_or_make_strategy_s1(asset: str, config):
-    """Lazily construct original per-asset strategy singleton. Returns None on failure."""
+def _get_or_make_strategy_s1(asset: str, config, market_duration_min: float = 15.0):
+    """Lazily construct S1 FifteenMinStrategy singleton (same logic as S2, separate cache)."""
     global _s1_config_mtime, _s1_window
     import sys as _sys
     _src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
@@ -1879,21 +1879,11 @@ def _get_or_make_strategy_s1(asset: str, config):
             _s1_window = _cur_win
             log.info("Trading window changed to %s — S1 strategy singletons cleared", _cur_win)
     except Exception:
-        pass
+        _cur_win = _s1_window or "normal"
 
     cache_key = asset
     if cache_key in _S1_SINGLETONS:
         return _S1_SINGLETONS[cache_key]
-
-    _ASSET_CLASS_MAP = {
-        "BTC":  ("strategies.original.btc_strategy",  "BTCStrategy"),
-        "ETH":  ("strategies.original.eth_strategy",  "ETHStrategy"),
-        "SOL":  ("strategies.original.sol_strategy",  "SOLStrategy"),
-        "XRP":  ("strategies.original.xrp_strategy",  "XRPStrategy"),
-        "DOGE": ("strategies.original.doge_strategy", "DOGEStrategy"),
-    }
-    if asset not in _ASSET_CLASS_MAP:
-        return None
 
     try:
         from strategies.skip_layer import SkipConfig
@@ -1919,17 +1909,19 @@ def _get_or_make_strategy_s1(asset: str, config):
         )
         overrides = config.get("asset_overrides", {}).get(asset, {})
         _ev_default = config.get("min_ev_base_15m", config.get("min_ev_base", 8))
-        min_ev = (float(overrides.get("min_ev_base", _ev_default)) + float(_wp["min_ev_delta"])) / 100.0
+        _ev_base = float(overrides.get("min_ev_base", _ev_default)) + float(_wp["min_ev_delta"])
+        min_ev = _ev_base / 100.0
         stake = float(config.get("trade_amount_dollars", 25))
 
-        module_path, class_name = _ASSET_CLASS_MAP[asset]
-        import importlib
-        mod = importlib.import_module(module_path)
-        cls = getattr(mod, class_name)
-        strat = cls(skip_config=skip_cfg, min_ev=min_ev, stake_dollars=stake)
+        from strategies.fifteen_min_strategy import FifteenMinStrategy
+        strat = FifteenMinStrategy(
+            asset=asset,
+            skip_config=skip_cfg,
+            min_ev=min_ev,
+            stake_dollars=stake,
+        )
         _S1_SINGLETONS[cache_key] = strat
-        log.info("S1 Strategy initialized: %s (window=%s, max_entry=%.0fc, min_ev=%.2f%%)",
-                 cache_key, _tw, _max_price, min_ev * 100)
+        log.info("S1 Strategy initialized: %s (15m, window=%s, stake=$%s)", asset, _tw, stake)
         return strat
     except Exception as exc:
         log.warning(f"S1 {asset} strategy init failed: {exc}")
@@ -1941,9 +1933,11 @@ def strategy_brain_s1(
     elapsed_seconds, secs_left, ticker,
     asset="BTC",
 ):
-    """Dispatch to original per-asset strategy. Returns brain dict tagged strategy1."""
+    """Dispatch to FifteenMinStrategy for S1. Returns brain dict tagged strategy1."""
     config = read_config()
-    strat = _get_or_make_strategy_s1(asset, config)
+
+    market_duration_min = (elapsed_seconds + secs_left) / 60.0
+    strat = _get_or_make_strategy_s1(asset, config, market_duration_min=market_duration_min)
     if strat is None:
         _above = btc_price > strike if strike > 0 else False
         return {
@@ -1965,7 +1959,6 @@ def strategy_brain_s1(
         else:
             prices_deque = asset_manager._prices.get(asset)
             if not prices_deque:
-                _above = btc_price > strike if strike > 0 else False
                 return {
                     "action": "skip", "side": "no", "confidence": 50,
                     "reasoning": f"s1_no_price_feed:{asset}",
@@ -1994,7 +1987,7 @@ def strategy_brain_s1(
             btc_prices_deque=btc_prices,
         )
     except Exception as exc:
-        log.warning(f"S1 {asset} feature_builder failed: {exc}")
+        log.warning(f"S1 {asset} feature_builder failed — skipping: {exc}")
         _above = btc_price > strike if strike > 0 else False
         return {
             "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
@@ -2010,7 +2003,7 @@ def strategy_brain_s1(
     try:
         decision = strat.decide(features)
     except Exception as exc:
-        log.warning(f"S1 {asset} strat.decide() failed: {exc}")
+        log.warning(f"S1 {asset} strat.decide() failed — skipping: {exc}")
         _above = current_price > strike if strike > 0 else False
         return {
             "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
@@ -2026,7 +2019,7 @@ def strategy_brain_s1(
     above = current_price > strike
     naive = "yes" if above else "no"
     abs_pct = abs(current_price - strike) / strike if strike > 0 else 0.0
-    true_p = decision.p_model if decision.side == "yes" else (1.0 - decision.p_model)
+    true_p = decision.p_model
     return {
         "action": decision.action,
         "side": decision.side if decision.side else naive,
@@ -2035,9 +2028,15 @@ def strategy_brain_s1(
         "key_signals": [f"{k}: {v}" for k, v in decision.contributing_signals.items()],
         "signals": dict(decision.contributing_signals),
         "win_prob": float(true_p),
-        "mom_label": decision.contributing_signals.get("regime", "neutral"),
-        "mom_pct": float(decision.contributing_signals.get("regime_adj", 0.0)),
-        "vel_signal": decision.contributing_signals.get("velocity", "neutral"),
+        "mom_label": decision.contributing_signals.get(
+            "regime", decision.contributing_signals.get("mom_label", "neutral")
+        ),
+        "mom_pct": float(decision.contributing_signals.get(
+            "regime_adj", decision.contributing_signals.get("mom_adj", 0.0)
+        )),
+        "vel_signal": decision.contributing_signals.get(
+            "velocity", decision.contributing_signals.get("vel_signal", "neutral")
+        ),
         "raw_p_yes": decision.contributing_signals.get("raw_p_yes"),
         "mins_left": secs_left / 60.0,
         "abs_pct": abs_pct,
