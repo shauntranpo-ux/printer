@@ -1,4 +1,4 @@
-"""bot_notify.py — Telegram notifications and phase/context helpers."""
+﻿"""bot_notify.py â€” Telegram notifications and phase/context helpers."""
 import asyncio
 import logging
 
@@ -51,32 +51,27 @@ async def _maybe_fill_verification_notify(
       - Posted:     the price actually sent to Kalshi (may differ via retry drift).
       - Filled:     the price Kalshi returned on fill.
 
-    Warns with ⚠️ when abs(filled - target) > 3¢. Silently skips when fill_yes_price is None.
+    Warns with âš ï¸ when abs(filled - target) > 3Â¢. Silently skips when fill_yes_price is None.
     """
     if fill_yes_price is None:
         return
-    try:
-        import bot as _bot
-        _elapsed_sec = _bot.seconds_elapsed(market) if market else 0.0
-    except Exception:
-        _elapsed_sec = 0.0
     _target = entry_price_cents  # may be None for BTC (strategy doesn't emit it)
     _ask = market_ask_at_post_c
     _posted = price_this_attempt
     _filled = fill_yes_price
-    _target_str = f"{int(round(_target))}¢" if _target is not None else "—"
-    _ask_str    = f"{int(round(_ask))}¢"    if _ask    is not None else "—"
-    _posted_str = f"{int(round(_posted))}¢" if _posted is not None else "—"
-    _filled_str = f"{int(round(_filled))}¢"
+    _target_str = f"{int(round(_target))}Â¢" if _target is not None else "â€”"
+    _ask_str    = f"{int(round(_ask))}Â¢"    if _ask    is not None else "â€”"
+    _posted_str = f"{int(round(_posted))}Â¢" if _posted is not None else "â€”"
+    _filled_str = f"{int(round(_filled))}Â¢"
     if _target is not None:
         _slip_target = int(round(_filled - _target))
-        _slip_target_str = f"{_slip_target:+d}¢ vs target"
-        _warn = "⚠️ " if abs(_slip_target) > 3 else "🎯 "
+        _slip_target_str = f"{_slip_target:+d}Â¢ vs target"
+        _warn = "âš ï¸ " if abs(_slip_target) > 3 else "ðŸŽ¯ "
     else:
         _slip_target_str = "n/a vs target"
-        _warn = "🎯 "
+        _warn = "ðŸŽ¯ "
     _slip_market_str = (
-        f"{int(round(_filled - _ask)):+d}¢ vs market" if _ask is not None else "n/a vs market"
+        f"{int(round(_filled - _ask)):+d}Â¢ vs market" if _ask is not None else "n/a vs market"
     )
     _ctx = _notify_ctx(asset, ticker)
     await send_telegram(
@@ -92,11 +87,11 @@ async def _maybe_fill_verification_notify(
 async def send_telegram(text: str) -> None:
     """Send a Telegram notification with up to 3 retries on failure."""
     if not bot_state.TELEGRAM_BOT_TOKEN or not bot_state.TELEGRAM_CHAT_ID:
-        return  # silently skip — Telegram is optional
+        return  # silently skip â€” Telegram is optional
     url = f"https://api.telegram.org/bot{bot_state.TELEGRAM_BOT_TOKEN}/sendMessage"
     for attempt in range(1, 4):
         try:
-            log.info(f"Telegram: sending (attempt {attempt}/3)…")
+            log.info(f"Telegram: sending (attempt {attempt}/3)â€¦")
             async with aiohttp.ClientSession() as tg:
                 async with tg.post(
                     url,
@@ -108,12 +103,13 @@ async def send_telegram(text: str) -> None:
                         log.info("Telegram: sent OK")
                         return
                     elif resp.status == 429:
-                        log.warning(f"Telegram: rate-limited (429) — attempt {attempt}/3, retrying…")
+                        log.warning(f"Telegram: rate-limited (429) â€” attempt {attempt}/3, retryingâ€¦")
                     else:
-                        log.warning(f"Telegram: HTTP {resp.status} — {body}")
+                        log.warning(f"Telegram: HTTP {resp.status} â€” {body}")
                         return  # non-retryable HTTP error
         except Exception as exc:
-            log.warning(f"Telegram: error on attempt {attempt}/3 — {exc}")
+            log.warning(f"Telegram: error on attempt {attempt}/3 â€” {exc}")
         if attempt < 3:
             await asyncio.sleep(2)
-    log.error("Telegram: failed after 3 attempts — notification dropped")
+    log.error("Telegram: failed after 3 attempts â€” notification dropped")
+
