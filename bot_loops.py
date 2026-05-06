@@ -1,4 +1,6 @@
 """bot_loops.py — Phase handlers, asset loop, main trading loop."""
+__all__ = ["handle_ready_phase", "handle_locked_phase", "main_loop"]
+
 import asyncio
 import json
 import logging

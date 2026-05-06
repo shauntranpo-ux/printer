@@ -4,6 +4,31 @@ bot_state.py — Shared mutable globals and constants for the kalshi bot.
 Every other module does `import bot_state` and reads/writes attributes here.
 No classes, no dataclasses — plain module attributes for zero-overhead access.
 """
+__all__ = [
+    # URL constants
+    "KALSHI_LIVE_BASE_URL", "KALSHI_DEMO_BASE_URL", "KALSHI_BASE_URL", "KALSHI_PATH_PREFIX",
+    "API_TIMEOUT", "MARKET_CACHE_TTL", "WATCH_PHASE_SECONDS", "KALSHI_FEE",
+    # Env-sourced secrets / paths
+    "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
+    "_CONFIG_FILE", "_DB_FILE", "_STATE_FILE", "_DATA_DIR", "_PRICE_VAL_CSV",
+    # Runtime state
+    "btc_prices",
+    "_obi_monitor", "_funding_monitor_btc", "_funding_monitor_eth",
+    "private_key", "api_key",
+    "current_market", "current_phase", "current_position",
+    "_order_attempted_tickers", "_asset_states", "_s1_pending_trades",
+    "_market_cache", "_market_cache_ts", "_all_markets_cache", "_all_markets_cache_ts",
+    "limit_triggered", "limit_reason", "pre_limit_mode", "daily_reset_date",
+    "_price_val_count", "_price_val_gap_n", "_price_val_sim_sum",
+    "_price_val_real_sum", "_price_val_gap_sum",
+    "last_confidence_score", "last_confidence_breakdown", "last_action", "last_skip_reason",
+    "_asset_eval", "_contract_price_history",
+    "_CAL_DEFAULTS", "_brain_cal_s1", "_brain_cal_s2",
+    "_last_good_config", "_consecutive_losses", "_consecutive_price_skips",
+    "_S2_SINGLETONS", "_config_mtime", "_current_window",
+    "_S1_VERSION", "_S2_VERSION", "_S1_ASSET_VOL_RATIO",
+]
+
 import os
 from collections import deque
 
