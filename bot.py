@@ -1853,7 +1853,7 @@ def _s1_empirical_win_prob(asset: str, abs_pct: float, mins_left: float) -> floa
     return float(0.50 + (base_prob - 0.50) * prob_scale)
 
 
-def _s1_calculate_momentum(prices, seconds: int = 180) -> tuple:
+def _s1_calculate_momentum(prices, seconds: int = 180, threshold: float = 0.0005) -> tuple:
     """Return (pct_change, label) over the last `seconds` of price data."""
     if not prices or len(prices) < 2:
         return 0.0, "neutral"
@@ -1865,7 +1865,7 @@ def _s1_calculate_momentum(prices, seconds: int = 180) -> tuple:
     if ref <= 0:
         return 0.0, "neutral"
     pct = (current - ref) / ref
-    label = "bullish" if pct > 0.0005 else ("bearish" if pct < -0.0005 else "neutral")
+    label = "bullish" if pct > threshold else ("bearish" if pct < -threshold else "neutral")
     return pct, label
 
 
@@ -1962,8 +1962,12 @@ def strategy_brain_s1(
     # win probability (BV3)
     win_prob = _s1_empirical_win_prob(asset, abs_pct, mins_left)
 
-    # momentum adjustment
-    mom_pct, mom_label = _s1_calculate_momentum(prices_list)
+    # momentum adjustment — vol-normalize threshold so signal only fires
+    # on moves that exceed 1.5x the per-period realized noise floor.
+    # _rv is per-minute vol; scale to 3-min window then threshold.
+    _rv_3min = (_rv or 0.001) * math.sqrt(3)
+    _mom_threshold = max(0.0005, 1.5 * _rv_3min)
+    mom_pct, mom_label = _s1_calculate_momentum(prices_list, threshold=_mom_threshold)
     if mom_label == "bullish":
         mom_adj = +0.05 if above else -0.05
     elif mom_label == "bearish":
@@ -1979,11 +1983,13 @@ def strategy_brain_s1(
         vel_adj = -vel_adj
     win_prob = max(0.05, min(0.98, win_prob + vel_adj))
 
-    # market anchor: blend toward market when model diverges >25%
+    # market anchor: sanity-check against AMM when model diverges strongly.
+    # Trigger raised 25%->35% and pull reduced 40%->15% so real edge is
+    # preserved; anchor only corrects extreme overconfidence.
     mkt_implied = _entry_price / 100.0
     diff = win_prob - mkt_implied
-    if abs(diff) > 0.25:
-        win_prob = win_prob - 0.4 * diff
+    if abs(diff) > 0.35:
+        win_prob = win_prob - 0.15 * diff
 
     # win_prob = P(continuation side wins): YES when above, NO when not above.
     # EV for each side for logging; ev is the actionable continuation EV.

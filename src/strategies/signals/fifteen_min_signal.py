@@ -5,13 +5,18 @@ Mean-reversion thesis rejected by live data (14.5% win rate on S2).
 V2–V5 now vote WITH momentum (continuation), not against it.
 
 Direction voters (3-of-5 required):
-  V1  BS p_yes > 0.5        (BTC only; ETH/SOL/XRP IC near zero)
-  V2  MTF momentum > +T     → YES  (upward momentum, expect continuation)
-  V3  RSI dev > +T          → YES  (RSI above midline, bullish momentum)
-  V4  Bollinger z > +T      → YES  (ETH/SOL/XRP only; above band, bullish)
-  V5  MTF magnitude > +T/2  → YES  (soft confirmation of V2)
+  V1  Kalshi contract momentum   (ALL assets; independent of spot price)
+  V2  MTF momentum > +T         → YES  (upward momentum, expect continuation)
+  V3  RSI dev > +T              → YES  (RSI above midline, bullish momentum)
+  V4  Bollinger z > +T          → YES  (ETH/SOL/XRP only; above band, bullish)
+  V5  MTF magnitude > +T/2      → YES  (soft confirmation of V2)
 
 Returns (side, raw_p_yes, vote_count) or None if fewer than 3 voters agree.
+
+V1 change: Black-Scholes p_yes was removed because it is an algebraic
+transformation of the Kalshi AMM price — adding no independent information.
+Replaced with Kalshi contract price momentum over the last 5 minutes, which
+reflects Kalshi trader sentiment independently of spot price direction.
 """
 from __future__ import annotations
 
@@ -44,13 +49,13 @@ _MTF_DEFAULT  = 0.0005
 _RSI_DEFAULT  = 8.0
 _BOLL_DEFAULT = 0.50
 
-# V1 (BS p_yes) is only informative for BTC — real-IC sweep shows IC near zero
-# or negative for ETH/SOL/XRP, so it abstains rather than adding noise.
-_V1_ASSETS: frozenset[str] = frozenset({"BTC"})
-
 # V4 Bollinger abstains for BTC — IC=0.005, t=0.33 (FAIL) across both ternary
 # and continuous evaluations. Passes for ETH/SOL/XRP (t=3.5–3.9).
 _V4_SKIP_ASSETS: frozenset[str] = frozenset({"BTC"})
+
+# Kalshi contract momentum lookback and threshold
+_V1_LOOKBACK_SECONDS: int = 300        # 5-minute window
+_V1_DELTA_THRESHOLD: float = 0.03     # 3% change in yes_ask required to vote
 
 
 # ── feature helpers ────────────────────────────────────────────────────────────
@@ -95,6 +100,35 @@ def _multi_tf_mom(prices: list[float]) -> Optional[float]:
     return (r5 + r15 + r30) / 3.0
 
 
+def _kalshi_contract_momentum(history, lookback_seconds: int = _V1_LOOKBACK_SECONDS) -> int:
+    """
+    V1: vote based on Kalshi yes_ask price trend over the last 5 minutes.
+
+    Measures whether Kalshi traders are collectively pushing the contract
+    toward YES (+1) or NO (-1). Independent of spot price direction.
+
+    Returns +1, -1, or 0 (abstain if data insufficient or trend unclear).
+    """
+    if not history or len(history) < 6:
+        return 0
+    now = history[-1][0]
+    cutoff = now - lookback_seconds
+    recent = [(ts, p) for ts, p in history if ts >= cutoff]
+    if len(recent) < 4:
+        return 0
+    mid = len(recent) // 2
+    early_avg = sum(p for _, p in recent[:mid]) / mid
+    late_avg  = sum(p for _, p in recent[mid:]) / (len(recent) - mid)
+    if early_avg <= 0:
+        return 0
+    delta_pct = (late_avg - early_avg) / early_avg
+    if delta_pct >  _V1_DELTA_THRESHOLD:
+        return +1   # yes_ask rising → YES gaining confidence → vote YES
+    if delta_pct < -_V1_DELTA_THRESHOLD:
+        return -1   # yes_ask falling → NO gaining confidence → vote NO
+    return 0
+
+
 # ── public API ─────────────────────────────────────────────────────────────────
 
 def compute_15m_signal(
@@ -104,22 +138,27 @@ def compute_15m_signal(
     Returns (side, raw_p_yes, vote_count) or None if 3-of-5 vote cannot be reached.
 
     vote_count is the number of voters agreeing with the returned side (3–5).
-    raw_p_yes is the un-calibrated BS probability; caller calibrates before EV gate.
+    raw_p_yes is the BS probability used only as a probability record for
+    calibration logging — the trading decision is purely vote-based.
     """
+    if not (features.realized_vol_1min or 0.0):
+        return None  # no vol data yet — insufficient market data
+
     prices_60m = list(features.prices_60m)
     if len(prices_60m) < 32:
         return None
 
     prices = [p for _, p in prices_60m]
 
+    # BS probability kept for raw_p_yes logging only — not used for voting.
     bs_p = compute_bs_p_yes(
         features.current_price,
         features.strike,
         features.realized_vol_1min or 0.0,
         features.seconds_left,
     )
-    if bs_p is None:
-        return None
+    # Don't abort if BS fails — V1 no longer depends on it.
+    raw_p_yes = bs_p if bs_p is not None else 0.5
 
     asset  = features.asset.upper()
     mtf_T  = _MTF_THRESHOLDS.get(asset, _MTF_DEFAULT)
@@ -131,10 +170,11 @@ def compute_15m_signal(
     rsi_dev = (float(rsi_val) - 50.0) if rsi_val is not None else None
     boll    = _boll_zscore(prices)
 
-    # V1: only predictive for BTC (ETH/SOL/XRP IC near zero / negative per real-IC sweep)
-    v1 = (+1 if bs_p > 0.5 else -1) if asset in _V1_ASSETS else 0
+    # V1: Kalshi contract momentum — all assets, genuinely independent of spot.
+    # Measures how Kalshi traders are moving the contract price over last 5 min.
+    v1 = _kalshi_contract_momentum(list(features.kalshi_price_history))
 
-    # V2–V5: momentum-following — vote WITH trend (mean-reversion failed live; switched to continuation)
+    # V2–V5: spot price momentum-following signals
     v2 = (+1 if mtf is not None and float(mtf) >  mtf_T else
           (-1 if mtf is not None and float(mtf) < -mtf_T else 0))
 
@@ -159,4 +199,4 @@ def compute_15m_signal(
         return None
 
     vote_count = yes_votes if side == "yes" else no_votes
-    return (side, bs_p, vote_count)
+    return (side, raw_p_yes, vote_count)
