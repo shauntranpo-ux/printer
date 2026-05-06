@@ -1609,12 +1609,10 @@ def _session_ev_adjustment() -> float:
 
 
 _S2_SINGLETONS: dict = {}  # keyed by asset name — current D3 hybrid
-_S1_SINGLETONS: dict = {}  # keyed by asset name — original per-asset strategies
 _s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
 _config_mtime: float = 0.0
 _current_window: str = ""  # tracks active time window; cleared on boundary crossing
-_s1_config_mtime: float = 0.0
-_s1_window: str = ""
+
 
 
 def _strategy_name_for(asset, duration_min=15.0):
@@ -1900,19 +1898,18 @@ def _s1_calculate_momentum(prices, seconds: int = 180) -> tuple:
 
 def _s1_realized_vol(prices, window_minutes: int = 10) -> float:
     """Realized vol: std of recent log returns over window_minutes."""
-    import math as _m
     if not prices or len(prices) < 2:
         return 0.001
     now = prices[-1][0]
     recent = [p for ts, p in prices if ts >= now - window_minutes * 60]
     if len(recent) < 2:
         return 0.001
-    rets = [_m.log(recent[i] / recent[i - 1]) for i in range(1, len(recent)) if recent[i - 1] > 0]
+    rets = [math.log(recent[i] / recent[i - 1]) for i in range(1, len(recent)) if recent[i - 1] > 0]
     if not rets:
         return 0.001
     mean = sum(rets) / len(rets)
     var = sum((r - mean) ** 2 for r in rets) / len(rets)
-    return _m.sqrt(var) if var > 0 else 0.001
+    return math.sqrt(var) if var > 0 else 0.001
 
 
 def _s1_contract_velocity(ticker: str) -> str:
@@ -2005,6 +2002,8 @@ def strategy_brain_s1(
     # velocity adjustment
     vel_signal = _s1_contract_velocity(ticker)
     vel_adj = +0.01 if vel_signal == "favorable" else (-0.01 if vel_signal == "unfavorable" else 0.0)
+    if not above:
+        vel_adj = -vel_adj
     win_prob = max(0.05, min(0.98, win_prob + vel_adj))
 
     # market anchor: blend toward market when model diverges >25%
@@ -2038,7 +2037,7 @@ def strategy_brain_s1(
                         "mom_label": mom_label, "mom_pct": mom_pct, "vel_signal": vel_signal,
                         "vol_ratio": _vol_ratio, "_rv": _rv},
             "win_prob": float(win_prob), "mom_label": mom_label, "mom_pct": mom_pct,
-            "vel_signal": vel_signal, "raw_p_yes": float(win_prob), "mins_left": mins_left,
+            "vel_signal": vel_signal, "raw_p_yes": float(win_prob) if above else float(1.0 - win_prob), "mins_left": mins_left,
             "abs_pct": abs_pct, "above": above, "_rv": _rv, "_vol_ratio": _vol_ratio,
             "price_filter_skip": False, "strategy_variant": "strategy1",
         }
@@ -2054,7 +2053,7 @@ def strategy_brain_s1(
                     "vol_ratio": _vol_ratio, "_rv": _rv, "abs_pct": abs_pct,
                     "mins_left": mins_left},
         "win_prob": float(win_prob), "mom_label": mom_label, "mom_pct": mom_pct,
-        "vel_signal": vel_signal, "raw_p_yes": float(win_prob), "mins_left": mins_left,
+        "vel_signal": vel_signal, "raw_p_yes": float(win_prob) if above else float(1.0 - win_prob), "mins_left": mins_left,
         "abs_pct": abs_pct, "above": above, "_rv": _rv, "_vol_ratio": _vol_ratio,
         "price_filter_skip": False, "strategy_variant": "strategy1",
     }
