@@ -1,6 +1,6 @@
 """Tests for ticker parsing and notification-context helpers."""
 from bot_risk import _parse_strike_from_ticker
-from bot_notify import _notify_ctx, _phase_for_eth
+from bot_infra import _notify_ctx, _phase_for_eth
 
 
 def test_parse_strike_btc_ticker():

@@ -1,4 +1,6 @@
 """bot_loops.py — Phase handlers, asset loop, main trading loop."""
+__all__ = ["handle_ready_phase", "handle_locked_phase", "main_loop"]
+
 import asyncio
 import json
 import logging
@@ -11,24 +13,21 @@ import aiohttp
 import bot_state
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
-from bot_config import read_config, get_asset_config
-from bot_db import db_write_trade, db_update_trade
-from bot_notify import send_telegram, _notify_ctx, _phase_for_eth
-from bot_kalshi import (
+from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, _notify_ctx, _phase_for_eth
+from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
     kalshi_headers, _simulated_amm_midpoint, _log_price_validation,
+    calculate_contracts, implied_prob, place_order,
 )
-from bot_orders import calculate_contracts, implied_prob, place_order
 from bot_strategy import (
     strategy_brain_s1, strategy_brain_s2,
     track_contract_price, _session_ev_adjustment, _strategy_name_for,
 )
 from bot_risk import (
-    check_daily_limits, midnight_reset,
-    write_state_file, _log_entry,
+    check_daily_limits, midnight_reset, write_state_file, _log_entry,
+    _execute_s1_trade, _settle_s1_trade, _try_settle_orphaned_s1,
 )
-from bot_trade import _execute_s1_trade, _settle_s1_trade, _try_settle_orphaned_s1
 
 log = logging.getLogger("bot")
 

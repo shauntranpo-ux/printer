@@ -1,17 +1,158 @@
-﻿"""bot_db.py â€” SQLite trade log: init, write, update, query."""
+"""bot_infra.py — Infrastructure bundle: config, database, and Telegram notifications.
+
+Public interface (see __all__):
+  Config:  atomic_write_json, read_config, write_config, get_asset_config, _init_config
+  DB:      init_db, test_db_write, db_write_trade, db_update_trade,
+           db_write_market_log, db_get_today_pnl
+  Notify:  send_telegram, _maybe_fill_verification_notify, _notify_ctx, _phase_for_eth
+"""
+import asyncio
+import json
 import logging
 import os
 import sqlite3
 import sys
+import tempfile
 import time
 from datetime import datetime, timezone
 
+import aiohttp
 import aiosqlite
 
 import bot_state
 
 log = logging.getLogger("bot")
 
+__all__ = [
+    # Config
+    "atomic_write_json", "read_config", "write_config", "get_asset_config", "_init_config",
+    # DB
+    "init_db", "test_db_write", "db_write_trade", "db_update_trade",
+    "db_write_market_log", "db_get_today_pnl",
+    # Notify
+    "send_telegram", "_maybe_fill_verification_notify", "_notify_ctx", "_phase_for_eth",
+]
+
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+def atomic_write_json(data: dict, path: str) -> None:
+    """
+    Write JSON atomically: serialize to a sibling temp file, fsync, then
+    os.replace() which is atomic on POSIX and near-atomic on Windows (NTFS
+    guarantees no partial-read exposure because replace is a rename).
+    Cleans up the temp file on any failure so no orphaned .tmp files linger.
+    """
+    dir_ = os.path.dirname(os.path.abspath(path)) or "."
+    fd, tmp_path = tempfile.mkstemp(dir=dir_, suffix=".json.tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(data, fh, indent=2)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_path, path)
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
+
+
+def read_config() -> dict:
+    """Read and return the contents of the config file.
+    Falls back to bot_state._last_good_config if the file is transiently corrupt
+    (e.g. a partial write in progress). Raises only on startup failure
+    when no cached config is available yet.
+    """
+    try:
+        with open(bot_state._CONFIG_FILE, "r") as fh:
+            cfg = json.load(fh)
+        cfg.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
+        bot_state._last_good_config = cfg
+        return cfg
+    except json.JSONDecodeError as exc:
+        log.warning(f"Config JSON decode error: {exc}. Using last known good config.")
+        if bot_state._last_good_config is not None:
+            return bot_state._last_good_config
+        raise
+    except Exception as exc:
+        log.warning(f"Config read error: {exc}. Using last known good config.")
+        if bot_state._last_good_config is not None:
+            return bot_state._last_good_config
+        raise
+
+
+def write_config(data: dict) -> None:
+    """Write a dict to the config file atomically (temp+replace)."""
+    atomic_write_json(data, bot_state._CONFIG_FILE)
+
+
+def get_asset_config(config: dict, asset: str, field: str, default=None):
+    """Get config value — asset override if present, else global value, else default."""
+    overrides = config.get("asset_overrides", {}).get(asset, {})
+    if field in overrides:
+        return overrides[field]
+    return config.get(field, default)
+
+
+def _init_config() -> None:
+    """
+    Create config.json on startup if missing, and apply Railway env var overrides.
+
+    Set BOT_MODE=live and BOT_ENABLED=true in Railway environment variables
+    so live mode survives every redeploy without manual editing.
+    Daily loss limits still work — they set bot_state.limit_triggered in memory which
+    is checked independently of the mode flag.
+    """
+    defaults = {
+        "bot_enabled": False,
+        "trade_amount_dollars": 25,
+        "mode": "paper",
+        "confidence_threshold": 0,
+        "daily_loss_limit_dollars": 50,
+        "daily_profit_target_dollars": 200,
+        "max_consecutive_losses": 5,
+        "enable_reversal_signal": False,
+        "min_ev_base": 8,
+        "kalshi_fee_per_contract_cents": 7,
+        "preflight_override": False,
+    }
+
+    if os.path.exists(bot_state._CONFIG_FILE):
+        try:
+            with open(bot_state._CONFIG_FILE) as fh:
+                cfg = json.load(fh)
+        except Exception:
+            cfg = defaults.copy()
+    else:
+        cfg = defaults.copy()
+
+    _data_dir = os.path.dirname(os.path.abspath(bot_state._DB_FILE))
+    _be_state = os.path.join(_data_dir, "bot_enabled.state")
+    if os.path.exists(_be_state):
+        try:
+            cfg["bot_enabled"] = open(_be_state).read().strip() == "1"
+        except Exception:
+            pass
+
+    if "BOT_MODE" in os.environ:
+        cfg["mode"] = os.environ["BOT_MODE"].strip().lower()
+    if "BOT_ENABLED" in os.environ:
+        cfg["bot_enabled"] = os.environ["BOT_ENABLED"].strip().lower() in ("1", "true", "yes")
+
+    for k, v in defaults.items():
+        cfg.setdefault(k, v)
+
+    write_config(cfg)
+    log.info(f"Config ready: mode={cfg['mode']} enabled={cfg['bot_enabled']}")
+
+
+# ---------------------------------------------------------------------------
+# Database
+# ---------------------------------------------------------------------------
 
 def init_db() -> None:
     """Create the database and all required tables if they do not exist."""
@@ -107,23 +248,21 @@ def init_db() -> None:
             )
         """)
 
-        # Migrate existing DB â€” add new columns if not present
         for col, typedef in (
             ("order_id",          "TEXT"),
-            ("asset",             "TEXT DEFAULT 'BTC'"),  # multi-asset support
-            ("raw_p_yes",         "REAL"),                # pre-calibration P(YES wins)
-            ("entry_signals",    "TEXT"),                # JSON snapshot of entry signals
-            ("calibrated_p_yes",  "REAL"),               # post-calibration p_yes used in EV gate
-            ("signal_name",       "TEXT"),               # which signal fired (d3_hybrid / supertrend)
-            ("strategy_variant",  "TEXT DEFAULT 'strategy2'"),  # strategy1=original, strategy2=D3 hybrid
-            ("strategy_version",   "TEXT"),                       # bumped when logic changes
+            ("asset",             "TEXT DEFAULT 'BTC'"),
+            ("raw_p_yes",         "REAL"),
+            ("entry_signals",    "TEXT"),
+            ("calibrated_p_yes",  "REAL"),
+            ("signal_name",       "TEXT"),
+            ("strategy_variant",  "TEXT DEFAULT 'strategy2'"),
+            ("strategy_version",   "TEXT"),
         ):
             try:
                 c.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")
             except Exception:
-                pass  # column already exists
+                pass
 
-        # Drop dead columns (SQLite 3.35+)
         existing_cols = {row[1] for row in c.execute("PRAGMA table_info(trades)")}
         for dead_col in ("claude_confidence", "stop_loss_price_cents", "claude_signals"):
             if dead_col in existing_cols:
@@ -142,11 +281,7 @@ def init_db() -> None:
 
 
 def test_db_write() -> None:
-    """
-    Smoke-test the DB pipeline at startup: write a sentinel row, read it back,
-    delete it.  Halts the bot (exit code 2) on any failure so runner.py won't
-    silently loop on a broken DB.
-    """
+    """Smoke-test the DB pipeline: write a sentinel row, read it back, delete it."""
     try:
         conn = sqlite3.connect(bot_state._DB_FILE)
         conn.execute("PRAGMA journal_mode=WAL")
@@ -168,7 +303,7 @@ def test_db_write() -> None:
     except Exception as exc:
         log.error(f"DB self-test FAILED: {exc}")
         log.error(f"DB path: {os.path.abspath(bot_state._DB_FILE)}")
-        log.error("Cannot write trades â€” halting to prevent silent data loss.")
+        log.error("Cannot write trades — halting to prevent silent data loss.")
         sys.exit(2)
 
 
@@ -263,3 +398,99 @@ async def db_get_today_pnl(mode: str) -> float:
         log.error(f"DB get_today_pnl error: {exc}")
         return 0.0
 
+
+# ---------------------------------------------------------------------------
+# Notifications
+# ---------------------------------------------------------------------------
+
+def _phase_for_eth(asset, elapsed_seconds):
+    """Return ETH hourly window-phase label ('Mid'/'Dwell'/'Late') or None."""
+    if asset != "ETH":
+        return None
+    m = elapsed_seconds / 60.0
+    if 9 <= m <= 11:
+        return "Mid"
+    if 30 <= m <= 42:
+        return "Dwell"
+    if m >= 45:
+        return "Late"
+    return None
+
+
+def _notify_ctx(asset, ticker, duration_min=15.0, phase=None):
+    """Format a context prefix for Telegram notifications."""
+    parts = [asset, "15m", ticker]
+    return f"[{' | '.join(parts)}]"
+
+
+async def _maybe_fill_verification_notify(
+    asset: str,
+    ticker: str,
+    side: str,
+    market: dict | None,
+    secs_left: float,
+    entry_price_cents: int | None,
+    price_this_attempt: int | None,
+    market_ask_at_post_c: int | None,
+    fill_yes_price: int | None,
+) -> None:
+    """Send a fill-verification Telegram message to spot price-selection bugs in flight."""
+    if fill_yes_price is None:
+        return
+    _target = entry_price_cents
+    _ask = market_ask_at_post_c
+    _posted = price_this_attempt
+    _filled = fill_yes_price
+    _target_str = f"{int(round(_target))}c" if _target is not None else "-"
+    _ask_str    = f"{int(round(_ask))}c"    if _ask    is not None else "-"
+    _posted_str = f"{int(round(_posted))}c" if _posted is not None else "-"
+    _filled_str = f"{int(round(_filled))}c"
+    if _target is not None:
+        _slip_target = int(round(_filled - _target))
+        _slip_target_str = f"{_slip_target:+d}c vs target"
+        _warn = "WARN " if abs(_slip_target) > 3 else "OK "
+    else:
+        _slip_target_str = "n/a vs target"
+        _warn = "OK "
+    _slip_market_str = (
+        f"{int(round(_filled - _ask)):+d}c vs market" if _ask is not None else "n/a vs market"
+    )
+    _ctx = _notify_ctx(asset, ticker)
+    await send_telegram(
+        f"{_warn}<b>{_ctx} FILL VERIFICATION</b>\n"
+        f"Target:     <b>{_target_str}</b>\n"
+        f"Market ask: {_ask_str}\n"
+        f"Posted:     {_posted_str}\n"
+        f"Filled:     <b>{_filled_str}</b>\n"
+        f"Slippage:   {_slip_target_str}  |  {_slip_market_str}"
+    )
+
+
+async def send_telegram(text: str) -> None:
+    """Send a Telegram notification with up to 3 retries on failure."""
+    if not bot_state.TELEGRAM_BOT_TOKEN or not bot_state.TELEGRAM_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{bot_state.TELEGRAM_BOT_TOKEN}/sendMessage"
+    for attempt in range(1, 4):
+        try:
+            log.info(f"Telegram: sending (attempt {attempt}/3)...")
+            async with aiohttp.ClientSession() as tg:
+                async with tg.post(
+                    url,
+                    json={"chat_id": bot_state.TELEGRAM_CHAT_ID, "text": text, "parse_mode": "HTML"},
+                    timeout=aiohttp.ClientTimeout(total=8),
+                ) as resp:
+                    body = await resp.text()
+                    if resp.status == 200:
+                        log.info("Telegram: sent OK")
+                        return
+                    elif resp.status == 429:
+                        log.warning(f"Telegram: rate-limited (429) -- attempt {attempt}/3, retrying...")
+                    else:
+                        log.warning(f"Telegram: HTTP {resp.status} -- {body}")
+                        return
+        except Exception as exc:
+            log.warning(f"Telegram: error on attempt {attempt}/3 -- {exc}")
+        if attempt < 3:
+            await asyncio.sleep(2)
+    log.error("Telegram: failed after 3 attempts -- notification dropped")
