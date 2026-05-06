@@ -2013,17 +2013,18 @@ def strategy_brain_s1(
     if abs(diff) > 0.25:
         win_prob = win_prob - 0.4 * diff
 
-    # EV with momentum-direction penalty
-    yes_ev = win_prob - (yes_ask / 100.0) - 0.07
-    no_ev = (1.0 - win_prob) - (no_ask / 100.0) - 0.07
+    # win_prob = P(continuation side wins): YES when above, NO when not above.
+    # EV for each side for logging; ev is the actionable continuation EV.
+    yes_ev = (win_prob if above else 1.0 - win_prob) - (yes_ask / 100.0) - 0.07
+    no_ev = (1.0 - win_prob if above else win_prob) - (no_ask / 100.0) - 0.07
+    ev = win_prob - (_entry_price / 100.0) - 0.07
     if above and _brain_cal.get("bullish_wr", 0.5) < 0.35:
-        yes_ev -= 0.04
+        ev -= 0.04
     if not above and _brain_cal.get("bearish_wr", 0.5) < 0.35:
-        no_ev -= 0.04
+        ev -= 0.04
 
     # continuation direction only
     side = "yes" if above else "no"
-    ev = yes_ev if above else no_ev
 
     # EV gate
     _min_ev = float(config.get("min_ev_base_15m", config.get("min_ev_base", 8))) / 100.0
