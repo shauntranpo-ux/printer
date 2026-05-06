@@ -1,7 +1,7 @@
 calibration:
   artifact_paths:
     atm: null
-    deep_itm: C:\Users\alxnt\AppData\Local\Temp\pytest-of-alxnt\pytest-189\test_eth_asset_accepted0\eth_calibrator_deep_itm.pkl
+    deep_itm: C:\Users\alxnt\AppData\Local\Temp\pytest-of-alxnt\pytest-256\test_eth_asset_accepted0\eth_calibrator_deep_itm.pkl
     deep_otm: null
     itm: null
     otm: null
