@@ -142,20 +142,20 @@ _adaptive: dict = {
     "threshold_adjust":  0,
 }
 
-# Brain self-calibration — updated every 5 completed trades
-_brain_cal: dict = {
+# Brain self-calibration — one dict per strategy, updated every 5 completed trades
+_CAL_DEFAULTS: dict = {
     "last_count":        0,
-    "prob_scale":        1.0,   # multiplies our true_prob estimate (learned correction)
-    "min_edge_override": None,  # if set, overrides the 20% default
-    "confidence_bonus":  0,     # added to confidence score as a reward
-    "reward_tier":       0,     # 0=none 1=good(>50%) 2=great(>75%) 3=max(>85%)
-    "overall_wr":        0.0,   # tracked for dashboard display
-    # condition win rates: key = "dist_time_mom" → [wins, total]
+    "prob_scale":        1.0,
+    "min_edge_override": None,
+    "confidence_bonus":  0,
+    "reward_tier":       0,
+    "overall_wr":        0.0,
     "condition_wr":      {},
-    # momentum direction performance
     "bullish_wr":        0.5,
     "bearish_wr":        0.5,
 }
+_brain_cal_s1: dict = {**_CAL_DEFAULTS}  # BV3 printer_brain (strategy1)
+_brain_cal_s2: dict = {**_CAL_DEFAULTS}  # D3 hybrid (strategy2)
 
 # Config cache — fallback if config.json is corrupt mid-write
 _last_good_config: dict | None = None
@@ -500,6 +500,7 @@ def init_db() -> None:
             ("calibrated_p_yes",  "REAL"),               # post-calibration p_yes used in EV gate
             ("signal_name",       "TEXT"),               # which signal fired (d3_hybrid / supertrend)
             ("strategy_variant",  "TEXT DEFAULT 'strategy2'"),  # strategy1=original, strategy2=D3 hybrid
+            ("strategy_version",   "TEXT"),                       # bumped when logic changes
         ):
             try:
                 c.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")
@@ -1450,104 +1451,71 @@ async def calibrate_from_history() -> None:
         log.error(f"Calibration error: {exc}")
 
 
+async def _calibrate_one_brain(variant: str, cal: dict) -> None:
+    """Run calibration for one strategy variant, mutating cal in-place."""
+    async with aiosqlite.connect(_DB_FILE) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        async with db.execute("""
+            SELECT side, entry_price_cents, seconds_left_at_entry,
+                   btc_price_at_entry, strike, outcome, model_prob
+            FROM trades
+            WHERE outcome IN ('win','loss') AND strategy_variant = ?
+            ORDER BY ts DESC LIMIT 200
+        """, (variant,)) as cur:
+            rows = await cur.fetchall()
+
+    total = len(rows)
+    if total < 20:
+        return
+
+    wins = sum(1 for r in rows if r[5] == "win")
+    overall_wr = wins / total
+
+    probs = [r[6] for r in rows if r[6] is not None]
+    if probs:
+        avg_predicted = sum(probs) / len(probs)
+        if avg_predicted > 0:
+            raw_scale = overall_wr / avg_predicted
+            cal["prob_scale"] = 0.95 * cal["prob_scale"] + 0.05 * raw_scale
+            cal["prob_scale"] = max(0.85, min(1.5, cal["prob_scale"]))
+
+    cal["overall_wr"] = overall_wr
+    if overall_wr >= 0.85:
+        cal["reward_tier"] = 3; cal["min_edge_override"] = 0.20; tier_label = "TIER 3 MAX REWARD"
+    elif overall_wr >= 0.75:
+        cal["reward_tier"] = 2; cal["min_edge_override"] = 0.20; tier_label = "TIER 2 HUGE REWARD"
+    elif overall_wr >= 0.50:
+        cal["reward_tier"] = 1; cal["min_edge_override"] = 0.20; tier_label = "TIER 1 REWARD"
+    elif overall_wr >= 0.40:
+        cal["reward_tier"] = 0; cal["min_edge_override"] = 0.25; tier_label = "no reward (learning)"
+    else:
+        cal["reward_tier"] = 0; cal["min_edge_override"] = 0.30; tier_label = "no reward (rebuild)"
+    cal["confidence_bonus"] = 0
+
+    yes_rows = [r for r in rows if r[0] == "yes"]
+    no_rows  = [r for r in rows if r[0] == "no"]
+    if len(yes_rows) >= 10:
+        cal["bullish_wr"] = sum(1 for r in yes_rows if r[5] == "win") / len(yes_rows)
+    if len(no_rows) >= 10:
+        cal["bearish_wr"] = sum(1 for r in no_rows  if r[5] == "win") / len(no_rows)
+
+    cal["last_count"] = total
+    brain_log.info(
+        f"[CAL/{variant}] {total} trades | WR={overall_wr:.0%} -> {tier_label} | "
+        f"scale={cal['prob_scale']:.2f} | "
+        f"yes_wr={cal['bullish_wr']:.0%} no_wr={cal['bearish_wr']:.0%}"
+    )
+    log.info(
+        f"[Brain/{variant}] calibrated WR={overall_wr:.0%} {tier_label} scale={cal['prob_scale']:.2f}"
+    )
+
+
 async def calibrate_brain() -> None:
-    """
-    Self-calibration for the printer brain. Runs every 5 completed trades.
-
-    Learns:
-      1. prob_scale  — were our probability estimates too high or too low?
-                       If we said 70% but only won 40% → scale down future estimates.
-      2. min_edge    — auto-tune the edge threshold based on overall win rate.
-      3. condition_wr — win rate per (distance, time, momentum) bucket so the
-                        brain knows which setups actually work.
-      4. directional  — are bullish/bearish/neutral momentum trades working?
-    """
-    global _brain_cal
+    """Self-calibration for both strategy brains. Runs every 5 completed trades."""
+    global _brain_cal_s1, _brain_cal_s2
     try:
-        async with aiosqlite.connect(_DB_FILE) as db:
-            await db.execute("PRAGMA journal_mode=WAL")
-            async with db.execute("""
-                SELECT side, entry_price_cents, seconds_left_at_entry,
-                       btc_price_at_entry, strike, outcome, model_prob
-                FROM trades
-                WHERE outcome IN ('win','loss')
-                ORDER BY ts DESC LIMIT 200
-            """) as cur:
-                rows = await cur.fetchall()
-
-        total = len(rows)
-        if total < 20:
-            return
-
-        wins = sum(1 for r in rows if r[5] == "win")
-        overall_wr = wins / total
-
-        # â”€â”€ 1. Probability scale factor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        # Compare avg model_prob (our estimate) to actual win rate.
-        # Only update gently — 5-20 trades is far too small a sample to
-        # conclude the table is wrong; 0.05 weight prevents overreaction.
-        probs = [r[6] for r in rows if r[6] is not None]
-        if probs:
-            avg_predicted = sum(probs) / len(probs)
-            if avg_predicted > 0:
-                raw_scale = overall_wr / avg_predicted
-                _brain_cal["prob_scale"] = 0.95 * _brain_cal["prob_scale"] + 0.05 * raw_scale
-                # Floor at 0.85 — the table is built on 4.5M rows; trust it
-                _brain_cal["prob_scale"] = max(0.85, min(1.5, _brain_cal["prob_scale"]))
-
-        # â”€â”€ 2. Win-rate reward tiers (priority = win rate, not profit) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        #   Tier 3 (â‰¥85%) — MAX reward: lowest edge bar, biggest confidence bonus
-        #   Tier 2 (â‰¥75%) — HUGE reward: very low bar, large bonus
-        #   Tier 1 (â‰¥50%) — reward: lower bar, small bonus
-        #   Below 50%     — tighten up, no bonus
-        _brain_cal["overall_wr"] = overall_wr
-        if overall_wr >= 0.85:
-            _brain_cal["reward_tier"]       = 3
-            _brain_cal["min_edge_override"] = 0.20   # backtested optimum — never go lower
-            _brain_cal["confidence_bonus"]  = 0
-            tier_label = "TIER 3 MAX REWARD"
-        elif overall_wr >= 0.75:
-            _brain_cal["reward_tier"]       = 2
-            _brain_cal["min_edge_override"] = 0.20
-            _brain_cal["confidence_bonus"]  = 0
-            tier_label = "TIER 2 HUGE REWARD"
-        elif overall_wr >= 0.50:
-            _brain_cal["reward_tier"]       = 1
-            _brain_cal["min_edge_override"] = 0.20   # backtested baseline
-            _brain_cal["confidence_bonus"]  = 0
-            tier_label = "TIER 1 REWARD"
-        elif overall_wr >= 0.40:
-            _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.25   # tighten above baseline
-            _brain_cal["confidence_bonus"]  = 0
-            tier_label = "no reward (learning)"
-        else:
-            _brain_cal["reward_tier"]       = 0
-            _brain_cal["min_edge_override"] = 0.30   # losing — tighten hard
-            _brain_cal["confidence_bonus"]  = 0
-            tier_label = "no reward (rebuild)"
-
-        # â”€â”€ 3. Directional performance â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        yes_rows = [r for r in rows if r[0] == "yes"]
-        no_rows  = [r for r in rows if r[0] == "no"]
-        if len(yes_rows) >= 10:
-            _brain_cal["bullish_wr"] = sum(1 for r in yes_rows if r[5] == "win") / len(yes_rows)
-        if len(no_rows) >= 10:
-            _brain_cal["bearish_wr"] = sum(1 for r in no_rows  if r[5] == "win") / len(no_rows)
-
-        _brain_cal["last_count"] = total
-        brain_log.info(
-            f"[CALIBRATION] {total} trades | WR={overall_wr:.0%} -> {tier_label} | "
-            f"min_ev={_brain_cal['min_edge_override']:.0%} | "
-            f"conf_bonus=+{_brain_cal['confidence_bonus']} | "
-            f"prob_scale={_brain_cal['prob_scale']:.2f} | "
-            f"yes_wr={_brain_cal['bullish_wr']:.0%} no_wr={_brain_cal['bearish_wr']:.0%}"
-        )
-        log.info(
-            f"[Brain] calibrated — WR={overall_wr:.0%} {tier_label} | "
-            f"scale={_brain_cal['prob_scale']:.2f}"
-        )
-
+        await _calibrate_one_brain("strategy1", _brain_cal_s1)
+        await _calibrate_one_brain("strategy2", _brain_cal_s2)
     except Exception as exc:
         log.error(f"Brain calibration error: {exc}")
 
@@ -1847,8 +1815,13 @@ def strategy_brain_s2(
         "_vol_ratio": None,
         "price_filter_skip": False,
         "strategy_variant": "strategy2",
+        "strategy_version":  _S2_VERSION,
     }
 
+
+# Strategy version tags — bump when logic changes so trades are correctly bucketed
+_S1_VERSION = "bv3-2026-05-06"    # S1: BV3 empirical table + EV fix
+_S2_VERSION = "d3-hybrid-2026-05-06"  # S2: D3 hybrid mean-reversion
 
 # ── S1: BV3 printer_brain constants (April 2026 profitable strategy) ──────────
 _S1_BV3_TABLE = [
@@ -1876,7 +1849,7 @@ def _s1_empirical_win_prob(asset: str, abs_pct: float, mins_left: float) -> floa
             break
     col = max(0, min(12, int(round(mins_left)) - 1))
     base_prob = _S1_BV3_TABLE[row][col]
-    prob_scale = _brain_cal.get("prob_scale", 1.0)
+    prob_scale = _brain_cal_s1.get("prob_scale", 1.0)
     return float(0.50 + (base_prob - 0.50) * prob_scale)
 
 
@@ -2017,9 +1990,9 @@ def strategy_brain_s1(
     yes_ev = (win_prob if above else 1.0 - win_prob) - (yes_ask / 100.0) - 0.07
     no_ev = (1.0 - win_prob if above else win_prob) - (no_ask / 100.0) - 0.07
     ev = win_prob - (_entry_price / 100.0) - 0.07
-    if above and _brain_cal.get("bullish_wr", 0.5) < 0.35:
+    if above and _brain_cal_s1.get("bullish_wr", 0.5) < 0.35:
         ev -= 0.04
-    if not above and _brain_cal.get("bearish_wr", 0.5) < 0.35:
+    if not above and _brain_cal_s1.get("bearish_wr", 0.5) < 0.35:
         ev -= 0.04
 
     # continuation direction only
@@ -2702,10 +2675,10 @@ async def write_state_file(
         "btc_price": btc_price,
         "confidence_score": score,
         "confidence_breakdown": breakdown,
-        "reward_tier": _brain_cal["reward_tier"],
-        "brain_wr": _brain_cal["overall_wr"],
-        "brain_min_edge": _brain_cal["min_edge_override"],
-        "brain_n": _brain_cal["last_count"],
+        "reward_tier": _brain_cal_s2["reward_tier"],
+        "brain_wr": _brain_cal_s2["overall_wr"],
+        "brain_min_edge": _brain_cal_s2["min_edge_override"],
+        "brain_n": _brain_cal_s2["last_count"],
         "last_action": action,
         "last_skip_reason": skip_reason,
         "mode": config.get("mode", "paper"),
@@ -2924,6 +2897,7 @@ async def _execute_s1_trade(
         "raw_p_yes":            brain_s1.get("raw_p_yes"),
         "entry_signals":        _json.dumps(brain_s1.get("signals", {})),
         "strategy_variant":     "strategy1",
+        "strategy_version":     _S1_VERSION,
     }
     # Register in _s1_pending_trades BEFORE the DB write so that a transient
     # SQLite error never leaves a real filled order untracked (funds already committed).
