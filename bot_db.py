@@ -1,4 +1,4 @@
-"""bot_db.py — SQLite trade log: init, write, update, query."""
+﻿"""bot_db.py â€” SQLite trade log: init, write, update, query."""
 import logging
 import os
 import sqlite3
@@ -107,7 +107,7 @@ def init_db() -> None:
             )
         """)
 
-        # Migrate existing DB — add new columns if not present
+        # Migrate existing DB â€” add new columns if not present
         for col, typedef in (
             ("order_id",          "TEXT"),
             ("asset",             "TEXT DEFAULT 'BTC'"),  # multi-asset support
@@ -168,7 +168,7 @@ def test_db_write() -> None:
     except Exception as exc:
         log.error(f"DB self-test FAILED: {exc}")
         log.error(f"DB path: {os.path.abspath(bot_state._DB_FILE)}")
-        log.error("Cannot write trades — halting to prevent silent data loss.")
+        log.error("Cannot write trades â€” halting to prevent silent data loss.")
         sys.exit(2)
 
 
@@ -262,3 +262,4 @@ async def db_get_today_pnl(mode: str) -> float:
     except Exception as exc:
         log.error(f"DB get_today_pnl error: {exc}")
         return 0.0
+
