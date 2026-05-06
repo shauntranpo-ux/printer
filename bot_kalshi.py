@@ -17,7 +17,7 @@ from asset_manager import (
     ASSET_CONFIG,
     get_price as _am_get_price,
 )
-from bot_config import read_config
+from bot_config import read_config, write_config
 
 log = logging.getLogger("bot")
 
@@ -169,9 +169,7 @@ def load_credentials(mode: str = "paper") -> None:
             try:
                 cfg = read_config()
                 cfg["mode"] = "paper"
-                with open(bot_state._CONFIG_FILE, "w", encoding="utf-8") as fh:
-                    import json as _json
-                    _json.dump(cfg, fh, indent=2)
+                write_config(cfg)
             except Exception as _ce:
                 log.warning(f"Could not write paper fallback to config: {_ce}")
             # Load live creds if available so market data still works

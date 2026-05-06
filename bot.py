@@ -98,9 +98,8 @@ async def main() -> None:
 
     # BTC/ETH funding dispersion monitors (Hyperliquid + Binance)
     _src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
-    import sys as _sys_fm
-    if _src_path not in _sys_fm.path:
-        _sys_fm.path.insert(0, _src_path)
+    if _src_path not in sys.path:
+        sys.path.insert(0, _src_path)
     from strategies.original.signals.funding_dispersion import FundingDispersionMonitor as _FDM
     bot_state._funding_monitor_btc = _FDM("BTC")
     bot_state._funding_monitor_eth = _FDM("ETH")

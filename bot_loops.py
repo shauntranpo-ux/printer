@@ -465,8 +465,7 @@ async def handle_ready_phase(
     bot_state.last_action, bot_state.last_skip_reason = "trade", ""
     log.info(f"{ticker}: LOCKED.")
     mode_icon  = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
-    dir_icon   = "YES" if side == "yes" else "NO"
-    _win_prob_used = _rev["prob"] if _is_reversal and _rev else brain.get("win_prob", 0)
+    _win_prob_used = brain.get("win_prob", 0)
     _win_pct   = int(_win_prob_used * 100)
     _ev        = round((_win_prob_used - fill_price / 100 - _fee) * 100, 1)
     _ev_str    = f"+{_ev}%" if _ev >= 0 else f"{_ev}%"
