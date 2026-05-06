@@ -6,7 +6,7 @@ import time
 from collections import deque
 
 import bot_state
-from bot_config import read_config, get_asset_config
+from bot_infra import read_config, get_asset_config
 import asset_manager
 
 log = logging.getLogger("bot")
