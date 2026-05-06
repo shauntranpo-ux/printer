@@ -1,10 +1,10 @@
 """
 bot.py — Entrypoint for the Kalshi 15-minute prediction market trading bot.
 
-All core logic has been extracted into focused sub-modules (bot_config,
-bot_db, bot_kalshi, bot_notify, bot_orders, bot_strategy, bot_risk,
-bot_trade, bot_preflight, bot_loops, bot_state, asset_manager,
-obi_monitor).  This file bootstraps the process and hands off to main_loop.
+All core logic lives in focused modules: bot_infra (config/db/notify),
+bot_market (Kalshi API + orders), bot_risk (risk + trade execution +
+preflight), bot_strategy (S1/S2 brains), bot_loops (phase handlers +
+main loop), bot_state (shared globals), asset_manager, obi_monitor.
 
 Start via runner.py, not directly.
 """
@@ -27,11 +27,9 @@ from obi_monitor import OBIMonitor
 import bot_state
 import asset_manager
 from asset_manager import get_price as _am_get_price, coinbase_price_task
-from bot_config import read_config, _init_config
-from bot_db import init_db, test_db_write
-from bot_notify import send_telegram
-from bot_kalshi import load_credentials, get_btc_price
-from bot_preflight import verify_kalshi_connection, run_preflight_checks
+from bot_infra import read_config, _init_config, init_db, test_db_write, send_telegram
+from bot_market import load_credentials, get_btc_price
+from bot_risk import verify_kalshi_connection, run_preflight_checks
 from bot_loops import main_loop
 
 # ─────────────────────────────── logging ───────────────────────────────────
