@@ -259,7 +259,7 @@ def fit_strategy_c(
         },
     }
 
-    fitted_path = os.path.join(_STRATEGY_C_CONFIG_DIR, f"{asset.lower()}.fitted.yaml")
+    fitted_path = os.path.join(output_dir, f"{asset.lower()}.fitted.yaml")
     with open(fitted_path, "w", encoding="utf-8") as f:
         yaml.dump(fitted_config, f, default_flow_style=False, allow_unicode=True)
 
