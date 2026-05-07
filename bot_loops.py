@@ -885,6 +885,25 @@ async def main_loop() -> None:
     except Exception:
         pass  # fresh start, no state to recover
 
+    # Recover non-BTC LOCKED positions from state file
+    try:
+        with open(bot_state._STATE_FILE, "r") as _sf_nbtc:
+            _saved_nbtc = json.load(_sf_nbtc)
+        for _a, _apos in _saved_nbtc.get("non_btc_positions", {}).items():
+            if _apos.get("phase") == "LOCKED" and _apos.get("position"):
+                if _a not in bot_state._asset_states:
+                    bot_state._asset_states[_a] = {}
+                bot_state._asset_states[_a]["phase"] = "LOCKED"
+                bot_state._asset_states[_a]["position"] = _apos["position"]
+                bot_state._asset_states[_a].setdefault("order_attempted", set())
+                bot_state._asset_states[_a].setdefault("eval", {})
+                log.warning(
+                    "Recovered LOCKED position for %s from state file: trade_id=%s",
+                    _a, _apos["position"].get("trade_id"),
+                )
+    except Exception:
+        pass  # no state file yet or key missing - fresh start
+
     # Warn about S1 positions that were open when the bot last stopped.
     # These are financially live on Kalshi but untracked in _s1_pending_trades.
     # Manual reconciliation against the Kalshi fills API may be needed.

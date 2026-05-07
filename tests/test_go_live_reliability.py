@@ -109,3 +109,21 @@ def test_portfolio_fallback_wired_in_handle_ready_phase():
             )
             return
     pytest.fail("handle_ready_phase not found")
+
+
+def test_non_btc_positions_persisted_in_state_file():
+    """write_state_file must include a non_btc_positions key so non-BTC LOCKED
+    positions survive a restart."""
+    src = (ROOT / "bot_risk.py").read_text(encoding="utf-8")
+    assert '"non_btc_positions"' in src, (
+        'write_state_file must write a "non_btc_positions" key to the state JSON'
+    )
+
+
+def test_non_btc_positions_recovered_on_startup():
+    """main_loop startup must read non_btc_positions from the state file and
+    restore them into bot_state._asset_states."""
+    src = (ROOT / "bot_loops.py").read_text(encoding="utf-8")
+    assert "non_btc_positions" in src, (
+        "main_loop must read non_btc_positions from the state file on startup"
+    )
