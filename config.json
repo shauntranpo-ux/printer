@@ -15,23 +15,57 @@
   "max_entry_price_cents": 75,
   "min_reward_cents": 15,
   "max_risk_reward_ratio": 4.0,
-  "allowed_sides": ["yes", "no"],
-  "enabled_assets": ["BTC", "ETH", "SOL", "XRP", "DOGE"],
+  "allowed_sides": [
+    "yes",
+    "no"
+  ],
+  "enabled_assets": [
+    "BTC",
+    "ETH",
+    "SOL",
+    "XRP",
+    "DOGE"
+  ],
   "asset_overrides": {
-    "BTC":  { "min_ev_base": 15, "min_ev_base_s1": 12 },
-    "ETH":  { "min_ev_base": 17, "min_ev_base_s1": 17, "max_spread_cents": 2 },
-    "SOL":  { "min_ev_base": 14, "min_ev_base_s1": 7 },
-    "XRP":  { "min_ev_base": 16, "min_ev_base_s1": 12 },
-    "DOGE": { "min_ev_base": 18, "min_ev_base_s1": 15 }
+    "BTC": {
+      "min_ev_base": 15,
+      "min_ev_base_s1": 8
+    },
+    "ETH": {
+      "min_ev_base": 17,
+      "min_ev_base_s1": 12,
+      "max_spread_cents": 2
+    },
+    "SOL": {
+      "min_ev_base": 14,
+      "min_ev_base_s1": 5
+    },
+    "XRP": {
+      "min_ev_base": 16,
+      "min_ev_base_s1": 8
+    },
+    "DOGE": {
+      "min_ev_base": 18,
+      "min_ev_base_s1": 10
+    }
   },
   "max_spread_cents": 3.0,
   "min_seconds_left": 30,
   "cold_start_samples": 60,
   "timezone": "America/Los_Angeles",
   "time_windows": {
-    "normal":    { "min_ev_delta": 0, "max_entry_price_cents": 75 },
-    "strict":    { "min_ev_delta": 4, "max_entry_price_cents": 70 },
-    "strictest": { "min_ev_delta": 8, "max_entry_price_cents": 60 }
+    "normal": {
+      "min_ev_delta": 0,
+      "max_entry_price_cents": 75
+    },
+    "strict": {
+      "min_ev_delta": 4,
+      "max_entry_price_cents": 70
+    },
+    "strictest": {
+      "min_ev_delta": 8,
+      "max_entry_price_cents": 60
+    }
   },
   "min_ev_base_15m": 9
 }
