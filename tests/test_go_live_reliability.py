@@ -15,8 +15,17 @@ def test_session_ev_adjustment_removed():
         )
 
 
+@pytest.fixture()
+def _reset_limit_state():
+    yield
+    import bot_state as _bs
+    _bs.limit_triggered = False
+    _bs.limit_reason = ""
+    _bs.pre_limit_mode = None
+
+
 @pytest.mark.asyncio
-async def test_daily_limit_resets_when_mode_changes(monkeypatch):
+async def test_daily_limit_resets_when_mode_changes(monkeypatch, _reset_limit_state):
     """
     If limit was triggered in demo mode but we're now checking in live mode,
     check_daily_limits must reset limit_triggered before evaluating live P&L.
@@ -44,8 +53,4 @@ async def test_daily_limit_resets_when_mode_changes(monkeypatch):
 
     assert not bot_state.limit_triggered, "limit_triggered must be reset when mode changed"
     assert triggered is False, "no pnl → no new trigger after reset"
-
-    # Cleanup
-    bot_state.limit_triggered = False
-    bot_state.limit_reason = ""
-    bot_state.pre_limit_mode = None
+    assert bot_state.limit_reason == "", "limit_reason must be cleared on mode-change reset"

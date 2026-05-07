@@ -80,7 +80,7 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
         bot_state.limit_triggered = False
         bot_state.limit_reason = ""
         bot_state.pre_limit_mode = None
-        log.info(f"Mode changed to '{mode}' — resetting daily limit state.")
+        log.info(f"Mode changed to '{mode}' - resetting daily limit state.")
 
     pnl = await db_get_today_pnl(mode)
 
