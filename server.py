@@ -401,11 +401,29 @@ def api_config():
 @app.route("/api/reset_pnl", methods=["POST"])
 def api_reset_pnl():
     """
-    Delete all trade and daily_summary records for a given mode.
-    Body: {"mode": "live"} or {"mode": "paper"}
+    Delete trades for a given mode or a specific asset.
+    Body: {"mode": "live"|"paper"|"all"} OR {"asset": "BTC"|"ETH"|...}
     """
     data = request.get_json(silent=True)
-    if not data or data.get("mode") not in ("live", "paper", "all"):
+    if not data:
+        return jsonify({"error": "No JSON body"}), 400
+
+    # Per-asset reset (dashboard Quick Actions button)
+    asset = (data.get("asset") or "").upper()
+    if asset:
+        if asset not in {"BTC", "ETH", "SOL", "XRP", "DOGE"}:
+            return jsonify({"error": f"Unknown asset {asset!r}"}), 400
+        try:
+            conn = get_db()
+            deleted = conn.execute("DELETE FROM trades WHERE asset = ?", (asset,)).rowcount
+            conn.commit()
+            conn.close()
+            log.info(f"P&L reset for asset={asset}: {deleted} trades deleted")
+            return jsonify({"ok": True, "asset": asset, "deleted_trades": deleted})
+        except Exception as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    if data.get("mode") not in ("live", "paper", "all"):
         return jsonify({"error": "mode must be 'live', 'paper', or 'all'"}), 400
     mode = data["mode"]
     try:
@@ -866,12 +884,12 @@ def api_equity():
             since = now - timedelta(days=7)
             bucket_sql = "strftime('%Y-%m-%d', ts)"
             n_buckets = 7
-            labels = [(now - timedelta(days=i)).strftime("%-d %b") for i in range(6, -1, -1)]
+            labels = [f"{(now-timedelta(days=i)).day} {(now-timedelta(days=i)).strftime('%b')}" for i in range(6, -1, -1)]
         elif range_ == "1m":
             since = now - timedelta(days=30)
             bucket_sql = "strftime('%Y-%m-%d', ts)"
             n_buckets = 30
-            labels = [(now - timedelta(days=i * 7)).strftime("%-d %b") for i in range(4, -1, -1)]
+            labels = [f"{(now-timedelta(days=i*7)).day} {(now-timedelta(days=i*7)).strftime('%b')}" for i in range(4, -1, -1)]
         else:  # all
             since = datetime(2024, 1, 1, tzinfo=timezone.utc)
             bucket_sql = "strftime('%Y-%W', ts)"
