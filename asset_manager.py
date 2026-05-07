@@ -51,6 +51,10 @@ ASSET_CONFIG = {
 # asset → deque[(unix_ts, price)]
 _prices: dict[str, deque] = {asset: deque(maxlen=2000) for asset in ASSET_CONFIG}
 
+# ── 24h change cache (updated every 5 min from Coinbase stats endpoint) ──────
+_ch24: dict[str, float | None] = {asset: None for asset in ASSET_CONFIG}
+_ch24_last_fetch: float = 0.0
+
 
 # ── Price accessors ───────────────────────────────────────────────────────────
 
@@ -70,6 +74,11 @@ def price_age_seconds(asset: str) -> float | None:
     return time.time() - dq[-1][0]
 
 
+def get_24h_change(asset: str) -> float | None:
+    """Return 24h price change % for an asset, or None if not yet fetched."""
+    return _ch24.get(asset)
+
+
 # ── Price feeds ───────────────────────────────────────────────────────────────
 
 # Coinbase public REST URL for spot prices — no auth, works globally
@@ -78,6 +87,7 @@ _COINBASE_SPOT_URL = "https://api.coinbase.com/v2/prices/{asset}-USD/spot"
 # Coinbase Exchange public candles API — no auth, supports all 5 assets
 _COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/{product_id}/candles"
 
+_COINBASE_STATS_URL  = "https://api.exchange.coinbase.com/products/{product_id}/stats"
 _COINBASE_PRODUCTS = {
     "BTC":  "BTC-USD",
     "ETH":  "ETH-USD",
@@ -164,6 +174,30 @@ async def coinbase_price_task(enabled_assets: list[str]) -> None:
                                         dq.append((now_ts, price))
                         except Exception as _e:
                             log.debug(f"Coinbase feed [{asset}] error: {_e}")
+
+                    # ── 24h stats refresh every 5 minutes ─────────────────────
+                    global _ch24_last_fetch
+                    if time.time() - _ch24_last_fetch >= 300:
+                        for asset in valid_assets:
+                            product_id = _COINBASE_PRODUCTS.get(asset)
+                            if not product_id:
+                                continue
+                            try:
+                                async with session.get(
+                                    _COINBASE_STATS_URL.format(product_id=product_id),
+                                    timeout=_aiohttp.ClientTimeout(total=5),
+                                ) as sr:
+                                    if sr.status == 200:
+                                        s = await sr.json()
+                                        open_24h = float(s.get("open", 0) or 0)
+                                        current  = get_price(asset)
+                                        if open_24h and current:
+                                            _ch24[asset] = round((current - open_24h) / open_24h * 100, 2)
+                            except Exception as _se:
+                                log.debug(f"ch24 stats [{asset}] error: {_se}")
+                        _ch24_last_fetch = time.time()
+                    # ─────────────────────────────────────────────────────────
+
                     await asyncio.sleep(2)
         except Exception as exc:
             log.warning(f"Coinbase feed session error: {exc}. Retrying in 5s...")

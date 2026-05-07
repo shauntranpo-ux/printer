@@ -32,6 +32,7 @@ from bot_strategy import _session_ev_adjustment, _strategy_name_for
 from asset_manager import (
     get_price           as _am_get_price,
     price_age_seconds   as _am_price_age,
+    get_24h_change      as _am_get_24h_change,
 )
 
 log = logging.getLogger("bot")
@@ -233,6 +234,7 @@ async def write_state_file(
             "status":       _a_status,
             "skip_reason":  _ev.get("skip_reason"),
             "vol_ratio":   _ev.get("vol_ratio"),
+            "ch24":        _am_get_24h_change(_a),
             "signals":      _ev.get("signals", {}),
             "position":     _st.get("position"),
             "session_type": _a_session_type,
@@ -273,6 +275,7 @@ async def write_state_file(
         "status":       _btc_status,
         "skip_reason":  skip_reason or _btc_ev.get("skip_reason", ""),
         "vol_ratio":   _btc_ev.get("vol_ratio"),
+        "ch24":        _am_get_24h_change("BTC"),
         "signals":      _btc_ev.get("signals", {}),
         "position":     bot_state.current_position,
         "session_type": _btc_session_type,
