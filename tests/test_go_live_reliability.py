@@ -1,6 +1,5 @@
 """Tests for go-live reliability fixes."""
 import pathlib
-import pytest
 
 ROOT = pathlib.Path(__file__).parent.parent  # tests/ -> repo root
 
