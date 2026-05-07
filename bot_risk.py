@@ -3,7 +3,7 @@
 Public interface (see __all__):
   Risk:      check_daily_limits, midnight_reset, write_state_file, _log_entry,
              _parse_strike_from_ticker
-  Trade:     _execute_s1_trade, _settle_s1_trade, _try_settle_orphaned_s1
+  Trade:     _execute_s1_trade, _settle_s1_trade, _try_settle_orphaned_s1, _settle_s1_orphans
   Preflight: verify_kalshi_connection, run_preflight_checks
 """
 import asyncio
@@ -46,6 +46,7 @@ __all__ = [
     "_parse_strike_from_ticker",
     # Trade execution (absorbed from bot_trade)
     "_execute_s1_trade", "_settle_s1_trade", "_try_settle_orphaned_s1",
+    "_settle_s1_orphans",
     # Preflight (absorbed from bot_preflight)
     "verify_kalshi_connection", "run_preflight_checks",
 ]
@@ -513,6 +514,76 @@ async def _settle_s1_trade(
         f"Entry: {s1_pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
         f"Strike: ${s1_pos['strike']:,.0f}"
     )
+
+
+async def _settle_s1_orphans(
+    session: "aiohttp.ClientSession",
+    config: dict,
+) -> None:
+    """
+    On startup, find all pending S1 DB records and settle any that resolved
+    while the bot was offline. Re-adds still-open trades to _s1_pending_trades
+    so the live loop can settle them when they expire.
+    """
+    try:
+        import sqlite3 as _sqlite3
+        conn = _sqlite3.connect(bot_state._DB_FILE)
+        rows = conn.execute(
+            "SELECT id, market_id, side, contracts, entry_price_cents, mode, asset, "
+            "COALESCE(entry_signals, '{}') AS entry_signals "
+            "FROM trades WHERE strategy_variant='strategy1' AND outcome='pending'"
+        ).fetchall()
+        conn.close()
+    except Exception as exc:
+        log.warning("S1 orphan query failed on startup: %s", exc)
+        return
+
+    if not rows:
+        return
+
+    btc_price = bot_state.btc_prices[-1][1] if bot_state.btc_prices else 0.0
+
+    for row in rows:
+        trade_id, ticker, side, contracts, entry_price_cents, mode, asset, signals_json = row
+        try:
+            signals = json.loads(signals_json) if signals_json else {}
+            strike = float(signals.get("strike", 0) or 0)
+        except Exception:
+            strike = 0.0
+
+        bot_state._s1_pending_trades[ticker] = {
+            "trade_id": trade_id,
+            "ticker": ticker,
+            "side": side,
+            "contracts": contracts,
+            "entry_price_cents": entry_price_cents,
+            "mode": mode,
+            "strike": strike,
+            "entry_ts": 0.0,
+            "asset": asset,
+        }
+
+        market_result = None
+        try:
+            _path = f"/markets/{ticker}"
+            async with session.get(
+                bot_state.KALSHI_BASE_URL + _path,
+                headers=kalshi_headers("GET", _path),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
+            ) as _resp:
+                _mdata = await _resp.json()
+            market_result = (_mdata.get("market") or _mdata).get("result")
+        except Exception as exc:
+            log.warning("S1 orphan: Kalshi fetch failed for %s: %s", ticker, exc)
+
+        if market_result in ("yes", "no"):
+            log.info("S1 orphan %s: resolved (%s) - settling now", ticker, market_result)
+            await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
+        else:
+            log.info(
+                "S1 orphan %s: market still open or unknown result - re-added to pending",
+                ticker,
+            )
 
 
 async def _try_settle_orphaned_s1(

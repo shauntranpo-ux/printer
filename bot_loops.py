@@ -27,6 +27,7 @@ from bot_strategy import (
 from bot_risk import (
     check_daily_limits, midnight_reset, write_state_file, _log_entry,
     _execute_s1_trade, _settle_s1_trade, _try_settle_orphaned_s1,
+    _settle_s1_orphans,
 )
 
 log = logging.getLogger("bot")
@@ -899,30 +900,16 @@ async def main_loop() -> None:
     except Exception:
         pass  # fresh start, no state to recover
 
-    # Warn about S1 positions that were open when the bot last stopped.
-    # These are financially live on Kalshi but untracked in _s1_pending_trades.
-    # Manual reconciliation against the Kalshi fills API may be needed.
-    try:
-        import sqlite3 as _sqlite3
-        _s1_chk = _sqlite3.connect(bot_state._DB_FILE)
-        _s1_orphans = _s1_chk.execute(
-            "SELECT id, market_id, asset FROM trades "
-            "WHERE strategy_variant='strategy1' AND outcome='pending'"
-        ).fetchall()
-        _s1_chk.close()
-        for _row in _s1_orphans:
-            log.warning(
-                "S1 orphan from prior session — trade_id=%s market=%s asset=%s "
-                "(outcome still pending; check Kalshi fills manually)",
-                _row[0], _row[1], _row[2],
-            )
-    except Exception as _s1_chk_exc:
-        log.debug(f"S1 orphan check skipped: {_s1_chk_exc}")
+    # S1 orphan settlement happens after the aiohttp session is created below.
 
     # TCPConnector with keepalive_timeout prevents stale pooled connections
     # from silently breaking API calls after many hours of uptime.
     connector = aiohttp.TCPConnector(keepalive_timeout=30, limit=10)
     async with aiohttp.ClientSession(connector=connector) as session:
+        # Settle any S1 positions that resolved while the bot was offline.
+        _startup_config = read_config()
+        await _settle_s1_orphans(session, _startup_config)
+
         # Non-BTC assets run in a separate background task so they aren't
         # gated by the BTC state machine's continue/sleep cycle.
         asyncio.create_task(_non_btc_asset_loop(session))

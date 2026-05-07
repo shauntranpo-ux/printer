@@ -127,3 +127,15 @@ def test_non_btc_positions_recovered_on_startup():
     assert "non_btc_positions" in src, (
         "main_loop must read non_btc_positions from the state file on startup"
     )
+
+
+def test_s1_orphan_auto_settlement_wired():
+    """_settle_s1_orphans must be imported and called in main_loop — not just warn."""
+    src = (ROOT / "bot_loops.py").read_text(encoding="utf-8")
+    assert "_settle_s1_orphans" in src, (
+        "_settle_s1_orphans must be imported and called in bot_loops.py main_loop"
+    )
+    # The warning-only orphan block must be gone
+    assert "check Kalshi fills manually" not in src, (
+        "The warning-only S1 orphan block must be replaced with _settle_s1_orphans"
+    )
