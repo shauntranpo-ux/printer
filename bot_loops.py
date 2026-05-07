@@ -22,7 +22,7 @@ from bot_market import (
 )
 from bot_strategy import (
     strategy_brain_s1, strategy_brain_s2,
-    track_contract_price, _session_ev_adjustment, _strategy_name_for,
+    track_contract_price, _strategy_name_for,
 )
 from bot_risk import (
     check_daily_limits, midnight_reset, write_state_file, _log_entry,

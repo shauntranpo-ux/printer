@@ -28,7 +28,7 @@ from bot_market import (
     kalshi_headers, seconds_remaining, seconds_elapsed,
     place_order, calculate_contracts,
 )
-from bot_strategy import _session_ev_adjustment, _strategy_name_for
+from bot_strategy import _strategy_name_for
 from asset_manager import (
     get_price           as _am_get_price,
     price_age_seconds   as _am_price_age,
@@ -188,7 +188,7 @@ async def write_state_file(
         "today_paper_pnl": await db_get_today_pnl("paper"),
         "today_demo_pnl": await db_get_today_pnl("demo"),
         "config": {**config,
-                   "min_ev_pct": round((config.get("min_ev_base", 3.0) / 100.0 + _session_ev_adjustment()) * 100),
+                   "min_ev_pct": round(config.get("min_ev_base", 3.0)),
                    "vol_gate_thresh": config.get("vol_gate_thresh", 1.80)},
         "bot_state.limit_triggered": bot_state.limit_triggered,
         "bot_state.limit_reason": bot_state.limit_reason,
