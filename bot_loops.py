@@ -18,7 +18,7 @@ from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
     kalshi_headers, _simulated_amm_midpoint, _log_price_validation,
-    calculate_contracts, implied_prob, place_order,
+    calculate_contracts, implied_prob, place_order, _portfolio_has_position,
 )
 from bot_strategy import (
     strategy_brain_s1, strategy_brain_s2,
@@ -384,6 +384,20 @@ async def handle_ready_phase(
         "" if fill_confirmed else "order not filled",
         mode,
     )
+
+    if not fill_confirmed and mode != "paper":
+        # In live/demo mode, a network error in _verify_order_fill could mask a real fill.
+        # Check the portfolio directly before declaring the order unfilled.
+        try:
+            if await _portfolio_has_position(session, ticker, side):
+                fill_price = int(entry_price_cents)
+                fill_confirmed = True
+                log.warning(
+                    f"{ticker}: fill_confirmed=False but portfolio shows open position "
+                    f"- treating as filled at {fill_price}c"
+                )
+        except Exception as _pf_exc:
+            log.warning(f"{ticker}: portfolio fallback check failed: {_pf_exc}")
 
     if not fill_confirmed:
         if _use_state: state["phase"] = "DONE"

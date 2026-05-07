@@ -88,3 +88,24 @@ def test_write_state_called_on_locked_transition():
             )
             return
     pytest.fail("handle_ready_phase not found in bot_loops.py")
+
+
+def test_portfolio_fallback_wired_in_handle_ready_phase():
+    """
+    When fill_confirmed=False, handle_ready_phase must call _portfolio_has_position
+    in live/demo mode before setting phase=DONE.
+    """
+    import ast
+    src = (ROOT / "bot_loops.py").read_text(encoding="utf-8")
+    assert "_portfolio_has_position" in src, (
+        "_portfolio_has_position must be imported in bot_loops.py"
+    )
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_ready_phase":
+            fn_src = ast.get_source_segment(src, node)
+            assert "_portfolio_has_position" in fn_src, (
+                "_portfolio_has_position must be called inside handle_ready_phase"
+            )
+            return
+    pytest.fail("handle_ready_phase not found")
