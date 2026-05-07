@@ -342,6 +342,8 @@ async def _execute_s1_trade(
 ) -> None:
     """Place a real S1 order alongside S2 and track it in _s1_pending_trades."""
     if brain_s1.get("action") != "trade":
+        if not brain_s1.get("price_filter_skip"):
+            log.debug("[S1] %s: skip — %s", ticker, brain_s1.get("reasoning", "no_reason"))
         return
     if ticker in bot_state._s1_pending_trades:
         return
