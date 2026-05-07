@@ -263,6 +263,7 @@ async def handle_ready_phase(
         "no_ask":       no_ask,
         "ev":           round(brain_ev * 100, 1),
         "win_prob":     round(brain_win_prob * 100, 1),
+        "vol_ratio":    brain.get("_vol_ratio"),
         "status":       "WATCHING",
         "skip_reason":  "",
         "signals":      brain.get("signals", {}),

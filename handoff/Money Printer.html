@@ -1706,10 +1706,6 @@ document.getElementById('panel-market').addEventListener('click', e => {
 
 // ── Equity chart (live fetch with mock fallback) ──────────────────────────────
 async function fetchEquity(range='1d'){
-  try {
-    const data = await fetch(`/api/equity?range=${range}`).then(r=>r.json());
-    EQ[range] = (data.points && data.points.length > 1) ? data.points : [];
-  } catch(e){}
   renderEquity(range, 'equity-chart-s2', buildStrategyEquity('strategy2', range));
   renderEquity(range, 'equity-chart-s1', buildStrategyEquity('strategy1', range));
 }
@@ -1830,7 +1826,7 @@ function mapAssetState(sym, a) {
     yesAsk:   a.yes_ask != null ? Math.round(a.yes_ask) : (dec.yes_ask != null ? Math.round(dec.yes_ask) : (ex.yesAsk ?? null)),
     noAsk:    a.no_ask  != null ? Math.round(a.no_ask)  : (dec.no_ask  != null ? Math.round(dec.no_ask)  : (ex.noAsk  ?? null)),
     vol:      a.vol       ?? ex.vol       ?? 1.0,
-    side:     a.side      ?? ex.side      ?? '—',
+    side:     a.side ?? (a.direction?.toUpperCase() === 'UP' ? 'YES/UP' : a.direction?.toUpperCase() === 'DOWN' ? 'NO/DOWN' : ex.side ?? '—'),
     sig:      { ...(ex.sig || {}), ...dec },
   };
 }
@@ -2024,6 +2020,7 @@ async function fetchMarketDetail(sym) {
 
 // ── Polling ───────────────────────────────────────────────────────────────────
 setInterval(fetchRisk,        60_000);
+setInterval(fetchTrades,      120_000);
 setInterval(fetchStatus,      10_000);
 setInterval(fetchMarketState, 30_000);
 setInterval(fetchEventLog,    30_000);
