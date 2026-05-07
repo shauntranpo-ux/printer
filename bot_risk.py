@@ -250,7 +250,7 @@ async def write_state_file(
     except Exception:
         _btc_elapsed_sec = 0.0
     _btc_duration_min = (float(_btc_elapsed_sec) + float(secs_left)) / 60.0 if market else 0.0
-    _btc_session_type = "15m"
+    _btc_session_type = "h1" if _btc_duration_min > 30 else "15m"
     _btc_strategy_name = _strategy_name_for("BTC", _btc_duration_min)
     _btc_strike = _parse_strike_from_ticker(_btc_ticker)
     if _btc_strike is None:

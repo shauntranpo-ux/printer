@@ -332,7 +332,7 @@ def api_config():
     action = data.get("action")
     if action in ("enable_asset", "disable_asset", "set_asset_ev"):
         asset = data.get("asset", "").upper()
-        valid_assets = {"BTC", "ETH", "SOL", "XRP"}
+        valid_assets = {"BTC", "ETH", "SOL", "XRP", "DOGE"}
         if asset not in valid_assets:
             return jsonify({"error": f"Unknown asset {asset!r}"}), 400
         enabled = config.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
@@ -771,7 +771,7 @@ def api_market_sym(sym):
             expires = "—"
 
         sessions = [{
-            "type":       "15m",
+            "type":       a.get("session_type", "15m"),
             "active":     a.get("phase") == "LOCKED",
             "expires":    expires,
             "strike":     a.get("strike"),
