@@ -381,7 +381,7 @@ def strategy_brain_s1(
     # vol gate
     _rv = _s1_realized_vol(prices_list) if prices_list else 0.001
     _vol_ratio = _rv * (mins_left ** 0.5) / abs_pct if abs_pct > 0 else 999.0
-    _vol_gate_thresh = float(config.get("vol_gate_thresh", 1.80))
+    _vol_gate_thresh = float(get_asset_config(config, asset, "vol_gate_thresh", 1.80))
 
     if _vol_ratio >= _vol_gate_thresh:
         return {
