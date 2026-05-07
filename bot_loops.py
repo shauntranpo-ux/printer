@@ -234,6 +234,13 @@ async def handle_ready_phase(
         skip_reason_ai = f"side={side} not in allowed_sides={_allowed_sides}"
         do_trade = False
 
+    # ── no_ask floor — block NO entries on nearly-resolved contracts ──────────
+    if do_trade and side == "no":
+        _min_no_ask = float(get_asset_config(config, asset, "min_no_ask_cents",
+                                             config.get("min_no_ask_cents", 10.0)))
+        if no_ask < _min_no_ask:
+            skip_reason_ai = f"no_ask {no_ask:.0f}c below floor {_min_no_ask:.0f}c"
+            do_trade = False
 
     # ── Consecutive price-filter skip tracking ────────────────────────────────────────────────────
     if brain.get("price_filter_skip"):

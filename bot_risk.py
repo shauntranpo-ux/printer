@@ -350,6 +350,12 @@ async def _execute_s1_trade(
     _s1_allowed = get_asset_config(config, asset, "allowed_sides", config.get("allowed_sides"))
     if _s1_allowed and side not in _s1_allowed:
         return
+    if side == "no":
+        _min_no_ask = float(get_asset_config(config, asset, "min_no_ask_cents",
+                                             config.get("min_no_ask_cents", 10.0)))
+        if no_ask < _min_no_ask:
+            log.info(f"[S1] {ticker}: no_ask {no_ask:.0f}c below floor {_min_no_ask:.0f}c — skip")
+            return
     entry_price_cents = yes_ask if side == "yes" else no_ask
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
     trade_amount = float(config.get("trade_amount_dollars", 25))
