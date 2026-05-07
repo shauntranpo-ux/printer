@@ -466,6 +466,12 @@ async def handle_ready_phase(
     else:
         bot_state.current_position = _new_position
         bot_state.current_phase = "LOCKED"
+        # Write state file immediately for BTC so crash recovery sees LOCKED phase.
+        # Non-BTC positions are in _asset_states which write_state_file reads normally.
+        await write_state_file(
+            config, market, "LOCKED", secs_left, btc_price,
+            score, bot_state.last_confidence_breakdown, "trade", "",
+        )
     _eval_snap.update({"status": "TRADING", "skip_reason": ""})
     if _use_state: state["eval"] = dict(_eval_snap)
     else: bot_state._asset_eval[asset] = dict(_eval_snap)

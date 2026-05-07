@@ -1,4 +1,5 @@
 """Tests for go-live reliability fixes."""
+import ast
 import pathlib
 
 import pytest
@@ -54,3 +55,25 @@ async def test_daily_limit_resets_when_mode_changes(monkeypatch, _reset_limit_st
     assert not bot_state.limit_triggered, "limit_triggered must be reset when mode changed"
     assert triggered is False, "no pnl → no new trigger after reset"
     assert bot_state.limit_reason == "", "limit_reason must be cleared on mode-change reset"
+
+
+def test_write_state_called_on_locked_transition():
+    """
+    After handle_ready_phase transitions to LOCKED, the state file must be
+    written in the same function call — not deferred to the next loop tick.
+    Verify by checking the source for write_state_file inside handle_ready_phase.
+    """
+    src = (ROOT / "bot_loops.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "handle_ready_phase":
+            fn_src = ast.get_source_segment(src, node)
+            assert fn_src is not None
+            locked_pos = fn_src.find('"LOCKED"')
+            write_pos = fn_src.rfind("write_state_file")
+            assert write_pos > locked_pos, (
+                "write_state_file must be called AFTER setting phase='LOCKED' in handle_ready_phase"
+            )
+            return
+    pytest.fail("handle_ready_phase not found in bot_loops.py")
