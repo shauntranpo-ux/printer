@@ -390,6 +390,8 @@ async def handle_ready_phase(
         # Check the portfolio directly before declaring the order unfilled.
         try:
             if await _portfolio_has_position(session, ticker, side):
+                # contracts count not updated — actual fill count unknown at this point;
+                # the trade record will use the originally requested count (may overstate a partial fill).
                 fill_price = int(entry_price_cents)
                 fill_confirmed = True
                 log.warning(
