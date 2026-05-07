@@ -868,6 +868,7 @@ async def main_loop() -> None:
     try:
         with open(bot_state._STATE_FILE, "r") as _sf:
             _saved = json.load(_sf)
+        # BTC recovery
         _saved_pos = _saved.get("open_position")
         _saved_phase = _saved.get("phase", "")
         if _saved_pos and _saved_phase == "LOCKED" and _saved_pos.get("trade_id"):
@@ -882,14 +883,8 @@ async def main_loop() -> None:
         saved_cl = _saved.get("consecutive_losses", 0)
         if isinstance(saved_cl, int) and saved_cl > 0:
             bot_state._consecutive_losses = saved_cl
-    except Exception:
-        pass  # fresh start, no state to recover
-
-    # Recover non-BTC LOCKED positions from state file
-    try:
-        with open(bot_state._STATE_FILE, "r") as _sf_nbtc:
-            _saved_nbtc = json.load(_sf_nbtc)
-        for _a, _apos in _saved_nbtc.get("non_btc_positions", {}).items():
+        # Non-BTC recovery
+        for _a, _apos in _saved.get("non_btc_positions", {}).items():
             if _apos.get("phase") == "LOCKED" and _apos.get("position"):
                 if _a not in bot_state._asset_states:
                     bot_state._asset_states[_a] = {}
@@ -902,7 +897,7 @@ async def main_loop() -> None:
                     _a, _apos["position"].get("trade_id"),
                 )
     except Exception:
-        pass  # no state file yet or key missing - fresh start
+        pass  # fresh start, no state to recover
 
     # Warn about S1 positions that were open when the bot last stopped.
     # These are financially live on Kalshi but untracked in _s1_pending_trades.

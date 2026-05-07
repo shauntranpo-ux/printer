@@ -299,6 +299,8 @@ async def write_state_file(
 
     non_btc_locked: dict = {}
     for _a, _st in bot_state._asset_states.items():
+        if _a == "BTC":
+            continue
         if _st.get("phase") == "LOCKED" and _st.get("position"):
             non_btc_locked[_a] = {
                 "phase": "LOCKED",
