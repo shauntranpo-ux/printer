@@ -70,6 +70,18 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
     if mode == "paper":
         return False, ""
 
+    # If the mode changed since the limit was triggered (e.g., demo → live),
+    # reset so the new mode starts with a fresh daily count.
+    if (
+        bot_state.limit_triggered
+        and bot_state.pre_limit_mode
+        and bot_state.pre_limit_mode != mode
+    ):
+        bot_state.limit_triggered = False
+        bot_state.limit_reason = ""
+        bot_state.pre_limit_mode = None
+        log.info(f"Mode changed to '{mode}' — resetting daily limit state.")
+
     pnl = await db_get_today_pnl(mode)
 
     if pnl < 0 and abs(pnl) >= config.get("daily_loss_limit_dollars", 20):
