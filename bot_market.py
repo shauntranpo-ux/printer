@@ -439,6 +439,17 @@ def seconds_elapsed(market: dict) -> float:
     return max(0.0, 15 * 60 - seconds_remaining(market))
 
 
+def _kalshi_obi(yes_arr: list, no_arr: list, top_n: int = 5) -> float | None:
+    yes_asks = [(p, q) for p, q in yes_arr if q > 0 and p > 0]
+    no_asks  = [(p, q) for p, q in no_arr  if q > 0 and p > 0]
+    yes_depth = sum(q for _, q in sorted(yes_asks, key=lambda x: x[0])[:top_n])
+    no_depth  = sum(q for _, q in sorted(no_asks,  key=lambda x: x[0])[:top_n])
+    total = yes_depth + no_depth
+    if total < 1e-9:
+        return None
+    return (no_depth - yes_depth) / total
+
+
 async def fetch_orderbook(
     session: aiohttp.ClientSession,
     ticker: str,
@@ -596,6 +607,7 @@ async def fetch_orderbook(
         "best_yes_bid": best_yes_bid,
         "yes_liquidity": yes_liquidity,
         "no_liquidity":  no_liquidity,
+        "obi":           _kalshi_obi(yes_arr, no_arr),
     }
 
 
