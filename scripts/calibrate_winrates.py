@@ -40,7 +40,7 @@ KALSHI_SERIES = {
 }
 
 # ── Binance API constants ─────────────────────────────────────────────────────
-BINANCE_BASE_URL = "https://api.binance.com"
+BINANCE_BASE_URL = "https://api.binance.us"  # binance.com blocks US IPs (451); .us same API
 BINANCE_SYMBOLS  = {
     "BTC":  "BTCUSDT",
     "ETH":  "ETHUSDT",
@@ -705,9 +705,9 @@ def main():
         _log("S2 phase skipped (SKIP_S2=1)")
 
     print()
-    print("# " + "─" * 60)
+    print("# " + "-" * 60)
     print("# PASTE INTO bot_strategy.py (replace existing _S1_WIN_RATE / _S2_WIN_RATE)")
-    print("# " + "─" * 60)
+    print("# " + "-" * 60)
     print()
     print("_S1_WIN_RATE: dict = {")
     for asset in assets:
