@@ -971,12 +971,6 @@ async def place_order(
             asset, ticker, (_placed_elapsed + secs_left) / 60.0,
             _phase_for_eth(asset, _placed_elapsed),
         )
-        asyncio.create_task(send_telegram(
-            f"<b>[S2 D3 Hybrid] {_placed_ctx} MARKET ORDER PLACED</b>\n"
-            f"<b>{side.upper()} -- {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts\n"
-            f"Expires in {_placed_mins}m {_placed_secs}s"
-        ))
-
     log.info(f"[live] market {side.upper()} {contracts}x on {ticker} ({secs_left:.0f}s left)")
 
     for attempt in range(2):
@@ -1045,10 +1039,6 @@ async def place_order(
                 _failed_ctx = _notify_ctx(
                     asset, ticker, (_failed_elapsed + secs_left) / 60.0,
                     _phase_for_eth(asset, _failed_elapsed),
-                )
-                await send_telegram(
-                    f"<b>[S2 D3 Hybrid] {_failed_ctx} MARKET ORDER FAILED</b>  --  {err_code}\n"
-                    f"{side.upper()}  {contracts}x"
                 )
                 break
             continue
@@ -1171,9 +1161,5 @@ async def place_order(
     _nofill_ctx = _notify_ctx(
         asset, ticker, (_nofill_elapsed + secs_left) / 60.0,
         _phase_for_eth(asset, _nofill_elapsed),
-    )
-    await send_telegram(
-        f"<b>[S2 D3 Hybrid] {_nofill_ctx} MARKET ORDER NOT FILLED</b>  --  no liquidity\n"
-        f"{side.upper()} -- {'UP' if side == 'yes' else 'DOWN'}  {contracts}x"
     )
     return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
