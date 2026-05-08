@@ -224,5 +224,7 @@ def test_s1_lookup_uses_table():
 
 def test_s1_lookup_falls_back_to_tanh():
     import bot_strategy as bs
-    result = bs._s1_lookup_win_rate("BTC", abs_pct=0.003, mins_left=5.0)
+    # BTC (dist_idx=2, time_idx=1) = None — hits tanh fallback
+    # dist_idx=2: abs_pct=0.015 in [0.010, 0.020); time_idx=1: mins_left=7.0 in [6.0, 9.0)
+    result = bs._s1_lookup_win_rate("BTC", abs_pct=0.015, mins_left=7.0)
     assert 0.5 < result < 0.85, f"Fallback win_prob {result} out of expected range"

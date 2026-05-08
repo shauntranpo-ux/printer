@@ -543,14 +543,6 @@ async def handle_ready_phase(
         asset, ticker, (elapsed + secs_left) / 60.0,
         _phase_for_eth(asset, elapsed),
     )
-    await send_telegram(
-        f"<b>🔵 [S2 D3 Hybrid] {_fill_ctx} {mode_icon} {_strat_tag}</b>  —  {_time_str}\n"
-        f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
-        f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
-        f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
-        f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
-        f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s -> {_expiry_str}"
-    )
 
 
 async def handle_locked_phase(
@@ -693,12 +685,6 @@ async def handle_locked_phase(
         _close_ctx = _notify_ctx(
             asset, pos.get("ticker", ticker), _close_dur_min,
             _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
-        )
-        await send_telegram(
-            f"<b>🔵 [S2 D3 Hybrid] {_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
-            f"{pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
-            f"Entry: {pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
-            f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}"
         )
         await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
         return

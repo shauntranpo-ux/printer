@@ -451,14 +451,6 @@ async def _execute_s1_trade(
     _payout   = round((100 - fill_price) * contracts / 100, 2)
     _cost     = round(fill_price * contracts / 100, 2)
     log.info(f"[S1] {ticker}: ORDER FILLED -- {side.upper()} {contracts}x @ {fill_price}c")
-    await send_telegram(
-        f"<b>[S1 Original] {asset} {mode_icon} ORDER FILLED</b>\n"
-        f"<b>{side.upper()} -- {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
-        f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
-        f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
-        f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
-        f"Expires {int(secs_left // 60)}m {int(secs_left % 60)}s"
-    )
 
 
 async def _settle_s1_trade(
@@ -508,12 +500,6 @@ async def _settle_s1_trade(
     _now        = time.time()
     _dur_secs   = int(_now - s1_pos.get("entry_ts", _now))
     _dur_str    = f"{_dur_secs // 60}m {_dur_secs % 60}s"
-    await send_telegram(
-        f"<b>[S1 Original] {asset} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  --  {_time_str}\n"
-        f"{s1_pos['side'].upper()}  {s1_pos['contracts']} contracts  |  held {_dur_str}\n"
-        f"Entry: {s1_pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
-        f"Strike: ${s1_pos['strike']:,.0f}"
-    )
 
 
 async def _settle_s1_orphans(
