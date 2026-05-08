@@ -1,0 +1,64 @@
+<h2>S1 Fix Design — Two Parts</h2>
+<p class="subtitle">Part A: immediate gate tightening from EV sweep data. Part B: BV3 table recalibration from Kalshi settlements.</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+
+  <div style="background:oklch(0.18 0.01 0);border:1px solid oklch(0.25 0.01 0);border-radius:11px;padding:16px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:oklch(0.75 0.17 145);margin-bottom:12px">Part A — Gate Tightening</div>
+    <div style="font-size:13px;color:oklch(0.75 0 0);margin-bottom:12px">A Python script reads <code style="background:oklch(0.22 0 0);padding:1px 5px;border-radius:3px">ev_sweep_all.csv</code>, picks the <strong>Sharpe-optimal</strong> <code>min_ev_base_s1</code> per asset, and writes the results directly to <code>config.json</code>.</div>
+
+    <table style="width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums">
+      <thead><tr style="color:oklch(0.5 0 0)">
+        <th style="text-align:left;padding:3px 6px">Asset</th>
+        <th style="text-align:right;padding:3px 6px">Current</th>
+        <th style="text-align:right;padding:3px 6px">→ New</th>
+        <th style="text-align:right;padding:3px 6px">Backtest P&L</th>
+      </tr></thead>
+      <tbody>
+        <tr style="border-top:1px solid oklch(0.22 0 0)"><td style="padding:5px 6px">BTC</td><td style="text-align:right;padding:5px 6px;color:oklch(0.5 0 0)">8%</td><td style="text-align:right;padding:5px 6px;color:oklch(0.8 0 0)">7%</td><td style="text-align:right;padding:5px 6px;color:oklch(0.55 0.18 25)">−$2,198 (best of bad)</td></tr>
+        <tr style="border-top:1px solid oklch(0.22 0 0)"><td style="padding:5px 6px">ETH</td><td style="text-align:right;padding:5px 6px;color:oklch(0.5 0 0)">12%</td><td style="text-align:right;padding:5px 6px;color:oklch(0.75 0.17 145)">25%</td><td style="text-align:right;padding:5px 6px;color:oklch(0.75 0.17 145)">+$1,048</td></tr>
+        <tr style="border-top:1px solid oklch(0.22 0 0)"><td style="padding:5px 6px">SOL</td><td style="text-align:right;padding:5px 6px;color:oklch(0.5 0 0)">5%</td><td style="text-align:right;padding:5px 6px;color:oklch(0.75 0.17 145)">16%</td><td style="text-align:right;padding:5px 6px;color:oklch(0.75 0.17 145)">+$1,318</td></tr>
+        <tr style="border-top:1px solid oklch(0.22 0 0)"><td style="padding:5px 6px">XRP</td><td style="text-align:right;padding:5px 6px;color:oklch(0.5 0 0)">8%</td><td style="text-align:right;padding:5px 6px;color:oklch(0.75 0.17 145)">17%</td><td style="text-align:right;padding:5px 6px;color:oklch(0.8 0.12 90)">+$278</td></tr>
+      </tbody>
+    </table>
+    <div style="margin-top:10px;font-size:11px;color:oklch(0.5 0 0)">No new data or training needed. Runs in &lt;1s. Output goes straight to config.json.</div>
+  </div>
+
+  <div style="background:oklch(0.18 0.01 0);border:1px solid oklch(0.25 0.01 0);border-radius:11px;padding:16px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:oklch(0.6 0.2 245);margin-bottom:12px">Part B — BV3 Recalibration</div>
+    <div style="font-size:13px;color:oklch(0.75 0 0);margin-bottom:10px">A calibrator script joins the Kalshi settlements with 1m price bars to compute <strong>actual win rates</strong> per (distance × time) bucket, then patches the BV3 table in <code>bot_strategy.py</code>.</div>
+
+    <div style="font-size:12px;color:oklch(0.65 0 0)">
+      <div style="margin-bottom:6px"><span style="color:oklch(0.8 0 0);font-weight:600">Data available:</span> ~6,300 settlements per asset (Feb–May 2026), 1-min spot bars</div>
+      <div style="margin-bottom:6px"><span style="color:oklch(0.8 0 0);font-weight:600">Method:</span> For each settled market, simulate a 3-min-before-close entry, compute distance_bucket + time_bucket, record outcome (result=1 → YES won)</div>
+      <div style="margin-bottom:6px"><span style="color:oklch(0.8 0 0);font-weight:600">Output:</span> New BV3 table written to <code style="background:oklch(0.22 0 0);padding:1px 5px;border-radius:3px">bot_strategy.py</code> — replaces the April-calibrated table</div>
+      <div><span style="color:oklch(0.8 0 0);font-weight:600">Assets:</span> BTC, ETH, SOL, XRP (uses per-asset settlement files)</div>
+    </div>
+  </div>
+
+</div>
+
+<div style="background:oklch(0.18 0.01 0);border:1px solid oklch(0.25 0.01 0);border-radius:9px;padding:14px 16px;margin-bottom:14px">
+  <div style="font-weight:700;color:oklch(0.8 0 0);margin-bottom:8px">Files touched</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">
+    <div>
+      <div style="color:oklch(0.5 0 0);font-size:10px;margin-bottom:4px">NEW</div>
+      <div style="color:oklch(0.75 0.17 145)">scripts/tune_s1_gates.py</div>
+      <div style="color:oklch(0.75 0.17 145)">backtesting/training/bv3_calibrator.py</div>
+    </div>
+    <div>
+      <div style="color:oklch(0.5 0 0);font-size:10px;margin-bottom:4px">MODIFIED</div>
+      <div style="color:oklch(0.8 0.12 90)">config.json (asset gates)</div>
+      <div style="color:oklch(0.8 0.12 90)">bot_strategy.py (BV3 table constant)</div>
+    </div>
+  </div>
+</div>
+
+<div style="background:oklch(0.18 0.01 0);border:1px solid oklch(0.25 0.01 0);border-radius:9px;padding:14px 16px">
+  <div style="font-weight:700;color:oklch(0.8 0 0);margin-bottom:6px">Execution order</div>
+  <div style="font-size:13px;color:oklch(0.65 0 0)">
+    1. Run <strong>Part A</strong> first (config.json updated, S1 immediately trades better-filtered setups)<br>
+    2. Run <strong>Part B</strong> (new BV3 table installed, S1 uses recalibrated win probabilities)<br>
+    3. Restart bot — both improvements active
+  </div>
+</div>

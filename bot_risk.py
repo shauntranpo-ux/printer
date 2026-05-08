@@ -530,6 +530,7 @@ async def _settle_s1_orphans(
         conn = sqlite3.connect(bot_state._DB_FILE)
         rows = conn.execute(
             "SELECT id, market_id, side, contracts, entry_price_cents, mode, asset, "
+            "COALESCE(strike, 0) AS db_strike, "
             "COALESCE(entry_signals, '{}') AS entry_signals "
             "FROM trades WHERE strategy_variant='strategy1' AND outcome='pending'"
         ).fetchall()
@@ -544,10 +545,12 @@ async def _settle_s1_orphans(
     btc_price = bot_state.btc_prices[-1][1] if bot_state.btc_prices else 0.0
 
     for row in rows:
-        trade_id, ticker, side, contracts, entry_price_cents, mode, asset, signals_json = row
+        trade_id, ticker, side, contracts, entry_price_cents, mode, asset, db_strike, signals_json = row
         try:
-            signals = json.loads(signals_json) if signals_json else {}
-            strike = float(signals.get("strike", 0) or 0)
+            strike = float(db_strike or 0)
+            if strike == 0.0:
+                signals = json.loads(signals_json) if signals_json else {}
+                strike = float(signals.get("strike", 0) or 0)
         except Exception:
             strike = 0.0
 

@@ -205,7 +205,7 @@ async def handle_ready_phase(
     # Track YES price for velocity signal
     track_contract_price(ticker, yes_ask)
 
-    # ── Printer Brain — primary decision engine (always runs, no API needed) ──
+    # S2: contract velocity + OBI per-asset strategy
     brain = strategy_brain_s2(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
                      min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
                      vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
@@ -214,8 +214,25 @@ async def handle_ready_phase(
                      min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
                      max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                      asset=asset)
+    # S1: EMA momentum per-asset strategy (different direction + gates from S2)
     brain_s1 = strategy_brain_s1(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)
 
+    # Dual brain consensus — same side: boost confidence; opposite sides: skip both
+    _s1_wants_trade = brain_s1.get("action") == "trade"
+    _s2_wants_trade = brain.get("action") == "trade"
+    if _s1_wants_trade and _s2_wants_trade:
+        if brain_s1["side"] == brain["side"]:
+            _boosted = min(99, brain["confidence"] + 8)
+            brain["confidence"] = _boosted
+            brain["reasoning"] += " [dual_agree]"
+            log.info("[%s] Dual brain AGREE on %s — confidence boosted to %d", asset, brain["side"], _boosted)
+        else:
+            log.info("[%s] Dual brain DISAGREE: S1=%s S2=%s — both skipped", asset, brain_s1["side"], brain["side"])
+            _disagree_reason = f"dual_disagree:s1={brain_s1['side']} s2={brain['side']}"
+            brain["action"]       = "skip"
+            brain["reasoning"]    = _disagree_reason
+            brain_s1["action"]    = "skip"
+            brain_s1["reasoning"] = _disagree_reason
 
     await _execute_s1_trade(
         session, brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
@@ -727,13 +744,11 @@ async def _process_asset(
         if st["phase"] == "LOCKED" and st.get("position") is not None:
             _close_time = st["position"].get("market_close_time", "")
             if not _close_time:
-                log.error(f"[{asset}] LOCKED position missing market_close_time — cannot safely settle without market. Skipping.")
-            else:
-                log.warning(f"[{asset}] no active market — still processing open LOCKED position.")
-                try:
-                    await handle_locked_phase(session, price, 0, config, asset=asset, state=st)
-                except Exception as exc:
-                    log.error(f"[{asset}] LOCKED phase error (no market): {exc}", exc_info=True)
+                log.warning(f"[{asset}] LOCKED: missing market_close_time — attempting forced settlement with secs_left=0")
+            try:
+                await handle_locked_phase(session, price, 0, config, asset=asset, state=st)
+            except Exception as exc:
+                log.error(f"[{asset}] LOCKED phase error (no market): {exc}", exc_info=True)
         else:
             log.debug(f"[{asset}] no active market")
             st["phase"] = "DONE"
@@ -831,14 +846,23 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
         try:
             config = read_config()
             if not config.get("bot_enabled", False):
-                # Populate PAUSED state so dashboard shows prices instead of OFFLINE
+                # Populate PAUSED state so dashboard shows prices instead of OFFLINE.
+                # Don't clobber LOCKED — those positions must still settle.
                 for _pa in config.get("enabled_assets", ["ETH", "SOL", "XRP"]):
                     if _pa == "BTC":
                         continue
-                    if _pa not in bot_state._asset_states:
+                    _pa_st = bot_state._asset_states.get(_pa)
+                    if _pa_st is None:
                         bot_state._asset_states[_pa] = {"phase": "PAUSED", "market": None, "eval": {}}
-                    else:
-                        bot_state._asset_states[_pa]["phase"] = "PAUSED"
+                    elif _pa_st.get("phase") != "LOCKED":
+                        _pa_st["phase"] = "PAUSED"
+                # Still process any LOCKED assets so they can settle
+                for _pa in list(config.get("enabled_assets", ["ETH", "SOL", "XRP"])):
+                    if _pa != "BTC" and bot_state._asset_states.get(_pa, {}).get("phase") == "LOCKED":
+                        try:
+                            await _process_asset(session, config, _pa)
+                        except Exception as _exc:
+                            log.error("[%s] LOCKED settlement error (bot disabled): %s", _pa, _exc, exc_info=True)
                 await asyncio.sleep(10)
                 continue
             for asset in config.get("enabled_assets", ["ETH", "SOL", "XRP"]):
@@ -927,7 +951,7 @@ async def main_loop() -> None:
                     await asyncio.sleep(10)
                     continue
 
-                if not config.get("bot_enabled", False):
+                if not config.get("bot_enabled", False) and bot_state.current_phase != "LOCKED":
                     await write_state_file(config, bot_state.current_market, "PAUSED", 0,
                                            get_btc_price(), bot_state.last_confidence_score,
                                            bot_state.last_confidence_breakdown, bot_state.last_action, bot_state.last_skip_reason)
@@ -974,13 +998,11 @@ async def main_loop() -> None:
                     if bot_state.current_phase == "LOCKED" and bot_state.current_position is not None:
                         _close_time = bot_state.current_position.get("market_close_time", "")
                         if not _close_time:
-                            log.error("LOCKED position missing market_close_time — cannot safely settle without market. Skipping.")
-                        else:
-                            log.warning("No active BTC markets — still processing open LOCKED position.")
-                            try:
-                                await handle_locked_phase(session, btc_price, 0, config)
-                            except Exception as exc:
-                                log.error(f"LOCKED phase error (no market): {exc}", exc_info=True)
+                            log.warning("LOCKED: missing market_close_time — attempting forced settlement with secs_left=0")
+                        try:
+                            await handle_locked_phase(session, btc_price, 0, config)
+                        except Exception as exc:
+                            log.error(f"LOCKED phase error (no market): {exc}", exc_info=True)
                         await write_state_file(config, None, bot_state.current_phase, 0, btc_price,
                                                bot_state.last_confidence_score, bot_state.last_confidence_breakdown,
                                                bot_state.last_action, bot_state.last_skip_reason)

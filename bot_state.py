@@ -13,7 +13,7 @@ __all__ = [
     "_CONFIG_FILE", "_DB_FILE", "_STATE_FILE", "_DATA_DIR", "_PRICE_VAL_CSV",
     # Runtime state
     "btc_prices",
-    "_obi_monitor", "_funding_monitor_btc", "_funding_monitor_eth",
+    "_obi_monitor",
     "private_key", "api_key",
     "current_market", "current_phase", "current_position",
     "_order_attempted_tickers", "_asset_states", "_s1_pending_trades",
@@ -56,8 +56,6 @@ import asset_manager  # noqa: E402 — after os/path setup
 btc_prices: deque = asset_manager._prices["BTC"]
 
 _obi_monitor       = None   # OBIMonitor | None  — set in main()
-_funding_monitor_btc = None  # FundingDispersionMonitor | None
-_funding_monitor_eth = None  # FundingDispersionMonitor | None
 
 private_key = None
 api_key: str = ""
@@ -109,8 +107,8 @@ _S2_SINGLETONS: dict  = {}
 _config_mtime: float  = 0.0
 _current_window: str  = ""
 
-_S1_VERSION = "bv3-2026-05-06"
-_S2_VERSION = "d3-hybrid-2026-05-06"
+_S1_VERSION = "ema-momentum-2026-05-07"
+_S2_VERSION = "contract-velocity-obi-2026-05-07"
 
 _S1_ASSET_VOL_RATIO: dict = {
     "BTC": 1.00, "ETH": 1.10, "SOL": 2.20, "XRP": 1.80, "DOGE": 2.60,

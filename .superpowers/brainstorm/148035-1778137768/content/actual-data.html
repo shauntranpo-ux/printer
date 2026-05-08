@@ -1,0 +1,50 @@
+<h2>Actual Paper Trade Data vs Backtest</h2>
+<p class="subtitle">90 trades in kalshi_bot.db, all from April 2026. The picture is very different from the EV sweep projections.</p>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+
+  <div style="background:oklch(0.18 0.01 0);border:1px solid oklch(0.25 0.01 0);border-radius:11px;padding:16px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:oklch(0.6 0 0);margin-bottom:12px">S2 (D3 Hybrid) — Actual Paper</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+      <div style="background:oklch(0.75 0.17 145 / 0.08);border:1px solid oklch(0.75 0.17 145 / 0.25);border-radius:7px;padding:10px">
+        <div style="font-size:22px;font-weight:700;color:oklch(0.75 0.17 145)">+$105.93</div>
+        <div style="font-size:11px;color:oklch(0.5 0 0);margin-top:2px">Paper P&amp;L (83 trades)</div>
+      </div>
+      <div style="background:oklch(0.18 0.01 0);border:1px solid oklch(0.25 0 0);border-radius:7px;padding:10px">
+        <div style="font-size:22px;font-weight:700;color:oklch(0.8 0 0)">56.6%</div>
+        <div style="font-size:11px;color:oklch(0.5 0 0);margin-top:2px">Win rate (47W / 36L)</div>
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums">
+      <tr style="color:oklch(0.5 0 0)"><th style="text-align:left;padding:3px 6px">Side</th><th style="text-align:right;padding:3px 6px">W/L</th><th style="text-align:right;padding:3px 6px">P&amp;L</th></tr>
+      <tr style="border-top:1px solid oklch(0.22 0 0)"><td style="padding:5px 6px">YES (BTC cont.)</td><td style="text-align:right;padding:5px 6px">47 / 31</td><td style="text-align:right;padding:5px 6px;color:oklch(0.75 0.17 145)">+$136.36</td></tr>
+      <tr style="border-top:1px solid oklch(0.22 0 0)"><td style="padding:5px 6px">NO</td><td style="text-align:right;padding:5px 6px">0 / 5</td><td style="text-align:right;padding:5px 6px;color:oklch(0.55 0.18 25)">−$30.43</td></tr>
+    </table>
+    <div style="margin-top:10px;font-size:11px;color:oklch(0.5 0 0)">All 83 paper trades are BTC. 78 entered at exactly 72¢. 7 live-mode trades all voided.</div>
+  </div>
+
+  <div style="background:oklch(0.18 0.01 0);border:1px solid oklch(0.25 0.01 0);border-radius:11px;padding:16px">
+    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:oklch(0.6 0 0);margin-bottom:12px">S1 (BV3) — Actual Paper</div>
+    <div style="background:oklch(0.9 0.12 90 / 0.08);border:1px solid oklch(0.9 0.12 90 / 0.3);border-radius:7px;padding:16px;text-align:center">
+      <div style="font-size:28px;font-weight:700;color:oklch(0.8 0.12 90)">0 trades</div>
+      <div style="font-size:12px;color:oklch(0.6 0 0);margin-top:6px">S1 has never fired in paper mode.<br>The EV gate or vol gate is blocking every signal.</div>
+    </div>
+    <div style="margin-top:12px;font-size:12px;color:oklch(0.65 0 0)">Current S1 gates per asset:<br>
+    ETH 12% · SOL 5% · XRP 8% · BTC 8% · DOGE 10%<br>
+    Vol gate: rv × √mins / dist &lt; 1.8×</div>
+  </div>
+
+</div>
+
+<div style="background:oklch(0.9 0.12 90 / 0.08);border:1px solid oklch(0.9 0.12 90 / 0.3);border-radius:9px;padding:14px 16px;margin-bottom:12px">
+  <div style="font-weight:700;color:oklch(0.8 0.12 90);margin-bottom:4px">The −$1k figure was from backtests, not live paper</div>
+  <div style="font-size:13px;color:oklch(0.65 0 0)">The EV sweep backtests project large BTC losses. But the actual April paper trades show S2 BTC at +$106 with 56.6% WR — very different. The backtest may be simulating lower-quality entries (wider price range) while the live bot only enters near 72¢ (high-quality setups). S1 never traded at all — its gates are blocking everything.</div>
+</div>
+
+<div style="background:oklch(0.55 0.18 25 / 0.08);border:1px solid oklch(0.55 0.18 25 / 0.3);border-radius:9px;padding:14px 16px">
+  <div style="font-weight:700;color:oklch(0.7 0.18 25);margin-bottom:4px">Two real problems to fix</div>
+  <div style="font-size:13px;color:oklch(0.65 0 0)">
+    1. <strong style="color:oklch(0.8 0 0)">S1 never fires</strong> — gates are set too tight, zero trades placed. Either the EV or vol gate is filtering out every opportunity.<br>
+    2. <strong style="color:oklch(0.8 0 0)">S2 NO side is 0 for 5</strong> — the D3 signal seems to only work on the YES (continuation) side for BTC. May need direction filter or gate adjustment for NO trades.
+  </div>
+</div>

@@ -94,25 +94,6 @@ async def main() -> None:
     asyncio.create_task(bot_state._obi_monitor.run())
     log.info("OBI monitor started for BTC, ETH, SOL, XRP, DOGE")
 
-    # BTC/ETH funding dispersion monitors (Hyperliquid + Binance)
-    _src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
-    if _src_path not in sys.path:
-        sys.path.insert(0, _src_path)
-    from strategies.original.signals.funding_dispersion import FundingDispersionMonitor as _FDM
-    bot_state._funding_monitor_btc = _FDM("BTC")
-    bot_state._funding_monitor_eth = _FDM("ETH")
-
-    async def _funding_refresh_loop() -> None:
-        while True:
-            try:
-                await bot_state._funding_monitor_btc.refresh()
-                await bot_state._funding_monitor_eth.refresh()
-            except Exception as _fe:
-                log.warning(f"funding refresh (BTC/ETH) error: {_fe}")
-            await asyncio.sleep(60)
-
-    asyncio.create_task(_funding_refresh_loop())
-    log.info("BTC/ETH funding monitors started")
 
     # Wait for the first price from any enabled asset (timeout after 120s so Railway doesn't hang)
     _first_asset = _enabled[0] if _enabled else "ETH"

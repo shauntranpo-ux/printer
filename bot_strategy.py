@@ -1,7 +1,7 @@
-"""bot_strategy.py — S1 (BV3 empirical) and S2 (D3 hybrid) strategy brains."""
+"""bot_strategy.py — S1 (EMA momentum) and S2 (contract velocity + OBI) strategy brains."""
+import datetime
 import logging
 import math
-import os
 import time
 from collections import deque
 
@@ -11,7 +11,6 @@ import asset_manager
 
 log = logging.getLogger("bot")
 
-# Separate logger for Brain v3 decision records — writes to brain.log only
 brain_log = logging.getLogger("brain")
 brain_log.setLevel(logging.INFO)
 brain_log.propagate = False
@@ -19,20 +18,16 @@ _brain_fh = logging.FileHandler("brain.log", encoding="utf-8")
 _brain_fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
 brain_log.addHandler(_brain_fh)
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  Contract price velocity tracking
-# ══════════════════════════════════════════════════════════════════════════════
+
+# ---------------------------------------------------------------------------
+# Shared utilities
+# ---------------------------------------------------------------------------
 
 def track_contract_price(ticker: str, price: float) -> None:
-    """Record the latest contract ask price for velocity and lag analysis."""
+    """Record the latest contract YES-ask price for S2 velocity signal."""
     if ticker not in bot_state._contract_price_history:
         bot_state._contract_price_history[ticker] = deque(maxlen=60)
     bot_state._contract_price_history[ticker].append((time.time(), price))
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  Printer Brain v3 — Empirically Calibrated from 4.5M rows of BTC 1-min data
-# ══════════════════════════════════════════════════════════════════════════════
 
 
 def _strategy_name_for(asset, duration_min=15.0):
@@ -40,286 +35,8 @@ def _strategy_name_for(asset, duration_min=15.0):
     return {"BTC": "B3", "ETH": "E1", "SOL": "S1", "XRP": "X3", "DOGE": "D3"}.get(asset, "15m")
 
 
-def _get_or_make_strategy_s2(asset: str, config, market_duration_min: float = 15.0):
-    """Lazily construct per-asset strategy singleton. Returns None on failure."""
-    # Fix sys.path FIRST so every strategies.* import resolves to src/strategies/.
-    # The root strategies/ directory (YAML configs) would otherwise be picked up as a
-    # namespace package and poison sys.modules['strategies'] before src/ is on the path.
-    import sys as _sys
-    _src = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
-    if _src not in _sys.path:
-        # Purge any stale root-strategies namespace package cached before this fix runs
-        for _k in [k for k in _sys.modules if k == "strategies" or k.startswith("strategies.")]:
-            del _sys.modules[_k]
-        _sys.path.insert(0, _src)
-    try:
-        mtime = os.path.getmtime(bot_state._CONFIG_FILE)
-        if mtime != bot_state._config_mtime:
-            bot_state._S2_SINGLETONS.clear()
-            bot_state._config_mtime = mtime
-            log.info("config.json changed — strategy singletons cleared")
-    except OSError:
-        pass
-    try:
-        from strategies.signals.time_windows import get_trading_window, get_window_params
-        import time as _tw_now
-        _new_window = get_trading_window(_tw_now.time(), config.get("timezone", "America/Los_Angeles"))
-        if _new_window != bot_state._current_window:
-            bot_state._S2_SINGLETONS.clear()
-            bot_state._current_window = _new_window
-            log.info("Trading window changed to %s — strategy singletons cleared", bot_state._current_window)
-    except Exception:
-        _new_window = bot_state._current_window or "normal"
-
-    cache_key = asset
-    if cache_key in bot_state._S2_SINGLETONS:
-        return bot_state._S2_SINGLETONS[cache_key]
-    try:
-        from strategies.skip_layer import SkipConfig
-        from strategies.signals.time_windows import get_window_params
-
-        _min_price = float(config.get("min_entry_price_cents", 20.0))
-        _max_price = float(config.get("max_entry_price_cents", 76.0))
-        _tw = _new_window
-        _wp = get_window_params(config, _tw)
-        _max_price = min(_max_price, float(_wp["max_entry_price_cents"]))
-        if _max_price <= _min_price:
-            log.warning(
-                "[%s] time_window=%s has max_entry=%.0fc <= min_entry=%.0fc — all entries will be blocked",
-                asset, _tw, _max_price, _min_price,
-            )
-        skip_cfg = SkipConfig(
-            max_spread_cents=float(get_asset_config(config, asset, "max_spread_cents", 3.0)),
-            min_seconds_left=float(config.get("min_seconds_left", 30.0)),
-            min_entry_price_cents=_min_price,
-            max_entry_price_cents=_max_price,
-            cold_start_samples=int(config.get("cold_start_samples", 60)),
-            vol_ratio_threshold=float(get_asset_config(config, asset, "vol_gate_thresh", 1.80)),
-        )
-        overrides = config.get("asset_overrides", {}).get(asset, {})
-        _ev_default = config.get("min_ev_base_15m", config.get("min_ev_base", 8))
-        _ev_base = float(overrides.get("min_ev_base", _ev_default)) + float(_wp["min_ev_delta"])
-        min_ev = _ev_base / 100.0
-        stake = float(config.get("trade_amount_dollars", 25))
-
-        from strategies.fifteen_min_strategy import FifteenMinStrategy
-        strat = FifteenMinStrategy(
-            asset=asset,
-            skip_config=skip_cfg,
-            min_ev=min_ev,
-            stake_dollars=stake,
-        )
-
-        bot_state._S2_SINGLETONS[cache_key] = strat
-        log.info(f"Strategy initialized: {cache_key} (15m, stake=${stake})")
-        return strat
-    except Exception as exc:
-        log.warning(f"{asset} strategy init failed, falling back to legacy: {exc}")
-        return None
-
-
-def strategy_brain_s2(
-    btc_price, strike, yes_ask, no_ask,
-    elapsed_seconds, secs_left, ticker,
-    min_ev_base=3.0, vol_gate_thresh=1.80, kalshi_fee=0.07,
-    asset="BTC", max_entry_price_cents=100.0,
-    min_reward_cents=0.0, max_risk_reward_ratio=999.0,
-):
-    """Dispatch to FifteenMinStrategy (D3 hybrid). Returns brain dict tagged strategy2."""
-    config = read_config()
-
-    market_duration_min = (elapsed_seconds + secs_left) / 60.0
-    strat = _get_or_make_strategy_s2(asset, config, market_duration_min=market_duration_min)
-    if strat is None:
-        # No validated strategy for this asset/duration. Skipping is better than
-        # using the legacy printer_brain which has no calibrated edge on these markets
-        # and produces random-confidence outputs (observed 50/50 win rate in paper trading).
-        log.info(
-            f"No strategy for {asset} at {market_duration_min:.0f}min "
-            f"skipping (no strategy for duration)"
-        )
-        _above = btc_price > strike if strike > 0 else False
-        return {
-            "action": "skip",
-            "side": "yes" if _above else "no",
-            "confidence": 50,
-            "reasoning": f"no_strategy:{asset}_{market_duration_min:.0f}min",
-            "key_signals": [],
-            "signals": {},
-            "win_prob": 0.5,
-            "mom_label": "no_strategy",
-            "mom_pct": 0.0,
-            "vel_signal": "neutral",
-            "raw_p_yes": None,
-            "mins_left": secs_left / 60.0,
-            "abs_pct": abs(btc_price - strike) / strike if strike > 0 else 0.0,
-            "above": _above,
-            "_rv": None,
-            "_vol_ratio": None,
-            "price_filter_skip": False,
-        }
-
-    from strategies.feature_builder import build_features_from_bot_state
-    try:
-        if asset == "BTC":
-            prices_deque = bot_state.btc_prices
-            current_price = btc_price
-        else:
-            prices_deque = asset_manager._prices.get(asset)
-            if not prices_deque:
-                return {
-                    "action": "skip", "side": "no", "confidence": 50,
-                    "reasoning": f"no_price_feed:{asset}",
-                    "key_signals": [], "signals": {}, "win_prob": 0.5,
-                    "mom_label": "no_data", "mom_pct": 0.0, "vel_signal": "neutral",
-                    "raw_p_yes": None, "mins_left": secs_left / 60.0,
-                    "abs_pct": 0.0, "above": False, "_rv": None, "_vol_ratio": None,
-                    "price_filter_skip": False,
-                }
-            current_price = prices_deque[-1][1]
-
-        features = build_features_from_bot_state(
-            asset=asset,
-            ticker=ticker,
-            current_price=current_price,
-            strike=strike,
-            btc_price=btc_price,
-            seconds_left=secs_left,
-            elapsed_seconds=elapsed_seconds,
-            yes_ask=yes_ask,
-            no_ask=no_ask,
-            yes_bid=max(0.0, yes_ask - 1.0),
-            no_bid=max(0.0, no_ask - 1.0),
-            prices_deque=prices_deque,
-            contract_history=bot_state._contract_price_history.get(ticker),
-            btc_prices_deque=bot_state.btc_prices,
-        )
-    except Exception as exc:
-        log.warning(f"{asset} feature_builder failed — skipping (not falling back to legacy): {exc}")
-        _above = current_price > strike if strike > 0 else False
-        return {
-            "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
-            "reasoning": f"feature_builder_error:{exc.__class__.__name__}",
-            "key_signals": [], "signals": {}, "win_prob": 0.5,
-            "mom_label": "error", "mom_pct": 0.0, "vel_signal": "neutral",
-            "raw_p_yes": None, "mins_left": secs_left / 60.0,
-            "abs_pct": abs(current_price - strike) / strike if strike > 0 else 0.0,
-            "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
-        }
-
-    try:
-        decision = strat.decide(features)
-    except Exception as exc:
-        log.warning(f"{asset} strat.decide() failed — skipping (not falling back to legacy): {exc}")
-        _above = current_price > strike if strike > 0 else False
-        return {
-            "action": "skip", "side": "yes" if _above else "no", "confidence": 50,
-            "reasoning": f"decide_error:{exc.__class__.__name__}",
-            "key_signals": [], "signals": {}, "win_prob": 0.5,
-            "mom_label": "error", "mom_pct": 0.0, "vel_signal": "neutral",
-            "raw_p_yes": None, "mins_left": secs_left / 60.0,
-            "abs_pct": abs(current_price - strike) / strike if strike > 0 else 0.0,
-            "above": _above, "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
-        }
-
-    above = current_price > strike
-    naive = "yes" if above else "no"
-    if decision.side is not None and decision.side != naive:
-        brain_log.info(
-            f"ROUTER_FLIPPED {asset} {ticker} | px={current_price:.4f} "
-            f"strike={strike:.4f} naive={naive} picked={decision.side} | "
-            f"yes_ev={decision.contributing_signals.get('yes_ev', float('nan')):+.3f} "
-            f"no_ev={decision.contributing_signals.get('no_ev', float('nan')):+.3f} | "
-            f"mode={decision.contributing_signals.get('decision_mode', '?')}"
-        )
-
-    abs_pct = abs(current_price - strike) / strike
-    # new base.py sets p_model = P(chosen_side_wins) already; no inversion needed
-    true_p = decision.p_model
-    if decision.action == "trade":
-        _st = decision.contributing_signals.get("supertrend_direction")
-        _mkt = decision.contributing_signals.get("market_prob")
-        log.info("[%s] signal=supertrend st=%s market=%.3f side=%s",
-                 asset, _st, _mkt or 0, decision.side)
-    return {
-        "action": decision.action,
-        "side": decision.side if decision.side else naive,
-        "confidence": int(round(true_p * 100)),
-        "reasoning": decision.reason,
-        "key_signals": [f"{k}: {v}" for k, v in decision.contributing_signals.items()],
-        "signals": dict(decision.contributing_signals),
-        "win_prob": float(true_p),  # P(chosen side wins), used by confidence gate
-        "mom_label": decision.contributing_signals.get(
-            "regime", decision.contributing_signals.get("mom_label", "neutral")
-        ),
-        "mom_pct": float(decision.contributing_signals.get(
-            "regime_adj", decision.contributing_signals.get("mom_adj", 0.0)
-        )),
-        "vel_signal": decision.contributing_signals.get(
-            "velocity", decision.contributing_signals.get("vel_signal", "neutral")
-        ),
-        "raw_p_yes": decision.contributing_signals.get("raw_p_yes"),
-        "mins_left": secs_left / 60.0,
-        "abs_pct": abs_pct,
-        "above": above,
-        "_rv": features.realized_vol_1min,
-        "_vol_ratio": None,
-        "price_filter_skip": False,
-        "strategy_variant": "strategy2",
-        "strategy_version":  bot_state._S2_VERSION,
-    }
-
-
-# ── S1: BV3 printer_brain constants (April 2026 profitable strategy) ──────────
-_S1_BV3_TABLE = [
-    # 1min   2min   3min   4min   5min   6min   7min   8min   9min  10min  11min  12min  13min
-    [0.850, 0.796, 0.758, 0.727, 0.705, 0.686, 0.672, 0.656, 0.639, 0.624, 0.606, 0.595, 0.578],  # 0.0-0.1%
-    [0.980, 0.956, 0.931, 0.904, 0.876, 0.856, 0.833, 0.807, 0.783, 0.752, 0.733, 0.706, 0.675],  # 0.1-0.2%
-    [0.994, 0.983, 0.967, 0.951, 0.933, 0.909, 0.889, 0.868, 0.835, 0.811, 0.788, 0.756, 0.713],  # 0.2-0.3%
-    [0.997, 0.990, 0.981, 0.968, 0.950, 0.935, 0.917, 0.893, 0.874, 0.840, 0.816, 0.778, 0.741],  # 0.3-0.4%
-    [0.998, 0.993, 0.987, 0.977, 0.962, 0.948, 0.932, 0.908, 0.883, 0.869, 0.835, 0.809, 0.782],  # 0.4-0.5%
-    [0.998, 0.997, 0.988, 0.979, 0.968, 0.960, 0.944, 0.925, 0.913, 0.876, 0.849, 0.824, 0.781],  # 0.5-0.6%
-    [0.999, 0.994, 0.994, 0.979, 0.974, 0.963, 0.947, 0.936, 0.914, 0.897, 0.872, 0.839, 0.817],  # 0.6-0.75%
-    [0.999, 0.996, 0.995, 0.988, 0.982, 0.968, 0.963, 0.942, 0.917, 0.905, 0.884, 0.845, 0.818],  # 0.75-1.0%
-    [1.000, 0.999, 0.994, 0.992, 0.984, 0.980, 0.967, 0.964, 0.935, 0.919, 0.911, 0.862, 0.820],  # 1.0-1.25%
-    [1.000, 0.997, 0.995, 0.991, 0.986, 0.972, 0.971, 0.960, 0.942, 0.921, 0.904, 0.874, 0.820],  # 1.25%+
-]
-_S1_BV3_DIST_BOUNDS = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.0075, 0.010, 0.0125]
-
-
-def _s1_empirical_win_prob(asset: str, abs_pct: float, mins_left: float) -> float:
-    """BV3 table lookup with live-correction via _brain_cal prob_scale."""
-    vol_ratio = bot_state._S1_ASSET_VOL_RATIO.get(asset, 1.0)
-    effective_pct = abs_pct / vol_ratio  # normalise to BTC-equivalent risk distance
-    row = len(_S1_BV3_DIST_BOUNDS)
-    for i, bound in enumerate(_S1_BV3_DIST_BOUNDS):
-        if effective_pct < bound:
-            row = i
-            break
-    col = max(0, min(12, int(round(mins_left)) - 1))
-    base_prob = _S1_BV3_TABLE[row][col]
-    prob_scale = bot_state._brain_cal_s1.get("prob_scale", 1.0)
-    return float(0.50 + (base_prob - 0.50) * prob_scale)
-
-
-def _s1_calculate_momentum(prices, seconds: int = 180, threshold: float = 0.0005) -> tuple:
-    """Return (pct_change, label) over the last `seconds` of price data."""
-    if not prices or len(prices) < 2:
-        return 0.0, "neutral"
-    now = prices[-1][0]
-    cutoff = now - seconds
-    old = [(ts, p) for ts, p in prices if ts <= cutoff]
-    ref = old[-1][1] if old else prices[0][1]
-    current = prices[-1][1]
-    if ref <= 0:
-        return 0.0, "neutral"
-    pct = (current - ref) / ref
-    label = "bullish" if pct > threshold else ("bearish" if pct < -threshold else "neutral")
-    return pct, label
-
-
-def _s1_realized_vol(prices, window_minutes: int = 10) -> float:
-    """Realized vol: std of recent log returns over window_minutes."""
+def _realized_vol(prices: list, window_minutes: int = 5) -> float:
+    """Std of log-returns over the last window_minutes of price data."""
     if not prices or len(prices) < 2:
         return 0.001
     now = prices[-1][0]
@@ -334,177 +51,464 @@ def _s1_realized_vol(prices, window_minutes: int = 10) -> float:
     return math.sqrt(var) if var > 0 else 0.001
 
 
-def _s1_contract_velocity(ticker: str) -> str:
-    """favorable/unfavorable/neutral based on recent contract price trend."""
-    history = bot_state._contract_price_history.get(ticker)
-    if not history or len(history) < 4:
-        return "neutral"
-    prices = [p for _, p in history]
-    recent_avg = sum(prices[-3:]) / 3
-    old_avg = sum(prices[:3]) / 3
-    delta = recent_avg - old_avg
-    if delta > 0.5:
-        return "favorable"
-    if delta < -0.5:
-        return "unfavorable"
-    return "neutral"
+def _make_skip(side: str, reason: str, abs_pct: float, mins_left: float,
+               rv: float = 0.0, variant: str = "strategy1",
+               price_filter: bool = False) -> dict:
+    """Standard skip-response dict with all keys expected by bot_loops.py."""
+    return {
+        "action": "skip", "side": side, "confidence": 50,
+        "reasoning": reason, "key_signals": [reason], "signals": {},
+        "win_prob": 0.5, "mom_label": "neutral", "mom_pct": 0.0,
+        "vel_signal": "neutral", "raw_p_yes": None,
+        "mins_left": mins_left, "abs_pct": abs_pct,
+        "above": side == "yes", "_rv": rv, "_vol_ratio": None,
+        "price_filter_skip": price_filter,
+        "strategy_variant": variant,
+    }
+
+
+# ---------------------------------------------------------------------------
+# S1 — EMA Momentum Strategy
+# Direction pointer : 3-min vs N-min EMA crossover on asset price feed
+# Confirmation     : realized vol below per-asset ceiling (low vol = predictable)
+# Gate             : BTC requires US session; all assets need distance + time window
+# ---------------------------------------------------------------------------
+
+_S1_ASSET_CONFIG: dict = {
+    #           min_dist  max_rv  ema_short  ema_long  session  min_ev  t_min  t_max
+    "BTC":  dict(min_dist=0.0025, max_rv=0.0080, ema_short=3, ema_long=10,
+                 session_gate=True,  min_ev=0.08, time_min=3.0, time_max=12.0),
+    "ETH":  dict(min_dist=0.0030, max_rv=0.0120, ema_short=3, ema_long=10,
+                 session_gate=False, min_ev=0.09, time_min=3.0, time_max=12.0),
+    "SOL":  dict(min_dist=0.0050, max_rv=0.0200, ema_short=3, ema_long=8,
+                 session_gate=False, min_ev=0.10, time_min=3.0, time_max=10.0),
+    "XRP":  dict(min_dist=0.0040, max_rv=0.0160, ema_short=3, ema_long=10,
+                 session_gate=False, min_ev=0.09, time_min=3.0, time_max=12.0),
+    "DOGE": dict(min_dist=0.0080, max_rv=0.0300, ema_short=2, ema_long=8,
+                 session_gate=False, min_ev=0.12, time_min=3.0, time_max=10.0),
+}
+
+
+def _s1_is_us_session() -> bool:
+    """True during US open (09:30-11:30 ET) or close (15:00-16:00 ET)."""
+    try:
+        # EDT = UTC-4; EST = UTC-5. Using UTC-4 year-round; up to 1h edge error acceptable.
+        now_et = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-4)))
+        t = now_et.hour * 60 + now_et.minute
+        return (9 * 60 + 30 <= t <= 11 * 60 + 30) or (15 * 60 <= t <= 16 * 60)
+    except Exception:
+        return True  # fail open — never block trades on a clock error
+
+
+def _s1_ema_direction(prices: list, short_min: float, long_min: float):
+    """
+    EMA crossover direction pointer.
+    Returns (side, ratio): side='yes' (bullish) or 'no' (bearish), ratio=short/long EMA.
+    Returns (None, None) when data is insufficient.
+    """
+    if not prices or len(prices) < 4:
+        return None, None
+    now = prices[-1][0]
+    short_px = [float(p) for ts, p in prices if ts >= now - short_min * 60]
+    long_px  = [float(p) for ts, p in prices if ts >= now - long_min  * 60]
+    if len(short_px) < 2 or len(long_px) < 3:
+        return None, None
+
+    def _ema(vals: list) -> float:
+        alpha = 2.0 / (len(vals) + 1)
+        v = float(vals[0])
+        for x in vals[1:]:
+            v = alpha * float(x) + (1.0 - alpha) * v
+        return v
+
+    s_ema = _ema(short_px)
+    l_ema = _ema(long_px)
+    ratio = s_ema / l_ema if l_ema > 0 else 1.0
+    return ("yes" if s_ema > l_ema else "no"), ratio
 
 
 def strategy_brain_s1(
     btc_price, strike, yes_ask, no_ask,
     elapsed_seconds, secs_left, ticker,
-    asset="BTC",
-):
-    """printer_brain v3 (April 2026 profitable strategy) tagged strategy1.
+    asset: str = "BTC",
+) -> dict:
+    """
+    S1: EMA momentum strategy.
 
-    BV3 empirical win-probability table (distance x time) + momentum + velocity + vol gate.
-    Continuation-only: YES above strike, NO below -- never contrarian.
+    Direction: 3-min vs N-min EMA crossover on the asset price feed.
+    Confirmation: realized vol must be below per-asset ceiling.
+    BTC additionally requires US market-open or market-close session.
+    Per-asset thresholds for BTC / ETH / SOL / XRP / DOGE.
     """
     config = read_config()
-
-    above = btc_price > strike if strike > 0 else False
-    abs_pct = abs(btc_price - strike) / strike if strike > 0 else 0.0
+    cfg = _S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"])
     mins_left = secs_left / 60.0
 
-    # price feed
+    # Resolve asset price — callers pass the asset price as the first arg for non-BTC.
     if asset == "BTC":
         prices_list = list(bot_state.btc_prices)
+        current_price = btc_price
     else:
         raw = asset_manager._prices.get(asset)
         prices_list = list(raw) if raw else []
+        current_price = prices_list[-1][1] if prices_list else btc_price
 
-    # vol gate
-    _rv = _s1_realized_vol(prices_list) if prices_list else 0.001
-    _vol_ratio = _rv * (mins_left ** 0.5) / abs_pct if abs_pct > 0 else 999.0
-    _vol_gate_thresh = float(get_asset_config(config, asset, "vol_gate_thresh", 1.80))
+    abs_pct = abs(current_price - strike) / strike if strike > 0 else 0.0
 
-    if _vol_ratio >= _vol_gate_thresh:
-        return {
-            "action": "skip", "side": "yes" if above else "no",
-            "confidence": 50,
-            "reasoning": f"s1_vol_gate:{_vol_ratio:.2f}>={_vol_gate_thresh:.2f}",
-            "key_signals": [f"vol_ratio:{_vol_ratio:.2f}", f"rv:{_rv:.5f}"],
-            "signals": {"vol_ratio": _vol_ratio, "_rv": _rv},
-            "win_prob": 0.5, "mom_label": "neutral", "mom_pct": 0.0,
-            "vel_signal": "neutral", "raw_p_yes": None, "mins_left": mins_left,
-            "abs_pct": abs_pct, "above": above, "_rv": _rv, "_vol_ratio": _vol_ratio,
-            "price_filter_skip": False, "strategy_variant": "strategy1",
-        }
+    # Gate 1: session (BTC only)
+    if cfg["session_gate"] and not _s1_is_us_session():
+        return _make_skip("yes", "s1_session_gate", abs_pct, mins_left, variant="strategy1")
 
-    # price filter
-    _min_price = float(config.get("min_entry_price_cents", 20.0))
-    _max_price = float(config.get("max_entry_price_cents", 76.0))
-    _entry_price = yes_ask if above else no_ask
-    if _entry_price < _min_price or _entry_price > _max_price:
-        return {
-            "action": "skip", "side": "yes" if above else "no",
-            "confidence": 50,
-            "reasoning": f"s1_price_filter:{_entry_price:.0f}c not in [{_min_price:.0f},{_max_price:.0f}]",
-            "key_signals": [f"entry:{_entry_price:.0f}c"],
-            "signals": {"entry_price": _entry_price},
-            "win_prob": 0.5, "mom_label": "neutral", "mom_pct": 0.0,
-            "vel_signal": "neutral", "raw_p_yes": None, "mins_left": mins_left,
-            "abs_pct": abs_pct, "above": above, "_rv": _rv, "_vol_ratio": _vol_ratio,
-            "price_filter_skip": True, "strategy_variant": "strategy1",
-        }
+    # Gate 2: time window
+    if mins_left < cfg["time_min"] or mins_left > cfg["time_max"]:
+        return _make_skip("yes", f"s1_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy1")
 
-    # win probability (BV3)
-    win_prob = _s1_empirical_win_prob(asset, abs_pct, mins_left)
+    # Gate 3: minimum distance from strike
+    if abs_pct < cfg["min_dist"]:
+        return _make_skip("yes", f"s1_dist_gate:{abs_pct:.4f}<{cfg['min_dist']}", abs_pct, mins_left, variant="strategy1")
 
-    # momentum adjustment — vol-normalize threshold so signal only fires
-    # on moves that exceed 1.5x the per-period realized noise floor.
-    # _rv is per-minute vol; scale to 3-min window then threshold.
-    _rv_3min = (_rv or 0.001) * math.sqrt(3)
-    _mom_threshold = max(0.0005, 1.5 * _rv_3min)
-    mom_pct, mom_label = _s1_calculate_momentum(prices_list, threshold=_mom_threshold)
-    if mom_label == "bullish":
-        mom_adj = +0.05 if above else -0.05
-    elif mom_label == "bearish":
-        mom_adj = -0.05 if above else +0.05
-    else:
-        mom_adj = 0.0
-    win_prob = max(0.05, min(0.98, win_prob + mom_adj))
+    # Gate 4: realized vol ceiling — low vol means more predictable directional move
+    rv = _realized_vol(prices_list, window_minutes=5) if prices_list else 0.001
+    if rv > cfg["max_rv"]:
+        return _make_skip("yes", f"s1_rv_gate:{rv:.5f}>{cfg['max_rv']}", abs_pct, mins_left, rv=rv, variant="strategy1")
 
-    # velocity adjustment
-    vel_signal = _s1_contract_velocity(ticker)
-    vel_adj = +0.01 if vel_signal == "favorable" else (-0.01 if vel_signal == "unfavorable" else 0.0)
-    if not above:
-        vel_adj = -vel_adj
-    win_prob = max(0.05, min(0.98, win_prob + vel_adj))
+    # Direction pointer: EMA crossover
+    direction, ema_ratio = _s1_ema_direction(prices_list, cfg["ema_short"], cfg["ema_long"])
+    if direction is None:
+        return _make_skip("yes", "s1_no_ema_data", abs_pct, mins_left, rv=rv, variant="strategy1")
 
-    # market anchor: sanity-check against AMM when model diverges strongly.
-    # Trigger raised 25%->35% and pull reduced 40%->15% so real edge is
-    # preserved; anchor only corrects extreme overconfidence.
-    mkt_implied = _entry_price / 100.0
-    diff = win_prob - mkt_implied
-    if abs(diff) > 0.35:
-        win_prob = win_prob - 0.15 * diff
+    side = direction  # 'yes' = bullish, 'no' = bearish
+    entry_price = yes_ask if side == "yes" else no_ask
 
-    # OBI adjustment: near-ATM only, top-10 Coinbase orderbook imbalance.
-    # Positive OBI (bid-heavy) supports continuation when price is above strike.
-    if bot_state._obi_monitor is not None and abs_pct < 0.004:
-        _obi_val = bot_state._obi_monitor.get_obi(asset)
-        if _obi_val is not None:
-            _obi_adj = 0.02 * _obi_val if above else -0.02 * _obi_val
-            win_prob = max(0.05, min(0.98, win_prob + _obi_adj))
+    # Continuation-only: EMA direction must agree with price position relative to strike.
+    # EMA bullish but price below strike = reversal bet → skip (win prob ~20%, not 70%).
+    if side == "yes" and current_price < strike:
+        return _make_skip(side, "s1_reversal_gate:ema=yes_price_below", abs_pct, mins_left, rv=rv, variant="strategy1")
+    if side == "no" and current_price > strike:
+        return _make_skip(side, "s1_reversal_gate:ema=no_price_above", abs_pct, mins_left, rv=rv, variant="strategy1")
 
-    # BTC/ETH funding dispersion adjustment (cross-venue imbalance signal).
-    if asset in ("BTC", "ETH"):
-        _fm = bot_state._funding_monitor_btc if asset == "BTC" else bot_state._funding_monitor_eth
-        if _fm is not None:
-            from strategies.original.signals.funding_dispersion import funding_dispersion_adjustment as _fda
-            _fdisp = _fm.current_dispersion()
-            _fadj, _ = _fda(_fdisp)
-            if _fadj != 0.0:
-                win_prob = max(0.05, min(0.98, win_prob + (_fadj if above else -_fadj)))
+    # Gate 5: entry price range
+    _min_p = float(config.get("min_entry_price_cents", 20.0))
+    _max_p = float(config.get("max_entry_price_cents", 76.0))
+    if entry_price < _min_p or entry_price > _max_p:
+        return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
+                          rv=rv, variant="strategy1", price_filter=True)
 
-    # win_prob = P(continuation side wins): YES when above, NO when not above.
-    # EV for each side for logging; ev is the actionable continuation EV.
-    yes_ev = (win_prob if above else 1.0 - win_prob) - (yes_ask / 100.0) - 0.07
-    no_ev = (1.0 - win_prob if above else win_prob) - (no_ask / 100.0) - 0.07
-    ev = win_prob - (_entry_price / 100.0) - 0.07
-    if above and bot_state._brain_cal_s1.get("bullish_wr", 0.5) < 0.35:
-        ev -= 0.04
-    if not above and bot_state._brain_cal_s1.get("bearish_wr", 0.5) < 0.35:
-        ev -= 0.04
+    # Win probability: empirical lookup (tanh fallback when bucket uncalibrated)
+    base_p = _s1_lookup_win_rate(asset, abs_pct, mins_left)
+    ema_strength = abs((ema_ratio or 1.0) - 1.0)
+    ema_adj = min(0.05, 3.0 * ema_strength)
+    session_adj = 0.03 if (cfg["session_gate"] and _s1_is_us_session()) else 0.0
+    win_prob = min(0.85, base_p + ema_adj + session_adj)
 
-    # continuation direction only
-    side = "yes" if above else "no"
-
-    # EV gate — prefer asset-specific min_ev_base_s1, then asset min_ev_base,
-    # then global min_ev_base_15m. Lets S1 and S2 have independent per-asset thresholds.
-    _ev_s1_default = float(config.get("min_ev_base_15m", config.get("min_ev_base", 9)))
-    _asset_cfg_s1 = config.get("asset_overrides", {}).get(asset, {})
-    _min_ev = float(_asset_cfg_s1.get(
-        "min_ev_base_s1", _asset_cfg_s1.get("min_ev_base", _ev_s1_default)
-    )) / 100.0
-    if ev < _min_ev:
+    # EV gate — Kalshi fee is 0.07 * p * (1-p), not flat 0.07
+    _ep_s1 = entry_price / 100.0
+    fee = 0.07 * _ep_s1 * (1.0 - _ep_s1)
+    ev = win_prob - _ep_s1 - fee
+    if ev < cfg["min_ev"]:
         return {
             "action": "skip", "side": side,
             "confidence": int(win_prob * 100),
-            "reasoning": f"s1_ev_gate:{ev:.3f}<{_min_ev:.3f}",
-            "key_signals": [f"ev:{ev:.3f}", f"win_prob:{win_prob:.3f}", mom_label, vel_signal],
-            "signals": {"yes_ev": yes_ev, "no_ev": no_ev, "win_prob": win_prob,
-                        "mom_label": mom_label, "mom_pct": mom_pct, "vel_signal": vel_signal,
-                        "vol_ratio": _vol_ratio, "_rv": _rv},
-            "win_prob": float(win_prob), "mom_label": mom_label, "mom_pct": mom_pct,
-            "vel_signal": vel_signal, "raw_p_yes": float(win_prob) if above else float(1.0 - win_prob), "mins_left": mins_left,
-            "abs_pct": abs_pct, "above": above, "_rv": _rv, "_vol_ratio": _vol_ratio,
-            "price_filter_skip": False, "strategy_variant": "strategy1",
+            "reasoning": f"s1_ev_gate:{ev:.3f}<{cfg['min_ev']:.3f}",
+            "key_signals": [f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"ema:{direction}"],
+            "signals": {"win_prob": win_prob, "ev": ev, "ema_ratio": ema_ratio,
+                        "rv": rv, "abs_pct": abs_pct, "strike": strike},
+            "win_prob": float(win_prob), "mom_label": direction,
+            "mom_pct": float((ema_ratio or 1.0) - 1.0),
+            "vel_signal": "neutral",
+            "raw_p_yes": float(win_prob) if side == "yes" else float(1.0 - win_prob),
+            "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
+            "_rv": rv, "_vol_ratio": None, "price_filter_skip": False,
+            "strategy_variant": "strategy1",
         }
 
+    brain_log.info(
+        "S1 TRADE %s %s | ema=%s ratio=%.5f rv=%.5f dist=%.4f ev=%.3f wp=%.3f mins=%.1f",
+        asset, ticker, direction, ema_ratio or 0, rv, abs_pct, ev, win_prob, mins_left,
+    )
     return {
         "action": "trade", "side": side,
         "confidence": int(win_prob * 100),
-        "reasoning": f"bv3 ev={ev:.3f} win_prob={win_prob:.3f} {mom_label} {vel_signal} dist={abs_pct:.3%} mins={mins_left:.1f}",
-        "key_signals": [f"ev:{ev:.3f}", f"win_prob:{win_prob:.3f}", mom_label, vel_signal,
-                        f"dist:{abs_pct:.3%}", f"mins:{mins_left:.1f}"],
-        "signals": {"yes_ev": yes_ev, "no_ev": no_ev, "win_prob": win_prob,
-                    "mom_label": mom_label, "mom_pct": mom_pct, "vel_signal": vel_signal,
-                    "vol_ratio": _vol_ratio, "_rv": _rv, "abs_pct": abs_pct,
-                    "mins_left": mins_left},
-        "win_prob": float(win_prob), "mom_label": mom_label, "mom_pct": mom_pct,
-        "vel_signal": vel_signal, "raw_p_yes": float(win_prob) if above else float(1.0 - win_prob), "mins_left": mins_left,
-        "abs_pct": abs_pct, "above": above, "_rv": _rv, "_vol_ratio": _vol_ratio,
-        "price_filter_skip": False, "strategy_variant": "strategy1",
+        "reasoning": (
+            f"s1_ema ev={ev:.3f} wp={win_prob:.3f} ema={direction} "
+            f"dist={abs_pct:.3%} rv={rv:.5f} mins={mins_left:.1f}"
+        ),
+        "key_signals": [
+            f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"ema:{direction}",
+            f"dist:{abs_pct:.3%}", f"rv:{rv:.5f}",
+        ],
+        "signals": {
+            "win_prob": win_prob, "ev": ev, "ema_ratio": ema_ratio,
+            "rv": rv, "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
+        },
+        "win_prob": float(win_prob), "mom_label": direction,
+        "mom_pct": float((ema_ratio or 1.0) - 1.0),
+        "vel_signal": "neutral",
+        "raw_p_yes": float(win_prob) if side == "yes" else float(1.0 - win_prob),
+        "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
+        "_rv": rv, "_vol_ratio": None, "price_filter_skip": False,
+        "strategy_variant": "strategy1",
+    }
+
+
+# ---------------------------------------------------------------------------
+# S2 — Contract Velocity + OBI Strategy
+# Direction pointer : YES-ask price trend over last N ticks (market-implied flow)
+# Confirmation     : OBI (order book imbalance) must agree with velocity direction
+# Gate             : distance minimum + time window, per-asset thresholds
+# Everything here is different from S1 — direction pointer, gates, confirmation
+# ---------------------------------------------------------------------------
+
+_S2_ASSET_CONFIG: dict = {
+    #           min_dist  min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max
+    "BTC":  dict(min_dist=0.0035, min_obi=0.20, min_vel_delta=0.80, vel_lookback=4,
+                 min_ev=0.09, time_min=2.0, time_max=13.0),
+    "ETH":  dict(min_dist=0.0030, min_obi=0.15, min_vel_delta=0.70, vel_lookback=4,
+                 min_ev=0.09, time_min=2.0, time_max=13.0),
+    "SOL":  dict(min_dist=0.0060, min_obi=0.25, min_vel_delta=1.20, vel_lookback=3,
+                 min_ev=0.11, time_min=2.0, time_max=11.0),
+    "XRP":  dict(min_dist=0.0050, min_obi=0.20, min_vel_delta=0.90, vel_lookback=4,
+                 min_ev=0.10, time_min=2.0, time_max=12.0),
+    "DOGE": dict(min_dist=0.0100, min_obi=0.30, min_vel_delta=1.50, vel_lookback=3,
+                 min_ev=0.13, time_min=2.0, time_max=10.0),
+}
+
+# ---------------------------------------------------------------------------
+# Empirical win-rate tables — populated by scripts/calibrate_winrates.py
+# Run that script, copy the printed dicts here.
+# None entries → tanh formula fallback (insufficient calibration data).
+# ---------------------------------------------------------------------------
+
+_S1_WIN_RATE: dict = {
+    "BTC":  {},
+    "ETH":  {},
+    "SOL":  {},
+    "XRP":  {},
+    "DOGE": {},
+}
+
+_S2_WIN_RATE: dict = {
+    "BTC":  {},
+    "ETH":  {},
+    "SOL":  {},
+    "XRP":  {},
+    "DOGE": {},
+}
+
+# S1 bucket boundaries (must match calibrate_winrates.py constants)
+_S1_DIST_BOUNDS = [0.005, 0.010, 0.020]
+_S1_TIME_BOUNDS = [6.0, 9.0]
+
+# S2 bucket boundaries (must match calibrate_winrates.py constants)
+_S2_VEL_MULTIPLIERS = [2.0, 4.0]
+_S2_TIME_BOUNDS_S2  = [5.0, 8.0]
+
+
+def _s1_lookup_win_rate(asset: str, abs_pct: float, mins_left: float) -> float:
+    """Look up empirical S1 win rate. Falls back to tanh when bucket is None or missing."""
+    cfg      = _S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"])
+    min_dist = cfg["min_dist"]
+
+    dist_idx = len(_S1_DIST_BOUNDS)
+    for i, bound in enumerate(_S1_DIST_BOUNDS):
+        if abs_pct < bound:
+            dist_idx = i
+            break
+
+    time_idx = len(_S1_TIME_BOUNDS)
+    for i, bound in enumerate(_S1_TIME_BOUNDS):
+        if mins_left < bound:
+            time_idx = i
+            break
+
+    emp_val = _S1_WIN_RATE.get(asset, {}).get((dist_idx, time_idx))
+    if emp_val is not None:
+        return float(emp_val)
+
+    return 0.50 + 0.28 * math.tanh(abs_pct / max(min_dist, 1e-6))
+
+
+def _s2_lookup_win_rate(asset: str, vel_delta: float, mins_left: float) -> float:
+    """Look up empirical S2 win rate. Falls back to tanh when bucket is None or missing."""
+    cfg     = _S2_ASSET_CONFIG.get(asset, _S2_ASSET_CONFIG["BTC"])
+    min_vel = cfg["min_vel_delta"]
+
+    ratio   = vel_delta / max(min_vel, 1e-9)
+    vel_idx = len(_S2_VEL_MULTIPLIERS)
+    for i, mult in enumerate(_S2_VEL_MULTIPLIERS):
+        if ratio < mult:
+            vel_idx = i
+            break
+
+    time_idx = len(_S2_TIME_BOUNDS_S2)
+    for i, bound in enumerate(_S2_TIME_BOUNDS_S2):
+        if mins_left < bound:
+            time_idx = i
+            break
+
+    emp_val = _S2_WIN_RATE.get(asset, {}).get((vel_idx, time_idx))
+    if emp_val is not None:
+        return float(emp_val)
+
+    return 0.50 + 0.25 * math.tanh(vel_delta / max(min_vel, 1e-6))
+
+
+def _s2_contract_direction(ticker: str, min_delta: float, lookback: int):
+    """
+    S2 direction pointer: Kalshi contract (YES-ask) price velocity.
+    Compares first half vs second half of the last `lookback+1` price ticks.
+    Returns (side, delta): side='yes' if YES price rising (market leans YES), 'no' if falling.
+    Returns (None, None) when data insufficient or signal below threshold.
+    """
+    history = bot_state._contract_price_history.get(ticker)
+    if not history or len(history) < lookback + 1:
+        return None, None
+    recent = [p for _, p in list(history)[-(lookback + 1):]]
+    mid = max(1, len(recent) // 2)
+    first_avg  = sum(recent[:mid]) / mid
+    second_avg = sum(recent[mid:]) / max(1, len(recent) - mid)
+    delta = second_avg - first_avg  # positive = YES price rising = market leans bullish
+    if abs(delta) < min_delta:
+        return None, None
+    return ("yes" if delta > 0 else "no"), abs(delta)
+
+
+def _s2_obi_gate(asset: str, side: str, min_obi: float):
+    """
+    OBI confirmation gate for S2.
+    Returns (confirmed, obi_val).
+    Fails open (True) when OBI monitor unavailable — never block trades on missing infra.
+    """
+    if bot_state._obi_monitor is None:
+        return True, None
+    obi_val = bot_state._obi_monitor.get_obi(asset)
+    if obi_val is None:
+        return True, None
+    # Positive OBI = bid-heavy = bullish market; negative = ask-heavy = bearish
+    if side == "yes" and obi_val <= min_obi:
+        return False, obi_val
+    if side == "no"  and obi_val >= -min_obi:
+        return False, obi_val
+    return True, obi_val
+
+
+def strategy_brain_s2(
+    btc_price, strike, yes_ask, no_ask,
+    elapsed_seconds, secs_left, ticker,
+    min_ev_base=3.0, vol_gate_thresh=1.80, kalshi_fee=0.07,
+    asset: str = "BTC",
+    max_entry_price_cents=100.0,
+    min_reward_cents=0.0, max_risk_reward_ratio=999.0,
+) -> dict:
+    """
+    S2: Contract velocity + OBI strategy.
+
+    Direction: YES-ask price trend over last N ticks (what the market is pricing in).
+    Confirmation: OBI must agree with the velocity direction.
+    Per-asset thresholds for BTC / ETH / SOL / XRP / DOGE.
+    Completely different from S1 — no EMA, no vol ceiling, no session gate.
+    """
+    config = read_config()
+    cfg = _S2_ASSET_CONFIG.get(asset, _S2_ASSET_CONFIG["BTC"])
+    mins_left = secs_left / 60.0
+
+    # Resolve asset price
+    if asset == "BTC":
+        current_price = btc_price
+    else:
+        raw = asset_manager._prices.get(asset)
+        current_price = raw[-1][1] if raw else btc_price
+
+    abs_pct = abs(current_price - strike) / strike if strike > 0 else 0.0
+
+    # Gate 1: time window
+    if mins_left < cfg["time_min"] or mins_left > cfg["time_max"]:
+        return _make_skip("yes", f"s2_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy2")
+
+    # Gate 2: minimum distance from strike
+    if abs_pct < cfg["min_dist"]:
+        return _make_skip("yes", f"s2_dist_gate:{abs_pct:.4f}<{cfg['min_dist']}", abs_pct, mins_left, variant="strategy2")
+
+    # Direction pointer: contract price velocity
+    direction, vel_delta = _s2_contract_direction(ticker, cfg["min_vel_delta"], cfg["vel_lookback"])
+    if direction is None:
+        return _make_skip("yes", "s2_no_velocity_data", abs_pct, mins_left, variant="strategy2")
+
+    side = direction
+    entry_price = yes_ask if side == "yes" else no_ask
+
+    # Continuation-only: velocity direction must agree with price position relative to strike.
+    if side == "yes" and current_price < strike:
+        return _make_skip(side, "s2_reversal_gate:vel=yes_price_below", abs_pct, mins_left, variant="strategy2")
+    if side == "no" and current_price > strike:
+        return _make_skip(side, "s2_reversal_gate:vel=no_price_above", abs_pct, mins_left, variant="strategy2")
+
+    # Gate 3: entry price range
+    _min_p = float(config.get("min_entry_price_cents", 20.0))
+    _max_p = float(config.get("max_entry_price_cents", 76.0))
+    if entry_price < _min_p or entry_price > _max_p:
+        return _make_skip(side, f"s2_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
+                          variant="strategy2", price_filter=True)
+
+    # Gate 4: OBI confirmation (required gate, not optional adjustment)
+    obi_ok, obi_val = _s2_obi_gate(asset, side, cfg["min_obi"])
+    if not obi_ok:
+        return _make_skip(
+            side,
+            f"s2_obi_gate:obi={obi_val:.2f}_side={side}_min={cfg['min_obi']}",
+            abs_pct, mins_left, variant="strategy2",
+        )
+
+    # Win probability: empirical lookup (tanh fallback when bucket uncalibrated)
+    base_p = _s2_lookup_win_rate(asset, vel_delta, mins_left)
+    vel_adj = min(0.04, 0.02 * (vel_delta / max(cfg["min_vel_delta"], 1e-6)))
+    obi_adj = min(0.03, 0.02 * abs(obi_val or 0.0) / max(cfg["min_obi"], 1e-6)) if obi_val is not None else 0.0
+    win_prob = min(0.83, base_p + vel_adj + obi_adj)
+
+    # EV gate — Kalshi fee is 0.07 * p * (1-p), not flat 0.07
+    _ep_s2 = entry_price / 100.0
+    fee = 0.07 * _ep_s2 * (1.0 - _ep_s2)
+    ev = win_prob - _ep_s2 - fee
+    _obi_str = f"{obi_val:.2f}" if obi_val is not None else "n/a"
+    if ev < cfg["min_ev"]:
+        return {
+            "action": "skip", "side": side,
+            "confidence": int(win_prob * 100),
+            "reasoning": f"s2_ev_gate:{ev:.3f}<{cfg['min_ev']:.3f}",
+            "key_signals": [f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"vel:{direction}"],
+            "signals": {"win_prob": win_prob, "ev": ev, "vel_delta": vel_delta,
+                        "obi": obi_val, "abs_pct": abs_pct, "strike": strike},
+            "win_prob": float(win_prob), "mom_label": direction, "mom_pct": 0.0,
+            "vel_signal": direction,
+            "raw_p_yes": float(win_prob) if side == "yes" else float(1.0 - win_prob),
+            "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
+            "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+            "strategy_variant": "strategy2", "strategy_version": bot_state._S2_VERSION,
+        }
+
+    brain_log.info(
+        "S2 TRADE %s %s | vel=%s delta=%.2f obi=%s dist=%.4f ev=%.3f wp=%.3f mins=%.1f",
+        asset, ticker, direction, vel_delta or 0, _obi_str, abs_pct, ev, win_prob, mins_left,
+    )
+    return {
+        "action": "trade", "side": side,
+        "confidence": int(win_prob * 100),
+        "reasoning": (
+            f"s2_vel ev={ev:.3f} wp={win_prob:.3f} vel={direction} "
+            f"obi={_obi_str} dist={abs_pct:.3%} mins={mins_left:.1f}"
+        ),
+        "key_signals": [
+            f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"vel:{direction}",
+            f"obi:{_obi_str}", f"dist:{abs_pct:.3%}",
+        ],
+        "signals": {
+            "win_prob": win_prob, "ev": ev, "vel_delta": vel_delta,
+            "obi": obi_val, "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
+        },
+        "win_prob": float(win_prob), "mom_label": direction, "mom_pct": 0.0,
+        "vel_signal": direction,
+        "raw_p_yes": float(win_prob) if side == "yes" else float(1.0 - win_prob),
+        "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
+        "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+        "strategy_variant": "strategy2", "strategy_version": bot_state._S2_VERSION,
     }

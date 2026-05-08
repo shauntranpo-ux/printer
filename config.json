@@ -1,5 +1,6 @@
 {
   "bot_enabled": true,
+  "_disabled_reason": "S1+S2 failed 2024-2026 OOS holdout. See docs/diagnosis/FINAL_VERDICT.md.",
   "mode": "paper",
   "enable_hourly_markets": false,
   "trade_amount_dollars": 25,

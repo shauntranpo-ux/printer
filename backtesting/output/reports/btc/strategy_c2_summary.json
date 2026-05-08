@@ -1,9 +1,0 @@
-{
-  "n_c2_trades": 174,
-  "n_monotonicity": 44,
-  "n_convexity": 130,
-  "gross_pnl": 15.789999999999996,
-  "net_pnl": 8.619999999999996,
-  "win_rate": 0.10344827586206896,
-  "mean_profit_per_trade": 0.04954022988505745
-}

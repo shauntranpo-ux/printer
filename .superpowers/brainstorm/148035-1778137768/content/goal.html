@@ -1,0 +1,26 @@
+<h2>Signal Edge Analysis — What's the Goal?</h2>
+<p class="subtitle">Both S1 (BV3 empirical) and S2 (D3 hybrid) are at ~−$1,000 in paper mode. Pick the outcome you want from this work.</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Diagnose Only</h3>
+      <p>Run the existing EV sweeps + trade data through a structured analysis. Produce a written report: which strategy is losing more, on which assets, and why. No code changes — just understanding.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Diagnose + Fix Parameters</h3>
+      <p>Analyze the losses, then tune EV thresholds, vol gates, and BV3 table for S1 and D3 signal weights for S2 based on what the data shows. Apply the best params to config. No model retraining.</p>
+    </div>
+  </div>
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Full Overhaul</h3>
+      <p>Analyze losses, decide whether to keep/drop each strategy per asset, retrain S2 models on recent data (April→May 2026), recalibrate BV3 table, and apply everything. Bigger scope.</p>
+    </div>
+  </div>
+</div>

@@ -345,6 +345,9 @@ async def db_write_trade(trade: dict) -> int | None:
 
 async def db_update_trade(trade_id: int, fields: dict) -> None:
     """Update named columns on an existing trade row."""
+    if trade_id is None:
+        log.error("db_update_trade called with trade_id=None — trade will stay pending in DB")
+        return
     try:
         async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
