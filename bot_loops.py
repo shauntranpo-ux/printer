@@ -234,23 +234,6 @@ async def handle_ready_phase(
     # S1: EMA momentum per-asset strategy (different direction + gates from S2)
     brain_s1 = strategy_brain_s1(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)
 
-    # Dual brain consensus — same side: boost confidence; opposite sides: skip both
-    _s1_wants_trade = brain_s1.get("action") == "trade"
-    _s2_wants_trade = brain.get("action") == "trade"
-    if _s1_wants_trade and _s2_wants_trade:
-        if brain_s1["side"] == brain["side"]:
-            _boosted = min(99, brain["confidence"] + 8)
-            brain["confidence"] = _boosted
-            brain["reasoning"] += " [dual_agree]"
-            log.info("[%s] Dual brain AGREE on %s — confidence boosted to %d", asset, brain["side"], _boosted)
-        else:
-            log.info("[%s] Dual brain DISAGREE: S1=%s S2=%s — both skipped", asset, brain_s1["side"], brain["side"])
-            _disagree_reason = f"dual_disagree:s1={brain_s1['side']} s2={brain['side']}"
-            brain["action"]       = "skip"
-            brain["reasoning"]    = _disagree_reason
-            brain_s1["action"]    = "skip"
-            brain_s1["reasoning"] = _disagree_reason
-
     await _execute_s1_trade(
         session, brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
         elapsed, secs_left, asset, config, mode, ob, market,
@@ -535,9 +518,9 @@ async def handle_ready_phase(
     _ev_str    = f"+{_ev}%" if _ev >= 0 else f"{_ev}%"
     _payout    = round((100 - fill_price) * contracts / 100, 2)
     _cost      = round(fill_price * contracts / 100, 2)
-    _time_str  = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+    _time_str  = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PDT")
     _expiry_dt = datetime.now(timezone(timedelta(hours=-7))) + timedelta(seconds=secs_left)
-    _expiry_str = _expiry_dt.strftime("%I:%M %p PST")
+    _expiry_str = _expiry_dt.strftime("%I:%M %p PDT")
     _strat_tag = "REVERSAL" if _is_reversal else "ORDER FILLED"
     _fill_ctx = _notify_ctx(
         asset, ticker, (elapsed + secs_left) / 60.0,
@@ -670,12 +653,12 @@ async def handle_locked_phase(
                     _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
                 )
                 await send_telegram(
-                    f"<b>🔵 [S2 D3 Hybrid] {_cl_ctx} {bot_state._consecutive_losses} consecutive losses</b>"
+                    f"<b>🔵 [S2] {_cl_ctx} {bot_state._consecutive_losses} consecutive losses</b>"
                 )
 
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
         mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(pos["mode"], "[LIVE]")
-        _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+        _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PDT")
         _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
         _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
         # Prefer the stored market duration so the session label is stable

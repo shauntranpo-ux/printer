@@ -199,7 +199,7 @@ def strategy_brain_s1(
     ema_strength = abs((ema_ratio or 1.0) - 1.0)
     ema_adj = min(0.05, 3.0 * ema_strength)
     session_adj = 0.03 if (cfg["session_gate"] and _s1_is_us_session()) else 0.0
-    win_prob = min(0.85, base_p + ema_adj + session_adj)
+    win_prob = min(0.99, base_p + ema_adj + session_adj)
 
     # EV gate — Kalshi fee is 0.07 * p * (1-p), not flat 0.07
     _ep_s1 = entry_price / 100.0
@@ -463,7 +463,7 @@ def strategy_brain_s2(
     base_p = _s2_lookup_win_rate(asset, vel_delta, mins_left)
     vel_adj = min(0.04, 0.02 * (vel_delta / max(cfg["min_vel_delta"], 1e-6)))
     obi_adj = min(0.03, 0.02 * abs(obi_val or 0.0) / max(cfg["min_obi"], 1e-6)) if obi_val is not None else 0.0
-    win_prob = min(0.83, base_p + vel_adj + obi_adj)
+    win_prob = min(0.99, base_p + vel_adj + obi_adj)
 
     # EV gate — Kalshi fee is 0.07 * p * (1-p), not flat 0.07
     _ep_s2 = entry_price / 100.0

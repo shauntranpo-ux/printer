@@ -496,7 +496,7 @@ async def _settle_s1_trade(
     outcome_str = "WIN" if outcome == "win" else "LOSS"
     pct_str     = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
     mode_icon   = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
-    _time_str   = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+    _time_str   = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PDT")
     _now        = time.time()
     _dur_secs   = int(_now - s1_pos.get("entry_ts", _now))
     _dur_str    = f"{_dur_secs // 60}m {_dur_secs % 60}s"
