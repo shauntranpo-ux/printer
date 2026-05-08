@@ -6,10 +6,8 @@ Public interface (see __all__):
            fetch_orderbook, parse_strike, seconds_remaining, seconds_elapsed
   Orders:  place_order, _verify_order_fill, _portfolio_has_position,
            calculate_contracts, implied_prob
-  Private: _simulated_amm_midpoint, _log_price_validation
 """
 import asyncio
-import csv as _csv_module
 import logging
 import math
 import os
@@ -41,104 +39,12 @@ __all__ = [
     "fetch_orderbook", "parse_strike", "seconds_remaining", "seconds_elapsed",
     "place_order", "_verify_order_fill", "_portfolio_has_position",
     "calculate_contracts", "implied_prob",
-    "_simulated_amm_midpoint", "_log_price_validation",
 ]
 
 
 # ---------------------------------------------------------------------------
 # Kalshi API — auth, market data, price helpers (from bot_kalshi)
 # ---------------------------------------------------------------------------
-
-def _simulated_amm_midpoint(btc_price: float, strike: float) -> tuple[float, float]:
-    """
-    Deterministic midpoint of simulate_amm_prices() — same distance bands as
-    backtest.py but without random noise, so each call is reproducible.
-    Used to record what the backtest *expects* vs what Kalshi actually quotes.
-    """
-    pct   = (btc_price - strike) / strike
-    ap    = abs(pct) * 100
-    above = pct > 0
-    spread = 4.5  # midpoint of backtest's 3.0—6.0 spread
-
-    if ap < 0.10:
-        yes_ask = 51.5 if above else 48.5
-    elif ap < 0.30:
-        yes_ask = 68.5 if above else 31.5
-    else:
-        yes_ask = 84.5 if above else 15.5
-
-    yes_ask = max(3.0, min(97.0, yes_ask))
-    no_ask  = max(3.0, min(97.0, 100.0 + spread - yes_ask))
-    return yes_ask, no_ask
-
-
-def _log_price_validation(
-    ts: str,
-    ticker: str,
-    btc_price: float,
-    strike: float,
-    sim_yes: float,
-    sim_no: float,
-    real_yes: float | None,
-    real_no: float | None,
-    mins_remaining: float = 0.0,
-) -> None:
-    """
-    Append one row to price_validation_log.csv and print a running summary
-    every 50 entries.  Logs null for real prices if the API call failed.
-
-    Columns: ts, ticker, btc_price, strike, abs_pct, mins_remaining,
-             sim_yes_ask, sim_no_ask, real_yes_ask, real_no_ask, price_gap_cents
-    """
-
-    gap     = (real_yes - sim_yes) if (real_yes is not None) else None
-    abs_pct = round(abs((btc_price - strike) / strike) * 100, 4) if strike else 0.0
-
-    file_exists = os.path.isfile(bot_state._PRICE_VAL_CSV)
-    try:
-        with open(bot_state._PRICE_VAL_CSV, "a", newline="", encoding="utf-8") as fh:
-            writer = _csv_module.writer(fh)
-            if not file_exists:
-                writer.writerow([
-                    "ts", "ticker", "btc_price", "strike",
-                    "abs_pct", "mins_remaining",
-                    "sim_yes_ask", "sim_no_ask",
-                    "real_yes_ask", "real_no_ask",
-                    "price_gap_cents",
-                ])
-            writer.writerow([
-                ts, ticker, round(btc_price, 2), round(strike, 2),
-                abs_pct, round(mins_remaining, 2),
-                round(sim_yes, 1), round(sim_no, 1),
-                round(real_yes, 1) if real_yes is not None else "null",
-                round(real_no,  1) if real_no  is not None else "null",
-                round(gap, 1) if gap is not None else "null",
-            ])
-    except Exception as exc:
-        log.warning(f"Price validation CSV write error: {exc}")
-        return
-
-    bot_state._price_val_count += 1
-    bot_state._price_val_sim_sum += sim_yes
-    if real_yes is not None:
-        bot_state._price_val_real_sum += real_yes
-        bot_state._price_val_gap_sum  += gap
-        bot_state._price_val_gap_n    += 1
-
-    if bot_state._price_val_count % 50 == 0:
-        n        = bot_state._price_val_count
-        avg_sim  = bot_state._price_val_sim_sum / n
-        avg_real = bot_state._price_val_real_sum / bot_state._price_val_gap_n if bot_state._price_val_gap_n > 0 else 0.0
-        avg_gap  = bot_state._price_val_gap_sum  / bot_state._price_val_gap_n if bot_state._price_val_gap_n > 0 else 0.0
-        verdict  = ("within 3c" if abs(avg_gap) < 3
-                    else "3-7c gap -- edge marginal" if abs(avg_gap) < 7
-                    else ">7c gap -- strategy likely unprofitable")
-        log.info(
-            f"Price validation: {n} samples collected. "
-            f"Avg price gap: {avg_gap:+.1f}c. "
-            f"Simulated avg: {avg_sim:.1f}c. Real avg: {avg_real:.1f}c. "
-            f"{verdict}"
-        )
 
 
 def load_credentials(mode: str = "paper") -> None:

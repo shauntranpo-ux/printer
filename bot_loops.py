@@ -18,7 +18,7 @@ from bot_infra import read_config, get_asset_config, db_write_trade, db_update_t
 from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
-    kalshi_headers, _simulated_amm_midpoint, _log_price_validation,
+    kalshi_headers,
     calculate_contracts, implied_prob, place_order, _portfolio_has_position,
 )
 from bot_strategy import (
@@ -199,25 +199,6 @@ async def handle_ready_phase(
 
     yes_ask = ob["best_yes_ask"]
     no_ask  = ob["best_no_ask"]   # fetched directly from no_ask_dollars, not derived
-
-    # ── Price validation: compare simulated vs real prices ──────────────────────────
-    # Logs to price_validation_log.csv so we can audit whether the backtest's
-    # AMM simulation matches live Kalshi prices (reviewer flagged 8-15c gap risk).
-    try:
-        _sim_yes, _sim_no = _simulated_amm_midpoint(btc_price, strike)
-        _log_price_validation(
-            ts=datetime.now(timezone.utc).isoformat(),
-            ticker=ticker,
-            btc_price=btc_price,
-            strike=strike,
-            sim_yes=_sim_yes,
-            sim_no=_sim_no,
-            real_yes=yes_ask,
-            real_no=no_ask,
-            mins_remaining=secs_left / 60,
-        )
-    except Exception as _pv_exc:
-        log.debug(f"Price validation log error: {_pv_exc}")
 
     # Track YES price for velocity signal
     track_contract_price(ticker, yes_ask)

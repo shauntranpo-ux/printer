@@ -10,7 +10,7 @@ __all__ = [
     "API_TIMEOUT", "MARKET_CACHE_TTL", "WATCH_PHASE_SECONDS", "KALSHI_FEE",
     # Env-sourced secrets / paths
     "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID",
-    "_CONFIG_FILE", "_DB_FILE", "_STATE_FILE", "_DATA_DIR", "_PRICE_VAL_CSV",
+    "_CONFIG_FILE", "_DB_FILE", "_STATE_FILE", "_DATA_DIR",
     # Runtime state
     "btc_prices",
     "_obi_monitor",
@@ -19,8 +19,6 @@ __all__ = [
     "_order_attempted_tickers", "_asset_states", "_s1_pending_trades",
     "_market_cache", "_market_cache_ts", "_all_markets_cache", "_all_markets_cache_ts",
     "limit_triggered", "limit_reason", "pre_limit_mode", "daily_reset_date",
-    "_price_val_count", "_price_val_gap_n", "_price_val_sim_sum",
-    "_price_val_real_sum", "_price_val_gap_sum",
     "last_confidence_score", "last_confidence_breakdown", "last_action", "last_skip_reason",
     "_asset_eval", "_contract_price_history",
     "_CAL_DEFAULTS", "_brain_cal_s1", "_brain_cal_s2",
@@ -49,8 +47,6 @@ _CONFIG_FILE = os.environ.get("BOT_CONFIG_FILE", "config.json")
 _DB_FILE     = os.environ.get("BOT_DB_FILE",     "kalshi_bot.db")
 _STATE_FILE  = os.environ.get("BOT_STATE_FILE",  "bot_state.json")
 _DATA_DIR    = os.path.dirname(os.path.abspath(_DB_FILE))
-_PRICE_VAL_CSV = os.path.join(_DATA_DIR, "price_validation_log.csv")
-
 # ── mutable runtime state ────────────────────────────────────────────────────
 import asset_manager  # noqa: E402 — after os/path setup
 btc_prices: deque = asset_manager._prices["BTC"]
@@ -76,12 +72,6 @@ limit_triggered: bool = False
 limit_reason: str = ""
 pre_limit_mode: str | None = None
 daily_reset_date = None
-
-_price_val_count: int    = 0
-_price_val_gap_n: int    = 0
-_price_val_sim_sum: float  = 0.0
-_price_val_real_sum: float = 0.0
-_price_val_gap_sum: float  = 0.0
 
 last_confidence_score: int      = 0
 last_confidence_breakdown: dict = {}
