@@ -453,14 +453,9 @@ async def handle_ready_phase(
         "order_id":          order_id,
         "asset":             asset,
         "raw_p_yes":         brain.get("raw_p_yes"),
-        "entry_signals":    json.dumps({
-            "supertrend_direction": (brain.get("signals") or {}).get("supertrend_direction"),
-            "supertrend_side":      (brain.get("signals") or {}).get("supertrend_side"),
-            "market_prob":          (brain.get("signals") or {}).get("market_prob"),
-            "p_ev":                 (brain.get("signals") or {}).get("p_ev"),
-            "decision_mode":        (brain.get("signals") or {}).get("decision_mode"),
-        }),
+        "entry_signals":    json.dumps(brain.get("signals", {})),
         "strategy_variant": "strategy2",
+        "strategy_version": bot_state._S2_VERSION,
     }
     trade_id = await db_write_trade(trade_data)
 
