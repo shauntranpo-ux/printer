@@ -124,12 +124,6 @@ async def handle_ready_phase(
                             btc_price, c_strike,
                             c_ob["best_yes_ask"], c_ob["best_no_ask"],
                             c_elapsed, c_secs_left, c_ticker,
-                            min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
-                            vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
-                            kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
-                            max_entry_price_cents=get_asset_config(config, asset, "max_entry_price_cents", 100.0),
-                            min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
-                            max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                             asset=asset,
                         )
                         c_win_prob = c_brain.get("win_prob", 0.5)
@@ -205,12 +199,6 @@ async def handle_ready_phase(
 
     # S2: contract velocity + OBI per-asset strategy
     brain = strategy_brain_s2(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
-                     min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
-                     vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
-                     kalshi_fee=config.get("kalshi_fee_per_contract_cents", 7) / 100,
-                     max_entry_price_cents=get_asset_config(config, asset, "max_entry_price_cents", 100.0),
-                     min_reward_cents=get_asset_config(config, asset, "min_reward_cents", 0.0),
-                     max_risk_reward_ratio=get_asset_config(config, asset, "max_risk_reward_ratio", 999.0),
                      asset=asset)
     # S1: EMA momentum per-asset strategy (different direction + gates from S2)
     brain_s1 = strategy_brain_s1(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)

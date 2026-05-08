@@ -396,10 +396,7 @@ def _s2_obi_gate(asset: str, side: str, min_obi: float):
 def strategy_brain_s2(
     btc_price, strike, yes_ask, no_ask,
     elapsed_seconds, secs_left, ticker,
-    min_ev_base=3.0, vol_gate_thresh=1.80, kalshi_fee=0.07,
     asset: str = "BTC",
-    max_entry_price_cents=100.0,
-    min_reward_cents=0.0, max_risk_reward_ratio=999.0,
 ) -> dict:
     """
     S2: Contract velocity + OBI strategy.
