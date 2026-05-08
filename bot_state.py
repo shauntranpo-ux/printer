@@ -13,7 +13,7 @@ __all__ = [
     "_CONFIG_FILE", "_DB_FILE", "_STATE_FILE", "_DATA_DIR",
     # Runtime state
     "btc_prices",
-    "_obi_monitor",
+    "_ticker_obi",
     "private_key", "api_key",
     "current_market", "current_phase", "current_position",
     "_order_attempted_tickers", "_asset_states", "_s1_pending_trades",
@@ -51,7 +51,7 @@ _DATA_DIR    = os.path.dirname(os.path.abspath(_DB_FILE))
 import asset_manager  # noqa: E402 — after os/path setup
 btc_prices: deque = asset_manager._prices["BTC"]
 
-_obi_monitor       = None   # OBIMonitor | None  — set in main()
+_ticker_obi: dict = {}
 
 private_key = None
 api_key: str = ""
