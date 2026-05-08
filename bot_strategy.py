@@ -410,7 +410,8 @@ def strategy_brain_s2(
     Completely different from S1 — no EMA, no vol ceiling, no session gate.
     """
     config = read_config()
-    cfg = _S2_ASSET_CONFIG.get(asset, _S2_ASSET_CONFIG["BTC"])
+    cfg = {**_S2_ASSET_CONFIG.get(asset, _S2_ASSET_CONFIG["BTC"]),
+           **config.get("s2_config", {}).get(asset, {})}
     mins_left = secs_left / 60.0
 
     # Resolve asset price

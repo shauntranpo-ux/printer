@@ -31,5 +31,12 @@
     "SOL":  {"min_dist": 0.0050, "max_rv": 0.0200, "ema_short": 3, "ema_long":  8, "session_gate": false, "min_ev": 0.10, "time_min": 3.0, "time_max": 10.0},
     "XRP":  {"min_dist": 0.0040, "max_rv": 0.0160, "ema_short": 3, "ema_long": 10, "session_gate": false, "min_ev": 0.09, "time_min": 3.0, "time_max": 12.0},
     "DOGE": {"min_dist": 0.0080, "max_rv": 0.0300, "ema_short": 2, "ema_long":  8, "session_gate": false, "min_ev": 0.12, "time_min": 3.0, "time_max": 10.0}
+  },
+  "s2_config": {
+    "BTC":  {"min_dist": 0.0035, "min_obi": 0.20, "min_vel_delta": 0.80, "vel_lookback": 4, "min_ev": 0.09, "time_min": 2.0, "time_max": 13.0},
+    "ETH":  {"min_dist": 0.0030, "min_obi": 0.15, "min_vel_delta": 0.70, "vel_lookback": 4, "min_ev": 0.09, "time_min": 2.0, "time_max": 13.0},
+    "SOL":  {"min_dist": 0.0060, "min_obi": 0.25, "min_vel_delta": 1.20, "vel_lookback": 3, "min_ev": 0.11, "time_min": 2.0, "time_max": 11.0},
+    "XRP":  {"min_dist": 0.0050, "min_obi": 0.20, "min_vel_delta": 0.90, "vel_lookback": 4, "min_ev": 0.10, "time_min": 2.0, "time_max": 12.0},
+    "DOGE": {"min_dist": 0.0100, "min_obi": 0.30, "min_vel_delta": 1.50, "vel_lookback": 3, "min_ev": 0.13, "time_min": 2.0, "time_max": 10.0}
   }
 }
