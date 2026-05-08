@@ -23,7 +23,6 @@ try:
 except ImportError:
     pass
 
-from obi_monitor import OBIMonitor
 import bot_state
 import asset_manager
 from asset_manager import get_price as _am_get_price, coinbase_price_task
@@ -88,11 +87,6 @@ async def main() -> None:
     from asset_manager import seed_price_history
     await seed_price_history(_feed_assets)
     asyncio.create_task(coinbase_price_task(_feed_assets))
-
-    # OBI monitor (Coinbase Exchange level2 WebSocket)
-    bot_state._obi_monitor = OBIMonitor(["BTC", "ETH", "SOL", "XRP", "DOGE"])
-    asyncio.create_task(bot_state._obi_monitor.run())
-    log.info("OBI monitor started for BTC, ETH, SOL, XRP, DOGE")
 
 
     # Wait for the first price from any enabled asset (timeout after 120s so Railway doesn't hang)
