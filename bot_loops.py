@@ -880,27 +880,6 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
         await asyncio.sleep(10)
 
 
-async def _hourly_market_loop(session: aiohttp.ClientSession) -> None:
-    """
-    Independent 60-second loop running the dwell+late hourly strategy.
-    Runs as a background asyncio task. Gated by enable_hourly_markets config flag.
-    """
-    from bot_hourly import run_hourly_asset, HOURLY_ASSETS
-
-    while True:
-        try:
-            config = read_config()
-            if config.get("enable_hourly_markets", False):
-                for asset in HOURLY_ASSETS:
-                    try:
-                        await run_hourly_asset(session, asset, config)
-                    except Exception as exc:
-                        log.error("[hourly/%s] error: %s", asset, exc, exc_info=True)
-        except Exception as exc:
-            log.error("hourly market loop outer error: %s", exc, exc_info=True)
-        await asyncio.sleep(60)
-
-
 # ══════════════════════════════════════════════════════════════════════════════════
 #  Main loop
 # ══════════════════════════════════════════════════════════════════════════════════
@@ -961,7 +940,6 @@ async def main_loop() -> None:
         # Non-BTC assets run in a separate background task so they aren't
         # gated by the BTC state machine's continue/sleep cycle.
         asyncio.create_task(_non_btc_asset_loop(session))
-        asyncio.create_task(_hourly_market_loop(session))
 
         while True:
             try:
