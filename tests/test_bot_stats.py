@@ -238,6 +238,34 @@ def test_format_telegram_hides_zero_strategy_sections():
     assert "S2" not in msg
 
 
+# ── midnight trigger ─────────────────────────────────────────────────────────
+
+def test_check_daily_stats_fires_once_per_day():
+    """_check_daily_stats sends stats exactly once per UTC date."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch, MagicMock
+    import bot_loops
+    import bot_state
+
+    sent = []
+
+    async def fake_send(msg):
+        sent.append(msg)
+
+    async def run():
+        bot_loops._last_stats_date = ""
+        with patch.object(bot_loops, "send_telegram", side_effect=fake_send), \
+             patch.object(bot_loops, "read_config", return_value={"mode": "paper"}), \
+             patch.object(bot_state, "_DB_FILE", "/nonexistent/db.sqlite"), \
+             patch.object(bot_state, "_consecutive_losses", 0):
+            await bot_loops._check_daily_stats("2026-05-07")
+            await bot_loops._check_daily_stats("2026-05-07")  # same day — no-op
+            await bot_loops._check_daily_stats("2026-05-08")  # new day — fires
+
+    asyncio.run(run())
+    assert len(sent) == 2  # once for each unique date
+
+
 def test_format_terminal_no_html():
     stats = _base_stats(
         today_trades=3,

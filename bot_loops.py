@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 import aiohttp
 
 import bot_state
+import bot_stats
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
 from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, _notify_ctx, _phase_for_eth
@@ -31,6 +32,22 @@ from bot_risk import (
 )
 
 log = logging.getLogger("bot")
+
+_last_stats_date: str = ""
+
+
+async def _check_daily_stats(today: str) -> None:
+    global _last_stats_date
+    if today == _last_stats_date:
+        return
+    _last_stats_date = today
+    try:
+        _stats = bot_stats.query_stats(bot_state._DB_FILE, today_date=today)
+        _stats["consecutive_losses"] = bot_state._consecutive_losses
+        _stats["mode"] = read_config().get("mode", "paper").upper()
+        await send_telegram(bot_stats.format_telegram(_stats))
+    except Exception as _e:
+        log.warning("Daily stats send failed (non-fatal): %s", _e)
 
 
 async def handle_ready_phase(
@@ -941,7 +958,8 @@ async def main_loop() -> None:
         while True:
             try:
                 midnight_reset()
-
+                _today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                await _check_daily_stats(_today)
 
                 # Fresh config read
                 try:
