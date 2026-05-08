@@ -406,7 +406,7 @@ async def _execute_s1_trade(
     _ev_str   = f"+{ev_val}%" if ev_val >= 0 else f"{ev_val}%"
 
     trade_data = {
-        "ts":                   datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "ts":                   datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "market_id":            ticker,
         "market_title":         ticker,
         "mode":                 mode,

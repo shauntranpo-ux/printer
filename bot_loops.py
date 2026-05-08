@@ -136,7 +136,7 @@ async def handle_ready_phase(
                         c_entry    = c_ob["best_yes_ask"] if c_brain["side"] == "yes" else c_ob["best_no_ask"]
                         _c_fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100
                         _c_p        = c_entry / 100.0
-                        _c_fee      = _c_fee_rate * (1.0 - _c_p)
+                        _c_fee      = _c_fee_rate * _c_p * (1.0 - _c_p)
                         c_ev        = c_win_prob - _c_p - _c_fee
                         log.info(f"  Window {c_ticker}: ev={c_ev:+.1%} side={c_brain['side']} strike=${c_strike:,.0f}")
                         if best_ev is None or c_ev > best_ev:
@@ -275,7 +275,7 @@ async def handle_ready_phase(
     entry_price_cents = yes_ask if side == "yes" else no_ask
     _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100
     _entry_p  = entry_price_cents / 100.0
-    _fee      = _fee_rate * (1.0 - _entry_p)  # fee/stake ≈ fee_rate*(1-p); matches ev.py formula
+    _fee      = _fee_rate * _entry_p * (1.0 - _entry_p)
     brain_ev  = brain.get("win_prob", 0.5) - _entry_p - _fee
     brain_win_prob = brain.get("win_prob", 0.5)
 
@@ -294,10 +294,8 @@ async def handle_ready_phase(
         "signals":      brain.get("signals", {}),
     }
 
-    entry_price_cents = yes_ask if side == "yes" else no_ask
-
-    # Dashboard breakdown from Brain v3 components
-    win_p_raw   = 0.70  # Supertrend assumed probability
+    # Dashboard breakdown
+    win_p_raw   = brain.get("win_prob", 0.5)
     _mom_label  = brain.get("mom_label",  "neutral")
     _vel_signal = brain.get("vel_signal", "neutral")
     _abs_pct    = brain.get("abs_pct", abs((btc_price - strike) / strike))
