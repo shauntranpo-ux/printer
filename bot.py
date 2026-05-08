@@ -4,7 +4,7 @@ bot.py — Entrypoint for the Kalshi 15-minute prediction market trading bot.
 All core logic lives in focused modules: bot_infra (config/db/notify),
 bot_market (Kalshi API + orders), bot_risk (risk + trade execution +
 preflight), bot_strategy (S1/S2 brains), bot_loops (phase handlers +
-main loop), bot_state (shared globals), asset_manager, obi_monitor.
+main loop), bot_state (shared globals), asset_manager.
 
 Start via runner.py, not directly.
 """
@@ -87,7 +87,6 @@ async def main() -> None:
     from asset_manager import seed_price_history
     await seed_price_history(_feed_assets)
     asyncio.create_task(coinbase_price_task(_feed_assets))
-
 
     # Wait for the first price from any enabled asset (timeout after 120s so Railway doesn't hang)
     _first_asset = _enabled[0] if _enabled else "ETH"
