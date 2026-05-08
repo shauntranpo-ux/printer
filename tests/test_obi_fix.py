@@ -1,6 +1,5 @@
 """tests/test_obi_fix.py — OBI fix: Kalshi contract depth replaces Coinbase WebSocket OBI."""
 import pytest
-import inspect
 from unittest.mock import AsyncMock, MagicMock, patch
 
 
@@ -10,9 +9,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 def _clear_ticker_obi():
     """Wipe _ticker_obi before each test so tests don't bleed state."""
     import bot_state
-    bot_state._ticker_obi.clear()
+    if hasattr(bot_state, "_ticker_obi"):
+        bot_state._ticker_obi.clear()
     yield
-    bot_state._ticker_obi.clear()
+    if hasattr(bot_state, "_ticker_obi"):
+        bot_state._ticker_obi.clear()
 
 
 # ── _kalshi_obi unit tests ────────────────────────────────────────────────────
@@ -48,14 +49,15 @@ def test_kalshi_obi_empty_arrays():
 def test_kalshi_obi_top_n_capping():
     """Only top 5 price levels (lowest ask first) contribute to depth."""
     from bot_market import _kalshi_obi
-    # 10 yes levels, price 60-69, qty 100 each
-    # 10 no  levels, price 40-49, qty 100 each
-    yes_arr = [[p, 100] for p in range(60, 70)]
-    no_arr  = [[p, 100] for p in range(40, 50)]
+    # YES: 10 levels at prices 60-69, qty 100 each → yes_depth=1000 without capping, 500 with top_n=5
+    # NO: 5 levels at prices 40-44 (qty 100), then 5 levels at 45-49 (qty 900 each)
+    # Without capping: no_depth = 5*100 + 5*900 = 5000 → heavy NO side
+    # With top_n=5: no_depth = 5*100 = 500 → balanced → OBI=0.0
+    yes_arr = [[60 + i, 100] for i in range(10)]
+    no_arr  = [[40 + i, 100] for i in range(5)] + [[45 + i, 900] for i in range(5)]
     result = _kalshi_obi(yes_arr, no_arr, top_n=5)
-    # top 5 yes (lowest ask): prices 60,61,62,63,64 → yes_depth=500
-    # top 5 no  (lowest ask): prices 40,41,42,43,44 → no_depth=500
-    # OBI = (500-500)/(500+500) = 0.0
+    # top 5 yes (lowest): 60,61,62,63,64 → yes_depth = 500
+    # top 5 no  (lowest): 40,41,42,43,44 → no_depth = 500
     assert result == pytest.approx(0.0)
 
 
