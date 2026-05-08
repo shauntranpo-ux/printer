@@ -2,19 +2,16 @@
   "bot_enabled": true,
   "_disabled_reason": "S1+S2 failed 2024-2026 OOS holdout. See docs/diagnosis/FINAL_VERDICT.md.",
   "mode": "paper",
-"trade_amount_dollars": 25,
+  "trade_amount_dollars": 25,
   "daily_loss_limit_dollars": 500,
   "daily_profit_target_dollars": 5000,
   "max_consecutive_losses": 5,
   "min_ev_base": 7,
-  "_note_min_ev_base": "in percent, e.g. 8 = 0.08 minimum EV threshold",
   "kalshi_fee_per_contract_cents": 7,
   "preflight_override": false,
   "vol_gate_thresh": 1.8,
   "min_entry_price_cents": 5,
   "max_entry_price_cents": 75,
-  "min_reward_cents": 15,
-  "max_risk_reward_ratio": 4.0,
   "allowed_sides": [
     "yes",
     "no"
@@ -26,46 +23,6 @@
     "XRP",
     "DOGE"
   ],
-  "asset_overrides": {
-    "BTC": {
-      "min_ev_base": 15,
-      "min_ev_base_s1": 8
-    },
-    "ETH": {
-      "min_ev_base": 17,
-      "min_ev_base_s1": 12,
-      "max_spread_cents": 2
-    },
-    "SOL": {
-      "min_ev_base": 14,
-      "min_ev_base_s1": 5
-    },
-    "XRP": {
-      "min_ev_base": 16,
-      "min_ev_base_s1": 8
-    },
-    "DOGE": {
-      "min_ev_base": 18,
-      "min_ev_base_s1": 10
-    }
-  },
-  "max_spread_cents": 3.0,
-  "min_seconds_left": 30,
-  "cold_start_samples": 60,
-  "timezone": "America/Los_Angeles",
-  "time_windows": {
-    "normal": {
-      "min_ev_delta": 0,
-      "max_entry_price_cents": 75
-    },
-    "strict": {
-      "min_ev_delta": 4,
-      "max_entry_price_cents": 70
-    },
-    "strictest": {
-      "min_ev_delta": 8,
-      "max_entry_price_cents": 60
-    }
-  },
-  "min_ev_base_15m": 9
+  "asset_overrides": {},
+  "timezone": "America/Los_Angeles"
 }
