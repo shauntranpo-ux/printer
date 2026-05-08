@@ -376,18 +376,16 @@ def _s2_contract_direction(ticker: str, min_delta: float, lookback: int):
     return ("yes" if delta > 0 else "no"), abs(delta)
 
 
-def _s2_obi_gate(asset: str, side: str, min_obi: float):
+def _s2_obi_gate(ticker: str, side: str, min_obi: float):
     """
     OBI confirmation gate for S2.
     Returns (confirmed, obi_val).
-    Fails open (True) when OBI monitor unavailable — never block trades on missing infra.
+    Fails open (True) when no OBI data for this ticker — never block trades on missing data.
+    Positive OBI = no_depth > yes_depth = bullish for YES.
     """
-    if bot_state._obi_monitor is None:
-        return True, None
-    obi_val = bot_state._obi_monitor.get_obi(asset)
+    obi_val = bot_state._ticker_obi.get(ticker)
     if obi_val is None:
         return True, None
-    # Positive OBI = bid-heavy = bullish market; negative = ask-heavy = bearish
     if side == "yes" and obi_val <= min_obi:
         return False, obi_val
     if side == "no"  and obi_val >= -min_obi:
@@ -452,7 +450,7 @@ def strategy_brain_s2(
                           variant="strategy2", price_filter=True)
 
     # Gate 4: OBI confirmation (required gate, not optional adjustment)
-    obi_ok, obi_val = _s2_obi_gate(asset, side, cfg["min_obi"])
+    obi_ok, obi_val = _s2_obi_gate(ticker, side, cfg["min_obi"])
     if not obi_ok:
         return _make_skip(
             side,
