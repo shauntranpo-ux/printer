@@ -120,6 +120,7 @@ async def handle_ready_phase(
                         c_ob = await fetch_orderbook(session, c_ticker, candidate)
                         if c_ob is None:
                             continue
+                        bot_state._ticker_obi[c_ticker] = c_ob["obi"]
                         c_brain = strategy_brain_s2(
                             btc_price, c_strike,
                             c_ob["best_yes_ask"], c_ob["best_no_ask"],
@@ -182,6 +183,9 @@ async def handle_ready_phase(
             if _use_state: state["eval"] = _snap
             else: bot_state._asset_eval[asset] = _snap
             return
+
+    if ob is not None:
+        bot_state._ticker_obi[ticker] = ob["obi"]
 
     if ob is None:
         log.warning(f"[{asset}] {ticker}: orderbook returned no price data — retrying next cycle")
