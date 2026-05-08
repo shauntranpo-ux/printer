@@ -20,9 +20,106 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from collections import defaultdict
 from datetime import datetime, timezone
-# hourly_window_generator removed (dead code)
+import math
+from typing import NamedTuple
 import pandas as pd
 import numpy as np
+
+
+# ── Hourly event types ────────────────────────────────────────────────────────
+
+class _OrderBook(NamedTuple):
+    yes_ask: float
+    no_ask: float
+
+
+class _HourlyEvent(NamedTuple):
+    window_start_ts: float
+    elapsed_seconds: float
+    eval_ts: float
+    strike: float
+    current_price: float
+    close_price: float
+    orderbook: _OrderBook
+
+
+def _norm_cdf(x: float) -> float:
+    return 0.5 * math.erfc(-x / math.sqrt(2))
+
+
+def _digital_call_price(spot: float, strike: float, t_min: float, sigma_ann: float) -> float:
+    """P(S_T > K) under log-normal risk-neutral measure."""
+    if t_min <= 0:
+        return 1.0 if spot > strike else 0.0
+    t = t_min / (365 * 24 * 60)
+    s = sigma_ann * math.sqrt(t)
+    if s < 1e-10 or strike <= 0 or spot <= 0:
+        return 1.0 if spot > strike else 0.0
+    d2 = math.log(spot / strike) / s - 0.5 * s
+    return float(np.clip(_norm_cdf(d2), 0.0, 1.0))
+
+
+def generate_hourly_events(df: pd.DataFrame, asset: str, start: float, end: float, seed: int = 42):
+    """
+    Yield per-minute _HourlyEvent objects for each 60-min window in [start, end].
+
+    Strike = price at window open. Close = price at window close.
+    Orderbook prices use Black-Scholes digital call + 2.5c half-spread.
+    Realized vol estimated from 60 1m bars before window open.
+    """
+    SPREAD = 2.5
+    ts_arr = df["timestamp"].values.astype(np.int64)
+    cl_arr = df["close"].values.astype(np.float64)
+
+    t = int(math.ceil(start / 3600) * 3600)
+    while t + 3600 <= end:
+        open_idx = int(np.searchsorted(ts_arr, t, side="left"))
+        if open_idx >= len(ts_arr):
+            t += 3600
+            continue
+        strike = float(cl_arr[open_idx])
+
+        close_ts = t + 3600 - 60
+        close_idx = int(np.searchsorted(ts_arr, close_ts, side="left"))
+        close_idx = min(close_idx, len(ts_arr) - 1)
+        close_price = float(cl_arr[close_idx])
+
+        # 1h lookback realized vol (annualized)
+        v0 = max(0, open_idx - 60)
+        hist = cl_arr[v0:open_idx + 1]
+        if len(hist) >= 5:
+            lr = np.diff(np.log(hist))
+            sigma_ann = float(math.sqrt(max(float(np.var(lr)), 1e-12) * 60 * 24 * 365))
+        else:
+            sigma_ann = 0.60
+
+        for minute in range(1, 61):
+            eval_ts = float(t + minute * 60)
+            price_idx = int(np.searchsorted(ts_arr, int(eval_ts), side="right")) - 1
+            if price_idx < 0 or price_idx >= len(ts_arr):
+                continue
+            cur = float(cl_arr[price_idx])
+            t_rem = float(60 - minute)
+
+            if cur >= strike:
+                p_yes = _digital_call_price(cur, strike, t_rem, sigma_ann)
+            else:
+                p_yes = 1.0 - _digital_call_price(strike, cur, t_rem, sigma_ann)
+
+            yes_ask = float(np.clip(p_yes * 100 + SPREAD, 1.0, 99.0))
+            no_ask  = float(np.clip((1.0 - p_yes) * 100 + SPREAD, 1.0, 99.0))
+
+            yield _HourlyEvent(
+                window_start_ts=float(t),
+                elapsed_seconds=float(minute * 60),
+                eval_ts=eval_ts,
+                strike=strike,
+                current_price=cur,
+                close_price=close_price,
+                orderbook=_OrderBook(yes_ask=yes_ask, no_ask=no_ask),
+            )
+
+        t += 3600
 
 STAKE    = 25.0
 FEE_RATE = 0.07
