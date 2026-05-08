@@ -196,7 +196,7 @@ def strategy_brain_s1(
                           rv=rv, variant="strategy1", price_filter=True)
 
     # Win probability: empirical lookup (tanh fallback when bucket uncalibrated)
-    base_p = _s1_lookup_win_rate(asset, abs_pct, mins_left)
+    base_p = _s1_lookup_win_rate(asset, abs_pct, mins_left, cfg)
     ema_strength = abs((ema_ratio or 1.0) - 1.0)
     ema_adj = min(0.05, 3.0 * ema_strength)
     session_adj = 0.03 if (cfg["session_gate"] and _s1_is_us_session()) else 0.0
@@ -305,9 +305,10 @@ _S2_VEL_MULTIPLIERS = [2.0, 4.0]
 _S2_TIME_BOUNDS_S2  = [5.0, 8.0]
 
 
-def _s1_lookup_win_rate(asset: str, abs_pct: float, mins_left: float) -> float:
+def _s1_lookup_win_rate(asset: str, abs_pct: float, mins_left: float, cfg: dict | None = None) -> float:
     """Look up empirical S1 win rate. Falls back to tanh when bucket is None or missing."""
-    cfg      = _S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"])
+    if cfg is None:
+        cfg = _S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"])
     min_dist = cfg["min_dist"]
 
     dist_idx = len(_S1_DIST_BOUNDS)
@@ -329,9 +330,10 @@ def _s1_lookup_win_rate(asset: str, abs_pct: float, mins_left: float) -> float:
     return 0.50 + 0.28 * math.tanh(abs_pct / max(min_dist, 1e-6))
 
 
-def _s2_lookup_win_rate(asset: str, vel_delta: float, mins_left: float) -> float:
+def _s2_lookup_win_rate(asset: str, vel_delta: float, mins_left: float, cfg: dict | None = None) -> float:
     """Look up empirical S2 win rate. Falls back to tanh when bucket is None or missing."""
-    cfg     = _S2_ASSET_CONFIG.get(asset, _S2_ASSET_CONFIG["BTC"])
+    if cfg is None:
+        cfg = _S2_ASSET_CONFIG.get(asset, _S2_ASSET_CONFIG["BTC"])
     min_vel = cfg["min_vel_delta"]
 
     ratio   = vel_delta / max(min_vel, 1e-9)
@@ -459,7 +461,7 @@ def strategy_brain_s2(
         )
 
     # Win probability: empirical lookup (tanh fallback when bucket uncalibrated)
-    base_p = _s2_lookup_win_rate(asset, vel_delta, mins_left)
+    base_p = _s2_lookup_win_rate(asset, vel_delta, mins_left, cfg)
     vel_adj = min(0.04, 0.02 * (vel_delta / max(cfg["min_vel_delta"], 1e-6)))
     obi_adj = min(0.03, 0.02 * abs(obi_val or 0.0) / max(cfg["min_obi"], 1e-6)) if obi_val is not None else 0.0
     win_prob = min(0.99, base_p + vel_adj + obi_adj)

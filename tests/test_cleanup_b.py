@@ -3,8 +3,6 @@ import inspect
 import time
 from unittest.mock import patch
 
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Helpers
