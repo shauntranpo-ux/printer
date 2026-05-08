@@ -24,5 +24,12 @@
     "DOGE"
   ],
   "asset_overrides": {},
-  "timezone": "America/Los_Angeles"
+  "timezone": "America/Los_Angeles",
+  "s1_config": {
+    "BTC":  {"min_dist": 0.0025, "max_rv": 0.0080, "ema_short": 3, "ema_long": 10, "session_gate": true,  "min_ev": 0.08, "time_min": 3.0, "time_max": 12.0},
+    "ETH":  {"min_dist": 0.0030, "max_rv": 0.0120, "ema_short": 3, "ema_long": 10, "session_gate": false, "min_ev": 0.09, "time_min": 3.0, "time_max": 12.0},
+    "SOL":  {"min_dist": 0.0050, "max_rv": 0.0200, "ema_short": 3, "ema_long":  8, "session_gate": false, "min_ev": 0.10, "time_min": 3.0, "time_max": 10.0},
+    "XRP":  {"min_dist": 0.0040, "max_rv": 0.0160, "ema_short": 3, "ema_long": 10, "session_gate": false, "min_ev": 0.09, "time_min": 3.0, "time_max": 12.0},
+    "DOGE": {"min_dist": 0.0080, "max_rv": 0.0300, "ema_short": 2, "ema_long":  8, "session_gate": false, "min_ev": 0.12, "time_min": 3.0, "time_max": 10.0}
+  }
 }

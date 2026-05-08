@@ -141,7 +141,8 @@ def strategy_brain_s1(
     Per-asset thresholds for BTC / ETH / SOL / XRP / DOGE.
     """
     config = read_config()
-    cfg = _S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"])
+    cfg = {**_S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"]),
+           **config.get("s1_config", {}).get(asset, {})}
     mins_left = secs_left / 60.0
 
     # Resolve asset price — callers pass the asset price as the first arg for non-BTC.
