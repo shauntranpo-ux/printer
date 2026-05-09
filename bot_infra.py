@@ -368,26 +368,37 @@ async def db_brain_scorecard(today: str) -> dict:
         "daily":   {"s1": {}, "s2": {}},
         "alltime": {"s1": {}, "s2": {}},
     }
-    _query = """
+    _query_daily = """
         SELECT brain, asset,
                COUNT(*) AS trades,
                COALESCE(SUM(pnl_dollars), 0) AS pnl,
                SUM(CASE WHEN pnl_dollars > 0 THEN 1 ELSE 0 END) AS wins,
-               COUNT(*) - SUM(CASE WHEN pnl_dollars > 0 THEN 1 ELSE 0 END) AS losses
+               SUM(CASE WHEN pnl_dollars < 0 THEN 1 ELSE 0 END) AS losses
         FROM trades
         WHERE brain IN ('s1', 's2')
           AND pnl_dollars IS NOT NULL
-          {date_filter}
+          AND date(ts) = ?
+        GROUP BY brain, asset
+    """
+    _query_alltime = """
+        SELECT brain, asset,
+               COUNT(*) AS trades,
+               COALESCE(SUM(pnl_dollars), 0) AS pnl,
+               SUM(CASE WHEN pnl_dollars > 0 THEN 1 ELSE 0 END) AS wins,
+               SUM(CASE WHEN pnl_dollars < 0 THEN 1 ELSE 0 END) AS losses
+        FROM trades
+        WHERE brain IN ('s1', 's2')
+          AND pnl_dollars IS NOT NULL
         GROUP BY brain, asset
     """
     try:
         async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
-            for scope, date_filter in (
-                ("daily",   f"AND date(ts) = '{today}'"),
-                ("alltime", ""),
+            for scope, query, params in (
+                ("daily",   _query_daily,   (today,)),
+                ("alltime", _query_alltime, ()),
             ):
-                async with db.execute(_query.format(date_filter=date_filter)) as cur:
+                async with db.execute(query, params) as cur:
                     async for row in cur:
                         brain, asset, trades, pnl, wins, losses = row
                         if brain in result[scope]:

@@ -153,6 +153,15 @@ def test_scorecard_returns_per_brain_per_asset():
                 "pnl_dollars": 1.50,
                 "brain": "s2",
             })
+            await bot_infra.db_write_trade({
+                "ts": f"{today}T04:00:00Z",
+                "market_id": "T4",
+                "mode": "paper",
+                "outcome": "breakeven",
+                "asset": "BTC",
+                "pnl_dollars": 0.0,
+                "brain": "s1",
+            })
         asyncio.run(_seed())
 
         result = asyncio.run(bot_infra.db_brain_scorecard(today))
@@ -163,7 +172,9 @@ def test_scorecard_returns_per_brain_per_asset():
         assert abs(s1_btc.get("pnl", 0) - 1.50) < 0.01, \
             f"S1 BTC daily pnl wrong: {s1_btc}"
         assert s1_btc.get("wins") == 1, f"S1 BTC wins wrong: {s1_btc}"
-        assert s1_btc.get("losses") == 1, f"S1 BTC losses wrong: {s1_btc}"
+        # break-even (pnl=0.0) must NOT count as a loss
+        assert s1_btc.get("losses") == 1, \
+            f"Break-even counted as loss; S1 BTC losses: {s1_btc}"
         assert abs(s2_eth.get("pnl", 0) - 1.50) < 0.01, \
             f"S2 ETH daily pnl wrong: {s2_eth}"
     finally:
