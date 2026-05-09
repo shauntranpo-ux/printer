@@ -96,3 +96,21 @@ def test_s2_attempted_tickers_exists():
 def test_order_attempted_tickers_removed():
     assert not hasattr(bot_state, "_order_attempted_tickers"), \
         "_order_attempted_tickers should be removed; use _s2_attempted_tickers"
+
+
+def test_s1_trade_data_has_brain_s1():
+    """_execute_s1_trade must include brain='s1' in the trade_data dict."""
+    import bot_risk
+    import inspect
+    src = inspect.getsource(bot_risk._execute_s1_trade)
+    assert '"brain": "s1"' in src or "'brain': 's1'" in src, \
+        "_execute_s1_trade trade_data missing 'brain': 's1'"
+
+
+def test_s2_trade_data_has_brain_s2():
+    """handle_ready_phase must include brain='s2' in the S2 trade_data dict."""
+    import bot_loops
+    import inspect
+    src = inspect.getsource(bot_loops.handle_ready_phase)
+    assert '"brain": "s2"' in src or "'brain': 's2'" in src, \
+        "handle_ready_phase S2 trade_data missing 'brain': 's2'"

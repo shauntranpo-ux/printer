@@ -429,6 +429,7 @@ async def handle_ready_phase(
         "entry_signals":    json.dumps(brain.get("signals", {})),
         "strategy_variant": "strategy2",
         "strategy_version": bot_state._S2_VERSION,
+        "brain": "s2",
     }
     trade_id = await db_write_trade(trade_data)
 

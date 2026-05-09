@@ -428,6 +428,7 @@ async def _execute_s1_trade(
         "entry_signals":        json.dumps(brain_s1.get("signals", {})),
         "strategy_variant":     "strategy1",
         "strategy_version":     bot_state._S1_VERSION,
+        "brain": "s1",
     }
     bot_state._s1_pending_trades[ticker] = {
         "trade_id":          None,
