@@ -6,6 +6,8 @@
   "daily_loss_limit_dollars": 500,
   "daily_profit_target_dollars": 5000,
   "max_consecutive_losses": 5,
+  "max_s1_positions": 3,
+  "max_s1_positions_per_asset": 1,
   "min_ev_base": 7,
   "kalshi_fee_per_contract_cents": 7,
   "preflight_override": false,

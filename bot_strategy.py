@@ -156,6 +156,19 @@ def strategy_brain_s1(
 
     abs_pct = abs(current_price - strike) / strike if strike > 0 else 0.0
 
+    # Cap gate: global S1 position limit
+    _s1_global_cap = config.get("max_s1_positions", 3)
+    if len(bot_state._s1_pending_trades) >= _s1_global_cap:
+        return _make_skip("yes", "s1_cap_global", abs_pct, mins_left, variant="strategy1")
+
+    # Cap gate: per-asset S1 position limit
+    _s1_asset_cap = config.get("max_s1_positions_per_asset", 1)
+    _s1_asset_count = sum(
+        1 for t in bot_state._s1_pending_trades.values() if t.get("asset") == asset
+    )
+    if _s1_asset_count >= _s1_asset_cap:
+        return _make_skip("yes", "s1_cap_asset", abs_pct, mins_left, variant="strategy1")
+
     # Gate 1: session (BTC only)
     if cfg["session_gate"] and not _s1_is_us_session():
         return _make_skip("yes", "s1_session_gate", abs_pct, mins_left, variant="strategy1")

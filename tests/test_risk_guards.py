@@ -32,3 +32,15 @@ def test_s2_obi_gate_passes_with_data():
         assert abs(val - 0.40) < 0.001
     finally:
         bot_state._ticker_obi.pop("TEST-TICK", None)
+
+
+def test_s1_cap_global_source_check():
+    """strategy_brain_s1 must have s1_cap_global skip reason."""
+    src = inspect.getsource(bot_strategy.strategy_brain_s1)
+    assert "s1_cap_global" in src, "strategy_brain_s1 missing s1_cap_global skip reason"
+
+
+def test_s1_cap_asset_source_check():
+    """strategy_brain_s1 must have s1_cap_asset skip reason."""
+    src = inspect.getsource(bot_strategy.strategy_brain_s1)
+    assert "s1_cap_asset" in src, "strategy_brain_s1 missing s1_cap_asset skip reason"
