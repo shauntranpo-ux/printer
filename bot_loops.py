@@ -767,6 +767,24 @@ async def _process_asset(
             await handle_locked_phase(session, price, secs_left, config, asset=asset, state=st)
         except Exception as exc:
             log.error(f"[{asset}] LOCKED phase error: {exc}", exc_info=True)
+        # S1 runs independently — try entry even when S2 is LOCKED
+        if secs_left > 30:
+            try:
+                ob_s1 = await fetch_orderbook(session, ticker, market)
+                if ob_s1:
+                    mode = config.get("mode", "paper")
+                    brain_s1 = strategy_brain_s1(
+                        price, strike,
+                        ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                        elapsed, secs_left, ticker, asset=asset,
+                    )
+                    await _execute_s1_trade(
+                        session, brain_s1, ticker, price, strike,
+                        ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                        elapsed, secs_left, asset, config, mode, ob_s1, market,
+                    )
+            except Exception as exc:
+                log.debug("[%s] S1 LOCKED-phase entry attempt failed: %s", asset, exc)
         return
 
     # DONE
@@ -1042,6 +1060,24 @@ async def main_loop() -> None:
                         )
                     except Exception as exc:
                         log.error(f"LOCKED phase error: {exc}", exc_info=True)
+                    # S1 runs independently — try entry even when S2 is LOCKED
+                    if secs_left > 30:
+                        try:
+                            ob_s1 = await fetch_orderbook(session, ticker, market)
+                            if ob_s1:
+                                mode = config.get("mode", "paper")
+                                brain_s1 = strategy_brain_s1(
+                                    btc_price, strike,
+                                    ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                    elapsed, secs_left, ticker, asset="BTC",
+                                )
+                                await _execute_s1_trade(
+                                    session, brain_s1, ticker, btc_price, strike,
+                                    ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                    elapsed, secs_left, "BTC", config, mode, ob_s1, market,
+                                )
+                        except Exception as exc:
+                            log.debug("S1 LOCKED-phase entry attempt failed: %s", exc)
                     await write_state_file(config, market, bot_state.current_phase, secs_left, btc_price,
                                            bot_state.last_confidence_score, bot_state.last_confidence_breakdown,
                                            bot_state.last_action, bot_state.last_skip_reason)
