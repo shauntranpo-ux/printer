@@ -241,7 +241,7 @@ def test_format_telegram_hides_zero_strategy_sections():
 # ── midnight trigger ─────────────────────────────────────────────────────────
 
 def test_check_daily_stats_fires_once_per_day():
-    """_check_daily_stats sends stats exactly once per UTC date."""
+    """_check_daily_stats sends stats exactly once per local date."""
     import asyncio
     from unittest.mock import AsyncMock, patch, MagicMock
     import bot_loops

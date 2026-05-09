@@ -7,6 +7,7 @@ import logging
 import math
 import time
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 import aiohttp
 
@@ -35,6 +36,8 @@ log = logging.getLogger("bot")
 
 _last_stats_date: str = ""
 _last_scorecard_date: str = ""
+
+_LV_TZ = ZoneInfo("America/Los_Angeles")
 
 _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 
@@ -91,8 +94,10 @@ async def _send_brain_scorecard() -> None:
     """Query DB and send daily brain scorecard via Telegram. Non-fatal on error."""
     global _last_scorecard_date
     try:
-        from datetime import datetime, timezone
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        now_lv = datetime.now(_LV_TZ)
+        if now_lv.hour != 23 or now_lv.minute < 55:
+            return
+        today = now_lv.strftime("%Y-%m-%d")
         if today == _last_scorecard_date:
             return
         data = await db_brain_scorecard(today)
@@ -1000,8 +1005,9 @@ async def main_loop() -> None:
             try:
                 midnight_reset()
                 await _send_brain_scorecard()
-                _today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-                await _check_daily_stats(_today)
+                _now_lv = datetime.now(_LV_TZ)
+                if _now_lv.hour == 23 and _now_lv.minute >= 55:
+                    await _check_daily_stats(_now_lv.strftime("%Y-%m-%d"))
 
                 # Fresh config read
                 try:
