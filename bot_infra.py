@@ -28,7 +28,7 @@ __all__ = [
     "atomic_write_json", "read_config", "write_config", "get_asset_config", "_init_config",
     # DB
     "init_db", "test_db_write", "db_write_trade", "db_update_trade",
-    "db_write_market_log", "db_get_today_pnl",
+    "db_brain_scorecard", "db_write_market_log", "db_get_today_pnl",
     # Notify
     "send_telegram", "_maybe_fill_verification_notify", "_notify_ctx", "_phase_for_eth",
 ]
@@ -360,6 +360,46 @@ async def db_update_trade(trade_id: int, fields: dict) -> None:
             await db.commit()
     except Exception as exc:
         log.error(f"DB update_trade error: {exc}")
+
+
+async def db_brain_scorecard(today: str) -> dict:
+    """Returns daily and all-time per-brain per-asset P&L for S1 and S2."""
+    result: dict = {
+        "daily":   {"s1": {}, "s2": {}},
+        "alltime": {"s1": {}, "s2": {}},
+    }
+    _query = """
+        SELECT brain, asset,
+               COUNT(*) AS trades,
+               COALESCE(SUM(pnl_dollars), 0) AS pnl,
+               SUM(CASE WHEN pnl_dollars > 0 THEN 1 ELSE 0 END) AS wins,
+               COUNT(*) - SUM(CASE WHEN pnl_dollars > 0 THEN 1 ELSE 0 END) AS losses
+        FROM trades
+        WHERE brain IN ('s1', 's2')
+          AND pnl_dollars IS NOT NULL
+          {date_filter}
+        GROUP BY brain, asset
+    """
+    try:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            for scope, date_filter in (
+                ("daily",   f"AND date(ts) = '{today}'"),
+                ("alltime", ""),
+            ):
+                async with db.execute(_query.format(date_filter=date_filter)) as cur:
+                    async for row in cur:
+                        brain, asset, trades, pnl, wins, losses = row
+                        if brain in result[scope]:
+                            result[scope][brain][asset] = {
+                                "trades": trades,
+                                "pnl":    round(pnl or 0.0, 2),
+                                "wins":   wins or 0,
+                                "losses": losses or 0,
+                            }
+    except Exception as exc:
+        log.error("db_brain_scorecard error: %s", exc)
+    return result
 
 
 async def db_write_market_log(entry: dict) -> None:

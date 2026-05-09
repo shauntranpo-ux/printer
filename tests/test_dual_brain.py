@@ -114,3 +114,57 @@ def test_s2_trade_data_has_brain_s2():
     src = inspect.getsource(bot_loops.handle_ready_phase)
     assert '"brain": "s2"' in src or "'brain': 's2'" in src, \
         "handle_ready_phase S2 trade_data missing 'brain': 's2'"
+
+
+def test_scorecard_returns_per_brain_per_asset():
+    import asyncio
+    from datetime import datetime, timezone
+
+    db_path = _tmp_db()
+    try:
+        bot_infra.init_db()
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+        async def _seed():
+            await bot_infra.db_write_trade({
+                "ts": f"{today}T01:00:00Z",
+                "market_id": "T1",
+                "mode": "paper",
+                "outcome": "win",
+                "asset": "BTC",
+                "pnl_dollars": 2.50,
+                "brain": "s1",
+            })
+            await bot_infra.db_write_trade({
+                "ts": f"{today}T02:00:00Z",
+                "market_id": "T2",
+                "mode": "paper",
+                "outcome": "loss",
+                "asset": "BTC",
+                "pnl_dollars": -1.00,
+                "brain": "s1",
+            })
+            await bot_infra.db_write_trade({
+                "ts": f"{today}T03:00:00Z",
+                "market_id": "T3",
+                "mode": "paper",
+                "outcome": "win",
+                "asset": "ETH",
+                "pnl_dollars": 1.50,
+                "brain": "s2",
+            })
+        asyncio.run(_seed())
+
+        result = asyncio.run(bot_infra.db_brain_scorecard(today))
+
+        s1_btc = result["daily"]["s1"].get("BTC", {})
+        s2_eth = result["daily"]["s2"].get("ETH", {})
+
+        assert abs(s1_btc.get("pnl", 0) - 1.50) < 0.01, \
+            f"S1 BTC daily pnl wrong: {s1_btc}"
+        assert s1_btc.get("wins") == 1, f"S1 BTC wins wrong: {s1_btc}"
+        assert s1_btc.get("losses") == 1, f"S1 BTC losses wrong: {s1_btc}"
+        assert abs(s2_eth.get("pnl", 0) - 1.50) < 0.01, \
+            f"S2 ETH daily pnl wrong: {s2_eth}"
+    finally:
+        os.unlink(db_path)
