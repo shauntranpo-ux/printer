@@ -204,3 +204,33 @@ def test_format_scorecard_message():
     assert "BTC" in msg
     assert "ETH" in msg
     assert "All-time" in msg or "all-time" in msg.lower()
+
+
+def test_s1_winprob_no_inflation():
+    """S1 win_prob must equal base_p — no ema_adj or session_adj added."""
+    import bot_strategy as bs
+    import inspect
+    src = inspect.getsource(bs.strategy_brain_s1)
+    assert "base_p + ema_adj" not in src, "S1 win_prob still inflated with ema_adj"
+    assert "base_p + session_adj" not in src, "S1 win_prob still inflated with session_adj"
+
+
+def test_s1_fee_reads_from_config():
+    """S1 fee must not be hardcoded 0.07."""
+    import bot_strategy as bs
+    import inspect
+    src = inspect.getsource(bs.strategy_brain_s1)
+    assert "0.07 * _ep_s1" not in src, "S1 fee still hardcoded as 0.07"
+    assert "kalshi_fee_per_contract_cents" in src, \
+        "S1 fee not reading from config key kalshi_fee_per_contract_cents"
+
+
+def test_s1_price_cap_per_asset():
+    """S1 max entry price must use get_asset_config, not global config.get."""
+    import bot_strategy as bs
+    import inspect
+    src = inspect.getsource(bs.strategy_brain_s1)
+    assert 'config.get("max_entry_price_cents"' not in src, \
+        "S1 still uses global max_entry_price_cents instead of get_asset_config"
+    assert "get_asset_config" in src, \
+        "S1 price cap not using get_asset_config"

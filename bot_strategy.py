@@ -188,23 +188,22 @@ def strategy_brain_s1(
     if side == "no" and current_price > strike:
         return _make_skip(side, "s1_reversal_gate:ema=no_price_above", abs_pct, mins_left, rv=rv, variant="strategy1")
 
-    # Gate 5: entry price range
-    _min_p = float(config.get("min_entry_price_cents", 20.0))
-    _max_p = float(config.get("max_entry_price_cents", 76.0))
+    # Gate 5: entry price range (per-asset via get_asset_config)
+    _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 76.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           rv=rv, variant="strategy1", price_filter=True)
 
     # Win probability: empirical lookup (tanh fallback when bucket uncalibrated)
+    # No additive adjustments — calibration already prices EMA + session selection in.
     base_p = _s1_lookup_win_rate(asset, abs_pct, mins_left, cfg)
-    ema_strength = abs((ema_ratio or 1.0) - 1.0)
-    ema_adj = min(0.05, 3.0 * ema_strength)
-    session_adj = 0.03 if (cfg["session_gate"] and _s1_is_us_session()) else 0.0
-    win_prob = min(0.99, base_p + ema_adj + session_adj)
+    win_prob = min(0.99, base_p)
 
-    # EV gate — Kalshi fee is 0.07 * p * (1-p), not flat 0.07
+    # EV gate — Kalshi fee from config (default 7 cents per contract)
     _ep_s1 = entry_price / 100.0
-    fee = 0.07 * _ep_s1 * (1.0 - _ep_s1)
+    _fee_cents_s1 = config.get("kalshi_fee_per_contract_cents", 7)
+    fee = (_fee_cents_s1 / 100) * _ep_s1 * (1.0 - _ep_s1)
     ev = win_prob - _ep_s1 - fee
     if ev < cfg["min_ev"]:
         return {
