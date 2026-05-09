@@ -35,3 +35,12 @@ def test_db_update_trade_has_column_whitelist():
     assert "outcome" in bot_infra._VALID_TRADE_COLS
     assert "brain" in bot_infra._VALID_TRADE_COLS
     assert "exit_price_cents" in bot_infra._VALID_TRADE_COLS
+
+
+def test_bot_stats_unknown_variant_warned():
+    """_run_queries must check strategy_variant against _STRATEGY_LABELS and log warning."""
+    src = inspect.getsource(bot_stats._run_queries)
+    assert "_STRATEGY_LABELS" in src, \
+        "_run_queries must check row strategy_variant against _STRATEGY_LABELS"
+    assert "log.warning" in src, \
+        "_run_queries must log warning for unknown strategy_variant"
