@@ -67,3 +67,12 @@ def test_s1_cl_alert_source_check():
         "_settle_s1_trade not checking max_consecutive_losses for S1 alert"
     assert "[S1]" in src and "consecutive losses" in src, \
         "_settle_s1_trade missing [S1] consecutive losses Telegram text"
+
+
+def test_s1_session_gate_source_check():
+    """strategy_brain_s1 must use get_asset_config for s1_session_gate and _effective_gate."""
+    src = inspect.getsource(bot_strategy.strategy_brain_s1)
+    assert "s1_session_gate" in src, \
+        "strategy_brain_s1 not using s1_session_gate config key"
+    assert "_effective_gate" in src, \
+        "strategy_brain_s1 not using _effective_gate variable"

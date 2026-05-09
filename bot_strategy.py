@@ -169,8 +169,9 @@ def strategy_brain_s1(
     if _s1_asset_count >= _s1_asset_cap:
         return _make_skip("yes", "s1_cap_asset", abs_pct, mins_left, variant="strategy1")
 
-    # Gate 1: session (BTC only)
-    if cfg["session_gate"] and not _s1_is_us_session():
+    # Gate 1: session (BTC always; alts if s1_session_gate set in per-asset config)
+    _effective_gate = get_asset_config(config, asset, "s1_session_gate", cfg["session_gate"])
+    if _effective_gate and not _s1_is_us_session():
         return _make_skip("yes", "s1_session_gate", abs_pct, mins_left, variant="strategy1")
 
     # Gate 2: time window
