@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """
 backtest.py - Strategy backtest for KXBTC15M printer_brain trading logic.
 

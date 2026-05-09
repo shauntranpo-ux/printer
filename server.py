@@ -9,7 +9,6 @@ Start via runner.py, not directly.
 """
 
 import csv
-import glob
 import io
 import json
 import logging
@@ -17,9 +16,7 @@ import os
 import signal
 import sqlite3
 import subprocess
-import sys
 import tempfile
-import threading
 import time
 import urllib.request
 import urllib.parse

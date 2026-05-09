@@ -28,7 +28,7 @@ from asset_manager import (
 )
 from bot_infra import (
     read_config, write_config,
-    send_telegram, _maybe_fill_verification_notify, _phase_for_eth, _notify_ctx,
+    _maybe_fill_verification_notify, _phase_for_eth, _notify_ctx,
 )
 
 log = logging.getLogger("bot")

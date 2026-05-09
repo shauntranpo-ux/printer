@@ -1,4 +1,4 @@
-﻿"""
+"""
 bot.py â€” Entrypoint for the Kalshi 15-minute prediction market trading bot.
 
 All core logic lives in focused modules: bot_infra (config/db/notify),

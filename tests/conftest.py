@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 
 
 def pytest_configure(config):

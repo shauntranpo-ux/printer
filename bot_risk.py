@@ -1,4 +1,4 @@
-﻿"""bot_risk.py — Risk management, trade execution, and preflight checks.
+"""bot_risk.py — Risk management, trade execution, and preflight checks.
 
 Public interface (see __all__):
   Risk:      check_daily_limits, midnight_reset, write_state_file, _log_entry,
@@ -14,7 +14,7 @@ import os
 import re
 import sys
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
 import aiohttp
 

@@ -1,4 +1,4 @@
-﻿"""bot_loops.py — Phase handlers, asset loop, main trading loop."""
+"""bot_loops.py — Phase handlers, asset loop, main trading loop."""
 __all__ = ["handle_ready_phase", "handle_locked_phase", "main_loop"]
 
 import asyncio
@@ -23,7 +23,7 @@ from bot_market import (
 )
 from bot_strategy import (
     strategy_brain_s1, strategy_brain_s2,
-    track_contract_price, _strategy_name_for,
+    track_contract_price,
 )
 from bot_risk import (
     check_daily_limits, midnight_reset, write_state_file, _log_entry,

@@ -1,4 +1,4 @@
-﻿"""
+"""
 bot_state.py â€” Shared mutable globals and constants for the kalshi bot.
 
 Every other module does `import bot_state` and reads/writes attributes here.
