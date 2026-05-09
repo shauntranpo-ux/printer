@@ -16,7 +16,7 @@ __all__ = [
     "_ticker_obi",
     "private_key", "api_key",
     "current_market", "current_phase", "current_position",
-    "_order_attempted_tickers", "_asset_states", "_s1_pending_trades",
+    "_s2_attempted_tickers", "_asset_states", "_s1_pending_trades",
     "_market_cache", "_market_cache_ts", "_all_markets_cache", "_all_markets_cache_ts",
     "limit_triggered", "limit_reason", "pre_limit_mode", "daily_reset_date",
     "last_confidence_score", "last_confidence_breakdown", "last_action", "last_skip_reason",
@@ -58,7 +58,7 @@ api_key: str = ""
 current_market: dict | None = None
 current_phase: str = "DONE"
 current_position: dict | None = None
-_order_attempted_tickers: set = set()
+_s2_attempted_tickers: set = set()
 _asset_states: dict = {}
 _s1_pending_trades: dict = {}  # ticker â†’ {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
 

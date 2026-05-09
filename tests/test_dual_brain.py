@@ -50,3 +50,14 @@ def test_db_write_trade_stores_brain():
         assert row[0] == "s1", f"Expected brain='s1', got {row[0]}"
     finally:
         os.unlink(db_path)
+
+
+def test_s2_attempted_tickers_exists():
+    assert hasattr(bot_state, "_s2_attempted_tickers"), \
+        "_s2_attempted_tickers missing from bot_state"
+    assert isinstance(bot_state._s2_attempted_tickers, set)
+
+
+def test_order_attempted_tickers_removed():
+    assert not hasattr(bot_state, "_order_attempted_tickers"), \
+        "_order_attempted_tickers should be removed; use _s2_attempted_tickers"

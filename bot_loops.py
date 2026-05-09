@@ -352,7 +352,7 @@ async def handle_ready_phase(
     # Place order — mark ticker as attempted BEFORE placing so re-entry is blocked
     # even if the bot crashes or fill_confirmed comes back False
     if _use_state: state["order_attempted"].add(ticker)
-    else: bot_state._order_attempted_tickers.add(ticker)
+    else: bot_state._s2_attempted_tickers.add(ticker)
     log.info(f"{ticker}: TRADE {side} {contracts}x @ {int(entry_price_cents)}c (score={score}, mode={mode})")
     result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market, asset=asset, secs_left=secs_left)
 
@@ -990,7 +990,7 @@ async def main_loop() -> None:
                             asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, btc_price, config, "BTC"))
                         bot_state.current_phase = "WATCH"
                         bot_state.current_position = None
-                        bot_state._order_attempted_tickers.discard(prev_ticker)
+                        bot_state._s2_attempted_tickers.discard(prev_ticker)
                         prev_ticker = ticker
 
                 secs_left = seconds_remaining(market)
@@ -1052,7 +1052,7 @@ async def main_loop() -> None:
                     # Re-enter READY only if no order was attempted for this ticker.
                     # This prevents duplicate orders when fill_confirmed=False but
                     # the order actually went through on Kalshi.
-                    if secs_left > 3 * 60 and ticker not in bot_state._order_attempted_tickers:
+                    if secs_left > 3 * 60 and ticker not in bot_state._s2_attempted_tickers:
                         log.info(
                             f"DONE → READY re-entry: {ticker} has {secs_left:.0f}s left."
                         )
