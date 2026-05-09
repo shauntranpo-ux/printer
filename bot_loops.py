@@ -14,7 +14,7 @@ import bot_state
 import bot_stats
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
-from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, _notify_ctx, _phase_for_eth
+from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, _notify_ctx, _phase_for_eth, db_brain_scorecard
 from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
@@ -34,6 +34,71 @@ from bot_risk import (
 log = logging.getLogger("bot")
 
 _last_stats_date: str = ""
+
+_ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
+
+
+def _format_scorecard_message(data: dict) -> str:
+    lines = ["<b>Brain Scorecard</b>"]
+
+    for brain_key, label in (("s1", "S1 (EMA momentum)"), ("s2", "S2 (vel+OBI)")):
+        lines.append(f"\n<b>{label}</b>")
+        daily = data["daily"].get(brain_key, {})
+        total_pnl = 0.0
+        total_wins = 0
+        total_losses = 0
+        any_trade = False
+        for asset in _ASSETS:
+            row = daily.get(asset)
+            if row:
+                any_trade = True
+                pnl = row["pnl"]
+                total_pnl += pnl
+                total_wins += row["wins"]
+                total_losses += row["losses"]
+                sign = "+" if pnl >= 0 else ""
+                lines.append(f"  {asset:<5} {sign}${pnl:.2f}  {row['wins']}W/{row['losses']}L")
+            else:
+                lines.append(f"  {asset:<5} —")
+        if any_trade:
+            sign = "+" if total_pnl >= 0 else ""
+            lines.append(f"  <b>Total: {sign}${total_pnl:.2f}  {total_wins}W/{total_losses}L</b>")
+        else:
+            lines.append("  (no trades today)")
+
+    at_parts = []
+    for brain_key, label in (("s1", "S1"), ("s2", "S2")):
+        at = data["alltime"].get(brain_key, {})
+        at_pnl = sum(r["pnl"] for r in at.values())
+        at_wins = sum(r["wins"] for r in at.values())
+        at_losses = sum(r["losses"] for r in at.values())
+        sign = "+" if at_pnl >= 0 else ""
+        at_parts.append(f"{label}: {sign}${at_pnl:.2f} {at_wins}W/{at_losses}L")
+    lines.append("\n<b>All-time</b> | " + " | ".join(at_parts))
+
+    s1_daily = sum(r["pnl"] for r in data["daily"].get("s1", {}).values())
+    s2_daily = sum(r["pnl"] for r in data["daily"].get("s2", {}).values())
+    if s1_daily > s2_daily:
+        lines.append("Today's winner: <b>S1</b>")
+    elif s2_daily > s1_daily:
+        lines.append("Today's winner: <b>S2</b>")
+
+    return "\n".join(lines)
+
+
+async def _send_brain_scorecard() -> None:
+    """Query DB and send daily brain scorecard via Telegram. Non-fatal on error."""
+    try:
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        data = await db_brain_scorecard(today)
+        has_trades = any(data["daily"].get(b) for b in ("s1", "s2"))
+        if not has_trades:
+            return
+        msg = _format_scorecard_message(data)
+        await send_telegram(msg)
+    except Exception as exc:
+        log.warning("Brain scorecard send failed (non-fatal): %s", exc)
 
 
 async def _check_daily_stats(today: str) -> None:
@@ -912,6 +977,7 @@ async def main_loop() -> None:
         while True:
             try:
                 midnight_reset()
+                await _send_brain_scorecard()
                 _today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
                 await _check_daily_stats(_today)
 

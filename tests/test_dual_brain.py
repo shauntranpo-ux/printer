@@ -179,3 +179,28 @@ def test_scorecard_returns_per_brain_per_asset():
             f"S2 ETH daily pnl wrong: {s2_eth}"
     finally:
         os.unlink(db_path)
+
+
+def test_format_scorecard_message():
+    """_format_scorecard_message returns expected Telegram text."""
+    import bot_loops
+
+    assert hasattr(bot_loops, "_format_scorecard_message"), \
+        "_format_scorecard_message not found in bot_loops"
+
+    data = {
+        "daily": {
+            "s1": {"BTC": {"pnl": 2.50, "wins": 3, "losses": 1, "trades": 4}},
+            "s2": {"ETH": {"pnl": -1.00, "wins": 1, "losses": 2, "trades": 3}},
+        },
+        "alltime": {
+            "s1": {"BTC": {"pnl": 12.50, "wins": 10, "losses": 3, "trades": 13}},
+            "s2": {"ETH": {"pnl": 5.00, "wins": 6, "losses": 4, "trades": 10}},
+        },
+    }
+    msg = bot_loops._format_scorecard_message(data)
+    assert "S1" in msg
+    assert "S2" in msg
+    assert "BTC" in msg
+    assert "ETH" in msg
+    assert "All-time" in msg or "all-time" in msg.lower()
