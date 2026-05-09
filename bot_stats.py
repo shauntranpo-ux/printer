@@ -64,7 +64,8 @@ def _run_queries(conn: sqlite3.Connection, today: str, base: dict) -> dict:
     for row in rows:
         sv = row["strategy_variant"]
         if sv not in _STRATEGY_LABELS:
-            log.warning("Unknown strategy_variant in DB: %r — row excluded from stats display", sv)
+            log.warning("Unknown strategy_variant in DB: %r — row excluded from stats", sv)
+            continue
         key = (sv, row["asset"])
         if key not in by_sa:
             by_sa[key] = {"wins": 0, "losses": 0, "pnl": 0.0}

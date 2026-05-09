@@ -71,7 +71,7 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
     if mode == "paper":
         return False, ""
 
-    # If the mode changed since the limit was triggered (e.g., demo â†' live),
+    # If the mode changed since the limit was triggered (e.g., demo → live),
     # reset so the new mode starts with a fresh daily count.
     if (
         bot_state.limit_triggered
