@@ -1,4 +1,4 @@
-﻿"""bot_risk.py â€” Risk management, trade execution, and preflight checks.
+﻿"""bot_risk.py — Risk management, trade execution, and preflight checks.
 
 Public interface (see __all__):
   Risk:      check_daily_limits, midnight_reset, write_state_file, _log_entry,
@@ -71,7 +71,7 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
     if mode == "paper":
         return False, ""
 
-    # If the mode changed since the limit was triggered (e.g., demo â†’ live),
+    # If the mode changed since the limit was triggered (e.g., demo â†' live),
     # reset so the new mode starts with a fresh daily count.
     if (
         bot_state.limit_triggered
@@ -368,7 +368,7 @@ async def _execute_s1_trade(
     """Place a real S1 order alongside S2 and track it in _s1_pending_trades."""
     if brain_s1.get("action") != "trade":
         if not brain_s1.get("price_filter_skip"):
-            log.debug("[S1] %s: skip â€” %s", ticker, brain_s1.get("reasoning", "no_reason"))
+            log.info("[S1] %s: watching — %s", ticker, brain_s1.get("reasoning", "no_reason"))
         return
     if ticker in bot_state._s1_pending_trades:
         return
@@ -381,7 +381,7 @@ async def _execute_s1_trade(
         _min_no_ask = float(get_asset_config(config, asset, "min_no_ask_cents",
                                              config.get("min_no_ask_cents", 10.0)))
         if no_ask < _min_no_ask:
-            log.info(f"[S1] {ticker}: no_ask {no_ask:.0f}c below floor {_min_no_ask:.0f}c â€” skip")
+            log.info(f"[S1] {ticker}: no_ask {no_ask:.0f}c below floor {_min_no_ask:.0f}c — skip")
             return
     entry_price_cents = yes_ask if side == "yes" else no_ask
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
