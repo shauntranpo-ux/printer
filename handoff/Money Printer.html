@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -483,7 +483,6 @@ tbody tr:last-child td{border-bottom:none;}
 }
 
 /* depth viz */
-.depth-svg{width:100%;height:140px;}
 
 /* signal score gauge */
 .gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:6px 0;}
@@ -659,7 +658,7 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- KPI STRIP — Strategy 2 (D3 Hybrid) -->
   <div class="kpi-strip" id="kpi-strip-s2">
-    <div class="kpi-strip-label">Strategy 2 — D3 Hybrid</div>
+    <div class="kpi-strip-label">S2 · Velocity + OBI</div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-alltime-val" class="kpi-cell-v up mono">+$1,847.20</div>
@@ -681,7 +680,7 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- KPI STRIP — Strategy 1 (Original) -->
   <div class="kpi-strip" id="kpi-strip-s1">
-    <div class="kpi-strip-label s1">Strategy 1 — Original (B3/E1/S1/X3/D3)</div>
+    <div class="kpi-strip-label s1">S1 · EMA Momentum</div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">—</div>
@@ -708,7 +707,7 @@ tbody tr:last-child td{border-bottom:none;}
   <div class="grid-2" style="margin-bottom:8px;">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 — D3 Hybrid</span></div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 · vel+OBI</span></div>
         <div class="seg" id="equity-seg">
           <button class="active" data-range="1d">1D</button>
           <button data-range="1w">1W</button>
@@ -720,7 +719,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 — D3 Hybrid</span></div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 · vel+OBI</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
@@ -734,13 +733,13 @@ tbody tr:last-child td{border-bottom:none;}
   <div class="grid-2">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 — Original</span></div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 · EMA</span></div>
       </div>
       <div class="chart-wrap" id="equity-chart-s1"></div>
     </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 — Original</span></div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 · EMA</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
@@ -750,14 +749,6 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
-  <!-- DECISION PIPELINE (full-width) -->
-  <div class="card" style="margin-bottom:14px;">
-    <div class="card-head">
-      <div class="card-title"><span class="accent"></span>Decision Pipeline</div>
-      <span style="font-size:10px;color:var(--ink-3);">D3 hybrid · per asset · click row to expand</span>
-    </div>
-    <div id="sig-list"></div>
-  </div>
 
   <!-- LOWER ROW -->
   <div class="grid-2">
@@ -1277,6 +1268,7 @@ function renderSignals(){
     </div>`;
   }).join('');
   const el = document.getElementById('sig-list');
+  if (!el) return;
   el.classList.add('ds-list');
   el.innerHTML = html;
   el.querySelectorAll('.ds-row').forEach(row=>{
@@ -1309,6 +1301,37 @@ function renderEventLog(evts){
     </div>`).join('');
 }
 
+function brainStatsHTML(stats) {
+  if (!stats) return '<div style="color:var(--ink-3);font-size:11px;padding:12px 0;">No brain data yet</div>';
+  const fmtPnl = v => `$``;
+  const row = (brain, label) => {
+    const at = (stats[brain] && stats[brain].alltime) || {};
+    const td = (stats[brain] && stats[brain].today)   || {};
+    const atPnl = at.pnl ?? 0, tdPnl = td.pnl ?? 0;
+    return `<div style="padding:12px 0;border-bottom:1px solid var(--line);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+        <span style="font-size:11px;font-weight:700;color:var(--ink);"></span>
+        <span class="badge" style="font-size:9px;background:var(--panel-2);color:var(--ink-2);border:1px solid var(--line);padding:2px 7px;border-radius:4px;"></span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div>
+          <div style="font-size:9px;color:var(--ink-3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">Today</div>
+          <div class="mono " style="font-size:16px;font-weight:700;"></div>
+          <div style="font-size:10px;color:var(--ink-3);margin-top:2px;">W / L &middot;  trades</div>
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--ink-3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">All-time</div>
+          <div class="mono " style="font-size:16px;font-weight:700;"></div>
+          <div style="font-size:10px;color:var(--ink-3);margin-top:2px;">W / L &middot;  trades</div>
+        </div>
+      </div>
+    </div>`;
+  };
+  return `<div style="padding:0 2px;">
+    
+    
+  </div>`;
+}
 // ════════════════════════════════════════════════════
 //  PER-MARKET PANEL
 // ════════════════════════════════════════════════════
@@ -1328,41 +1351,6 @@ function renderMarketPanel(sym){
   const sparkColor = m.ch24>=0?'oklch(0.55 0.16 245)':'oklch(0.55 0.20 20)';
   const sparkFill = sparkColor.replace(')',' / 0.12)');
 
-  // ladder
-  const totalSize = [...data.ladder.asks,...data.ladder.bids].reduce((s,r)=>s+r[1],0);
-  const ladderHTML = `
-    <div class="ladder">
-      ${[...data.ladder.asks].reverse().map(([px,sz])=>{
-        const w = (sz/Math.max(...data.ladder.asks.map(r=>r[1])))*100;
-        return `<div class="ladder-row ask"><span class="bar" style="width:${w}%"></span><span class="px">${px}¢</span><span></span><span class="sz">${sz}</span></div>`;
-      }).join('')}
-      <div class="ladder-spread">spread · ${data.ladder.asks[data.ladder.asks.length-1][0]-data.ladder.bids[0][0]}¢</div>
-      ${data.ladder.bids.map(([px,sz])=>{
-        const w = (sz/Math.max(...data.ladder.bids.map(r=>r[1])))*100;
-        return `<div class="ladder-row bid"><span class="bar" style="width:${w}%"></span><span class="px">${px}¢</span><span></span><span class="sz">${sz}</span></div>`;
-      }).join('')}
-    </div>`;
-
-  // depth viz
-  const depthMax = Math.max(...[...data.ladder.asks,...data.ladder.bids].map(r=>r[1]));
-  const depthW = 600, depthH = 140;
-  const allPx = [...data.ladder.bids.map(r=>r[0]),...data.ladder.asks.map(r=>r[0])].sort((a,b)=>a-b);
-  const pxMin = Math.min(...allPx), pxMax = Math.max(...allPx);
-  // bid cumulative (right→left from spread center)
-  let cum=0; const bidPts = data.ladder.bids.map(([px,sz])=>{cum+=sz;return [px,cum];});
-  cum=0; const askPts = [...data.ladder.asks].reverse().map(([px,sz])=>{cum+=sz;return [px,cum];});
-  const cumMax = Math.max(...bidPts.map(p=>p[1]),...askPts.map(p=>p[1]));
-  const xS = px => 30 + ((px-pxMin)/(pxMax-pxMin))*(depthW-60);
-  const yS = sz => depthH-20 - (sz/cumMax)*(depthH-30);
-  const bidPath = `M${xS(bidPts[bidPts.length-1][0])},${depthH-20} ${bidPts.slice().reverse().map(p=>`L${xS(p[0])},${yS(p[1])}`).join(' ')} L${xS(bidPts[0][0])},${depthH-20} Z`;
-  const askPath = `M${xS(askPts[0][0])},${depthH-20} ${askPts.map(p=>`L${xS(p[0])},${yS(p[1])}`).join(' ')} L${xS(askPts[askPts.length-1][0])},${depthH-20} Z`;
-  const depthSVG = `
-    <svg class="depth-svg" viewBox="0 0 ${depthW} ${depthH}" preserveAspectRatio="none">
-      <line class="chart-grid" x1="0" x2="${depthW}" y1="${depthH-20}" y2="${depthH-20}"/>
-      <path d="${bidPath}" fill="oklch(0.55 0.16 245 / 0.25)" stroke="oklch(0.55 0.16 245)" stroke-width="1.5"/>
-      <path d="${askPath}" fill="oklch(0.55 0.20 20 / 0.25)" stroke="oklch(0.55 0.20 20)" stroke-width="1.5"/>
-      ${[...data.ladder.bids,...data.ladder.asks].map(([px])=>`<text class="chart-axis" x="${xS(px)}" y="${depthH-6}" text-anchor="middle">${px}¢</text>`).join('')}
-    </svg>`;
 
   // signal score gauge (semicircle)
   const _score = session.score ?? 0;
@@ -1469,11 +1457,10 @@ function renderMarketPanel(sym){
     <div class="grid-2">
       <div class="card">
         <div class="card-head">
-          <div class="card-title"><span class="accent"></span>Order Book Depth</div>
-          <span style="font-size:10px;color:var(--ink-3);">Total ${totalSize} contracts</span>
+          <div class="card-title"><span class="accent"></span>Brain P&amp;L &middot; ${sym}</div>
+          <span style="font-size:10px;color:var(--ink-3);">S1 vs S2</span>
         </div>
-        ${depthSVG}
-        <div style="margin-top:10px;">${ladderHTML}</div>
+        ${brainStatsHTML(data.brain_stats)}
       </div>
 
       <div style="display:flex;flex-direction:column;gap:12px;">
@@ -1732,7 +1719,7 @@ async function fetchRisk(){
       </div>
       <div class="meter">
         <div class="meter-head"><span class="meter-name">Vol Gate (${vg.asset||'BTC'})</span><span class="meter-val">${vg.current != null ? vg.current : '—'} / ${fmt(vg.threshold)}</span></div>
-        <div class="meter-bar"><div class="${vg.current != null && vg.current >= vg.threshold * 0.9 ? 'amber' : 'up'}" style="width:${vg.current != null ? pct(vg.current,vg.threshold) : 0}%"></div></div>
+        <div class="meter-bar"><div class="${vg.current == null ? '' : vg.current >= vg.threshold * 0.9 ? 'amber' : 'up'}" style="width:${vg.current != null ? pct(vg.current,vg.threshold) : 0}%"></div></div>
       </div>
       <div class="meter">
         <div class="meter-head"><span class="meter-name">EV Floor</span><span class="meter-val">${ef.current}%</span></div>

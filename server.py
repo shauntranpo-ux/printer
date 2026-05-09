@@ -850,6 +850,33 @@ def api_market_sym(sym):
         except Exception:
             outcomes = []
 
+        # Brain P&L breakdown for this asset
+        brain_alltime = {}
+        brain_today_q = {}
+        try:
+            at_rows = conn.execute(
+                "SELECT brain, COUNT(*) AS trades, COALESCE(SUM(pnl_dollars),0) AS pnl, "
+                "SUM(CASE WHEN pnl_dollars > 0 THEN 1 ELSE 0 END) AS wins, "
+                "SUM(CASE WHEN pnl_dollars < 0 THEN 1 ELSE 0 END) AS losses "
+                "FROM trades WHERE asset=? AND brain IN ('s1','s2') "
+                "AND pnl_dollars IS NOT NULL GROUP BY brain",
+                (sym,)
+            ).fetchall()
+            td_rows = conn.execute(
+                "SELECT brain, COUNT(*) AS trades, COALESCE(SUM(pnl_dollars),0) AS pnl, "
+                "SUM(CASE WHEN pnl_dollars > 0 THEN 1 ELSE 0 END) AS wins, "
+                "SUM(CASE WHEN pnl_dollars < 0 THEN 1 ELSE 0 END) AS losses "
+                "FROM trades WHERE asset=? AND brain IN ('s1','s2') "
+                "AND pnl_dollars IS NOT NULL AND date(ts) = ? GROUP BY brain",
+                (sym, today)
+            ).fetchall()
+            for r in at_rows:
+                brain_alltime[r["brain"]] = {"trades": r["trades"], "pnl": round(r["pnl"], 2), "wins": r["wins"], "losses": r["losses"]}
+            for r in td_rows:
+                brain_today_q[r["brain"]] = {"trades": r["trades"], "pnl": round(r["pnl"], 2), "wins": r["wins"], "losses": r["losses"]}
+        except Exception:
+            pass
+
         conn.close()
 
         return jsonify({
@@ -859,6 +886,16 @@ def api_market_sym(sym):
             "log":      log_entries,
             "stats":    stats,
             "outcomes": outcomes,
+            "brain_stats": {
+                "s1": {
+                    "alltime": brain_alltime.get("s1", {"trades": 0, "pnl": 0.0, "wins": 0, "losses": 0}),
+                    "today":   brain_today_q.get("s1", {"trades": 0, "pnl": 0.0, "wins": 0, "losses": 0}),
+                },
+                "s2": {
+                    "alltime": brain_alltime.get("s2", {"trades": 0, "pnl": 0.0, "wins": 0, "losses": 0}),
+                    "today":   brain_today_q.get("s2", {"trades": 0, "pnl": 0.0, "wins": 0, "losses": 0}),
+                },
+            },
         })
     except Exception as exc:
         log.error(f"api_market_sym({sym}) error: {exc}", exc_info=True)
