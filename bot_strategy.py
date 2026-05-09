@@ -379,7 +379,7 @@ def _s2_obi_gate(ticker: str, side: str, min_obi: float):
     """
     OBI confirmation gate for S2.
     Returns (confirmed, obi_val).
-    Fails open (True) when no OBI data for this ticker — never block trades on missing data.
+    Fails closed (False) when no OBI data for this ticker — never allow trades on missing data.
     Positive OBI = no_depth > yes_depth = bullish for YES.
     """
     obi_val = bot_state._ticker_obi.get(ticker)

@@ -13,10 +13,14 @@ import bot_loops
 
 def test_s2_obi_gate_fails_closed_on_none():
     """OBI gate must block (not pass) when no OBI data exists for ticker."""
+    original = dict(bot_state._ticker_obi)
     bot_state._ticker_obi.clear()
-    confirmed, val = bot_strategy._s2_obi_gate("TEST-TICK", "yes", 0.20)
-    assert not confirmed, "OBI gate should fail-closed when obi_val is None"
-    assert val is None
+    try:
+        confirmed, val = bot_strategy._s2_obi_gate("TEST-TICK", "yes", 0.20)
+        assert not confirmed, "OBI gate should fail-closed when obi_val is None"
+        assert val is None
+    finally:
+        bot_state._ticker_obi.update(original)
 
 
 def test_s2_obi_gate_passes_with_data():
