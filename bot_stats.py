@@ -10,6 +10,8 @@ _STRATEGY_LABELS = {
     "strategy2": "S2 · Contract Velocity",
 }
 
+_ASSETS = ("BTC", "ETH", "SOL", "XRP", "DOGE")
+
 _SEP = "-" * 31
 
 
@@ -129,21 +131,32 @@ def _last_trade_str(ts: str | None) -> str:
 
 
 def _strategy_rows(by_sa: dict, strategy_key: str, html: bool) -> list[str]:
-    """Build per-asset rows for one strategy. Empty list if no trades today."""
+    """Build per-asset rows for one strategy, showing all assets."""
     lines = []
-    for (sv, asset), counts in sorted(by_sa.items()):
-        if sv != strategy_key:
-            continue
-        if counts["wins"] == 0 and counts["losses"] == 0:
-            continue
-        pnl = counts["pnl"]
-        pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-        wl = f"{counts['wins']}W/{counts['losses']}L"
-        if html:
-            lines.append(f"  <code>{asset:<5} {wl:<7}  {pnl_str}</code>")
+    for asset in _ASSETS:
+        counts = by_sa.get((strategy_key, asset))
+        has_trades = counts is not None and (counts["wins"] > 0 or counts["losses"] > 0)
+        if has_trades:
+            pnl = counts["pnl"]
+            pnl_str = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+            wl = f"{counts['wins']}W/{counts['losses']}L"
+            if html:
+                lines.append(f"  <code>{asset:<5} {wl:<7}  {pnl_str}</code>")
+            else:
+                lines.append(f"  {asset:<5} {wl:<7}  {pnl_str}")
         else:
-            lines.append(f"  {asset:<5} {wl:<7}  {pnl_str}")
+            if html:
+                lines.append(f"  <code>{asset:<5} —</code>")
+            else:
+                lines.append(f"  {asset:<5} —")
     return lines
+
+
+def _strategy_has_trades(by_sa: dict, strategy_key: str) -> bool:
+    return any(
+        sv == strategy_key and (counts["wins"] > 0 or counts["losses"] > 0)
+        for (sv, _asset), counts in by_sa.items()
+    )
 
 
 def format_telegram(stats: dict) -> str:
@@ -177,10 +190,9 @@ def format_telegram(stats: dict) -> str:
         lines.append(_SEP)
 
         for sv_key, label in _STRATEGY_LABELS.items():
-            rows = _strategy_rows(by_sa, sv_key, html=True)
-            if rows:
+            if _strategy_has_trades(by_sa, sv_key):
                 lines.append(f"<b>{label}</b>")
-                lines.extend(rows)
+                lines.extend(_strategy_rows(by_sa, sv_key, html=True))
 
     lines.append(_SEP)
     lines.append(f"Last trade: {_last_trade_str(stats['last_trade_ts'])}")
@@ -218,10 +230,9 @@ def format_terminal(stats: dict) -> str:
         lines.append(_SEP)
 
         for sv_key, label in _STRATEGY_LABELS.items():
-            rows = _strategy_rows(by_sa, sv_key, html=False)
-            if rows:
+            if _strategy_has_trades(by_sa, sv_key):
                 lines.append(label)
-                lines.extend(rows)
+                lines.extend(_strategy_rows(by_sa, sv_key, html=False))
 
     lines.append(_SEP)
     lines.append(f"Last trade: {_last_trade_str(stats['last_trade_ts'])}")
