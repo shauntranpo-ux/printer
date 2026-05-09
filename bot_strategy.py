@@ -442,9 +442,9 @@ def strategy_brain_s2(
     if side == "no" and current_price > strike:
         return _make_skip(side, "s2_reversal_gate:vel=no_price_above", abs_pct, mins_left, variant="strategy2")
 
-    # Gate 3: entry price range
-    _min_p = float(config.get("min_entry_price_cents", 20.0))
-    _max_p = float(config.get("max_entry_price_cents", 76.0))
+    # Gate 3: entry price range (per-asset via get_asset_config)
+    _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 76.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s2_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           variant="strategy2", price_filter=True)
@@ -460,13 +460,12 @@ def strategy_brain_s2(
 
     # Win probability: empirical lookup (tanh fallback when bucket uncalibrated)
     base_p = _s2_lookup_win_rate(asset, vel_delta, mins_left, cfg)
-    vel_adj = min(0.04, 0.02 * (vel_delta / max(cfg["min_vel_delta"], 1e-6)))
-    obi_adj = min(0.03, 0.02 * abs(obi_val or 0.0) / max(cfg["min_obi"], 1e-6)) if obi_val is not None else 0.0
-    win_prob = min(0.99, base_p + vel_adj + obi_adj)
+    win_prob = min(0.99, base_p)
 
-    # EV gate — Kalshi fee is 0.07 * p * (1-p), not flat 0.07
+    # EV gate — Kalshi fee from config (default 7 cents per contract)
     _ep_s2 = entry_price / 100.0
-    fee = 0.07 * _ep_s2 * (1.0 - _ep_s2)
+    _fee_cents = config.get("kalshi_fee_per_contract_cents", 7)
+    fee = (_fee_cents / 100) * _ep_s2 * (1.0 - _ep_s2)
     ev = win_prob - _ep_s2 - fee
     _obi_str = f"{obi_val:.2f}" if obi_val is not None else "n/a"
     if ev < cfg["min_ev"]:

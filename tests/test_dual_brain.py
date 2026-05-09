@@ -1,4 +1,39 @@
 """Tests for dual brain isolation and strategy fixes."""
+
+
+def test_s2_winprob_no_inflation():
+    """win_prob must equal base_p — no vel_adj or obi_adj added."""
+    import bot_strategy as bs
+    import inspect
+    src = inspect.getsource(bs.strategy_brain_s2)
+    assert "vel_adj" not in src or ("win_prob" in src and "base_p" in src), \
+        "Strategy source check failed"
+    # The key check: win_prob should not add vel_adj or obi_adj
+    # Check that the line "win_prob = min(0.99, base_p + vel_adj" does NOT appear
+    assert "base_p + vel_adj" not in src, \
+        "win_prob still inflated with vel_adj"
+    assert "base_p + obi_adj" not in src, \
+        "win_prob still inflated with obi_adj"
+
+
+def test_s2_fee_reads_from_config():
+    """S2 fee must not be hardcoded 0.07."""
+    import bot_strategy as bs
+    import inspect
+    src = inspect.getsource(bs.strategy_brain_s2)
+    assert "0.07 * _ep_s2" not in src, \
+        "S2 fee still hardcoded as 0.07"
+    assert "kalshi_fee_per_contract_cents" in src, \
+        "S2 fee not reading from config key kalshi_fee_per_contract_cents"
+
+
+def test_s2_price_cap_per_asset():
+    """S2 must use get_asset_config for max_entry_price_cents."""
+    import bot_strategy as bs
+    import inspect
+    src = inspect.getsource(bs.strategy_brain_s2)
+    assert "get_asset_config" in src, \
+        "strategy_brain_s2 must call get_asset_config for per-asset price cap"
 import os
 import sys
 import sqlite3
