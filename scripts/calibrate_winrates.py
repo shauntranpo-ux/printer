@@ -33,10 +33,10 @@ KALSHI_PATH_PREFIX = "/trade-api/v2"
 # Candidate series tickers per asset — tried in order until one returns markets
 KALSHI_SERIES = {
     "BTC":  ["KXBTC15M", "KXBTCD", "BTCD-B"],
-    "ETH":  ["KXETHD",   "KXETH15M"],
-    "SOL":  ["KXSOLD",   "KXSOL15M"],
-    "XRP":  ["KXXRPD",   "KXXRP15M"],
-    "DOGE": ["KXDOGED",  "KXDOGE15M"],
+    "ETH":  ["KXETH15M", "KXETHD"],
+    "SOL":  ["KXSOL15M", "KXSOLD"],
+    "XRP":  ["KXXRP15M", "KXXRPD"],
+    "DOGE": ["KXDOGE15M", "KXDOGED"],
 }
 
 # ── Binance API constants ─────────────────────────────────────────────────────
@@ -65,7 +65,8 @@ S2_ASSET_CONFIG = {
     "DOGE": dict(min_dist=0.0100, min_vel_delta=1.50, vel_lookback=3),
 }
 
-MIN_SAMPLES = 50  # buckets below this get None → bot falls back to tanh
+MIN_SAMPLES     = 50   # buckets below this get None → bot falls back to tanh
+CALIBRATE_DAYS  = int(os.environ.get("CALIBRATE_DAYS", "30"))
 
 
 def _log(msg: str) -> None:
@@ -370,7 +371,7 @@ def fetch_kalshi_markets(series_ticker: str, days: int, key_id: str, private_key
     while True:
         params = {
             "series_ticker": series_ticker,
-            "status":        "finalized",
+            "status":        "settled",
             "limit":         200,
         }
         if cursor:
@@ -410,26 +411,38 @@ def fetch_kalshi_markets(series_ticker: str, days: int, key_id: str, private_key
 
 # ── Kalshi price history ──────────────────────────────────────────────────────
 
-def fetch_market_history(ticker: str, key_id: str, private_key) -> list:
+def fetch_market_history(
+    series_ticker: str,
+    market_ticker: str,
+    open_ts: int,
+    close_ts: int,
+    key_id: str,
+    private_key,
+) -> list:
     """
-    Fetch yes_ask price history for a single Kalshi market ticker.
+    Fetch 1-minute yes_ask candlesticks for a single Kalshi market.
     Returns list of (ts_seconds, yes_ask_cents), sorted ascending by time.
-    Returns empty list if history unavailable.
+    Returns empty list if unavailable.
     """
-    path = f"/markets/{ticker}/history"
+    path = f"/series/{series_ticker}/markets/{market_ticker}/candlesticks"
     try:
-        data = _kalshi_get(path, {"limit": 1000, "period_interval": 1}, key_id, private_key)
+        data = _kalshi_get(
+            path,
+            {"start_ts": open_ts, "end_ts": close_ts, "period_interval": 1},
+            key_id,
+            private_key,
+        )
     except Exception:
         return []
 
-    history = data.get("history", [])
     result = []
-    for entry in history:
-        ts      = entry.get("ts")
-        yes_ask = entry.get("yes_ask")
-        if ts is None or yes_ask is None:
+    for cs in data.get("candlesticks", []):
+        ts = cs.get("end_period_ts")
+        ya = cs.get("yes_ask", {})
+        close_str = ya.get("close_dollars")
+        if ts is None or close_str is None:
             continue
-        result.append((int(ts), int(yes_ask)))
+        result.append((int(ts), round(float(close_str) * 100)))
 
     result.sort(key=lambda x: x[0])
     return result
@@ -618,7 +631,7 @@ def run_s2_phase(assets: list, key_id: str, private_key) -> dict:
         for candidate in candidates:
             _log(f"[S2] {asset}: probing series {candidate}...")
             try:
-                markets = fetch_kalshi_markets(candidate, days=5, key_id=key_id, private_key=private_key)
+                markets = fetch_kalshi_markets(candidate, days=2, key_id=key_id, private_key=private_key)
                 if markets:
                     series_ticker = candidate
                     _log(f"[S2] {asset}: using series {candidate}")
@@ -631,8 +644,8 @@ def run_s2_phase(assets: list, key_id: str, private_key) -> dict:
             result[asset] = {}
             continue
 
-        _log(f"[S2] {asset}: fetching 60 days of markets...")
-        markets = fetch_kalshi_markets(series_ticker, days=60, key_id=key_id, private_key=private_key)
+        _log(f"[S2] {asset}: fetching {CALIBRATE_DAYS} days of markets...")
+        markets = fetch_kalshi_markets(series_ticker, days=CALIBRATE_DAYS, key_id=key_id, private_key=private_key)
         _log(f"[S2] {asset}: {len(markets)} markets found")
 
         all_records = []
@@ -640,10 +653,8 @@ def run_s2_phase(assets: list, key_id: str, private_key) -> dict:
         for i, mkt in enumerate(markets):
             if i % 100 == 0:
                 _log(f"[S2] {asset}: processing market {i}/{len(markets)}...")
-            history = fetch_market_history(mkt["ticker"], key_id=key_id, private_key=private_key)
-            if not history:
-                skipped += 1
-                continue
+            if i > 0:
+                time.sleep(0.08)
 
             try:
                 ct = datetime.datetime.fromisoformat(mkt["close_time"].replace("Z", "+00:00"))
@@ -651,6 +662,15 @@ def run_s2_phase(assets: list, key_id: str, private_key) -> dict:
                 close_ts = int(ct.timestamp())
                 open_ts  = int(ot.timestamp())
             except Exception:
+                skipped += 1
+                continue
+
+            history = fetch_market_history(
+                series_ticker, mkt["ticker"],
+                open_ts, close_ts,
+                key_id=key_id, private_key=private_key,
+            )
+            if not history:
                 skipped += 1
                 continue
 
@@ -684,12 +704,17 @@ def run_s2_phase(assets: list, key_id: str, private_key) -> dict:
 
 def main():
     assets  = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
+    skip_s1 = os.environ.get("SKIP_S1", "").strip() == "1"
     skip_s2 = os.environ.get("SKIP_S2", "").strip() == "1"
 
-    _log("=" * 60)
-    _log("PHASE 1: S1 calibration (Binance 1m data)")
-    _log("=" * 60)
-    s1_tables = run_s1_phase(assets)
+    s1_tables = {}
+    if not skip_s1:
+        _log("=" * 60)
+        _log("PHASE 1: S1 calibration (Binance 1m data)")
+        _log("=" * 60)
+        s1_tables = run_s1_phase(assets)
+    else:
+        _log("S1 phase skipped (SKIP_S1=1)")
 
     s2_tables = {}
     if not skip_s2:
@@ -709,17 +734,19 @@ def main():
     print("# PASTE INTO bot_strategy.py (replace existing _S1_WIN_RATE / _S2_WIN_RATE)")
     print("# " + "-" * 60)
     print()
-    print("_S1_WIN_RATE: dict = {")
-    for asset in assets:
-        table = s1_tables.get(asset, {})
-        print(f'    "{asset}": {_format_table(table)},')
-    print("}")
+    if not skip_s1:
+        print("_S1_WIN_RATE: dict = {")
+        for asset in assets:
+            table = s1_tables.get(asset, {})
+            print(f'    "{asset}": {_format_table(table)},')
+        print("}")
     print()
-    print("_S2_WIN_RATE: dict = {")
-    for asset in assets:
-        table = s2_tables.get(asset, {})
-        print(f'    "{asset}": {_format_table(table)},')
-    print("}")
+    if not skip_s2:
+        print("_S2_WIN_RATE: dict = {")
+        for asset in assets:
+            table = s2_tables.get(asset, {})
+            print(f'    "{asset}": {_format_table(table)},')
+        print("}")
 
 
 if __name__ == "__main__":

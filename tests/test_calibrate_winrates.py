@@ -153,13 +153,17 @@ def test_fetch_kalshi_markets_paginates():
 
 def test_fetch_market_history_extracts_yes_ask():
     fake_response = {
-        "history": [
-            {"ts": 1715079000, "yes_bid": 43, "yes_ask": 45, "no_bid": 53, "no_ask": 57, "volume": 10},
-            {"ts": 1715079060, "yes_bid": 44, "yes_ask": 46, "no_bid": 52, "no_ask": 56, "volume": 5},
+        "candlesticks": [
+            {"end_period_ts": 1715079000, "yes_ask": {"close_dollars": "0.4500"}},
+            {"end_period_ts": 1715079060, "yes_ask": {"close_dollars": "0.4600"}},
         ]
     }
     with patch.object(cal, "_kalshi_get", return_value=fake_response):
-        result = cal.fetch_market_history("KXBTCD-25MAY0715-B99000", key_id="k", private_key=None)
+        result = cal.fetch_market_history(
+            "KXBTCD", "KXBTCD-25MAY0715-B99000",
+            open_ts=1715078940, close_ts=1715079060,
+            key_id="k", private_key=None,
+        )
 
     assert result == [(1715079000, 45), (1715079060, 46)]
 
