@@ -54,17 +54,19 @@ async def main() -> None:
     # Any trade still pending after 30+ minutes never settled â€” mark it as expired.
     try:
         conn = sqlite3.connect(bot_state._DB_FILE)
-        cleaned = conn.execute(
-            """UPDATE trades
-               SET outcome         = 'expired_untracked',
-                   exit_price_cents = 0,
-                   pnl_dollars      = -(COALESCE(entry_price_cents,0) * COALESCE(contracts,1) / 100.0),
-                   fill_confirmed   = 0
-               WHERE outcome IN ('pending', '', NULL)
-                 AND ts < datetime('now', '-30 minutes')"""
-        ).rowcount
-        conn.commit()
-        conn.close()
+        try:
+            cleaned = conn.execute(
+                """UPDATE trades
+                   SET outcome         = 'expired_untracked',
+                       exit_price_cents = 0,
+                       pnl_dollars      = -(COALESCE(entry_price_cents,0) * COALESCE(contracts,1) / 100.0),
+                       fill_confirmed   = 0
+                   WHERE outcome IN ('pending', '', NULL)
+                     AND ts < datetime('now', '-30 minutes')"""
+            ).rowcount
+            conn.commit()
+        finally:
+            conn.close()
         if cleaned:
             log.warning(f"Startup cleanup: marked {cleaned} zombie pending trade(s) as expired_untracked")
     except Exception as _e:

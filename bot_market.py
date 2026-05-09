@@ -408,7 +408,8 @@ def parse_strike(market: dict) -> float | None:
     if "TBD" in yes_sub:
         log.debug(f"Cannot parse strike (TBD): {market.get('ticker')}")
     else:
-        log.warning(f"Cannot parse strike. Full market fields: { {k: market.get(k) for k in ('ticker','title','subtitle','floor_strike','cap_strike','strike_price','result','yes_sub_title','no_sub_title')} }")
+        _diag = {k: market.get(k) for k in ('ticker', 'title', 'subtitle', 'floor_strike', 'cap_strike', 'strike_price', 'result', 'yes_sub_title', 'no_sub_title')}
+        log.warning(f"Cannot parse strike. Full market fields: {_diag}")
     return None
 
 
