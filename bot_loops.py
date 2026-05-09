@@ -548,6 +548,15 @@ async def handle_ready_phase(
     else: bot_state._asset_eval[asset] = dict(_eval_snap)
     bot_state.last_action, bot_state.last_skip_reason = "trade", ""
     log.info(f"{ticker}: LOCKED.")
+    _s2_mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
+    _s2_wp     = int(brain.get("win_prob", 0.5) * 100)
+    _s2_payout = round((100 - fill_price) * contracts / 100, 2)
+    _s2_cost   = round(fill_price * contracts / 100, 2)
+    await send_telegram(
+        f"<b>{_s2_mode_icon} [S2] \U0001F3AF {ticker}</b>\n"
+        f"{side.upper()} {contracts}x @ {fill_price}c  wp={_s2_wp}%\n"
+        f"Risk ${_s2_cost:.2f} → win ${_s2_payout:.2f}"
+    )
     mode_icon  = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
     _win_prob_used = brain.get("win_prob", 0)
     _win_pct   = int(_win_prob_used * 100)
@@ -705,6 +714,11 @@ async def handle_locked_phase(
         _close_ctx = _notify_ctx(
             asset, pos.get("ticker", ticker), _close_dur_min,
             _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
+        )
+        await send_telegram(
+            f"<b>{mode_icon} [S2] {outcome_str} {_close_ctx}</b>\n"
+            f"{pos['side'].upper()} {pos['contracts']}x @ {pos['entry_price_cents']}c  "
+            f"P&L: {pnl_str} ({pct_str})  held {_dur_str}"
         )
         await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
         return

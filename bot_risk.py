@@ -452,6 +452,11 @@ async def _execute_s1_trade(
     _payout   = round((100 - fill_price) * contracts / 100, 2)
     _cost     = round(fill_price * contracts / 100, 2)
     log.info(f"[S1] {ticker}: ORDER FILLED -- {side.upper()} {contracts}x @ {fill_price}c")
+    await send_telegram(
+        f"<b>{mode_icon} [S1] 🎯 {ticker}</b>\n"
+        f"{side.upper()} {contracts}x @ {fill_price}c  wp={_win_pct}%  ev={_ev_str}\n"
+        f"Risk ${_cost:.2f} → win ${_payout:.2f}"
+    )
 
 
 async def _settle_s1_trade(
@@ -492,6 +497,13 @@ async def _settle_s1_trade(
         "profit_percent":   round(profit_pct, 2),
     })
     log.info(f"[S1] {ticker}: settled -- {outcome}, P&L=${pnl:.2f}")
+    _s1_mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
+    _s1_pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
+    await send_telegram(
+        f"<b>{_s1_mode_icon} [S1] {'✅' if outcome == 'win' else '❌'} {outcome.upper()} — {ticker}</b>\n"
+        f"{s1_pos['side'].upper()} {s1_pos['contracts']}x @ {s1_pos['entry_price_cents']}c  "
+        f"P&L: {_s1_pnl_str}"
+    )
 
     if outcome == "win":
         bot_state._s1_consecutive_losses = 0
