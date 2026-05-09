@@ -232,3 +232,56 @@ def test_s1_lookup_falls_back_to_tanh():
     # dist_idx=2: abs_pct=0.015 in [0.010, 0.020); time_idx=1: mins_left=7.0 in [6.0, 9.0)
     result = bs._s1_lookup_win_rate("BTC", abs_pct=0.015, mins_left=7.0)
     assert 0.5 < result < 0.85, f"Fallback win_prob {result} out of expected range"
+
+
+# ── Task 10b: S2 lookup function ──────────────────────────────────────────────
+
+def test_s2_lookup_uses_table():
+    import bot_strategy as bs
+    assert hasattr(bs, "_s2_lookup_win_rate"), \
+        "_s2_lookup_win_rate not found in bot_strategy"
+
+
+def test_s2_lookup_falls_back_to_tanh():
+    import bot_strategy as bs
+    # When _S2_WIN_RATE[asset] is empty (or None bucket), must fall back to tanh.
+    # Save and restore to avoid poisoning other tests.
+    original = bs._S2_WIN_RATE.get("BTC")
+    bs._S2_WIN_RATE["BTC"] = {}
+    try:
+        result = bs._s2_lookup_win_rate("BTC", vel_delta=1.0, mins_left=3.0)
+        assert 0.5 < result < 1.0, f"Tanh fallback {result} out of range"
+    finally:
+        bs._S2_WIN_RATE["BTC"] = original
+
+
+def test_s2_lookup_returns_table_value():
+    import bot_strategy as bs
+    # Inject a known value and verify it's returned.
+    # vel_delta=1.0, min_vel_delta=0.80 (BTC) → ratio=1.25 < 2.0 → vel_idx=0
+    # mins_left=3.0 < 5.0 → time_idx=0
+    original = bs._S2_WIN_RATE.get("BTC")
+    bs._S2_WIN_RATE["BTC"] = {(0, 0): 0.7234}
+    try:
+        result = bs._s2_lookup_win_rate("BTC", vel_delta=1.0, mins_left=3.0)
+        assert abs(result - 0.7234) < 1e-9, f"Expected 0.7234, got {result}"
+    finally:
+        bs._S2_WIN_RATE["BTC"] = original
+
+
+def test_s2_lookup_vel_idx_boundaries():
+    import bot_strategy as bs
+    # _S2_VEL_MULTIPLIERS = [2.0, 4.0], min_vel_delta BTC = 0.80
+    # ratio < 2.0 → vel_idx=0; ratio in [2.0,4.0) → vel_idx=1; ratio >= 4.0 → vel_idx=2
+    original = bs._S2_WIN_RATE.get("BTC")
+    bs._S2_WIN_RATE["BTC"] = {(0, 0): 0.60, (1, 0): 0.70, (2, 0): 0.80}
+    try:
+        cfg = {"min_vel_delta": 0.80, "vel_lookback": 4}
+        r0 = bs._s2_lookup_win_rate("BTC", vel_delta=0.80 * 1.5, mins_left=3.0, cfg=cfg)
+        r1 = bs._s2_lookup_win_rate("BTC", vel_delta=0.80 * 3.0, mins_left=3.0, cfg=cfg)
+        r2 = bs._s2_lookup_win_rate("BTC", vel_delta=0.80 * 5.0, mins_left=3.0, cfg=cfg)
+        assert abs(r0 - 0.60) < 1e-9
+        assert abs(r1 - 0.70) < 1e-9
+        assert abs(r2 - 0.80) < 1e-9
+    finally:
+        bs._S2_WIN_RATE["BTC"] = original

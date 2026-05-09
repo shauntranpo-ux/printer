@@ -10,10 +10,12 @@ Usage:
 Options:
     --days N    Days of Kalshi history to fetch (default: 30)
 """
+import io
 import os
 import re
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -89,22 +91,37 @@ def main() -> None:
     print(f"[runner] KALSHI_API_KEY: {'set' if env.get('KALSHI_API_KEY') else 'MISSING'}")
     print(f"[runner] KALSHI_PRIVATE_KEY: {env.get('KALSHI_PRIVATE_KEY', 'MISSING')}")
 
-    result = subprocess.run(
+    proc = subprocess.Popen(
         [sys.executable, str(ROOT / "scripts" / "calibrate_winrates.py")],
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         cwd=str(ROOT),
         env=env,
     )
 
-    if result.stderr:
-        print("[calibrate stderr]")
-        print(result.stderr)
+    stdout_lines: list[str] = []
 
-    stdout = result.stdout
+    def _stream_stderr() -> None:
+        assert proc.stderr
+        for line in proc.stderr:
+            sys.stderr.write(line)
+            sys.stderr.flush()
+
+    t = threading.Thread(target=_stream_stderr, daemon=True)
+    t.start()
+
+    assert proc.stdout
+    for line in proc.stdout:
+        stdout_lines.append(line)
+
+    proc.wait()
+    t.join()
+
+    stdout = "".join(stdout_lines)
     if not stdout.strip():
         print("[runner] ERROR: no stdout from calibrate_winrates.py")
-        print("[runner] Return code:", result.returncode)
+        print("[runner] Return code:", proc.returncode)
         sys.exit(1)
 
     print("[runner] Calibration complete. Parsing output...")

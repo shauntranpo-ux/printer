@@ -12,7 +12,13 @@ Env vars required for S2 (Kalshi) phase:
     KALSHI_API_KEY         -- API key ID (uuid)
     KALSHI_PRIVATE_KEY     -- PEM-encoded RSA private key (or path to .pem file)
 
-Set SKIP_S2=1 to run S1 only (no Kalshi credentials needed).
+Optional env vars:
+    SKIP_S1=1              -- skip Binance/S1 phase (S1 tables already populated)
+    SKIP_S2=1              -- skip Kalshi/S2 phase (no credentials needed)
+    CALIBRATE_DAYS=N       -- days of history to fetch (default: 30)
+
+Recommended usage (S2-only, auto-patch bot_strategy.py):
+    py scripts/run_calibration.py
 """
 import datetime
 import math
