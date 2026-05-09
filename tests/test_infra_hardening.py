@@ -6,7 +6,7 @@ import inspect
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import bot_market
-import bot
+import bot_infra
 import bot_stats
 
 
