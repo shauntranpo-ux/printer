@@ -1303,34 +1303,37 @@ function renderEventLog(evts){
 
 function brainStatsHTML(stats) {
   if (!stats) return '<div style="color:var(--ink-3);font-size:11px;padding:12px 0;">No brain data yet</div>';
-  const fmtPnl = v => `$``;
-  const row = (brain, label) => {
-    const at = (stats[brain] && stats[brain].alltime) || {};
-    const td = (stats[brain] && stats[brain].today)   || {};
-    const atPnl = at.pnl ?? 0, tdPnl = td.pnl ?? 0;
-    return `<div style="padding:12px 0;border-bottom:1px solid var(--line);">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-        <span style="font-size:11px;font-weight:700;color:var(--ink);"></span>
-        <span class="badge" style="font-size:9px;background:var(--panel-2);color:var(--ink-2);border:1px solid var(--line);padding:2px 7px;border-radius:4px;"></span>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
-        <div>
-          <div style="font-size:9px;color:var(--ink-3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">Today</div>
-          <div class="mono " style="font-size:16px;font-weight:700;"></div>
-          <div style="font-size:10px;color:var(--ink-3);margin-top:2px;">W / L &middot;  trades</div>
-        </div>
-        <div>
-          <div style="font-size:9px;color:var(--ink-3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">All-time</div>
-          <div class="mono " style="font-size:16px;font-weight:700;"></div>
-          <div style="font-size:10px;color:var(--ink-3);margin-top:2px;">W / L &middot;  trades</div>
-        </div>
-      </div>
-    </div>`;
-  };
-  return `<div style="padding:0 2px;">
-    
-    
-  </div>`;
+  function fmtPnl(v) {
+    var sign = v >= 0 ? '+' : '-';
+    return sign + '$' + Math.abs(v).toFixed(2);
+  }
+  function row(brain, label) {
+    var at = (stats[brain] && stats[brain].alltime) || {};
+    var td = (stats[brain] && stats[brain].today)   || {};
+    var atPnl = at.pnl != null ? at.pnl : 0;
+    var tdPnl = td.pnl != null ? td.pnl : 0;
+    var tdCls = tdPnl >= 0 ? 'up' : 'down';
+    var atCls = atPnl >= 0 ? 'up' : 'down';
+    return '<div style="padding:12px 0;border-bottom:1px solid var(--line);">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+        '<span style="font-size:11px;font-weight:700;color:var(--ink);">' + label + '</span>' +
+        '<span class="badge" style="font-size:9px;background:var(--panel-2);color:var(--ink-2);border:1px solid var(--line);padding:2px 7px;border-radius:4px;">' + brain.toUpperCase() + '</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+        '<div>' +
+          '<div style="font-size:9px;color:var(--ink-3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">Today</div>' +
+          '<div class="mono ' + tdCls + '" style="font-size:16px;font-weight:700;">' + fmtPnl(tdPnl) + '</div>' +
+          '<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">' + (td.wins != null ? td.wins : 0) + 'W / ' + (td.losses != null ? td.losses : 0) + 'L · ' + (td.trades != null ? td.trades : 0) + ' trades</div>' +
+        '</div>' +
+        '<div>' +
+          '<div style="font-size:9px;color:var(--ink-3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">All-time</div>' +
+          '<div class="mono ' + atCls + '" style="font-size:16px;font-weight:700;">' + fmtPnl(atPnl) + '</div>' +
+          '<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">' + (at.wins != null ? at.wins : 0) + 'W / ' + (at.losses != null ? at.losses : 0) + 'L · ' + (at.trades != null ? at.trades : 0) + ' trades</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+  return '<div style="padding:0 2px;">' + row('s1', 'S1 · EMA Momentum') + row('s2', 'S2 · vel+OBI') + '</div>';
 }
 // ════════════════════════════════════════════════════
 //  PER-MARKET PANEL

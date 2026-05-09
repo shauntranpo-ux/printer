@@ -34,6 +34,7 @@ from bot_risk import (
 log = logging.getLogger("bot")
 
 _last_stats_date: str = ""
+_last_scorecard_date: str = ""
 
 _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 
@@ -88,13 +89,17 @@ def _format_scorecard_message(data: dict) -> str:
 
 async def _send_brain_scorecard() -> None:
     """Query DB and send daily brain scorecard via Telegram. Non-fatal on error."""
+    global _last_scorecard_date
     try:
         from datetime import datetime, timezone
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        if today == _last_scorecard_date:
+            return
         data = await db_brain_scorecard(today)
         has_trades = any(data["daily"].get(b) for b in ("s1", "s2"))
         if not has_trades:
             return
+        _last_scorecard_date = today
         msg = _format_scorecard_message(data)
         await send_telegram(msg)
     except Exception as exc:
