@@ -134,7 +134,8 @@ def _init_config() -> None:
     _be_state = os.path.join(_data_dir, "bot_enabled.state")
     if os.path.exists(_be_state):
         try:
-            cfg["bot_enabled"] = open(_be_state).read().strip() == "1"
+            with open(_be_state) as _f:
+                cfg["bot_enabled"] = _f.read().strip() == "1"
         except Exception:
             pass
 
@@ -340,14 +341,29 @@ async def db_write_trade(trade: dict) -> int | None:
             await db.commit()
             return cur.lastrowid
     except Exception as exc:
-        log.error(f"DB write_trade error: {exc}")
+        log.error("db_write_trade FAILED — trade NOT recorded: %s | trade=%s", exc, trade)
         return None
+
+
+_VALID_TRADE_COLS = frozenset({
+    "ts", "market_id", "market_title", "mode", "side", "contracts",
+    "entry_price_cents", "trade_amount_dollars", "confidence_score",
+    "model_prob", "implied_prob", "btc_price_at_entry", "strike",
+    "seconds_left_at_entry", "fill_confirmed", "exit_price_cents",
+    "exit_reason", "outcome", "pnl_dollars", "profit_percent",
+    "order_id", "asset", "raw_p_yes", "entry_signals",
+    "strategy_variant", "brain", "signal_name", "strategy_version",
+})
 
 
 async def db_update_trade(trade_id: int, fields: dict) -> None:
     """Update named columns on an existing trade row."""
     if trade_id is None:
         log.error("db_update_trade called with trade_id=None — trade will stay pending in DB")
+        return
+    bad_cols = set(fields) - _VALID_TRADE_COLS
+    if bad_cols:
+        log.error("db_update_trade: unknown column(s) %s — skipping update for trade %s", bad_cols, trade_id)
         return
     try:
         async with aiosqlite.connect(bot_state._DB_FILE) as db:
@@ -444,8 +460,8 @@ async def db_get_today_pnl(mode: str) -> float:
             await db.execute("PRAGMA journal_mode=WAL")
             async with db.execute(
                 "SELECT COALESCE(SUM(pnl_dollars), 0) FROM trades "
-                "WHERE mode = ? AND ts LIKE ? AND outcome != 'pending'",
-                (mode, f"{today}%"),
+                "WHERE mode = ? AND DATE(ts) = ? AND outcome != 'pending'",
+                (mode, today),
             ) as cur:
                 row = await cur.fetchone()
         return float(row[0]) if row else 0.0
