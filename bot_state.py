@@ -22,7 +22,7 @@ __all__ = [
     "last_confidence_score", "last_confidence_breakdown", "last_action", "last_skip_reason",
     "_asset_eval", "_contract_price_history",
     "_CAL_DEFAULTS", "_brain_cal_s1", "_brain_cal_s2",
-    "_last_good_config", "_consecutive_losses", "_consecutive_price_skips",
+    "_last_good_config", "_consecutive_losses", "_s1_consecutive_losses", "_s2_consecutive_losses", "_consecutive_price_skips",
     "_S1_VERSION", "_S2_VERSION", "_S1_ASSET_VOL_RATIO",
 ]
 
@@ -90,6 +90,8 @@ _brain_cal_s2: dict = {**_CAL_DEFAULTS}
 
 _last_good_config: dict | None = None
 _consecutive_losses: int       = 0
+_s1_consecutive_losses: int   = 0
+_s2_consecutive_losses: int   = 0
 _consecutive_price_skips: int  = 0
 
 _S1_VERSION = "ema-momentum-2026-05-07"

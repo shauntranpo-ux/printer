@@ -206,7 +206,7 @@ async def write_state_file(
         "bot_state.limit_triggered": bot_state.limit_triggered,
         "bot_state.limit_reason": bot_state.limit_reason,
         "open_position": bot_state.current_position,
-        "consecutive_losses": bot_state._consecutive_losses,
+        "consecutive_losses": bot_state._s2_consecutive_losses,
     }
 
     assets_snap: dict = {}
@@ -400,7 +400,7 @@ async def _execute_s1_trade(
 
     _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
     _entry_p  = fill_price / 100.0
-    _fee      = _fee_rate * (1.0 - _entry_p)
+    _fee      = _fee_rate * _entry_p * (1.0 - _entry_p)
     win_prob  = brain_s1.get("win_prob", 0.5)
     ev_val    = round((win_prob - _entry_p - _fee) * 100, 1)
     _ev_str   = f"+{ev_val}%" if ev_val >= 0 else f"{ev_val}%"
@@ -494,9 +494,9 @@ async def _settle_s1_trade(
     log.info(f"[S1] {ticker}: settled -- {outcome}, P&L=${pnl:.2f}")
 
     if outcome == "win":
-        bot_state._consecutive_losses = 0
+        bot_state._s1_consecutive_losses = 0
     else:
-        bot_state._consecutive_losses += 1
+        bot_state._s1_consecutive_losses += 1
 
 
 async def _settle_s1_orphans(

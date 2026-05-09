@@ -1,4 +1,4 @@
-"""bot_loops.py — Phase handlers, asset loop, main trading loop."""
+﻿"""bot_loops.py — Phase handlers, asset loop, main trading loop."""
 __all__ = ["handle_ready_phase", "handle_locked_phase", "main_loop"]
 
 import asyncio
@@ -113,7 +113,7 @@ async def _check_daily_stats(today: str) -> None:
     _last_stats_date = today
     try:
         _stats = bot_stats.query_stats(bot_state._DB_FILE, today_date=today)
-        _stats["consecutive_losses"] = bot_state._consecutive_losses
+        _stats["consecutive_losses"] = bot_state._s2_consecutive_losses
         _stats["mode"] = read_config().get("mode", "paper").upper()
         await send_telegram(bot_stats.format_telegram(_stats))
     except Exception as _e:
@@ -673,11 +673,11 @@ async def handle_locked_phase(
 
         # Consecutive-loss tracker (no pause — informational only)
         if outcome == "win":
-            bot_state._consecutive_losses = 0
+            bot_state._s2_consecutive_losses = 0
         else:
-            bot_state._consecutive_losses += 1
+            bot_state._s2_consecutive_losses += 1
             max_cl = config.get("max_consecutive_losses", 5)
-            if bot_state._consecutive_losses >= max_cl:
+            if bot_state._s2_consecutive_losses >= max_cl:
                 _resume_str = "n/a"
                 # Prefer the stored market duration so the session label is
                 # stable regardless of how long the trade was held. Falls back
@@ -690,7 +690,7 @@ async def handle_locked_phase(
                     _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
                 )
                 await send_telegram(
-                    f"<b>🔵 [S2] {_cl_ctx} {bot_state._consecutive_losses} consecutive losses</b>"
+                    f"<b>🔵 [S2] {_cl_ctx} {bot_state._s2_consecutive_losses} consecutive losses</b>"
                 )
 
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
@@ -948,7 +948,7 @@ async def main_loop() -> None:
             )
         saved_cl = _saved.get("consecutive_losses", 0)
         if isinstance(saved_cl, int) and saved_cl > 0:
-            bot_state._consecutive_losses = saved_cl
+            bot_state._s2_consecutive_losses = saved_cl
         # Non-BTC recovery
         for _a, _apos in _saved.get("non_btc_positions", {}).items():
             if _apos.get("phase") == "LOCKED" and _apos.get("position"):
