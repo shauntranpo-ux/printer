@@ -257,6 +257,7 @@ def init_db() -> None:
             ("signal_name",       "TEXT"),
             ("strategy_variant",  "TEXT DEFAULT 'strategy2'"),
             ("strategy_version",   "TEXT"),
+            ("brain",              "TEXT"),
         ):
             try:
                 c.execute(f"ALTER TABLE trades ADD COLUMN {col} {typedef}")
@@ -319,8 +320,8 @@ async def db_write_trade(trade: dict) -> int | None:
                     model_prob, implied_prob, btc_price_at_entry, strike,
                     seconds_left_at_entry, fill_confirmed,
                     exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                    order_id, asset, raw_p_yes, entry_signals, strategy_variant
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    order_id, asset, raw_p_yes, entry_signals, strategy_variant, brain
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
                 trade.get("mode"), trade.get("side"), trade.get("contracts"),
@@ -334,7 +335,7 @@ async def db_write_trade(trade: dict) -> int | None:
                 trade.get("profit_percent"),
                 trade.get("order_id"), trade.get("asset", "BTC"),
                 trade.get("raw_p_yes"), trade.get("entry_signals"),
-                trade.get("strategy_variant", "strategy2"),
+                trade.get("strategy_variant", "strategy2"), trade.get("brain"),
             ))
             await db.commit()
             return cur.lastrowid
