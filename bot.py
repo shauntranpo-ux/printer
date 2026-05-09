@@ -1,5 +1,5 @@
-"""
-bot.py — Entrypoint for the Kalshi 15-minute prediction market trading bot.
+﻿"""
+bot.py â€” Entrypoint for the Kalshi 15-minute prediction market trading bot.
 
 All core logic lives in focused modules: bot_infra (config/db/notify),
 bot_market (Kalshi API + orders), bot_risk (risk + trade execution +
@@ -13,7 +13,6 @@ import asyncio
 import logging
 import os
 import sqlite3
-import sys
 
 import aiohttp
 
@@ -25,13 +24,13 @@ except ImportError:
 
 import bot_state
 import asset_manager
-from asset_manager import get_price as _am_get_price, coinbase_price_task
+from asset_manager import get_price as _am_get_price, coinbase_price_task, seed_price_history
 from bot_infra import read_config, _init_config, init_db, test_db_write, send_telegram
 from bot_market import load_credentials, get_btc_price
 from bot_risk import verify_kalshi_connection, run_preflight_checks
 from bot_loops import main_loop
 
-# ─────────────────────────────── logging ───────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
@@ -40,9 +39,9 @@ logging.basicConfig(
 log = logging.getLogger("bot")
 
 
-# ═══════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  Entry point
-# ═══════════════════════════════════════════════════════════════════════════
+# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 async def main() -> None:
     """Bootstrap: load credentials, init DB, start BTC feed, run main loop."""
@@ -52,7 +51,7 @@ async def main() -> None:
     test_db_write()
 
     # Clean up zombie "pending" trades from prior crashed sessions.
-    # Any trade still pending after 30+ minutes never settled — mark it as expired.
+    # Any trade still pending after 30+ minutes never settled â€” mark it as expired.
     try:
         conn = sqlite3.connect(bot_state._DB_FILE)
         cleaned = conn.execute(
@@ -73,7 +72,7 @@ async def main() -> None:
 
 
     # Verify Kalshi credentials and log account balance before doing anything.
-    # Skipped in paper mode — no real credentials are loaded there.
+    # Skipped in paper mode â€” no real credentials are loaded there.
     if read_config().get("mode", "paper") != "paper":
         async with aiohttp.ClientSession() as verify_session:
             await verify_kalshi_connection(verify_session)
@@ -81,10 +80,9 @@ async def main() -> None:
     # Start Coinbase price feed for all assets
     _startup_config = read_config()
     _enabled = _startup_config.get("enabled_assets", ["ETH", "SOL", "XRP"])
-    # Always subscribe BTC regardless of enabled_assets — other strategies use
+    # Always subscribe BTC regardless of enabled_assets â€” other strategies use
     # btc_prices_60m for correlation signals and the deque must stay populated.
     _feed_assets = list(dict.fromkeys(["BTC"] + _enabled))
-    from asset_manager import seed_price_history
     await seed_price_history(_feed_assets)
     asyncio.create_task(coinbase_price_task(_feed_assets))
 
@@ -99,7 +97,7 @@ async def main() -> None:
             log.warning(f"Still waiting for {_first_asset} price feed ({waited}s elapsed)...")
     _first_price = _am_get_price(_first_asset)
     if _first_price is None:
-        log.warning("Price feed not available after 120s — continuing anyway; prices will populate shortly.")
+        log.warning("Price feed not available after 120s â€” continuing anyway; prices will populate shortly.")
     else:
         log.info(f"Price feed ready after {waited}s. {_first_asset}: ${_first_price:,.2f}")
     _startup_cfg = read_config()
@@ -107,7 +105,7 @@ async def main() -> None:
     await send_telegram(f"<b>Printer bot started</b>\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
 
     # Pre-flight check runs once before trading begins.
-    # LIVE mode with unresolved issues → sys.exit(1). Paper mode → warn and continue.
+    # LIVE mode with unresolved issues â†’ sys.exit(1). Paper mode â†’ warn and continue.
     await run_preflight_checks(_startup_cfg)
 
     await main_loop()

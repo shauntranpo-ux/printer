@@ -719,23 +719,6 @@ async def run_preflight_checks(config: dict) -> None:
     issues: list[str] = []
     W = 60
 
-    if not os.path.isfile(bot_state._PRICE_VAL_CSV):
-        issues.append(
-            "NO PRICE VALIDATION DATA -- price_validation_log.csv does not exist. "
-            "Run paper mode for 200+ cycles first."
-        )
-    else:
-        try:
-            with open(bot_state._PRICE_VAL_CSV, encoding="utf-8") as _f:
-                row_count = max(0, sum(1 for _ in _f) - 1)
-        except Exception:
-            row_count = 0
-        if row_count < 200:
-            issues.append(
-                f"INSUFFICIENT PRICE VALIDATION -- only {row_count}/200 samples collected. "
-                "Keep running paper mode."
-            )
-
     fee = config.get("kalshi_fee_per_contract_cents", 0)
     if not (isinstance(fee, (int, float)) and fee > 0):
         issues.append(

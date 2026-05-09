@@ -1,8 +1,8 @@
-"""
-bot_state.py — Shared mutable globals and constants for the kalshi bot.
+﻿"""
+bot_state.py â€” Shared mutable globals and constants for the kalshi bot.
 
 Every other module does `import bot_state` and reads/writes attributes here.
-No classes, no dataclasses — plain module attributes for zero-overhead access.
+No classes, no dataclasses â€” plain module attributes for zero-overhead access.
 """
 __all__ = [
     # URL constants
@@ -23,14 +23,13 @@ __all__ = [
     "_asset_eval", "_contract_price_history",
     "_CAL_DEFAULTS", "_brain_cal_s1", "_brain_cal_s2",
     "_last_good_config", "_consecutive_losses", "_consecutive_price_skips",
-    "_S2_SINGLETONS", "_config_mtime", "_current_window",
     "_S1_VERSION", "_S2_VERSION", "_S1_ASSET_VOL_RATIO",
 ]
 
 import os
 from collections import deque
 
-# ── constants (never change at runtime) ──────────────────────────────────────
+# â”€â”€ constants (never change at runtime) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 KALSHI_LIVE_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 KALSHI_DEMO_BASE_URL = "https://demo-api.kalshi.co/trade-api/v2"
 KALSHI_BASE_URL      = KALSHI_LIVE_BASE_URL  # overwritten once in load_credentials()
@@ -47,8 +46,8 @@ _CONFIG_FILE = os.environ.get("BOT_CONFIG_FILE", "config.json")
 _DB_FILE     = os.environ.get("BOT_DB_FILE",     "kalshi_bot.db")
 _STATE_FILE  = os.environ.get("BOT_STATE_FILE",  "bot_state.json")
 _DATA_DIR    = os.path.dirname(os.path.abspath(_DB_FILE))
-# ── mutable runtime state ────────────────────────────────────────────────────
-import asset_manager  # noqa: E402 — after os/path setup
+# â”€â”€ mutable runtime state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+import asset_manager  # noqa: E402 â€” after os/path setup
 btc_prices: deque = asset_manager._prices["BTC"]
 
 _ticker_obi: dict = {}
@@ -61,7 +60,7 @@ current_phase: str = "DONE"
 current_position: dict | None = None
 _order_attempted_tickers: set = set()
 _asset_states: dict = {}
-_s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
+_s1_pending_trades: dict = {}  # ticker â†’ {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
 
 _market_cache: dict | None = None
 _market_cache_ts: float = 0.0
@@ -92,10 +91,6 @@ _brain_cal_s2: dict = {**_CAL_DEFAULTS}
 _last_good_config: dict | None = None
 _consecutive_losses: int       = 0
 _consecutive_price_skips: int  = 0
-
-_S2_SINGLETONS: dict  = {}
-_config_mtime: float  = 0.0
-_current_window: str  = ""
 
 _S1_VERSION = "ema-momentum-2026-05-07"
 _S2_VERSION = "contract-velocity-obi-2026-05-07"
