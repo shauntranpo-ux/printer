@@ -258,12 +258,12 @@ def test_s2_lookup_falls_back_to_tanh():
 def test_s2_lookup_returns_table_value():
     import bot_strategy as bs
     # Inject a known value and verify it's returned.
-    # vel_delta=1.0, min_vel_delta=0.80 (BTC) → ratio=1.25 < 2.0 → vel_idx=0
+    # vel_delta=0.60, min_vel_delta=0.40 (BTC v2) → ratio=1.5 < 2.0 → vel_idx=0
     # mins_left=3.0 < 5.0 → time_idx=0
     original = bs._S2_WIN_RATE.get("BTC")
     bs._S2_WIN_RATE["BTC"] = {(0, 0): 0.7234}
     try:
-        result = bs._s2_lookup_win_rate("BTC", vel_delta=1.0, mins_left=3.0)
+        result = bs._s2_lookup_win_rate("BTC", vel_delta=0.60, mins_left=3.0)
         assert abs(result - 0.7234) < 1e-9, f"Expected 0.7234, got {result}"
     finally:
         bs._S2_WIN_RATE["BTC"] = original
