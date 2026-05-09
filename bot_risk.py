@@ -207,6 +207,7 @@ async def write_state_file(
         "bot_state.limit_reason": bot_state.limit_reason,
         "open_position": bot_state.current_position,
         "consecutive_losses": bot_state._s2_consecutive_losses,
+        "s1_consecutive_losses": bot_state._s1_consecutive_losses,
     }
 
     assets_snap: dict = {}
@@ -509,6 +510,11 @@ async def _settle_s1_trade(
         bot_state._s1_consecutive_losses = 0
     else:
         bot_state._s1_consecutive_losses += 1
+        max_cl = config.get("max_consecutive_losses", 5)
+        if bot_state._s1_consecutive_losses >= max_cl:
+            await send_telegram(
+                f"<b>🔵 [S1] {bot_state._s1_consecutive_losses} consecutive losses</b>"
+            )
 
 
 async def _settle_s1_orphans(

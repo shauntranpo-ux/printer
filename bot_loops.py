@@ -963,6 +963,9 @@ async def main_loop() -> None:
         saved_cl = _saved.get("consecutive_losses", 0)
         if isinstance(saved_cl, int) and saved_cl > 0:
             bot_state._s2_consecutive_losses = saved_cl
+        saved_cl_s1 = _saved.get("s1_consecutive_losses", 0)
+        if isinstance(saved_cl_s1, int) and saved_cl_s1 > 0:
+            bot_state._s1_consecutive_losses = saved_cl_s1
         # Non-BTC recovery
         for _a, _apos in _saved.get("non_btc_positions", {}).items():
             if _apos.get("phase") == "LOCKED" and _apos.get("position"):
