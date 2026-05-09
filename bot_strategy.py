@@ -384,7 +384,7 @@ def _s2_obi_gate(ticker: str, side: str, min_obi: float):
     """
     obi_val = bot_state._ticker_obi.get(ticker)
     if obi_val is None:
-        return True, None
+        return False, None
     if side == "yes" and obi_val <= min_obi:
         return False, obi_val
     if side == "no"  and obi_val >= -min_obi:
