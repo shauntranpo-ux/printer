@@ -61,28 +61,30 @@ S1_V2: dict = {
 # ---------------------------------------------------------------------------
 
 S2_V1: dict = {
-    "BTC":  dict(min_dist=0.0035, min_vel_delta=0.80, vel_lookback=4,
+    # min_vel_delta in cents, calibrated for theoretical YES-ask model (~6x live market values)
+    "BTC":  dict(min_dist=0.0035, min_vel_delta=5.0, vel_lookback=4,
                  min_ev=0.09, time_min=2.0, time_max=13.0),
-    "ETH":  dict(min_dist=0.0030, min_vel_delta=0.70, vel_lookback=4,
+    "ETH":  dict(min_dist=0.0030, min_vel_delta=4.5, vel_lookback=4,
                  min_ev=0.09, time_min=2.0, time_max=13.0),
-    "SOL":  dict(min_dist=0.0060, min_vel_delta=1.20, vel_lookback=3,
+    "SOL":  dict(min_dist=0.0060, min_vel_delta=7.0, vel_lookback=3,
                  min_ev=0.11, time_min=2.0, time_max=11.0),
-    "XRP":  dict(min_dist=0.0050, min_vel_delta=0.90, vel_lookback=4,
+    "XRP":  dict(min_dist=0.0050, min_vel_delta=5.5, vel_lookback=4,
                  min_ev=0.10, time_min=2.0, time_max=12.0),
-    "DOGE": dict(min_dist=0.0100, min_vel_delta=1.50, vel_lookback=3,
+    "DOGE": dict(min_dist=0.0100, min_vel_delta=9.0, vel_lookback=3,
                  min_ev=0.13, time_min=2.0, time_max=10.0),
 }
 
 S2_V2: dict = {
-    "BTC":  dict(min_dist=0.00175, min_vel_delta=0.40, vel_lookback=4,
+    # min_vel_delta in cents, calibrated for theoretical YES-ask model (~6x live market values)
+    "BTC":  dict(min_dist=0.00175, min_vel_delta=2.5, vel_lookback=4,
                  min_ev=0.045, time_min=2.0, time_max=13.0),
-    "ETH":  dict(min_dist=0.0015,  min_vel_delta=0.35, vel_lookback=4,
+    "ETH":  dict(min_dist=0.0015,  min_vel_delta=2.0, vel_lookback=4,
                  min_ev=0.045, time_min=2.0, time_max=13.0),
-    "SOL":  dict(min_dist=0.0030,  min_vel_delta=0.60, vel_lookback=3,
+    "SOL":  dict(min_dist=0.0030,  min_vel_delta=3.5, vel_lookback=3,
                  min_ev=0.055, time_min=2.0, time_max=11.0),
-    "XRP":  dict(min_dist=0.0025,  min_vel_delta=0.45, vel_lookback=4,
+    "XRP":  dict(min_dist=0.0025,  min_vel_delta=2.5, vel_lookback=4,
                  min_ev=0.05,  time_min=2.0, time_max=12.0),
-    "DOGE": dict(min_dist=0.0050,  min_vel_delta=0.75, vel_lookback=3,
+    "DOGE": dict(min_dist=0.0050,  min_vel_delta=4.5, vel_lookback=3,
                  min_ev=0.065, time_min=2.0, time_max=10.0),
 }
 
@@ -147,6 +149,17 @@ def _s1_win_prob(abs_pct: float, min_dist: float) -> float:
 
 def _s2_win_prob(vel_delta: float, min_vel: float) -> float:
     return 0.50 + 0.20 * math.tanh(vel_delta / max(min_vel, 1e-6))
+
+
+def _theoretical_yes_ask(spot: float, strike: float) -> float:
+    """Deterministic YES-ask proxy (cents) calibrated for 15-min windows.
+    k=0.012 so 0.5% above strike ≈ 68c, 1.0% ≈ 81c — matches typical Kalshi market pricing.
+    (k=0.004 was too steep: 0.28% above already hit 76c ceiling, killing all S2 entries.)
+    """
+    if strike <= 0:
+        return 50.0
+    pct = (spot - strike) / strike
+    return max(5.0, min(95.0, 50.0 + 45.0 * math.tanh(pct / 0.012)))
 
 
 def _pnl(won: bool, entry_cents: float) -> float:
@@ -230,7 +243,8 @@ def backtest_s1_asset(asset: str, cfg: dict, windows, price_lookup,
                 continue
 
             side = direction
-            yes_ask, no_ask = bt.simulate_amm_prices(current_price, strike, rng)
+            yes_ask = _theoretical_yes_ask(current_price, strike)
+            no_ask  = 100.0 - yes_ask
             entry_cents = yes_ask if side == "yes" else no_ask
             if not (20 <= entry_cents <= 76):
                 continue
@@ -296,9 +310,12 @@ def backtest_s2_asset(asset: str, cfg: dict, windows, price_lookup,
             if len(lookback_prices) < 2:
                 continue
 
-            # Simulate YES-ask for each price in lookback
-            yes_asks = [bt.simulate_amm_prices(p, strike, rng)[0] for p in lookback_prices]
-            vel_delta = yes_asks[-1] - yes_asks[0]
+            # Velocity: theoretical YES-ask half-half delta (matches live _s2_contract_direction)
+            yes_asks   = [_theoretical_yes_ask(p, strike) for p in lookback_prices]
+            mid        = max(1, len(yes_asks) // 2)
+            first_avg  = sum(yes_asks[:mid]) / mid
+            second_avg = sum(yes_asks[mid:]) / max(1, len(yes_asks) - mid)
+            vel_delta  = second_avg - first_avg
             if abs(vel_delta) < cfg["min_vel_delta"]:
                 continue
 
@@ -310,7 +327,8 @@ def backtest_s2_asset(asset: str, cfg: dict, windows, price_lookup,
 
             # OBI gate SKIPPED — no historical orderbook data
 
-            yes_ask, no_ask = bt.simulate_amm_prices(current_price, strike, rng)
+            yes_ask = _theoretical_yes_ask(current_price, strike)
+            no_ask  = 100.0 - yes_ask
             entry_cents = yes_ask if side == "yes" else no_ask
             if not (20 <= entry_cents <= 76):
                 continue
@@ -382,15 +400,21 @@ def main():
             r = backtest_s1_asset(asset, cfg, windows, price_lookup, rng)
             print(f"  {label:12}  {_fmt(r)}")
 
-        for label, cfg in [("S2 original", S2_V1[asset]), ("S2 live", _LIVE_S2[asset])]:
+        # Live S2 min_vel_delta is calibrated for actual Kalshi market prices (cent ticks).
+        # Theoretical YES-ask model produces ~6x larger deltas, so scale threshold up.
+        _bt_vel = {"BTC": 2.5, "ETH": 2.0, "SOL": 2.0, "XRP": 2.5, "DOGE": 1.5}
+        _live_s2_bt = {**_LIVE_S2[asset], "min_vel_delta": _bt_vel[asset]}
+
+        for label, cfg in [("S2 original", S2_V1[asset]), ("S2 live", _live_s2_bt)]:
             r = backtest_s2_asset(asset, cfg, windows, price_lookup, rng)
             print(f"  {label:12}  {_fmt(r)}")
 
         print()
 
     print(f"{'='*72}")
-    print("  NOTE: P&L = actual outcomes (final_close vs strike). EV uses tanh proxy.")
-    print("  S2 OBI gate skipped -- no historical orderbook data.")
+    print("  P&L = actual outcomes (final_close vs strike). EV/win_prob via tanh proxy.")
+    print("  S2 uses deterministic theoretical YES-ask (no random AMM). OBI gate skipped.")
+    print("  S2 live min_vel_delta scaled x6 for theoretical pricing model.")
     print(f"{'='*72}\n")
 
 

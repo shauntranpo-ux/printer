@@ -1,0 +1,61 @@
+﻿
+========================================================================
+  S1/S2 Backtest | 2024+ | $25.0/trade | OBI gate skipped for S2
+========================================================================
+
+Loading BTC...
+
+------------------------------------------------------------------------
+  BTC  (80,959 windows)
+------------------------------------------------------------------------
+  S1 original   trades=  5349  wr=87.1%  pnl=$+39308.29  avg=$ +7.35  sharpe=+0.55
+  S1 live       trades=  9191  wr=80.3%  pnl=$+58174.88  avg=$ +6.33  sharpe=+0.37
+  S2 original   trades=     0  wr=0.0%  pnl=$    +0.00  avg=$ +0.00  sharpe=+0.00
+  S2 live       trades= 34716  wr=84.9%  pnl=$+275007.07  avg=$ +7.92  sharpe=+0.53
+
+Loading ETH...
+
+------------------------------------------------------------------------
+  ETH  (80,964 windows)
+------------------------------------------------------------------------
+  S1 original   trades=     0  wr=0.0%  pnl=$    +0.00  avg=$ +0.00  sharpe=+0.00
+  S1 live       trades= 33987  wr=89.3%  pnl=$+266699.75  avg=$ +7.85  sharpe=+0.64
+  S2 original   trades=     0  wr=0.0%  pnl=$    +0.00  avg=$ +0.00  sharpe=+0.00
+  S2 live       trades= 36604  wr=85.7%  pnl=$+286269.34  avg=$ +7.82  sharpe=+0.54
+
+Loading SOL...
+
+------------------------------------------------------------------------
+  SOL  (80,174 windows)
+------------------------------------------------------------------------
+  S1 original   trades=     0  wr=0.0%  pnl=$    +0.00  avg=$ +0.00  sharpe=+0.00
+  S1 live       trades= 40281  wr=89.4%  pnl=$+304317.05  avg=$ +7.55  sharpe=+0.62
+  S2 original   trades=     0  wr=0.0%  pnl=$    +0.00  avg=$ +0.00  sharpe=+0.00
+  S2 live       trades= 31379  wr=86.0%  pnl=$+249629.63  avg=$ +7.96  sharpe=+0.55
+
+Loading XRP...
+
+------------------------------------------------------------------------
+  XRP  (80,174 windows)
+------------------------------------------------------------------------
+  S1 original   trades=     0  wr=0.0%  pnl=$    +0.00  avg=$ +0.00  sharpe=+0.00
+  S1 live       trades= 35781  wr=88.4%  pnl=$+263846.91  avg=$ +7.37  sharpe=+0.58
+  S2 original   trades=     0  wr=0.0%  pnl=$    +0.00  avg=$ +0.00  sharpe=+0.00
+  S2 live       trades= 19873  wr=87.4%  pnl=$+156836.54  avg=$ +7.89  sharpe=+0.59
+
+Loading DOGE...
+
+------------------------------------------------------------------------
+  DOGE  (80,174 windows)
+------------------------------------------------------------------------
+  S1 original   trades=     0  wr=0.0%  pnl=$    +0.00  avg=$ +0.00  sharpe=+0.00
+  S1 live       trades= 44070  wr=86.4%  pnl=$+310843.28  avg=$ +7.05  sharpe=+0.51
+  S2 original   trades=     0  wr=0.0%  pnl=$    +0.00  avg=$ +0.00  sharpe=+0.00
+  S2 live       trades= 26053  wr=85.0%  pnl=$+214774.82  avg=$ +8.24  sharpe=+0.54
+
+========================================================================
+  P&L = actual outcomes (final_close vs strike). EV/win_prob via tanh proxy.
+  S2 uses deterministic theoretical YES-ask (no random AMM). OBI gate skipped.
+  S2 live min_vel_delta scaled x6 for theoretical pricing model.
+========================================================================
+
