@@ -91,6 +91,7 @@ S2_V2: dict = {
 ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 KALSHI_FEE_CENTS = 7
 TRADE_AMOUNT = 25.0
+_VEL_BT_SCALE = 6.0  # theoretical YES-ask deltas are ~6x real market cent-tick deltas
 
 # ---------------------------------------------------------------------------
 # Signal utilities — operate on small per-window price lists (fast)
@@ -402,8 +403,8 @@ def main():
 
         # Live S2 min_vel_delta is calibrated for actual Kalshi market prices (cent ticks).
         # Theoretical YES-ask model produces ~6x larger deltas, so scale threshold up.
-        _bt_vel = {"BTC": 2.5, "ETH": 2.0, "SOL": 2.0, "XRP": 2.5, "DOGE": 1.5}
-        _live_s2_bt = {**_LIVE_S2[asset], "min_vel_delta": _bt_vel[asset]}
+        _live_s2_bt = {**_LIVE_S2[asset],
+                       "min_vel_delta": _LIVE_S2[asset]["min_vel_delta"] * _VEL_BT_SCALE}
 
         for label, cfg in [("S2 original", S2_V1[asset]), ("S2 live", _live_s2_bt)]:
             r = backtest_s2_asset(asset, cfg, windows, price_lookup, rng)
