@@ -1041,6 +1041,21 @@ function renderMarketStrip(){
       : trend==='down'
       ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7 L17 17 M17 17 L17 10 M17 17 L10 17"/></svg>'
       : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12 L18 12"/></svg>';
+    const _fmtSkip = s => {
+      if (!s) return null;
+      const evM = s.match(/ev_gate:(-?[\d.]+)/);
+      if (evM) return `EV ${(parseFloat(evM[1])*100).toFixed(1)}%`;
+      const distM = s.match(/dist_gate:([\d.]+)/);
+      if (distM) return `dist ${(parseFloat(distM[1])*100).toFixed(3)}%`;
+      const rvM = s.match(/rv_gate:([\d.]+)/);
+      if (rvM) return `vol ${(parseFloat(rvM[1])*100).toFixed(2)}%`;
+      const timeM = s.match(/time_gate:([\d.]+)/);
+      if (timeM) return `${parseFloat(timeM[1]).toFixed(1)}m left`;
+      return s.replace(/^s[12]_/,'').replace(/:.*$/,'').replace(/_gate$/,'').replace(/_/g,' ');
+    };
+    const _evVal = m.ev ?? 0;
+    const _skip = m.s1_skip || m.s2_skip || null;
+    const _skipLabel = _fmtSkip(_skip);
     const s1ArrowHtml = (() => {
       const _d = (d, l) => {
         const c = d==='UP'?'oklch(0.55 0.16 245)':d==='DOWN'?'oklch(0.55 0.20 25)':'var(--ink-3)';
@@ -1115,8 +1130,11 @@ function renderMarketStrip(){
       </div>
       <div class="mc-body">
         <div class="mc-price">
-          <span class="mc-price-label">Win prob</span>
-          <span class="mc-price-val">${m.wp != null ? (m.wp*100).toFixed(1) : '—'}<span class="mc-price-unit">${m.wp != null ? '%' : ''}</span></span>
+          <span class="mc-price-label" style="color:${_evVal>0?'oklch(0.5 0.18 150)':_evVal<-0.01?'oklch(0.5 0.20 25)':'var(--ink-3)'}">EV</span>
+          <span class="mc-price-val" style="color:${_evVal>0?'oklch(0.5 0.18 150)':_evVal<-0.01?'oklch(0.5 0.20 25)':'var(--ink-2)'}">
+            ${_evVal!=0?((_evVal>0?'+':'')+(_evVal*100).toFixed(1)+'%'):'—'}
+          </span>
+          ${_skipLabel?`<span style="font-size:9px;color:var(--ink-3);font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;display:block">${_skipLabel}</span>`:''}
         </div>
         ${s1ArrowHtml}
       </div>
@@ -1843,6 +1861,8 @@ function mapAssetState(sym, a) {
     s2_dir:   a.s2_dir   ?? ex.s2_dir   ?? 'neutral',
     s1_gates: a.s1_gates ?? ex.s1_gates ?? null,
     s2_gates: a.s2_gates ?? ex.s2_gates ?? null,
+    s1_skip:  a.s1_skip  ?? ex.s1_skip  ?? null,
+    s2_skip:  a.s2_skip  ?? ex.s2_skip  ?? null,
   };
 }
 async function fetchMarketState() {
