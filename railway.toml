@@ -1,2 +1,3 @@
 [deploy]
 restartPolicyType = "always"
+# kalshi-bot v2
