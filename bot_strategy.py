@@ -76,17 +76,17 @@ def _make_skip(side: str, reason: str, abs_pct: float, mins_left: float,
 
 _S1_ASSET_CONFIG: dict = {
     #           min_dist   max_rv   ema_short  ema_long  session  min_ev  t_min  t_max
-    "BTC":  dict(min_dist=0.00125, max_rv=0.0250, ema_short=3, ema_long=12,
-                 session_gate=False, min_ev=0.020, time_min=3.0, time_max=12.0),
-    "ETH":  dict(min_dist=0.0025,  max_rv=0.0360, ema_short=3, ema_long=7,
-                 session_gate=False, min_ev=0.025, time_min=3.0, time_max=12.0),
-    "SOL":  dict(min_dist=0.005,   max_rv=0.0600, ema_short=3, ema_long=12,
-                 session_gate=False, min_ev=0.030, time_min=3.0, time_max=10.0),
-    "XRP":  dict(min_dist=0.005,   max_rv=0.0500, ema_short=3, ema_long=12,
-                 session_gate=False, min_ev=0.025, time_min=3.0, time_max=12.0),
+    "BTC":  dict(min_dist=0.0006, max_rv=0.0250, ema_short=3, ema_long=12,
+                 session_gate=False, min_ev=0.003, time_min=1.0, time_max=13.0),
+    "ETH":  dict(min_dist=0.0008, max_rv=0.0360, ema_short=3, ema_long=7,
+                 session_gate=False, min_ev=0.003, time_min=1.0, time_max=13.0),
+    "SOL":  dict(min_dist=0.0015, max_rv=0.0600, ema_short=3, ema_long=12,
+                 session_gate=False, min_ev=0.003, time_min=1.0, time_max=13.0),
+    "XRP":  dict(min_dist=0.0015, max_rv=0.0500, ema_short=3, ema_long=12,
+                 session_gate=False, min_ev=0.003, time_min=1.0, time_max=13.0),
     # DOGE: strike_increment=$0.001 at ~$0.15 -> max possible dist ~0.33%; keep min_dist below that
-    "DOGE": dict(min_dist=0.003,   max_rv=0.0900, ema_short=2, ema_long=12,
-                 session_gate=False, min_ev=0.040, time_min=3.0, time_max=10.0),
+    "DOGE": dict(min_dist=0.001,  max_rv=0.0900, ema_short=2, ema_long=12,
+                 session_gate=False, min_ev=0.003, time_min=1.0, time_max=13.0),
 }
 
 
@@ -276,17 +276,17 @@ def strategy_brain_s1(
 
 _S2_ASSET_CONFIG: dict = {
     #           min_dist   min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max
-    "BTC":  dict(min_dist=0.00100, min_obi=0.01,  min_vel_delta=0.08, vel_lookback=4,
-                 min_ev=0.015, time_min=2.0, time_max=13.0),
-    "ETH":  dict(min_dist=0.0015,  min_obi=0.01,  min_vel_delta=0.07, vel_lookback=4,
-                 min_ev=0.015, time_min=2.0, time_max=13.0),
+    "BTC":  dict(min_dist=0.0004, min_obi=0.004,  min_vel_delta=0.03, vel_lookback=4,
+                 min_ev=0.003, time_min=1.0, time_max=14.0),
+    "ETH":  dict(min_dist=0.0005, min_obi=0.004,  min_vel_delta=0.03, vel_lookback=4,
+                 min_ev=0.003, time_min=1.0, time_max=14.0),
     # SOL/DOGE: low strike_increment -> small dist from strike; vel is calibrated conservatively
-    "SOL":  dict(min_dist=0.0015,  min_obi=0.01,  min_vel_delta=0.07, vel_lookback=3,
-                 min_ev=0.015, time_min=2.0, time_max=11.0),
-    "XRP":  dict(min_dist=0.0015,  min_obi=0.01,  min_vel_delta=0.08, vel_lookback=4,
-                 min_ev=0.015, time_min=2.0, time_max=12.0),
-    "DOGE": dict(min_dist=0.0010,  min_obi=0.01,  min_vel_delta=0.05, vel_lookback=3,
-                 min_ev=0.015, time_min=2.0, time_max=10.0),
+    "SOL":  dict(min_dist=0.0006, min_obi=0.004,  min_vel_delta=0.03, vel_lookback=3,
+                 min_ev=0.003, time_min=1.0, time_max=13.0),
+    "XRP":  dict(min_dist=0.0006, min_obi=0.004,  min_vel_delta=0.03, vel_lookback=4,
+                 min_ev=0.003, time_min=1.0, time_max=13.0),
+    "DOGE": dict(min_dist=0.0004, min_obi=0.004,  min_vel_delta=0.02, vel_lookback=3,
+                 min_ev=0.003, time_min=1.0, time_max=13.0),
 }
 
 # ---------------------------------------------------------------------------
