@@ -24,6 +24,7 @@ from datetime import datetime, timezone, timedelta
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import backtest as bt
+from bot_strategy import _S1_ASSET_CONFIG as _LIVE_S1, _S2_ASSET_CONFIG as _LIVE_S2
 
 # ---------------------------------------------------------------------------
 # S1 configs — v1 (original) and v2 (loosened x0.5)
@@ -377,13 +378,13 @@ def main():
         print(f"  {asset}  ({len(windows):,} windows)")
         print(f"{'-'*72}")
 
-        for label, cfg in [("S1 v1", S1_V1[asset]), ("S1 v2", S1_V2[asset])]:
+        for label, cfg in [("S1 original", S1_V1[asset]), ("S1 live", _LIVE_S1[asset])]:
             r = backtest_s1_asset(asset, cfg, windows, price_lookup, rng)
-            print(f"  {label}  {_fmt(r)}")
+            print(f"  {label:12}  {_fmt(r)}")
 
-        for label, cfg in [("S2 v1", S2_V1[asset]), ("S2 v2", S2_V2[asset])]:
+        for label, cfg in [("S2 original", S2_V1[asset]), ("S2 live", _LIVE_S2[asset])]:
             r = backtest_s2_asset(asset, cfg, windows, price_lookup, rng)
-            print(f"  {label}  {_fmt(r)}")
+            print(f"  {label:12}  {_fmt(r)}")
 
         print()
 
