@@ -1041,6 +1041,24 @@ function renderMarketStrip(){
       : trend==='down'
       ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7 L17 17 M17 17 L17 10 M17 17 L10 17"/></svg>'
       : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 12 L18 12"/></svg>';
+    const s1ArrowHtml = (() => {
+      const _d = (d, l) => {
+        const c = d==='UP'?'oklch(0.55 0.16 245)':d==='DOWN'?'oklch(0.55 0.20 25)':'var(--ink-3)';
+        const s = d==='UP'
+          ? `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 4L12 20M5 11L12 4L19 11"/></svg>`
+          : d==='DOWN'
+          ? `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 20L12 4M5 13L12 20L19 13"/></svg>`
+          : `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" style="width:16px;height:16px"><path d="M6 12L18 12"/></svg>`;
+        return `<div style="display:flex;flex-direction:column;align-items:center;gap:1px">${s}<span style="font-size:7px;font-weight:700;letter-spacing:0.06em;color:var(--ink-3)">${l}</span></div>`;
+      };
+      const gp = g => g ? Math.round(g.passed / g.total * 100) : null;
+      const gc = p => p >= 70 ? 'oklch(0.5 0.18 150)' : p >= 40 ? 'oklch(0.6 0.16 60)' : 'oklch(0.5 0.20 25)';
+      const s1p = gp(m.s1_gates), s2p = gp(m.s2_gates);
+      const badges = (s1p != null || s2p != null)
+        ? `<div style="display:flex;gap:4px;justify-content:center">${s1p != null ? `<span style="font-size:8px;font-weight:700;color:${gc(s1p)}">S1 ${s1p}%</span>` : ''}${s2p != null ? `<span style="font-size:8px;font-weight:700;color:${gc(s2p)}">S2 ${s2p}%</span>` : ''}</div>`
+        : '';
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px"><div style="display:flex;gap:8px">${_d(m.s1_dir || 'neutral', 'S1')}${_d(m.s2_dir || 'neutral', 'S2')}</div>${badges}</div>`;
+    })();
     const inTrade = m.phase === 'LOCKED';
     // ── battle bar ──
     const hasAsk = m.yesAsk != null && m.noAsk != null;
@@ -1100,7 +1118,7 @@ function renderMarketStrip(){
           <span class="mc-price-label">Win prob</span>
           <span class="mc-price-val">${m.wp != null ? (m.wp*100).toFixed(1) : '—'}<span class="mc-price-unit">${m.wp != null ? '%' : ''}</span></span>
         </div>
-        <div class="mc-trend ${trend}">${arrow}</div>
+        ${s1ArrowHtml}
       </div>
       ${battleHTML}
     </div>`;
@@ -1821,6 +1839,10 @@ function mapAssetState(sym, a) {
     vol:      a.vol       ?? ex.vol       ?? 1.0,
     side:     a.side ?? (a.direction?.toUpperCase() === 'UP' ? 'YES/UP' : a.direction?.toUpperCase() === 'DOWN' ? 'NO/DOWN' : ex.side ?? '—'),
     sig:      { ...(ex.sig || {}), ...dec },
+    s1_dir:   a.s1_dir   ?? ex.s1_dir   ?? 'neutral',
+    s2_dir:   a.s2_dir   ?? ex.s2_dir   ?? 'neutral',
+    s1_gates: a.s1_gates ?? ex.s1_gates ?? null,
+    s2_gates: a.s2_gates ?? ex.s2_gates ?? null,
   };
 }
 async function fetchMarketState() {
