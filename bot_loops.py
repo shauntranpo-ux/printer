@@ -327,6 +327,20 @@ async def handle_ready_phase(
     brain_ev  = brain.get("win_prob", 0.5) - _entry_p - _fee
     brain_win_prob = brain.get("win_prob", 0.5)
 
+    # S1/S2 direction + gate progress for dashboard arrows
+    _s1_mom = brain_s1.get("mom_label")
+    _s1_dir = "UP" if _s1_mom == "yes" else ("DOWN" if _s1_mom == "no" else "neutral")
+    _s2_dir = ("UP" if side == "yes" else "DOWN") if (brain.get("action") == "trade" or brain.get("vel_signal") == "favorable") else "neutral"
+    _S1_GATE_ORD = ["s1_session_gate", "s1_time_gate", "s1_dist_gate", "s1_rv_gate", "s1_no_ema_data", "s1_reversal_gate", "s1_ev_gate"]
+    _S2_GATE_ORD = ["s2_time_gate", "s2_dist_gate", "s2_no_velocity_data", "s2_obi_gate", "s2_ev_gate"]
+    def _cnt_gates(gates, reason, traded):
+        if traded: return len(gates)
+        for i, g in enumerate(gates):
+            if g in reason: return i
+        return 0
+    _s1_passed = _cnt_gates(_S1_GATE_ORD, brain_s1.get("reasoning", ""), brain_s1.get("action") == "trade")
+    _s2_passed = _cnt_gates(_S2_GATE_ORD, brain.get("reasoning", ""), brain.get("action") == "trade")
+
     # Dashboard eval snapshot — updated at every exit point below
     _eval_snap = {
         "strike":       strike,
@@ -340,6 +354,12 @@ async def handle_ready_phase(
         "status":       "WATCHING",
         "skip_reason":  "",
         "signals":      brain.get("signals", {}),
+        "s1_dir":   _s1_dir,
+        "s1_skip":  brain_s1.get("reasoning", ""),
+        "s1_gates": {"passed": _s1_passed, "total": len(_S1_GATE_ORD)},
+        "s2_dir":   _s2_dir,
+        "s2_skip":  brain.get("reasoning", "") if brain.get("action") != "trade" else "",
+        "s2_gates": {"passed": _s2_passed, "total": len(_S2_GATE_ORD)},
     }
 
     # Dashboard breakdown
