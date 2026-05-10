@@ -460,12 +460,9 @@ async def _execute_s1_trade(
     _win_pct  = int(win_prob * 100)
     _payout   = round((100 - fill_price) * contracts / 100, 2)
     _cost     = round(fill_price * contracts / 100, 2)
+    _dir = "UP" if side == "yes" else "DOWN"
     log.info(f"[S1] {ticker}: ORDER FILLED -- {side.upper()} {contracts}x @ {fill_price}c")
-    await send_telegram(
-        f"<b>{mode_icon} [S1] FILLED \U0001f4e5 {ticker}</b>\n"
-        f"{side.upper()} {contracts}x @ {fill_price}c | wp {_win_pct}% | ev {_ev_str}\n"
-        f"Cost ${_cost:.2f} | Max win ${_payout:.2f}"
-    )
+    await send_telegram(f"{mode_icon} ORDER FILLED - {asset} {_dir}")
 
 
 async def _settle_s1_trade(
@@ -508,11 +505,8 @@ async def _settle_s1_trade(
     log.info(f"[S1] {ticker}: settled -- {outcome}, P&L=${pnl:.2f}")
     _s1_mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
     _s1_pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-    _s1_icon = "✅ WIN" if outcome == "win" else "❌ LOSS"
-    await send_telegram(
-        f"<b>{_s1_mode_icon} [S1] {_s1_icon} — {ticker}</b>\n"
-        f"{s1_pos['side'].upper()} {s1_pos['contracts']}x @ {s1_pos['entry_price_cents']}c | P&L {_s1_pnl_str}"
-    )
+    _s1_result = "WIN" if outcome == "win" else "LOSS"
+    await send_telegram(f"{_s1_mode_icon} {_s1_result} - {asset} {_s1_pnl_str}")
 
     if outcome == "win":
         bot_state._s1_consecutive_losses = 0
@@ -520,9 +514,7 @@ async def _settle_s1_trade(
         bot_state._s1_consecutive_losses += 1
         max_cl = config.get("max_consecutive_losses", 5)
         if bot_state._s1_consecutive_losses >= max_cl:
-            await send_telegram(
-                f"<b>⚠️ [S1] ERROR — {bot_state._s1_consecutive_losses} consecutive losses</b>"
-            )
+            await send_telegram(f"ERROR - {bot_state._s1_consecutive_losses} consecutive losses")
 
 
 async def _settle_s1_orphans(

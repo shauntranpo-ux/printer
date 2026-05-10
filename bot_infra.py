@@ -376,6 +376,7 @@ async def db_update_trade(trade_id: int, fields: dict) -> None:
             await db.commit()
     except Exception as exc:
         log.error(f"DB update_trade error: {exc}")
+        raise
 
 
 async def db_brain_scorecard(today: str) -> dict:
