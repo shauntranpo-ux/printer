@@ -237,6 +237,9 @@ tr:last-child td{border-bottom:none;}
 .btn{background:none;border:1px solid var(--line-2);color:var(--ink-2);font-family:inherit;font-size:11px;padding:6px 12px;border-radius:7px;cursor:pointer;transition:all .15s;}
 .btn:hover{border-color:var(--accent);color:var(--accent);}
 .btn.danger{border-color:rgba(214,57,73,.3);color:var(--down);}
+.tf-btn{background:none;border:1px solid var(--line-2);color:var(--ink-3);font-family:inherit;font-size:10px;font-weight:700;padding:3px 9px;border-radius:5px;cursor:pointer;transition:all .15s;}
+.tf-btn:hover{border-color:var(--accent);color:var(--accent);}
+.tf-btn.tf-active{background:var(--accent);border-color:var(--accent);color:#fff;}
 .btn.danger:hover{background:rgba(214,57,73,.1);border-color:var(--down);}
 
 /* â”€â”€ Modals â”€â”€ */
@@ -512,6 +515,7 @@ tr:last-child td{border-bottom:none;}
 
   <!-- â”€â”€ TRADES PANEL â”€â”€ -->
   <div id="panel-trades" class="panel">
+    <!-- $ per trade -->
     <div class="card" style="padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
       <span style="font-size:12px;font-weight:600;color:var(--ink-2);">$ per trade</span>
       <input type="number" id="trade-amount-input" min="1" step="1" placeholder="25"
@@ -519,24 +523,47 @@ tr:last-child td{border-bottom:none;}
       <button onclick="setTradeAmount()" style="padding:4px 14px;font-size:12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;">Set</button>
       <span id="trade-amount-status" style="font-size:11px;color:var(--ink-3);"></span>
     </div>
-    <div class="card" style="padding:14px;margin-bottom:12px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div style="font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em;">Live Trades <span id="live-wr" style="font-weight:500;margin-left:6px;"></span></div>
-        <button class="btn" onclick="exportCSV()" style="font-size:10px;padding:3px 10px;">Export CSV</button>
+    <!-- Stat cards -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;">
+      <div class="card" style="padding:10px 12px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">Total Trades</div>
+        <div id="ts-total" style="font-size:18px;font-weight:700;color:var(--ink);">-</div>
       </div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Time</th><th>Market</th><th>Dir</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Fill</th><th>Reason</th><th>P&L</th></tr></thead>
-          <tbody id="live-trades"></tbody>
-        </table>
+      <div class="card" style="padding:10px 12px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">Win Rate</div>
+        <div id="ts-wr" style="font-size:18px;font-weight:700;color:var(--ink);">-</div>
+      </div>
+      <div class="card" style="padding:10px 12px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">Avg P&amp;L/Trade</div>
+        <div id="ts-avg" style="font-size:18px;font-weight:700;color:var(--ink);">-</div>
+      </div>
+      <div class="card" style="padding:10px 12px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">Best Streak</div>
+        <div id="ts-streak" style="font-size:18px;font-weight:700;color:var(--up);">-</div>
+      </div>
+      <div class="card" style="padding:10px 12px;text-align:center;">
+        <div style="font-size:10px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;">Worst DD</div>
+        <div id="ts-dd" style="font-size:18px;font-weight:700;color:var(--down);">-</div>
       </div>
     </div>
+    <!-- All Trades -->
     <div class="card" style="padding:14px;">
-      <div style="font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Paper Trades <span id="paper-wr" style="font-weight:500;margin-left:6px;"></span></div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+        <div style="font-size:11px;font-weight:700;color:var(--ink-3);text-transform:uppercase;letter-spacing:.08em;">All Trades</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;">
+          <button id="tf-All"  class="tf-btn tf-active" onclick="setTradesFilter('All')">All</button>
+          <button id="tf-BTC"  class="tf-btn" onclick="setTradesFilter('BTC')">BTC</button>
+          <button id="tf-ETH"  class="tf-btn" onclick="setTradesFilter('ETH')">ETH</button>
+          <button id="tf-SOL"  class="tf-btn" onclick="setTradesFilter('SOL')">SOL</button>
+          <button id="tf-XRP"  class="tf-btn" onclick="setTradesFilter('XRP')">XRP</button>
+          <button id="tf-DOGE" class="tf-btn" onclick="setTradesFilter('DOGE')">DOGE</button>
+          <button class="btn" onclick="exportCSV()" style="font-size:10px;padding:3px 10px;margin-left:6px;">Export CSV</button>
+        </div>
+      </div>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Time</th><th>Market</th><th>Dir</th><th>Qty</th><th>Entry</th><th>Exit</th><th>Fill</th><th>Reason</th><th>P&L</th></tr></thead>
-          <tbody id="paper-trades"></tbody>
+          <thead><tr><th>Time</th><th>Market</th><th>Strat</th><th>Dir</th><th>Qty</th><th>Entry</th><th>Exit</th><th>EV</th><th>Fill</th><th>Reason</th><th>P&L</th></tr></thead>
+          <tbody id="all-trades"></tbody>
         </table>
       </div>
     </div>
@@ -1255,9 +1282,9 @@ function _fmtSecs(s) {
 function renderTradeTable(tbodyId, trades) {
   const tbody = document.getElementById(tbodyId); if (!tbody) return;
   if (!trades || !trades.length) {
-    tbody.innerHTML='<tr><td colspan="9" style="color:var(--ink-3);text-align:center;padding:14px;font-size:11px;">No trades yet</td></tr>'; return;
+    tbody.innerHTML='<tr><td colspan="11" style="color:var(--ink-3);text-align:center;padding:14px;font-size:11px;">No trades yet</td></tr>'; return;
   }
-  tbody.innerHTML = trades.slice(0,50).map(t => {
+  tbody.innerHTML = trades.slice(0,100).map(t => {
     const pnl=t.pnl_dollars, isPending=t.outcome==='pending';
     const pnlCls=isPending?'':pnl>0?'td-win':pnl<0?'td-loss':'';
     const pnlIcon=isPending?'':pnl>0?'✅ ':pnl<0?'❌ ':'';
@@ -1273,7 +1300,13 @@ function renderTradeTable(tbodyId, trades) {
       :(t.fill_confirmed
         ?'<span style="background:rgba(27,158,85,.1);color:var(--up);border:1px solid rgba(27,158,85,.25);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">CONF</span>'
         :'<span style="background:rgba(214,57,73,.1);color:var(--down);border:1px solid rgba(214,57,73,.25);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">UNFILL</span>');
-    return `<tr ${rowStyle}><td>${fmtTime(t.ts)}</td><td>${mktCell}</td><td>${t.side==='yes'?'▲ UP':t.side==='no'?'▼ DN':'—'}</td><td>${t.contracts||'—'}</td><td>${t.entry_price_cents!=null?t.entry_price_cents+'c':'—'}</td><td>${t.exit_price_cents!=null?t.exit_price_cents+'c':'—'}</td><td>${fillBadge}</td><td>${escHtml(t.exit_reason||t.outcome||'—')}</td><td class="${pnlCls}">${pnlCell}</td></tr>`;
+    const isS1 = t.brain==='s1'||t.strategy_variant==='strategy1'||t.strategy_name==='S1';
+    const stratBadge=isS1
+      ?'<span style="background:rgba(99,102,241,.15);color:#818cf8;border:1px solid rgba(99,102,241,.3);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">S1</span>'
+      :'<span style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);border-radius:3px;padding:1px 5px;font-size:9px;font-weight:700;">S2</span>';
+    const evVal=t.ev!=null?(t.ev>=0?'+':'')+Number(t.ev).toFixed(1)+'%':'—';
+    const evStyle=t.ev>0?'color:var(--up)':t.ev<0?'color:var(--down)':'color:var(--ink-3)';
+    return `<tr ${rowStyle}><td>${fmtTime(t.ts)}</td><td>${mktCell}</td><td>${stratBadge}</td><td>${t.side==='yes'?'▲ UP':t.side==='no'?'▼ DN':'—'}</td><td>${t.contracts||'—'}</td><td>${t.entry_price_cents!=null?t.entry_price_cents+'c':'—'}</td><td>${t.exit_price_cents!=null?t.exit_price_cents+'c':'—'}</td><td style="${evStyle}">${evVal}</td><td>${fillBadge}</td><td>${escHtml(t.exit_reason||t.outcome||'—')}</td><td class="${pnlCls}">${pnlCell}</td></tr>`;
   }).join('');
 }
 
@@ -1721,6 +1754,18 @@ async function pollState() {
   } catch(e) { console.error('State poll:', e); }
 }
 
+let _tradesAssetFilter = 'All';
+function setTradesFilter(asset) {
+  _tradesAssetFilter = asset;
+  document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('tf-active'));
+  const btn = document.getElementById('tf-' + asset);
+  if (btn) btn.classList.add('tf-active');
+  const all = [...liveTradesData, ...paperTradesData];
+  all.sort((a,b) => (b.ts||'').localeCompare(a.ts||''));
+  const filtered = asset === 'All' ? all : all.filter(t => t.asset === asset || (t.market_id||'').startsWith(asset));
+  renderTradeTable('all-trades', filtered);
+}
+
 async function pollTrades() {
   try {
     const [lr,pr] = await Promise.all([fetch('/api/trades?mode=live'),fetch('/api/trades?mode=paper')]);
@@ -1728,31 +1773,49 @@ async function pollTrades() {
     const lj = await lr.json(), pj = await pr.json();
     liveTradesData = Array.isArray(lj) ? lj : [];
     paperTradesData = Array.isArray(pj) ? pj : [];
-  } catch(e) { console.error('Trades poll:', e); }
-  renderTradeTable('live-trades', liveTradesData);
-  renderTradeTable('paper-trades', paperTradesData);
-  updateAllocation();
-  const today=new Date().toISOString().slice(0,10);
-  function todayCount(trades,mode){return trades.filter(x=>x.mode===mode&&x.ts&&x.ts.startsWith(today)).length;}
-  function allCount(trades,mode){return trades.filter(x=>x.mode===mode).length;}
-  function allWr(trades,mode){
-    const s=trades.filter(x=>x.mode===mode&&x.outcome!=='pending'&&x.pnl_dollars!=null);
-    const w=s.filter(x=>x.outcome==='win').length,n=s.length;
-    return n?Math.round(w/n*100):null;
+  } catch(e) { console.error('Trades poll:', e); return; }
+
+  const all = [...liveTradesData, ...paperTradesData];
+  all.sort((a,b) => (b.ts||'').localeCompare(a.ts||''));
+
+  const resolved = all.filter(t => t.outcome !== 'pending' && t.pnl_dollars != null);
+  const wins = resolved.filter(t => t.outcome === 'win').length;
+  const wr = resolved.length ? Math.round(wins / resolved.length * 100) : null;
+  const avgPnl = resolved.length ? resolved.reduce((s,t) => s + t.pnl_dollars, 0) / resolved.length : null;
+
+  let bestStreak = 0, curStreak = 0;
+  for (const t of [...resolved].reverse()) {
+    if (t.outcome === 'win') { curStreak++; bestStreak = Math.max(bestStreak, curStreak); }
+    else curStreak = 0;
   }
-  const lc=todayCount(liveTradesData,'live'), pc=todayCount(paperTradesData,'paper');
-  const alc=allCount(liveTradesData,'live'), apc=allCount(paperTradesData,'paper');
-  const alWr=allWr(liveTradesData,'live'), apWr=allWr(paperTradesData,'paper');
-  const todayN=lc||pc||0, allN=alc+apc;
-  const pbTrades=document.getElementById('pb-trades');
-  if (pbTrades) pbTrades.innerHTML=`<span style="opacity:.65;font-size:10px">Today</span> ${todayN}<br><span style="opacity:.65;font-size:10px">All-time</span> ${allN}`;
-  const lwrEl=document.getElementById('live-wr');
-  if(lwrEl){const wr=alWr!=null?alWr:apWr!=null?apWr:null;lwrEl.textContent=wr!=null?`${wr}% WR all-time`:'—';}
-  const pwrEl=document.getElementById('paper-wr');if(pwrEl)pwrEl.textContent=apWr!=null?`${apWr}% WR`:'—';
+  let peak = 0, dd = 0, runPnl = 0;
+  for (const t of [...resolved].reverse()) {
+    runPnl += t.pnl_dollars;
+    if (runPnl > peak) peak = runPnl;
+    if ((peak - runPnl) > dd) dd = peak - runPnl;
+  }
+
+  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  setEl('ts-total', all.length);
+  setEl('ts-wr', wr != null ? wr + '%' : '—');
+  if (avgPnl != null) {
+    const el = document.getElementById('ts-avg');
+    if (el) { el.textContent = (avgPnl >= 0 ? '+$' : '-$') + Math.abs(avgPnl).toFixed(2); el.style.color = avgPnl >= 0 ? 'var(--up)' : 'var(--down)'; }
+  }
+  setEl('ts-streak', bestStreak ? 'W' + bestStreak : '—');
+  if (dd > 0.001) { const el = document.getElementById('ts-dd'); if (el) el.textContent = '-$' + dd.toFixed(2); }
+
+  const filtered = _tradesAssetFilter === 'All' ? all : all.filter(t => t.asset === _tradesAssetFilter || (t.market_id||'').startsWith(_tradesAssetFilter));
+  renderTradeTable('all-trades', filtered);
+
+  updateAllocation();
+  const today = new Date().toISOString().slice(0,10);
+  const todayN = all.filter(t => t.ts && t.ts.startsWith(today)).length;
+  const pbTrades = document.getElementById('pb-trades');
+  if (pbTrades) pbTrades.innerHTML = `<span style="opacity:.65;font-size:10px">Today</span> ${todayN}<br><span style="opacity:.65;font-size:10px">All-time</span> ${all.length}`;
   updateChartsAndPnl();
   if (_currentMarketSym && MARKET_TABS.includes(_currentTab)) renderMarketView(_currentMarketSym);
 }
-
 function exportCSV() { window.location.href = '/api/export/trades'; }
 
 async function setTradeAmount() {
