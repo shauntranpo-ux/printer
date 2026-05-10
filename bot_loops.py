@@ -15,7 +15,7 @@ import bot_state
 import bot_stats
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
-from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, _notify_ctx, _phase_for_eth, db_brain_scorecard
+from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard
 from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
@@ -386,9 +386,9 @@ async def handle_ready_phase(
         "win_prob_final": round(brain.get("win_prob", win_p_raw) * 100, 1),
         "ev":             round((brain.get("win_prob", 0.5) - entry_price_cents / 100 - _fee) * 100, 1),
         "contract_c":     round(entry_price_cents, 1),
-        "momentum":       30 if _mom_label in ("bullish", "bearish") else 0,
+        "momentum":       30 if _mom_label in ("yes", "no", "bullish", "bearish") else 0,
         "momentum_label": _mom_label,
-        "velocity":       30 if _vel_signal == "favorable" else (10 if _vel_signal == "neutral" else 0),
+        "velocity":       30 if _vel_signal in ("yes", "no", "favorable") else (10 if _vel_signal == "neutral" else 0),
         "velocity_label": _vel_signal,
         "time":           _time_score,
         "distance":       _dist_score,
@@ -556,7 +556,7 @@ async def handle_ready_phase(
         "strike": strike,
         "entry_ts": _entry_ts,
         "market_duration_min": _market_duration_min,
-        "elapsed_at_entry": _market_elapsed_at_entry,  # used by exit-side _phase_for_eth
+        "elapsed_at_entry": _market_elapsed_at_entry,
         "market_close_time": market.get("close_time", ""),
         "order_id": order_id,
         "asset": asset,
@@ -672,8 +672,6 @@ async def handle_locked_phase(
 
         log.info(f"{ticker} expired. Outcome={outcome}, P&L=${pnl:.2f} (fee=${fee:.2f})")
         pnl_str    = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-        outcome_str = "✅ WIN" if outcome == "win" else "❌ LOSS"
-
 
         await db_update_trade(pos["trade_id"], {
             "exit_price_cents": exit_price,
@@ -699,32 +697,9 @@ async def handle_locked_phase(
             bot_state._s2_consecutive_losses += 1
             max_cl = config.get("max_consecutive_losses", 5)
             if bot_state._s2_consecutive_losses >= max_cl:
-                _resume_str = "n/a"
-                # Prefer the stored market duration so the session label is
-                # stable regardless of how long the trade was held. Falls back
-                # to held-time for any positions created before this field.
-                _cl_dur_min = pos.get("market_duration_min") or (
-                    (time.time() - pos.get("entry_ts", time.time())) / 60.0
-                )
-                _cl_ctx = _notify_ctx(
-                    asset, pos.get("ticker", "?"), _cl_dur_min,
-                    _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
-                )
                 await send_telegram(f"ERROR - {bot_state._s2_consecutive_losses} consecutive losses")
 
-        pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
         mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(pos["mode"], "[LIVE]")
-        _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PDT")
-        _dur_secs = int(time.time() - pos.get("entry_ts", time.time()))
-        _dur_str  = f"{_dur_secs // 60}m {_dur_secs % 60}s"
-        # Prefer the stored market duration so the session label is stable
-        # regardless of hold length; fall back to held-time for backward
-        # compat with positions created before this field existed.
-        _close_dur_min = pos.get("market_duration_min") or (_dur_secs / 60.0)
-        _close_ctx = _notify_ctx(
-            asset, pos.get("ticker", ticker), _close_dur_min,
-            _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
-        )
         _s2_result = "WIN" if outcome == "win" else "LOSS"
         await send_telegram(f"{mode_icon} {_s2_result} - {asset} {pnl_str}")
         await _settle_s1_trade(ticker, market_result, btc_price, config, asset)

@@ -407,12 +407,8 @@ async def _execute_s1_trade(
     _fc = result.get("filled_contracts")
     contracts = _fc if _fc is not None else contracts
 
-    _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
-    _entry_p  = fill_price / 100.0
-    _fee      = _fee_rate * _entry_p * (1.0 - _entry_p)
     win_prob  = brain_s1.get("win_prob", 0.5)
-    ev_val    = round((win_prob - _entry_p - _fee) * 100, 1)
-    _ev_str   = f"+{ev_val}%" if ev_val >= 0 else f"{ev_val}%"
+    _entry_p  = fill_price / 100.0
 
     trade_data = {
         "ts":                   datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -457,9 +453,6 @@ async def _execute_s1_trade(
         bot_state._s1_pending_trades[ticker]["trade_id"] = trade_id
 
     mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
-    _win_pct  = int(win_prob * 100)
-    _payout   = round((100 - fill_price) * contracts / 100, 2)
-    _cost     = round(fill_price * contracts / 100, 2)
     _dir = "UP" if side == "yes" else "DOWN"
     log.info(f"[S1] {ticker}: ORDER FILLED -- {side.upper()} {contracts}x @ {fill_price}c")
     await send_telegram(f"{mode_icon} ORDER FILLED - {asset} {_dir}")

@@ -32,7 +32,7 @@ def track_contract_price(ticker: str, price: float) -> None:
 
 def _strategy_name_for(asset, duration_min=15.0):
     """Human-readable strategy name for the dashboard per-asset card."""
-    return {"BTC": "B3", "ETH": "E1", "SOL": "S1", "XRP": "X3", "DOGE": "D3"}.get(asset, "15m")
+    return {"BTC": "B3", "ETH": "E1", "SOL": "SL1", "XRP": "X3", "DOGE": "D3"}.get(asset, "15m")
 
 
 def _realized_vol(prices: list, window_minutes: int = 5) -> float:
