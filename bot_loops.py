@@ -583,9 +583,9 @@ async def handle_ready_phase(
     _s2_payout = round((100 - fill_price) * contracts / 100, 2)
     _s2_cost   = round(fill_price * contracts / 100, 2)
     await send_telegram(
-        f"<b>{_s2_mode_icon} [S2] \U0001F3AF {ticker}</b>\n"
-        f"{side.upper()} {contracts}x @ {fill_price}c  wp={_s2_wp}%\n"
-        f"Risk ${_s2_cost:.2f} → win ${_s2_payout:.2f}"
+        f"<b>{_s2_mode_icon} [S2] FILLED \U0001f4e5 {ticker}</b>\n"
+        f"{side.upper()} {contracts}x @ {fill_price}c | wp {_s2_wp}%\n"
+        f"Cost ${_s2_cost:.2f} | Max win ${_s2_payout:.2f}"
     )
 
 
@@ -714,7 +714,7 @@ async def handle_locked_phase(
                     _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
                 )
                 await send_telegram(
-                    f"<b>🔵 [S2] {_cl_ctx} {bot_state._s2_consecutive_losses} consecutive losses</b>"
+                    f"<b>⚠️ [S2] ERROR — {bot_state._s2_consecutive_losses} consecutive losses</b>"
                 )
 
         pct_str   = f"+{profit_pct:.0f}%" if profit_pct >= 0 else f"{profit_pct:.0f}%"
@@ -730,10 +730,10 @@ async def handle_locked_phase(
             asset, pos.get("ticker", ticker), _close_dur_min,
             _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
         )
+        _s2_icon = "✅ WIN" if outcome == "win" else "❌ LOSS"
         await send_telegram(
-            f"<b>{mode_icon} [S2] {outcome_str} {_close_ctx}</b>\n"
-            f"{pos['side'].upper()} {pos['contracts']}x @ {pos['entry_price_cents']}c  "
-            f"P&L: {pnl_str} ({pct_str})  held {_dur_str}"
+            f"<b>{mode_icon} [S2] {_s2_icon} — {pos.get('ticker', ticker)}</b>\n"
+            f"{pos['side'].upper()} {pos['contracts']}x @ {pos['entry_price_cents']}c | P&L {pnl_str} ({pct_str}) | held {_dur_str}"
         )
         await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
         return
