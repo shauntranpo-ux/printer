@@ -340,7 +340,7 @@ async def handle_ready_phase(
     _vel_dir, _ = _s2_contract_direction(ticker, _s2_cfg_d["min_vel_delta"], _s2_cfg_d["vel_lookback"])
     _s2_dir = "UP" if _vel_dir == "yes" else ("DOWN" if _vel_dir == "no" else "neutral")
     _S1_GATE_ORD = ["s1_session_gate", "s1_time_gate", "s1_dist_gate", "s1_rv_gate", "s1_no_ema_data", "s1_reversal_gate", "s1_ev_gate"]
-    _S2_GATE_ORD = ["s2_time_gate", "s2_dist_gate", "s2_no_velocity_data", "s2_obi_gate", "s2_ev_gate"]
+    _S2_GATE_ORD = ["s2_time_gate", "s2_dist_gate", "s2_no_velocity_data", "s2_reversal_gate", "s2_obi_gate", "s2_ev_gate"]
     def _cnt_gates(gates, reason, traded):
         if traded: return len(gates)
         for i, g in enumerate(gates):
