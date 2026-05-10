@@ -276,17 +276,17 @@ def strategy_brain_s1(
 
 _S2_ASSET_CONFIG: dict = {
     #           min_dist   min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max
-    "BTC":  dict(min_dist=0.00175, min_obi=0.06,  min_vel_delta=0.20, vel_lookback=4,
-                 min_ev=0.025, time_min=2.0, time_max=13.0),
-    "ETH":  dict(min_dist=0.0020,  min_obi=0.04,  min_vel_delta=0.18, vel_lookback=4,
-                 min_ev=0.025, time_min=2.0, time_max=13.0),
+    "BTC":  dict(min_dist=0.00100, min_obi=0.01,  min_vel_delta=0.08, vel_lookback=4,
+                 min_ev=0.015, time_min=2.0, time_max=13.0),
+    "ETH":  dict(min_dist=0.0015,  min_obi=0.01,  min_vel_delta=0.07, vel_lookback=4,
+                 min_ev=0.015, time_min=2.0, time_max=13.0),
     # SOL/DOGE: low strike_increment -> small dist from strike; vel is calibrated conservatively
-    "SOL":  dict(min_dist=0.0020,  min_obi=0.06,  min_vel_delta=0.18, vel_lookback=3,
-                 min_ev=0.030, time_min=2.0, time_max=11.0),
-    "XRP":  dict(min_dist=0.0025,  min_obi=0.06,  min_vel_delta=0.20, vel_lookback=4,
-                 min_ev=0.025, time_min=2.0, time_max=12.0),
-    "DOGE": dict(min_dist=0.0015,  min_obi=0.06,  min_vel_delta=0.12, vel_lookback=3,
-                 min_ev=0.040, time_min=2.0, time_max=10.0),
+    "SOL":  dict(min_dist=0.0015,  min_obi=0.01,  min_vel_delta=0.07, vel_lookback=3,
+                 min_ev=0.015, time_min=2.0, time_max=11.0),
+    "XRP":  dict(min_dist=0.0015,  min_obi=0.01,  min_vel_delta=0.08, vel_lookback=4,
+                 min_ev=0.015, time_min=2.0, time_max=12.0),
+    "DOGE": dict(min_dist=0.0010,  min_obi=0.01,  min_vel_delta=0.05, vel_lookback=3,
+                 min_ev=0.015, time_min=2.0, time_max=10.0),
 }
 
 # ---------------------------------------------------------------------------
