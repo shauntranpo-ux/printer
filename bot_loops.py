@@ -379,9 +379,6 @@ async def handle_ready_phase(
         skip_reason_ai = f"win prob {raw_win_pct}% below floor {conf_threshold}%"
         do_trade = False
 
-    # ── Reversal model — runs whenever main strategy skips ──────────────────────────
-    _is_reversal = False
-
     if not do_trade:
         log.info(f"{ticker}: watching — {skip_reason_ai}")
         await _log_entry(market, "READY", secs_left, btc_price, strike,
@@ -561,21 +558,6 @@ async def handle_ready_phase(
         f"<b>{_s2_mode_icon} [S2] \U0001F3AF {ticker}</b>\n"
         f"{side.upper()} {contracts}x @ {fill_price}c  wp={_s2_wp}%\n"
         f"Risk ${_s2_cost:.2f} → win ${_s2_payout:.2f}"
-    )
-    mode_icon  = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
-    _win_prob_used = brain.get("win_prob", 0)
-    _win_pct   = int(_win_prob_used * 100)
-    _ev        = round((_win_prob_used - fill_price / 100 - _fee) * 100, 1)
-    _ev_str    = f"+{_ev}%" if _ev >= 0 else f"{_ev}%"
-    _payout    = round((100 - fill_price) * contracts / 100, 2)
-    _cost      = round(fill_price * contracts / 100, 2)
-    _time_str  = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PDT")
-    _expiry_dt = datetime.now(timezone(timedelta(hours=-7))) + timedelta(seconds=secs_left)
-    _expiry_str = _expiry_dt.strftime("%I:%M %p PDT")
-    _strat_tag = "REVERSAL" if _is_reversal else "ORDER FILLED"
-    _fill_ctx = _notify_ctx(
-        asset, ticker, (elapsed + secs_left) / 60.0,
-        _phase_for_eth(asset, elapsed),
     )
 
 
