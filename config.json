@@ -12,7 +12,7 @@
   "preflight_override": false,
   "vol_gate_thresh": 1.8,
   "min_entry_price_cents": 5,
-  "max_entry_price_cents": 75,
+  "max_entry_price_cents": 88,
   "allowed_sides": [
     "yes",
     "no"

@@ -85,7 +85,7 @@ _S1_ASSET_CONFIG: dict = {
     "XRP":  dict(min_dist=0.005,   max_rv=0.0500, ema_short=3, ema_long=12,
                  session_gate=False, min_ev=0.025, time_min=3.0, time_max=12.0),
     # DOGE: strike_increment=$0.001 at ~$0.15 -> max possible dist ~0.33%; keep min_dist below that
-    "DOGE": dict(min_dist=0.007,   max_rv=0.0900, ema_short=2, ema_long=12,
+    "DOGE": dict(min_dist=0.003,   max_rv=0.0900, ema_short=2, ema_long=12,
                  session_gate=False, min_ev=0.040, time_min=3.0, time_max=10.0),
 }
 
