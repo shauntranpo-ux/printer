@@ -469,7 +469,7 @@ def strategy_brain_s2(
     if not obi_ok:
         return _make_skip(
             side,
-            f"s2_obi_gate:obi={obi_val:.2f}_side={side}_min={cfg['min_obi']}",
+            f"s2_obi_gate:obi={'None' if obi_val is None else f'{obi_val:.2f}'}_side={side}_min={cfg['min_obi']}",
             abs_pct, mins_left, variant="strategy2",
         )
 
