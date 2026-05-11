@@ -1,5 +1,5 @@
 """
-server.py â€” Flask backend for the Kalshi BTC bot dashboard.
+server.py — Flask backend for the Kalshi BTC bot dashboard.
 
 Reads from kalshi_bot.db and bot_state.json (written by bot.py).
 Writes to config.json when the user changes settings.
@@ -84,13 +84,13 @@ except Exception as _rst_err:
 
 app = Flask(__name__)
 
-# â”€â”€ Bot subprocess tracking â”€â”€
+# ── Bot subprocess tracking ──
 _bot_process: subprocess.Popen | None = None
 
 
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ══════════════════════════════════════════════════════════════════════════════
 #  Helpers
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ══════════════════════════════════════════════════════════════════════════════
 
 def _safe_json_read(path: str, default):
     """Read a JSON file and return default on any error (missing, corrupt, etc)."""
@@ -165,9 +165,9 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ══════════════════════════════════════════════════════════════════════════════
 #  API endpoints
-# â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+# ══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/api/state")
 def api_state():
@@ -370,12 +370,12 @@ def api_config():
     new_mode    = config.get("mode", "paper")
 
     if "bot_enabled" in data and new_enabled != prev_enabled:
-        icon = "â–¶ï¸" if new_enabled else "â¹"
-        _telegram_notify(f"{icon} <b>Bot {'ENABLED' if new_enabled else 'DISABLED'}</b>  â€”  {now_str}\nMode: {new_mode.upper()}")
+        icon = "▶️" if new_enabled else "⏹"
+        _telegram_notify(f"{icon} <b>Bot {'ENABLED' if new_enabled else 'DISABLED'}</b>  —  {now_str}\nMode: {new_mode.upper()}")
 
     if "mode" in data and new_mode != prev_mode:
-        icon = "ðŸ’µ" if new_mode == "live" else "ðŸ“„"
-        _telegram_notify(f"{icon} <b>Mode switched to {new_mode.upper()}</b>  â€”  {now_str}")
+        icon = "💵" if new_mode == "live" else "📄"
+        _telegram_notify(f"{icon} <b>Mode switched to {new_mode.upper()}</b>  —  {now_str}")
 
     return jsonify(config)
 
