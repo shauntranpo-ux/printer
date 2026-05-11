@@ -23,6 +23,8 @@ env/
 # Database
 *.db
 *.db-journal
+*.db-wal
+*.db-shm
 
 # Logs
 logs/
@@ -42,6 +44,7 @@ data/historical/*
 .ruff_cache/
 .mypy_cache/
 .pytest_cache/
+.superpowers/brainstorm/*/state/
 
 # Secrets
 *.pem
