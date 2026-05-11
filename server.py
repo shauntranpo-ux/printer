@@ -29,11 +29,10 @@ except Exception as _import_err:
     traceback.print_exc()
     raise
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-)
+import obs
+obs.setup_logging("server")
 log = logging.getLogger("server")
+_PROCESS_START = time.time()
 
 # Always run from the directory containing this file so relative paths work
 # under gunicorn (which doesn't execute __main__)

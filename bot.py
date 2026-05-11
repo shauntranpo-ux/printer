@@ -22,6 +22,7 @@ try:
 except ImportError:
     pass
 
+import obs
 import bot_state
 import asset_manager
 from asset_manager import get_price as _am_get_price, coinbase_price_task, seed_price_history
@@ -31,11 +32,6 @@ from bot_risk import verify_kalshi_connection, run_preflight_checks
 from bot_loops import main_loop
 
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[logging.StreamHandler()],
-)
 log = logging.getLogger("bot")
 
 
@@ -45,6 +41,7 @@ log = logging.getLogger("bot")
 
 async def main() -> None:
     """Bootstrap: load credentials, init DB, start BTC feed, run main loop."""
+    obs.setup_logging("bot")
     _init_config()
     load_credentials(mode=read_config().get("mode", "paper"))
     init_db()

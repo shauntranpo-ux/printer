@@ -25,6 +25,8 @@ import sys
 import time
 import urllib.request
 
+import obs
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_STRATEGIES_FILE = os.path.join(BASE_DIR, "strategies.json")
@@ -188,6 +190,7 @@ def _shutdown(signum, frame):
 
 def main():
     global _validator_proc, _ladder_proc, _weekly_proc
+    obs.setup_logging("runner")
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--strategies", default=DEFAULT_STRATEGIES_FILE)
