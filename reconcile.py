@@ -67,40 +67,50 @@ async def fetch_fills_for_ticker(
     """
     GET /portfolio/fills?ticker=X filtered to fills at or after since_ts_ms.
 
-    Returns raw fill list. Returns [] on any error.
-    NOTE: Kalshi fills schema assumed: {"side": "yes"|"no", "price": int, "count": int,
-    "created_time": ISO8601}. Flag for follow-up if field names differ in production.
+    Follows cursor pagination until no cursor returned or page is empty.
+    Returns [] on any error. Includes conservatively on unparseable timestamps.
     """
-    path = f"/portfolio/fills?ticker={ticker}&limit=100"
-    try:
-        async with session.get(
-            bot_state.KALSHI_BASE_URL + path,
-            headers=kalshi_headers("GET", path),
-            timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
-        ) as resp:
-            if resp.status != 200:
-                log.warning("fetch_fills_for_ticker %s: HTTP %s", ticker, resp.status)
-                return []
-            data = await resp.json()
-        fills = data.get("fills") or []
-        if not since_ts_ms:
-            return fills
-        out = []
-        for f in fills:
-            created = f.get("created_time", "")
-            if not created:
+    all_fills: list = []
+    cursor: "str | None" = None
+
+    while True:
+        path = f"/portfolio/fills?ticker={ticker}&limit=100"
+        if cursor:
+            path += f"&cursor={cursor}"
+        try:
+            async with session.get(
+                bot_state.KALSHI_BASE_URL + path,
+                headers=kalshi_headers("GET", path),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
+            ) as resp:
+                if resp.status != 200:
+                    log.warning("fetch_fills_for_ticker %s: HTTP %s", ticker, resp.status)
+                    break
+                data = await resp.json()
+            page = data.get("fills") or []
+            all_fills.extend(page)
+            cursor = data.get("cursor") or data.get("next_cursor")
+            if not cursor or not page:
+                break
+        except Exception as exc:
+            log.warning("fetch_fills_for_ticker %s: %s", ticker, exc)
+            break
+
+    if not since_ts_ms:
+        return all_fills
+    out = []
+    for f in all_fills:
+        created = f.get("created_time", "")
+        if not created:
+            out.append(f)
+            continue
+        try:
+            dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
+            if int(dt.timestamp() * 1000) >= since_ts_ms:
                 out.append(f)
-                continue
-            try:
-                dt = datetime.fromisoformat(created.replace("Z", "+00:00"))
-                if int(dt.timestamp() * 1000) >= since_ts_ms:
-                    out.append(f)
-            except Exception:
-                out.append(f)  # unparseable timestamp — include conservatively
-        return out
-    except Exception as exc:
-        log.warning("fetch_fills_for_ticker %s: %s", ticker, exc)
-        return []
+        except Exception:
+            out.append(f)
+    return out
 
 
 async def fetch_market_resolution(
