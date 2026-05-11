@@ -22,11 +22,14 @@ import os
 import signal
 import subprocess
 import sys
+import logging
 import time
 import urllib.request
 
 import notify
 import obs
+obs.setup_logging("runner")
+log = logging.getLogger("runner")
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -58,10 +61,10 @@ def _load_strategies(path: str) -> list[dict]:
         with open(path) as fh:
             strategies = json.load(fh)
     except FileNotFoundError:
-        print(f"[runner] strategies.json not found at {path}.")
+        log.error(f"strategies.json not found at {path}.")
         sys.exit(1)
     except json.JSONDecodeError as exc:
-        print(f"[runner] strategies.json parse error: {exc}")
+        log.error(f"strategies.json parse error: {exc}")
         sys.exit(1)
 
     required = {"name", "config_file", "db_file", "state_file", "enabled"}
@@ -69,12 +72,12 @@ def _load_strategies(path: str) -> list[dict]:
     for i, s in enumerate(strategies):
         missing = required - s.keys()
         if missing:
-            print(f"[runner] Strategy #{i} missing fields: {missing} — skipping")
+            log.warning(f"Strategy #{i} missing fields: {missing} — skipping")
             continue
         if s["enabled"]:
             valid.append(s)
         else:
-            print(f"[runner] Strategy '{s['name']}' disabled — skipping")
+            log.info(f"Strategy '{s['name']}' disabled — skipping")
     return valid
 
 
@@ -89,7 +92,7 @@ def _build_env(strategy: dict) -> dict:
 
 
 def _start_bot(strategy: dict) -> subprocess.Popen:
-    print(f"[runner] Starting strategy '{strategy['name']}' ...")
+    log.info(f"Starting strategy '{strategy['name']}' ...")
     return subprocess.Popen(
         [sys.executable, os.path.join(BASE_DIR, "bot.py")],
         env=_build_env(strategy),
@@ -98,12 +101,12 @@ def _start_bot(strategy: dict) -> subprocess.Popen:
 
 
 def _start_validator() -> subprocess.Popen:
-    print("[runner] Starting price_validator.py (paper mode sidecar) ...")
+    log.info("Starting price_validator.py (paper mode sidecar) ...")
     proc = subprocess.Popen(
         [sys.executable, os.path.join(BASE_DIR, "price_validator.py")],
         cwd=BASE_DIR,
     )
-    print(f"[runner]   price_validator PID={proc.pid}")
+    log.info(f"  price_validator PID={proc.pid}")
     return proc
 
 
@@ -112,13 +115,13 @@ def _run_preflight_validation() -> bool:
     Run validate_and_report.py synchronously before starting bots in live mode.
     Returns True if GO or MARGINAL (safe to proceed), False if NO-GO (halt).
     """
-    print("[runner] Live mode — running validate_and_report.py pre-flight check ...")
+    log.info("Live mode — running validate_and_report.py pre-flight check ...")
     result = subprocess.run(
         [sys.executable, os.path.join(BASE_DIR, "validate_and_report.py")],
         cwd=BASE_DIR,
     )
     if result.returncode != 0:
-        print("[runner] validate_and_report.py returned NO-GO (exit 1). Halting.")
+        log.error("validate_and_report.py returned NO-GO (exit 1). Halting.")
         _send_telegram_sync(
             "<b>LIVE PRE-FLIGHT FAILED — NO-GO</b>\n"
             "validate_and_report.py rejected the price model.\n"
@@ -126,41 +129,41 @@ def _run_preflight_validation() -> bool:
             "then retry: <code>python runner.py</code>"
         )
         return False
-    print("[runner] Pre-flight validation passed (GO / MARGINAL) — starting bots.")
+    log.info("Pre-flight validation passed (GO / MARGINAL) — starting bots.")
     return True
 
 
 def _start_ladder_collector() -> subprocess.Popen:
     global _last_ladder_run
-    print("[runner] Starting collect_kalshi_ladder_history.py ...")
+    log.info("Starting collect_kalshi_ladder_history.py ...")
     proc = subprocess.Popen(
         [sys.executable, os.path.join(BASE_DIR, "collect_kalshi_ladder_history.py"), "--days", "3"],
         cwd=BASE_DIR,
     )
     _last_ladder_run = time.time()
-    print(f"[runner]   ladder collector PID={proc.pid}")
+    log.info(f"  ladder collector PID={proc.pid}")
     return proc
 
 
 def _start_weekly_report() -> subprocess.Popen:
     global _last_weekly_run
-    print("[runner] Starting weekly_report.py ...")
+    log.info("Starting weekly_report.py ...")
     proc = subprocess.Popen(
         [sys.executable, os.path.join(BASE_DIR, "weekly_report.py")],
         cwd=BASE_DIR,
     )
     _last_weekly_run = time.time()
-    print(f"[runner]   weekly report PID={proc.pid}")
+    log.info(f"  weekly report PID={proc.pid}")
     return proc
 
 
 def _shutdown(signum, frame):
-    print("\n[runner] Shutting down ...")
+    log.info("Shutting down ...")
     for entry in _procs:
         proc = entry["proc"]
         if proc.poll() is None:
             proc.terminate()
-            print(f"[runner]   terminated '{entry['name']}'")
+            log.info(f"  terminated '{entry['name']}' ")
     for name, proc in [
         ("price_validator",  _validator_proc),
         ("ladder_collector", _ladder_proc),
@@ -168,7 +171,7 @@ def _shutdown(signum, frame):
     ]:
         if proc and proc.poll() is None:
             proc.terminate()
-            print(f"[runner]   terminated {name}")
+            log.info(f"  terminated {name}")
     sys.exit(0)
 
 
@@ -176,8 +179,6 @@ def _shutdown(signum, frame):
 
 def main():
     global _validator_proc, _ladder_proc, _weekly_proc
-    obs.setup_logging("runner")
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--strategies", default=DEFAULT_STRATEGIES_FILE)
     args = parser.parse_args()
@@ -193,10 +194,10 @@ def main():
             cfg = json.load(fh)
         mode = cfg.get("mode", "paper")
     except Exception as exc:
-        print(f"[runner] Could not read config.json: {exc} — defaulting to paper mode")
+        log.warning(f"Could not read config.json: {exc} — defaulting to paper mode")
         mode = "paper"
 
-    print(f"[runner] Mode: {mode.upper()}")
+    log.info(f"Mode: {mode.upper()}")
 
     # Live mode: blocking pre-flight validation before starting any bots
     if mode == "live":
@@ -207,7 +208,7 @@ def main():
     # Load and start bot strategy processes
     strategies = _load_strategies(args.strategies)
     if not strategies:
-        print("[runner] No enabled strategies found. Check strategies.json.")
+        log.error("No enabled strategies found. Check strategies.json.")
         sys.exit(1)
 
     for s in strategies:
@@ -220,15 +221,15 @@ def main():
             "crash_times": [],
             "halted":      False,
         })
-        print(f"[runner]   '{s['name']}' PID={proc.pid}  state={s['state_file']}")
+        log.info(f"  '{s['name']}' PID={proc.pid}  state={s['state_file']}")
 
-    print(f"[runner] {len(strategies)} strategy instance(s) running. Ctrl+C to stop.\n")
+    log.info(f"{len(strategies)} strategy instance(s) running. Ctrl+C to stop.")
 
     # Paper mode sidecar: continuous price validation
     if mode == "paper":
         _validator_proc = _start_validator()
     else:
-        print("[runner] Live mode — price_validator not started.")
+        log.info("Live mode — price_validator not started.")
 
     # Always: ladder history collector (runs once now, then every 24 h)
     _ladder_proc = _start_ladder_collector()
@@ -257,7 +258,7 @@ def main():
                 if code == 2:
                     msg = (f"PRE-FLIGHT FAILED: '{entry['name']}' refused to start (code=2). "
                            f"Resolve pre-flight issues then restart manually.")
-                    print(f"[runner] {msg}")
+                    log.error(f"{msg}")
                     _send_telegram_sync(
                         f"<b>PRE-FLIGHT FAILED — {entry['name']}</b>\n"
                         f"Bot refused to start due to unresolved pre-flight checks.\n"
@@ -268,8 +269,7 @@ def main():
                     continue
 
                 if entry["last_crash"] == 0.0:
-                    print(f"[runner] '{entry['name']}' exited (code={code}). "
-                          f"Waiting {RESTART_BACKOFF}s before restart ...")
+                    log.info(f"'{entry['name']}' exited (code={code}). Waiting {RESTART_BACKOFF}s before restart ...")
                     entry["last_crash"] = now
                     entry["crash_times"].append(now)
                 elif since_crash >= RESTART_BACKOFF:
@@ -282,7 +282,7 @@ def main():
                             f"CRITICAL: '{entry['name']}' crashed {len(recent)}x "
                             f"in the last hour — halting restarts."
                         )
-                        print(f"[runner] {msg}")
+                        log.error(f"{msg}")
                         _send_telegram_sync(
                             f"<b>CRASH LOOP HALTED — {entry['name']}</b>\n"
                             f"Crashed {len(recent)}x in the last hour.\n"
@@ -293,24 +293,23 @@ def main():
                         new_proc = _start_bot(entry["strategy"])
                         entry["proc"]       = new_proc
                         entry["last_crash"] = 0.0
-                        print(f"[runner] '{entry['name']}' restarted "
-                              f"(PID={new_proc.pid}, crashes_1h={len(recent)}).")
+                        log.info(f"'{entry['name']}' restarted (PID={new_proc.pid}, crashes_1h={len(recent)}).")
 
             # ── price_validator: restart if died ─────────────────────────────
             if _validator_proc and _validator_proc.poll() is not None:
-                print(f"[runner] price_validator exited (code={_validator_proc.returncode}) — restarting ...")
+                log.warning(f"price_validator exited (code={_validator_proc.returncode}) — restarting ...")
                 _validator_proc = _start_validator()
 
             # ── ladder collector: restart when done + 24 h elapsed ───────────
             if _ladder_proc and _ladder_proc.poll() is not None:
                 if now - _last_ladder_run >= LADDER_INTERVAL:
-                    print("[runner] 24 h elapsed — refreshing ladder history ...")
+                    log.info("24 h elapsed — refreshing ladder history ...")
                     _ladder_proc = _start_ladder_collector()
 
             # ── weekly report: restart when done + 7 days elapsed ────────────
             if _weekly_proc and _weekly_proc.poll() is not None:
                 if now - _last_weekly_run >= WEEKLY_INTERVAL:
-                    print("[runner] 7 days elapsed — generating weekly report ...")
+                    log.info("7 days elapsed — generating weekly report ...")
                     _weekly_proc = _start_weekly_report()
 
             # ── Status line ───────────────────────────────────────────────────
@@ -323,15 +322,15 @@ def main():
                 sidecars.append(f"ladder:{'running' if _ladder_proc.poll() is None else 'idle'}")
             if _weekly_proc:
                 sidecars.append(f"weekly:{'running' if _weekly_proc.poll() is None else 'idle'}")
-            status = f"[runner] OK | bots: {running}"
+            status = f"OK | bots: {running}"
             if sidecars:
                 status += f" | sidecars: {sidecars}"
             if halted:
                 status += f" | HALTED: {halted}"
-            print(status)
+            log.info(status)
 
         except Exception as exc:
-            print(f"[runner] Loop error (continuing): {exc}")
+            log.error(f"Loop error (continuing): {exc}")
 
 
 if __name__ == "__main__":
