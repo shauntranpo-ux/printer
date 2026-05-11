@@ -21,6 +21,7 @@ from bot_market import (
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
     kalshi_headers,
     calculate_contracts, implied_prob, place_order, _portfolio_has_position,
+    _maybe_adjust_clock_skew,
 )
 from bot_strategy import (
     strategy_brain_s1, strategy_brain_s2,
@@ -1099,6 +1100,14 @@ async def main_loop() -> None:
     # from silently breaking API calls after many hours of uptime.
     connector = aiohttp.TCPConnector(keepalive_timeout=30, limit=10)
     async with aiohttp.ClientSession(connector=connector) as session:
+        # Probe clock skew before any authenticated Kalshi call.
+        await _maybe_adjust_clock_skew(session)
+
+        # Fire deferred demo-fallback alert if load_credentials disabled the bot.
+        if bot_state.demo_fallback_alert:
+            bot_state.demo_fallback_alert = False
+            await send_telegram("SAFETY FALLBACK — DEMO creds missing. Bot DISABLED (paper mode forced).")
+
         # Verify saved positions against Kalshi before trusting the state file.
         await _verify_and_restore_positions(session, _saved_pos, _saved_phase, _non_btc_positions, _mode)
 

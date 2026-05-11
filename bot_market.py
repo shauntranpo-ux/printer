@@ -8,6 +8,7 @@ Public interface (see __all__):
            calculate_contracts, implied_prob
 """
 import asyncio
+import email.utils
 import logging
 import math
 import os
@@ -29,10 +30,14 @@ from asset_manager import (
 from bot_infra import (
     read_config, write_config,
     _maybe_fill_verification_notify, _phase_for_eth, _notify_ctx,
+    send_telegram,
 )
 from kalshi_compat import dollars_to_cents, extract_order_counts, extract_fill_price_cents
 
 log = logging.getLogger("bot")
+
+_last_auth_alert_ts: float = 0.0
+_AUTH_ALERT_COOLDOWN: float = 300.0
 
 
 def _read_price_cents(market_or_book: dict, key_base: str) -> "int | None":
@@ -68,6 +73,12 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 
+def _read_pem_bytes(path: str) -> bytes:
+    # Sync read OK: only called at startup before the event loop is running.
+    with open(path, "rb") as fh:
+        return fh.read()
+
+
 def load_credentials(mode: str = "paper") -> None:
     """
     Load Kalshi API credentials from environment variables based on active mode.
@@ -86,7 +97,7 @@ def load_credentials(mode: str = "paper") -> None:
         if _key and _pem:
             bot_state.api_key = _key
             try:
-                pem_bytes = open(_pem, "rb").read() if os.path.exists(_pem) else _pem.encode()
+                pem_bytes = _read_pem_bytes(_pem) if os.path.exists(_pem) else _pem.encode()
                 bot_state.private_key = serialization.load_pem_private_key(pem_bytes, password=None)
                 log.info("Paper mode: Kalshi credentials loaded for market data access.")
             except Exception as exc:
@@ -110,27 +121,21 @@ def load_credentials(mode: str = "paper") -> None:
     if not bot_state.api_key or not pem_val:
         missing = key_id_var if not bot_state.api_key else pem_var
         if mode == "demo":
-            log.warning(
-                f"{missing} not set — DEMO mode requires demo credentials. "
-                f"Falling back to paper mode. Add the env vars in Railway to enable demo."
+            log.error(
+                "DEMO mode requested but demo creds missing (%s not set). "
+                "NOT falling back to live — bot will be disabled.", missing,
             )
             try:
                 cfg = read_config()
                 cfg["mode"] = "paper"
+                cfg["bot_enabled"] = False
                 write_config(cfg)
             except Exception as _ce:
-                log.warning(f"Could not write paper fallback to config: {_ce}")
-            _key = os.environ.get("KALSHI_API_KEY", "").strip()
-            _pem = os.environ.get("KALSHI_PRIVATE_KEY", "").strip()
-            if _key and _pem:
-                bot_state.api_key = _key
-                try:
-                    pem_bytes = open(_pem, "rb").read() if os.path.exists(_pem) else _pem.encode()
-                    bot_state.private_key = serialization.load_pem_private_key(pem_bytes, password=None)
-                    log.info("Paper fallback: loaded live credentials for market data access.")
-                except Exception as exc:
-                    log.warning(f"Paper fallback: live credential load failed ({exc}).")
+                log.warning("Could not write paper-disabled config: %s", _ce)
+            bot_state.api_key = ""
+            bot_state.private_key = None
             bot_state.KALSHI_BASE_URL = bot_state.KALSHI_LIVE_BASE_URL
+            bot_state.demo_fallback_alert = True
             return
         else:
             print(f"ERROR: {missing} is not set (required for {label} mode).")
@@ -144,8 +149,7 @@ def load_credentials(mode: str = "paper") -> None:
         sys.exit(1)
 
     if os.path.exists(pem_val):
-        with open(pem_val, "rb") as fh:
-            pem_bytes = fh.read()
+        pem_bytes = _read_pem_bytes(pem_val)
         log.info(f"Loaded {label} private key from file: {pem_val}")
     else:
         pem_bytes = pem_val.encode()
@@ -170,7 +174,7 @@ def kalshi_headers(method: str, path: str) -> dict:
     Returns:
         Dict of header name -> value.
     """
-    ts = str(int(time.time() * 1000))
+    ts = str(int(time.time() * 1000) + bot_state.kalshi_clock_skew_ms)
     full_path = bot_state.KALSHI_PATH_PREFIX + path
     msg = (ts + method.upper() + full_path).encode()
     sig = b64encode(
@@ -189,6 +193,70 @@ def kalshi_headers(method: str, path: str) -> dict:
         "KALSHI-ACCESS-SIGNATURE": sig,
         "Content-Type": "application/json",
     }
+
+
+async def _alert_auth_failure(status: int, path: str, response_body: str) -> None:
+    global _last_auth_alert_ts
+    now = time.time()
+    if now - _last_auth_alert_ts < _AUTH_ALERT_COOLDOWN:
+        return
+    _last_auth_alert_ts = now
+    body_preview = (response_body or "")[:200]
+    await send_telegram(
+        f"<b>KALSHI AUTH FAILURE</b>\nHTTP {status} on {path}\n"
+        f"Body: <code>{body_preview}</code>\n"
+        f"Clock skew applied: {bot_state.kalshi_clock_skew_ms}ms"
+    )
+
+
+async def _maybe_adjust_clock_skew(session: aiohttp.ClientSession) -> None:
+    probe_path = "/exchange/status"
+    try:
+        local_ts_ms = int(time.time() * 1000)
+        async with session.get(
+            bot_state.KALSHI_BASE_URL + probe_path,
+            timeout=aiohttp.ClientTimeout(total=5),
+        ) as resp:
+            date_hdr = resp.headers.get("Date", "")
+        if not date_hdr:
+            log.info("Kalshi clock skew probe: no Date header")
+            return
+        server_dt = email.utils.parsedate_to_datetime(date_hdr)
+        server_ts_ms = int(server_dt.timestamp() * 1000)
+        diff = server_ts_ms - local_ts_ms
+        if abs(diff) > 2000:
+            log.warning("Kalshi clock skew detected: %+dms — applying correction", diff)
+            bot_state.kalshi_clock_skew_ms = diff
+        else:
+            log.info("Kalshi clock skew probe: diff=%+dms (within tolerance)", diff)
+    except Exception as exc:
+        log.warning("Kalshi clock skew probe failed (non-fatal): %s", exc)
+
+
+async def _kalshi_get(
+    session: aiohttp.ClientSession,
+    path: str,
+) -> "tuple[int, dict]":
+    url = bot_state.KALSHI_BASE_URL + path
+    for _attempt in range(2):
+        try:
+            async with session.get(
+                url,
+                headers=kalshi_headers("GET", path),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
+            ) as resp:
+                status = resp.status
+                data = await resp.json()
+        except Exception as exc:
+            log.warning("_kalshi_get %s error: %s", path, exc)
+            return 0, {}
+        if status != 401 or _attempt == 1:
+            if status == 401:
+                await _alert_auth_failure(status, path, str(data)[:200])
+            return status, data
+        log.warning("_kalshi_get 401 on %s — probing clock skew and retrying", path)
+        await _maybe_adjust_clock_skew(session)
+    return 0, {}
 
 
 def get_btc_price() -> float | None:
@@ -778,6 +846,13 @@ async def place_order(
         log.error(f"place_order called with contracts={contracts} -- refusing to send invalid order")
         return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
 
+    if mode == "live" and bot_state.KALSHI_BASE_URL != bot_state.KALSHI_LIVE_BASE_URL:
+        log.error("SAFETY: place_order mode=live but BASE_URL=%s. Refusing.", bot_state.KALSHI_BASE_URL)
+        return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+    if mode == "demo" and bot_state.KALSHI_BASE_URL != bot_state.KALSHI_DEMO_BASE_URL:
+        log.error("SAFETY: place_order mode=demo but BASE_URL=%s. Refusing.", bot_state.KALSHI_BASE_URL)
+        return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+
     _original_strategy_target_c = entry_price_cents
 
     fresh_ob = None
@@ -920,11 +995,16 @@ async def place_order(
         )
     log.info(f"[live] IOC {side.upper()} {contracts}x @ {_market_ask_at_post_c}c on {ticker} ({secs_left:.0f}s left)")
 
+    _non_retryable = {
+        "insufficient_funds", "authentication_error", "not_found", "forbidden",
+        "market_not_open", "market_settled", "market_not_found",
+        "order_limit_exceeded", "contract_limit_exceeded", "position_limit_exceeded",
+        "invalid_count", "invalid_order", "min_contracts_not_met",
+    }
     client_order_id = f"kalshi_{int(time.time() * 1000)}"
-    for attempt in range(2):
+    for attempt in range(5):
         if attempt > 0:
-            log.info(f"[live] Order retry {attempt}/1...")
-            await asyncio.sleep(1.0)
+            log.info(f"[live] Order retry {attempt}/4...")
 
         body: dict = {
             "ticker": ticker,
@@ -939,6 +1019,7 @@ async def place_order(
         else:
             body["no_price"] = _market_ask_at_post_c
 
+        _retry_after: str = ""
         try:
             async with session.post(
                 bot_state.KALSHI_BASE_URL + path,
@@ -948,6 +1029,7 @@ async def place_order(
             ) as resp:
                 data = await resp.json()
                 http_status = resp.status
+                _retry_after = resp.headers.get("Retry-After", "")
         except Exception as exc:
             log.error(f"[live] Order POST failed (attempt {attempt}): {exc}")
             try:
@@ -971,19 +1053,29 @@ async def place_order(
             continue
 
         if http_status == 429:
-            log.warning(f"[live] Rate-limited (429) on attempt {attempt} -- waiting 2s")
-            await asyncio.sleep(2.0)
+            backoff = min(2 ** attempt, 16)
+            if _retry_after.isdigit():
+                backoff = max(backoff, int(_retry_after))
+            log.warning(f"[live] Rate-limited (429) attempt {attempt}, sleeping {backoff}s")
+            await asyncio.sleep(backoff)
             continue
+
+        if http_status in (500, 502, 503, 504):
+            backoff = min(2 ** attempt, 8)
+            log.warning(f"[live] Kalshi 5xx ({http_status}) attempt {attempt}, sleeping {backoff}s")
+            await asyncio.sleep(backoff)
+            continue
+
+        if http_status in (401, 403):
+            log.error(f"[live] Auth error HTTP {http_status} — not retrying")
+            await _alert_auth_failure(http_status, path, str(data)[:200])
+            break
 
         if http_status not in (200, 201):
             log.error(f"[live] Order HTTP {http_status}: {data}")
             err_code = (data.get("error") or {}).get("code", "")
-            _non_retryable = {
-                "insufficient_funds", "authentication_error", "not_found", "forbidden",
-                "market_not_open", "market_settled", "market_not_found",
-                "order_limit_exceeded", "contract_limit_exceeded", "position_limit_exceeded",
-                "invalid_count", "invalid_order", "min_contracts_not_met",
-            }
+            if err_code == "authentication_error":
+                await _alert_auth_failure(http_status, path, str(data)[:200])
             if err_code in _non_retryable:
                 log.error(f"Non-retryable error ({err_code}). Stopping order attempts.")
                 _failed_elapsed = seconds_elapsed(market) if market else 0.0

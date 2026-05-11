@@ -98,6 +98,9 @@ _consecutive_price_skips: int  = 0
 _S1_VERSION = "ema-momentum-2026-05-07"
 _S2_VERSION = "contract-velocity-obi-2026-05-07"
 
+kalshi_clock_skew_ms: int = 0       # corrected by _maybe_adjust_clock_skew at startup
+demo_fallback_alert: bool = False    # set when demo creds missing; Telegram fired async
+
 _S1_ASSET_VOL_RATIO: dict = {
     "BTC": 1.00, "ETH": 1.10, "SOL": 2.20, "XRP": 1.80, "DOGE": 2.60,
 }
