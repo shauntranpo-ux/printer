@@ -30,8 +30,29 @@ from bot_infra import (
     read_config, write_config,
     _maybe_fill_verification_notify, _phase_for_eth, _notify_ctx,
 )
+from kalshi_compat import dollars_to_cents, extract_order_counts, extract_fill_price_cents
 
 log = logging.getLogger("bot")
+
+
+def _read_price_cents(market_or_book: dict, key_base: str) -> "int | None":
+    """Read a price field in cents, preferring *_dollars string over legacy int.
+
+    key_base examples: "yes_ask", "no_ask", "yes_bid", "no_bid", "last_price".
+    Tries {key_base}_dollars first (dollars_to_cents), falls back to {key_base} int.
+    """
+    dollars_val = market_or_book.get(f"{key_base}_dollars")
+    if dollars_val is not None:
+        return dollars_to_cents(dollars_val)
+    int_val = market_or_book.get(key_base)
+    if int_val is not None:
+        try:
+            v = int(round(float(int_val) * 100)) if isinstance(int_val, float) else int(int_val)
+            return v if v >= 0 else None
+        except (TypeError, ValueError):
+            return None
+    return None
+
 
 __all__ = [
     "load_credentials", "kalshi_headers",
@@ -466,13 +487,6 @@ async def fetch_orderbook(
         Dict with best_yes_ask, best_no_ask, best_yes_bid (all cents), yes_liquidity,
         or None if no price data is available. best_yes_bid may be None.
     """
-    def _dollars_to_cents(val) -> int | None:
-        try:
-            v = int(round(float(val) * 100))
-            return v if v >= 0 else None
-        except (TypeError, ValueError):
-            return None
-
     ob_path = f"/markets/{ticker}/orderbook"
     try:
         async with session.get(
@@ -522,27 +536,27 @@ async def fetch_orderbook(
         src = fresh_market if fresh_market else (market or {})
 
         if best_yes_ask is None:
-            best_yes_ask = _dollars_to_cents(src.get("yes_ask_dollars"))
+            best_yes_ask = _read_price_cents(src, "yes_ask")
         if best_yes_ask is None:
-            no_bid = _dollars_to_cents(src.get("no_bid_dollars"))
+            no_bid = _read_price_cents(src, "no_bid")
             if no_bid is not None:
                 _derived = 100 - no_bid
                 if _derived > 0:
                     best_yes_ask = _derived
 
         if best_no_ask is None:
-            best_no_ask = _dollars_to_cents(src.get("no_ask_dollars"))
+            best_no_ask = _read_price_cents(src, "no_ask")
         if best_no_ask is None:
-            yes_bid = _dollars_to_cents(src.get("yes_bid_dollars"))
+            yes_bid = _read_price_cents(src, "yes_bid")
             if yes_bid is not None:
                 _derived = 100 - yes_bid
                 if _derived > 0:
                     best_no_ask = _derived
 
         if best_yes_bid is None:
-            best_yes_bid = _dollars_to_cents(src.get("yes_bid_dollars"))
+            best_yes_bid = _read_price_cents(src, "yes_bid")
         if best_yes_bid is None:
-            no_ask_raw = _dollars_to_cents(src.get("no_ask_dollars"))
+            no_ask_raw = _read_price_cents(src, "no_ask")
             if no_ask_raw is not None:
                 _derived = 100 - no_ask_raw
                 if _derived >= 0:
@@ -695,10 +709,9 @@ async def _verify_order_fill(
     ticker: str = "",
     side: str = "",
 ) -> bool:
-    """
-    Confirm a fill is recorded in Kalshi by re-fetching the order.
+    """Confirm a fill is recorded in Kalshi by re-fetching the order.
 
-    Returns True if Kalshi confirms at least one contract filled.
+    Conservative: missing count fields return False, not expected_filled.
     On HTTP errors, falls back to a portfolio position check (requires ticker+side).
     On network exceptions, returns False.
     """
@@ -715,18 +728,23 @@ async def _verify_order_fill(
             chk = await resp.json()
         order = chk.get("order") or chk
         status = order.get("status", "")
-        total     = order.get("contracts_count") or expected_filled
-        remaining = order.get("remaining_count")
-        fc        = order.get("filled_count")
-        if fc is not None:
-            confirmed_filled = fc
-        elif remaining is not None:
+        counts = extract_order_counts(order)
+        filled = counts["filled"]
+        total = counts["total"]
+        remaining = counts["remaining"]
+        if filled is not None:
+            confirmed_filled = filled
+        elif total is not None and remaining is not None:
             confirmed_filled = total - remaining
         else:
-            confirmed_filled = expected_filled
+            log.warning(
+                "_verify_order_fill: missing count fields",
+                extra={"order_id": order_id, "keys": list(order.keys())},
+            )
+            return False
         log.info(
             f"_verify_order_fill: {order_id} status={status!r} "
-            f"filled={confirmed_filled}/{total}"
+            f"filled={confirmed_filled}/{total} (expected={expected_filled})"
         )
         return confirmed_filled > 0
     except Exception as exc:
@@ -789,20 +807,28 @@ async def place_order(
             "order_id": f"paper_{int(time.time() * 1000)}",
         }
 
+    if fresh_ob is None or _market_ask_at_post_c is None:
+        log.error("place_order: no orderbook ask, refusing to send blind IOC")
+        return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+
     path = "/portfolio/orders"
-    price_this_attempt = entry_price_cents
+    price_this_attempt = _market_ask_at_post_c
 
     if mode == "demo":
         client_order_id = f"demo_{int(time.time() * 1000)}"
-        body = {
+        body: dict = {
             "ticker": ticker,
             "side": side,
-            "type": "market",
             "count": contracts,
             "action": "buy",
             "client_order_id": client_order_id,
+            "time_in_force": "immediate_or_cancel",
         }
-        log.info(f"[demo] market {side.upper()} {contracts}x on {ticker}")
+        if side == "yes":
+            body["yes_price"] = _market_ask_at_post_c
+        else:
+            body["no_price"] = _market_ask_at_post_c
+        log.info(f"[demo] IOC {side.upper()} {contracts}x @ {_market_ask_at_post_c}c on {ticker}")
         try:
             async with session.post(
                 bot_state.KALSHI_BASE_URL + path,
@@ -866,20 +892,22 @@ async def place_order(
         if status in ("cancelled", "canceled", "expired"):
             return {"fill_confirmed": False, "fill_price_cents": None, "order_id": order_id}
 
-        _total     = filled_order.get("contracts_count")
-        _remaining = filled_order.get("remaining_count")
-        _fc        = filled_order.get("filled_count")
-        cc = _fc if _fc is not None else ((_total - _remaining) if (_total is not None and _remaining is not None) else contracts)
-        fp_raw = filled_order.get("yes_price", entry_price_cents)
-        fp     = fp_raw if side == "yes" else (100 - fp_raw)
+        _demo_counts = extract_order_counts(filled_order)
+        cc = _demo_counts["filled"]
+        if cc is None:
+            if _demo_counts["total"] is not None and _demo_counts["remaining"] is not None:
+                cc = _demo_counts["total"] - _demo_counts["remaining"]
+        fp = extract_fill_price_cents(filled_order, side)
+        if fp is None:
+            fp = entry_price_cents
+        _fill_yes_price = extract_fill_price_cents(filled_order, "yes") or entry_price_cents
         log.info(f"[demo] Order {order_id} filled={cc}x @ {fp}c status={status!r}")
-        _fill_yes_price = fp_raw
         await _maybe_fill_verification_notify(
             asset, ticker, side, market, secs_left,
             _original_strategy_target_c, price_this_attempt,
             _market_ask_at_post_c, _fill_yes_price,
         )
-        return {"fill_confirmed": cc > 0, "fill_price_cents": fp, "order_id": order_id, "filled_contracts": cc}
+        return {"fill_confirmed": bool(cc and cc > 0), "fill_price_cents": fp, "order_id": order_id, "filled_contracts": cc}
 
     # Live mode
     if secs_left < 300.0:
@@ -890,22 +918,26 @@ async def place_order(
             asset, ticker, (_placed_elapsed + secs_left) / 60.0,
             _phase_for_eth(asset, _placed_elapsed),
         )
-    log.info(f"[live] market {side.upper()} {contracts}x on {ticker} ({secs_left:.0f}s left)")
+    log.info(f"[live] IOC {side.upper()} {contracts}x @ {_market_ask_at_post_c}c on {ticker} ({secs_left:.0f}s left)")
 
+    client_order_id = f"kalshi_{int(time.time() * 1000)}"
     for attempt in range(2):
         if attempt > 0:
-            log.info(f"[live] Market order retry {attempt}/1...")
+            log.info(f"[live] Order retry {attempt}/1...")
             await asyncio.sleep(1.0)
 
-        client_order_id = f"kalshi_{int(time.time() * 1000)}_{attempt}"
-        body = {
+        body: dict = {
             "ticker": ticker,
             "side": side,
-            "type": "market",
             "count": contracts,
             "action": "buy",
             "client_order_id": client_order_id,
+            "time_in_force": "immediate_or_cancel",
         }
+        if side == "yes":
+            body["yes_price"] = _market_ask_at_post_c
+        else:
+            body["no_price"] = _market_ask_at_post_c
 
         try:
             async with session.post(
@@ -1005,15 +1037,16 @@ async def place_order(
                 continue
 
         if post_status in ("canceled", "cancelled"):
-            _total     = post_order.get("contracts_count") or contracts
-            _remaining = post_order.get("remaining_count")
-            _remaining = _remaining if _remaining is not None else _total
-            _filled    = _total - _remaining
+            _can_counts = extract_order_counts(post_order)
+            _filled = _can_counts["filled"]
+            if _filled is None:
+                _ct = _can_counts["total"]
+                _cr = _can_counts["remaining"]
+                _filled = (_ct - _cr) if (_ct is not None and _cr is not None) else 0
             if _filled > 0:
-                _fp_raw      = post_order.get("yes_price", price_this_attempt)
-                _fp_canceled = _fp_raw if side == "yes" else (100 - _fp_raw)
-                log.info(f"[live] Market order {order_id} partial fill: {_filled}/{_total} @ {_fp_canceled}c")
-                _fill_yes_price = _fp_raw
+                _fp_canceled = extract_fill_price_cents(post_order, side) or price_this_attempt
+                _fill_yes_price = extract_fill_price_cents(post_order, "yes") or price_this_attempt
+                log.info(f"[live] IOC order {order_id} partial fill: {_filled}x @ {_fp_canceled}c")
                 await _maybe_fill_verification_notify(
                     asset, ticker, side, market, secs_left,
                     _original_strategy_target_c, price_this_attempt,
@@ -1021,27 +1054,27 @@ async def place_order(
                 )
                 _verified = await _verify_order_fill(session, order_id, _filled, ticker, side)
                 return {"fill_confirmed": _verified, "fill_price_cents": _fp_canceled, "order_id": order_id, "filled_contracts": _filled}
-            log.info(f"[live] Market order {order_id} zero-fill")
+            log.info(f"[live] IOC order {order_id} zero-fill (canceled)")
             break
 
-        _total     = post_order.get("contracts_count")
-        _remaining = post_order.get("remaining_count")
-        _fc        = post_order.get("filled_count")
-        if _fc is not None:
-            filled_count = _fc
-        elif _total is not None and _remaining is not None:
-            filled_count = _total - _remaining
-        elif _total is not None:
-            filled_count = _total
+        _live_counts = extract_order_counts(post_order)
+        if _live_counts["filled"] is not None:
+            filled_count = _live_counts["filled"]
+        elif _live_counts["total"] is not None and _live_counts["remaining"] is not None:
+            filled_count = _live_counts["total"] - _live_counts["remaining"]
         else:
-            filled_count = contracts
+            log.warning(
+                f"[live] Order {order_id}: missing count fields — checking portfolio",
+                extra={"order_id": order_id, "keys": list(post_order.keys())},
+            )
+            break
 
         if filled_count == 0:
             log.warning(f"[live] Order {order_id} status={post_status!r} but filled_count=0")
             continue
 
-        _fill_yes_price = post_order.get("yes_price", price_this_attempt)
-        fill_price = _fill_yes_price if side == "yes" else (100 - _fill_yes_price)
+        fill_price = extract_fill_price_cents(post_order, side) or price_this_attempt
+        _fill_yes_price = extract_fill_price_cents(post_order, "yes") or price_this_attempt
         log.info(f"[live] Order FILLED: {order_id} @ {fill_price}c x{filled_count} status={post_status!r}")
         await _maybe_fill_verification_notify(
             asset, ticker, side, market, secs_left,
