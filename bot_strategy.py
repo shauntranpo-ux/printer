@@ -1,4 +1,4 @@
-"""bot_strategy.py — S1 (EMA momentum) and S2 (contract velocity + OBI) strategy brains."""
+"""bot_strategy.py â€” S1 (EMA momentum) and S2 (contract velocity + OBI) strategy brains."""
 import datetime
 import logging
 import math
@@ -68,7 +68,7 @@ def _make_skip(side: str, reason: str, abs_pct: float, mins_left: float,
 
 
 # ---------------------------------------------------------------------------
-# S1 — EMA Momentum Strategy
+# S1 â€” EMA Momentum Strategy
 # Direction pointer : 3-min vs N-min EMA crossover on asset price feed
 # Confirmation     : realized vol below per-asset ceiling (low vol = predictable)
 # Gate             : BTC requires US session; all assets need distance + time window
@@ -76,17 +76,17 @@ def _make_skip(side: str, reason: str, abs_pct: float, mins_left: float,
 
 _S1_ASSET_CONFIG: dict = {
     #           min_dist   max_rv   ema_short  ema_long  session  min_ev  t_min  t_max
-    "BTC":  dict(min_dist=0.0001, max_rv=1.0, ema_short=3, ema_long=12,
-                 session_gate=False, min_ev=0.0, time_min=0.5, time_max=14.0),
-    "ETH":  dict(min_dist=0.0001, max_rv=1.0, ema_short=3, ema_long=7,
-                 session_gate=False, min_ev=0.0, time_min=0.5, time_max=14.0),
-    "SOL":  dict(min_dist=0.0001, max_rv=1.0, ema_short=3, ema_long=12,
-                 session_gate=False, min_ev=0.0, time_min=0.5, time_max=14.0),
-    "XRP":  dict(min_dist=0.0001, max_rv=1.0, ema_short=3, ema_long=12,
-                 session_gate=False, min_ev=0.0, time_min=0.5, time_max=14.0),
+    "BTC":  dict(min_dist=0.002, max_rv=1.0, ema_short=3, ema_long=12,
+                 session_gate=False, min_ev=0.01, time_min=0.5, time_max=14.0),
+    "ETH":  dict(min_dist=0.002, max_rv=1.0, ema_short=3, ema_long=7,
+                 session_gate=False, min_ev=0.01, time_min=0.5, time_max=14.0),
+    "SOL":  dict(min_dist=0.002, max_rv=1.0, ema_short=3, ema_long=12,
+                 session_gate=False, min_ev=0.01, time_min=0.5, time_max=14.0),
+    "XRP":  dict(min_dist=0.002, max_rv=1.0, ema_short=3, ema_long=12,
+                 session_gate=False, min_ev=0.01, time_min=0.5, time_max=14.0),
     # DOGE: strike_increment=$0.001 at ~$0.15 -> max possible dist ~0.33%; keep min_dist below that
-    "DOGE": dict(min_dist=0.0001, max_rv=1.0, ema_short=2, ema_long=12,
-                 session_gate=False, min_ev=0.0, time_min=0.5, time_max=14.0),
+    "DOGE": dict(min_dist=0.001, max_rv=1.0, ema_short=2, ema_long=12,
+                 session_gate=False, min_ev=0.01, time_min=0.5, time_max=14.0),
 }
 
 
@@ -98,7 +98,7 @@ def _s1_is_us_session() -> bool:
         t = now_et.hour * 60 + now_et.minute
         return (9 * 60 + 30 <= t <= 11 * 60 + 30) or (15 * 60 <= t <= 16 * 60)
     except Exception:
-        return True  # fail open — never block trades on a clock error
+        return True  # fail open â€” never block trades on a clock error
 
 
 def _s1_ema_direction(prices: list, short_min: float, long_min: float):
@@ -146,7 +146,7 @@ def strategy_brain_s1(
            **config.get("s1_config", {}).get(asset, {})}
     mins_left = secs_left / 60.0
 
-    # Resolve asset price — callers pass the asset price as the first arg for non-BTC.
+    # Resolve asset price â€” callers pass the asset price as the first arg for non-BTC.
     if asset == "BTC":
         prices_list = list(bot_state.btc_prices)
         current_price = btc_price
@@ -183,7 +183,7 @@ def strategy_brain_s1(
     if abs_pct < cfg["min_dist"]:
         return _make_skip("yes", f"s1_dist_gate:{abs_pct:.4f}<{cfg['min_dist']}", abs_pct, mins_left, variant="strategy1")
 
-    # Gate 4: realized vol ceiling — low vol means more predictable directional move
+    # Gate 4: realized vol ceiling â€” low vol means more predictable directional move
     rv = _realized_vol(prices_list, window_minutes=5) if prices_list else 0.001
     if rv > cfg["max_rv"]:
         return _make_skip("yes", f"s1_rv_gate:{rv:.5f}>{cfg['max_rv']}", abs_pct, mins_left, rv=rv, variant="strategy1")
@@ -197,7 +197,7 @@ def strategy_brain_s1(
     entry_price = yes_ask if side == "yes" else no_ask
 
     # Continuation-only: EMA direction must agree with price position relative to strike.
-    # EMA bullish but price below strike = reversal bet → skip (win prob ~20%, not 70%).
+    # EMA bullish but price below strike = reversal bet â†’ skip (win prob ~20%, not 70%).
     if side == "yes" and current_price < strike:
         return _make_skip(side, "s1_reversal_gate:ema=yes_price_below", abs_pct, mins_left, rv=rv, variant="strategy1")
     if side == "no" and current_price > strike:
@@ -211,11 +211,11 @@ def strategy_brain_s1(
                           rv=rv, variant="strategy1", price_filter=True)
 
     # Win probability: empirical lookup (tanh fallback when bucket uncalibrated)
-    # No additive adjustments — calibration already prices EMA + session selection in.
+    # No additive adjustments â€” calibration already prices EMA + session selection in.
     base_p = _s1_lookup_win_rate(asset, abs_pct, mins_left, cfg)
     win_prob = min(0.99, base_p)
 
-    # EV gate — Kalshi fee from config (default 7 cents per contract)
+    # EV gate â€” Kalshi fee from config (default 7 cents per contract)
     _ep_s1 = entry_price / 100.0
     _fee_cents_s1 = config.get("kalshi_fee_per_contract_cents", 7)
     fee = (_fee_cents_s1 / 100) * _ep_s1 * (1.0 - _ep_s1)
@@ -267,32 +267,32 @@ def strategy_brain_s1(
 
 
 # ---------------------------------------------------------------------------
-# S2 — Contract Velocity + OBI Strategy
+# S2 â€” Contract Velocity + OBI Strategy
 # Direction pointer : YES-ask price trend over last N ticks (market-implied flow)
 # Confirmation     : OBI (order book imbalance) must agree with velocity direction
 # Gate             : distance minimum + time window, per-asset thresholds
-# Everything here is different from S1 — direction pointer, gates, confirmation
+# Everything here is different from S1 â€” direction pointer, gates, confirmation
 # ---------------------------------------------------------------------------
 
 _S2_ASSET_CONFIG: dict = {
-    #           min_dist   min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max
-    "BTC":  dict(min_dist=0.0001, min_obi=0.001,  min_vel_delta=0.01, vel_lookback=4,
-                 min_ev=0.0, time_min=0.5, time_max=14.0),
-    "ETH":  dict(min_dist=0.0001, min_obi=0.001,  min_vel_delta=0.01, vel_lookback=4,
-                 min_ev=0.0, time_min=0.5, time_max=14.0),
-    # SOL/DOGE: low strike_increment -> small dist from strike; vel is calibrated conservatively
-    "SOL":  dict(min_dist=0.0001, min_obi=0.001,  min_vel_delta=0.01, vel_lookback=3,
-                 min_ev=0.0, time_min=0.5, time_max=14.0),
-    "XRP":  dict(min_dist=0.0001, min_obi=0.001,  min_vel_delta=0.01, vel_lookback=4,
-                 min_ev=0.0, time_min=0.5, time_max=14.0),
-    "DOGE": dict(min_dist=0.0001, min_obi=0.001,  min_vel_delta=0.01, vel_lookback=3,
-                 min_ev=0.0, time_min=0.5, time_max=14.0),
+    #           min_dist  min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max
+    "BTC":  dict(min_dist=0.002, min_obi=0.02, min_vel_delta=0.03, vel_lookback=4,
+                 min_ev=0.01, time_min=0.5, time_max=14.0),
+    "ETH":  dict(min_dist=0.002, min_obi=0.02, min_vel_delta=0.03, vel_lookback=4,
+                 min_ev=0.01, time_min=0.5, time_max=14.0),
+    # SOL/DOGE: low strike_increment -> small dist from strike; vel calibrated conservatively
+    "SOL":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.03, vel_lookback=3,
+                 min_ev=0.01, time_min=0.5, time_max=14.0),
+    "XRP":  dict(min_dist=0.002, min_obi=0.02, min_vel_delta=0.03, vel_lookback=4,
+                 min_ev=0.01, time_min=0.5, time_max=14.0),
+    "DOGE": dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.03, vel_lookback=3,
+                 min_ev=0.01, time_min=0.5, time_max=14.0),
 }
 
 # ---------------------------------------------------------------------------
-# Empirical win-rate tables — populated by scripts/calibrate_winrates.py
+# Empirical win-rate tables â€” populated by scripts/calibrate_winrates.py
 # Run that script, copy the printed dicts here.
-# None entries → tanh formula fallback (insufficient calibration data).
+# None entries â†’ tanh formula fallback (insufficient calibration data).
 # ---------------------------------------------------------------------------
 
 _S1_WIN_RATE: dict = {
@@ -395,7 +395,7 @@ def _s2_obi_gate(ticker: str, side: str, min_obi: float):
     """
     OBI confirmation gate for S2.
     Returns (confirmed, obi_val).
-    Fails closed (False) when no OBI data for this ticker — never allow trades on missing data.
+    Fails closed (False) when no OBI data for this ticker â€” never allow trades on missing data.
     Positive OBI = no_depth > yes_depth = bullish for YES.
     """
     obi_val = bot_state._ticker_obi.get(ticker)
@@ -419,7 +419,7 @@ def strategy_brain_s2(
     Direction: YES-ask price trend over last N ticks (what the market is pricing in).
     Confirmation: OBI must agree with the velocity direction.
     Per-asset thresholds for BTC / ETH / SOL / XRP / DOGE.
-    Completely different from S1 — no EMA, no vol ceiling, no session gate.
+    Completely different from S1 â€” no EMA, no vol ceiling, no session gate.
     """
     config = read_config()
     cfg = {**_S2_ASSET_CONFIG.get(asset, _S2_ASSET_CONFIG["BTC"]),
@@ -477,7 +477,7 @@ def strategy_brain_s2(
     base_p = _s2_lookup_win_rate(asset, vel_delta, mins_left, cfg)
     win_prob = min(0.99, base_p)
 
-    # EV gate — Kalshi fee from config (default 7 cents per contract)
+    # EV gate â€” Kalshi fee from config (default 7 cents per contract)
     _ep_s2 = entry_price / 100.0
     _fee_cents = config.get("kalshi_fee_per_contract_cents", 7)
     fee = (_fee_cents / 100) * _ep_s2 * (1.0 - _ep_s2)
