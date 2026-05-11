@@ -1,4 +1,17 @@
-# strategies/
+# QUARANTINED — strategies/ (test-support only)
+
+This directory is **not imported by any production code**.
+
+- No live bot `.py` file imports from `strategies/`
+- It exists on the pytest pythonpath to support backtester/executor tests
+- The live trading strategies (S1=EMA momentum, S2=contract velocity+OBI) live in `bot_strategy.py`
+
+**Do not add imports from this directory to production code.**
+See [`ARCHITECTURE.md`](../ARCHITECTURE.md) for the authoritative layout.
+
+---
+
+# strategies/ — Original Design Docs
 
 Two-strategy architecture for Kalshi 15-minute crypto binary markets (BTC, ETH, SOL, XRP).
 
