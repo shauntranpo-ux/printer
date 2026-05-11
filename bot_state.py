@@ -58,6 +58,7 @@ api_key: str = ""
 current_market: dict | None = None
 current_phase: str = "DONE"
 current_position: dict | None = None
+recovery_unverified: bool = False
 _s2_attempted_tickers: set = set()
 _asset_states: dict = {}
 _s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}

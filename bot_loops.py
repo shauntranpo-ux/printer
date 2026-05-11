@@ -33,6 +33,7 @@ from bot_risk import (
     _execute_s1_trade, _settle_s1_trade, _try_settle_orphaned_s1,
     _settle_s1_orphans,
 )
+from reconcile import fetch_open_positions
 
 log = logging.getLogger("bot")
 
@@ -42,6 +43,8 @@ _last_scorecard_date: str = ""
 _LV_TZ = ZoneInfo("America/Los_Angeles")
 
 _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
+
+_last_orphan_settle_ts: float = 0.0
 
 
 def _format_scorecard_message(data: dict) -> str:
@@ -915,6 +918,150 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════════════════
+#  Crash-recovery helpers
+# ══════════════════════════════════════════════════════════════════════════════════
+
+def _restore_without_verification(
+    saved_pos: "dict | None",
+    saved_phase: str,
+    non_btc_positions: dict,
+) -> None:
+    """Restore positions from state file with no Kalshi check (paper mode or API error)."""
+    if saved_pos and saved_phase == "LOCKED" and saved_pos.get("trade_id"):
+        bot_state.current_position = saved_pos
+        bot_state.current_phase = "LOCKED"
+        log.warning(
+            "Recovered open position from state file (unverified): "
+            "trade_id=%s side=%s ticker=%s",
+            saved_pos.get("trade_id"), saved_pos.get("side"), saved_pos.get("ticker"),
+        )
+    for _a, _apos in non_btc_positions.items():
+        if _apos.get("phase") == "LOCKED" and _apos.get("position"):
+            if _a not in bot_state._asset_states:
+                bot_state._asset_states[_a] = {}
+            bot_state._asset_states[_a]["phase"] = "LOCKED"
+            bot_state._asset_states[_a]["position"] = _apos["position"]
+            bot_state._asset_states[_a].setdefault("order_attempted", set())
+            bot_state._asset_states[_a].setdefault("eval", {})
+            log.warning(
+                "Recovered LOCKED position for %s from state file (unverified): trade_id=%s",
+                _a, _apos["position"].get("trade_id"),
+            )
+
+
+async def _verify_and_restore_positions(
+    session: aiohttp.ClientSession,
+    saved_pos: "dict | None",
+    saved_phase: str,
+    non_btc_positions: dict,
+    mode: str,
+) -> None:
+    """
+    Verify saved positions against Kalshi before trusting them.
+    Sets bot_state.current_position, current_phase, _asset_states accordingly.
+    Paper mode: restores unconditionally (no Kalshi to check).
+    On fetch failure: restores from state file with recovery_unverified=True.
+    """
+    if mode == "paper":
+        _restore_without_verification(saved_pos, saved_phase, non_btc_positions)
+        return
+
+    try:
+        open_pos = await fetch_open_positions(session, mode)
+    except Exception as exc:
+        log.warning("Position verification fetch failed: %s — restoring unverified", exc)
+        bot_state.recovery_unverified = True
+        _restore_without_verification(saved_pos, saved_phase, non_btc_positions)
+        return
+
+    if open_pos is None:
+        log.warning("Position verification returned None — restoring unverified")
+        bot_state.recovery_unverified = True
+        _restore_without_verification(saved_pos, saved_phase, non_btc_positions)
+        return
+
+    # BTC position
+    if saved_pos and saved_phase == "LOCKED" and saved_pos.get("trade_id"):
+        ticker = saved_pos.get("ticker", "")
+        claimed = saved_pos.get("contracts", 0)
+        if ticker in open_pos:
+            kalshi_count = open_pos[ticker]["count"]
+            if kalshi_count == claimed:
+                bot_state.current_position = saved_pos
+                bot_state.current_phase = "LOCKED"
+                log.info(
+                    "Recovered LOCKED position verified on Kalshi: trade_id=%s ticker=%s",
+                    saved_pos.get("trade_id"), ticker,
+                )
+            else:
+                log.warning(
+                    "Position count mismatch %s: state=%d kalshi=%d — using Kalshi count",
+                    ticker, claimed, kalshi_count,
+                )
+                verified = dict(saved_pos)
+                verified["contracts"] = kalshi_count
+                bot_state.current_position = verified
+                bot_state.current_phase = "LOCKED"
+                await send_telegram(
+                    f"Position count mismatch on recovery: {ticker} "
+                    f"state={claimed} kalshi={kalshi_count} — using Kalshi count"
+                )
+        else:
+            log.warning(
+                "State file claimed open position %s but Kalshi shows nothing — "
+                "cleared. trade_id=%s", ticker, saved_pos.get("trade_id"),
+            )
+            bot_state.current_position = None
+            bot_state.current_phase = ""
+            await send_telegram(
+                f"State file claimed open position {ticker} but Kalshi shows nothing — "
+                "cleared, will be reconciled by next /portfolio/fills query."
+            )
+
+    # Non-BTC positions
+    for _a, _apos in non_btc_positions.items():
+        if _apos.get("phase") != "LOCKED" or not _apos.get("position"):
+            continue
+        _pos = _apos["position"]
+        _ticker = _pos.get("ticker", "")
+        _claimed = _pos.get("contracts", 0)
+        if _ticker in open_pos:
+            _kcount = open_pos[_ticker]["count"]
+            if _a not in bot_state._asset_states:
+                bot_state._asset_states[_a] = {}
+            bot_state._asset_states[_a]["phase"] = "LOCKED"
+            if _kcount != _claimed:
+                _vpos = dict(_pos)
+                _vpos["contracts"] = _kcount
+                bot_state._asset_states[_a]["position"] = _vpos
+                log.warning(
+                    "Non-BTC %s count mismatch: state=%d kalshi=%d — using Kalshi count",
+                    _a, _claimed, _kcount,
+                )
+                await send_telegram(
+                    f"{_a} position count mismatch on recovery: "
+                    f"state={_claimed} kalshi={_kcount}"
+                )
+            else:
+                bot_state._asset_states[_a]["position"] = _pos
+                log.info(
+                    "Recovered LOCKED %s position verified on Kalshi: trade_id=%s",
+                    _a, _pos.get("trade_id"),
+                )
+            bot_state._asset_states[_a].setdefault("order_attempted", set())
+            bot_state._asset_states[_a].setdefault("eval", {})
+        else:
+            log.warning(
+                "State file claimed %s LOCKED position %s but Kalshi shows nothing — "
+                "cleared. trade_id=%s", _a, _ticker, _pos.get("trade_id"),
+            )
+            await send_telegram(
+                f"State file claimed open position {_ticker} ({_a}) but Kalshi shows "
+                "nothing — cleared, will be reconciled by next /portfolio/fills query."
+            )
+
+
+# ══════════════════════════════════════════════════════════════════════════════════
 #  Main loop
 # ══════════════════════════════════════════════════════════════════════════════════
 
@@ -924,55 +1071,41 @@ async def main_loop() -> None:
     All exceptions are caught per-iteration to prevent crashes.
     """
 
+    global _last_orphan_settle_ts
     prev_ticker: str | None = None
+    _mode = read_config().get("mode", "paper")
 
-    # ── Recover open position and consecutive-loss state after a crash/restart ─
+    # ── Read crash-recovery state (Kalshi verification happens inside session) ─
+    _saved_pos: "dict | None" = None
+    _saved_phase: str = ""
+    _non_btc_positions: dict = {}
     try:
         with open(bot_state._STATE_FILE, "r") as _sf:
             _saved = json.load(_sf)
-        # BTC recovery
-        _saved_pos = _saved.get("open_position")
+        _saved_pos   = _saved.get("open_position")
         _saved_phase = _saved.get("phase", "")
-        if _saved_pos and _saved_phase == "LOCKED" and _saved_pos.get("trade_id"):
-            bot_state.current_position = _saved_pos
-            bot_state.current_phase    = "LOCKED"
-            log.warning(
-                f"Recovered open position from state file: "
-                f"trade_id={_saved_pos.get('trade_id')} "
-                f"side={_saved_pos.get('side')} "
-                f"ticker={_saved_pos.get('ticker')}"
-            )
-        saved_cl = _saved.get("consecutive_losses", 0)
-        if isinstance(saved_cl, int) and saved_cl > 0:
-            bot_state._s2_consecutive_losses = saved_cl
-        saved_cl_s1 = _saved.get("s1_consecutive_losses", 0)
-        if isinstance(saved_cl_s1, int) and saved_cl_s1 > 0:
-            bot_state._s1_consecutive_losses = saved_cl_s1
-        # Non-BTC recovery
-        for _a, _apos in _saved.get("non_btc_positions", {}).items():
-            if _apos.get("phase") == "LOCKED" and _apos.get("position"):
-                if _a not in bot_state._asset_states:
-                    bot_state._asset_states[_a] = {}
-                bot_state._asset_states[_a]["phase"] = "LOCKED"
-                bot_state._asset_states[_a]["position"] = _apos["position"]
-                bot_state._asset_states[_a].setdefault("order_attempted", set())
-                bot_state._asset_states[_a].setdefault("eval", {})
-                log.warning(
-                    "Recovered LOCKED position for %s from state file: trade_id=%s",
-                    _a, _apos["position"].get("trade_id"),
-                )
+        _non_btc_positions = _saved.get("non_btc_positions", {})
+        # Consecutive losses need no Kalshi — restore immediately.
+        _saved_cl = _saved.get("consecutive_losses", 0)
+        if isinstance(_saved_cl, int) and _saved_cl > 0:
+            bot_state._s2_consecutive_losses = _saved_cl
+        _saved_cl_s1 = _saved.get("s1_consecutive_losses", 0)
+        if isinstance(_saved_cl_s1, int) and _saved_cl_s1 > 0:
+            bot_state._s1_consecutive_losses = _saved_cl_s1
     except Exception:
         pass  # fresh start, no state to recover
-
-    # S1 orphan settlement happens after the aiohttp session is created below.
 
     # TCPConnector with keepalive_timeout prevents stale pooled connections
     # from silently breaking API calls after many hours of uptime.
     connector = aiohttp.TCPConnector(keepalive_timeout=30, limit=10)
     async with aiohttp.ClientSession(connector=connector) as session:
+        # Verify saved positions against Kalshi before trusting the state file.
+        await _verify_and_restore_positions(session, _saved_pos, _saved_phase, _non_btc_positions, _mode)
+
         # Settle any S1 positions that resolved while the bot was offline.
         _startup_config = read_config()
         await _settle_s1_orphans(session, _startup_config)
+        _last_orphan_settle_ts = time.time()  # periodic timer starts after startup run
 
         # Non-BTC assets run in a separate background task so they aren't
         # gated by the BTC state machine's continue/sleep cycle.
@@ -981,6 +1114,18 @@ async def main_loop() -> None:
         while True:
             try:
                 midnight_reset()
+
+                # Periodic S1 orphan settlement — every 5 min, skipped while LOCKED
+                # to avoid interfering with active position management.
+                if bot_state.current_phase != "LOCKED":
+                    _tick_ts = time.time()
+                    if _tick_ts - _last_orphan_settle_ts >= 300:
+                        try:
+                            await _settle_s1_orphans(session, read_config())
+                        except Exception as _oe:
+                            log.error("Periodic orphan settlement error: %s", _oe, exc_info=True)
+                        _last_orphan_settle_ts = time.time()
+
                 await _send_brain_scorecard()
                 _now_lv = datetime.now(_LV_TZ)
                 if _now_lv.hour == 23 and _now_lv.minute >= 55:
