@@ -1,7 +1,9 @@
 """bot_strategy.py â€” S1 (EMA momentum) and S2 (contract velocity + OBI) strategy brains."""
 import datetime
 import logging
+import logging.handlers
 import math
+import os
 import time
 from collections import deque
 
@@ -14,7 +16,21 @@ log = logging.getLogger("bot")
 brain_log = logging.getLogger("brain")
 brain_log.setLevel(logging.INFO)
 brain_log.propagate = False
-_brain_fh = logging.FileHandler("brain.log", encoding="utf-8")
+def _make_brain_log_path() -> str:
+    """Resolve brain.log path to the Railway volume; fall back to repo root."""
+    try:
+        vol_dir = os.path.dirname(os.path.abspath(bot_state._DB_FILE))
+        test_path = os.path.join(vol_dir, "brain.log")
+        os.makedirs(vol_dir, exist_ok=True)
+        with open(test_path, "a"):
+            pass
+        return test_path
+    except OSError:
+        return "brain.log"
+_brain_log_path = _make_brain_log_path()
+_brain_fh = logging.handlers.RotatingFileHandler(
+    _brain_log_path, maxBytes=5_000_000, backupCount=3, encoding="utf-8"
+)
 _brain_fh.setFormatter(logging.Formatter("%(asctime)s %(message)s"))
 brain_log.addHandler(_brain_fh)
 
