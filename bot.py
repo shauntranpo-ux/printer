@@ -16,6 +16,8 @@ import sqlite3
 
 import aiohttp
 
+from reconcile import classify_pending_trade
+
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -35,6 +37,100 @@ from bot_loops import main_loop
 log = logging.getLogger("bot")
 
 
+async def _startup_reconcile(session: aiohttp.ClientSession, mode: str) -> None:
+    """
+    Classify all pending trades older than 30 min against Kalshi and apply
+    the reconcile action per row, inside individual transactions.
+    Sends one Telegram summary. Replaces blind zombie-trade cleanup.
+    """
+    conn = sqlite3.connect(bot_state._DB_FILE)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute(
+            "SELECT id, market_id, side, contracts, entry_price_cents, ts, order_id, mode, asset "
+            "FROM trades "
+            "WHERE (outcome IN ('pending', '') OR outcome IS NULL) "
+            "AND ts < datetime('now', '-30 minutes')"
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        msg = "Startup reconcile: 0 marked filled, 0 phantoms, 0 left pending, 0 errors."
+        log.info(msg)
+        await send_telegram(msg)
+        return
+
+    n_filled = n_phantom = n_pending = n_error = 0
+    detail_lines: list[str] = []
+
+    for row in rows:
+        trade_id = row["id"]
+        try:
+            result = await classify_pending_trade(session, row, mode)
+        except Exception as exc:
+            log.error("Reconcile error trade %s: %s", trade_id, exc, exc_info=True)
+            n_error += 1
+            continue
+
+        action = result["action"]
+
+        if action == "leave_pending":
+            n_pending += 1
+            log.info("Startup reconcile: trade %s → leave_pending (%s)", trade_id, result.get("reason", ""))
+            continue
+
+        try:
+            conn2 = sqlite3.connect(bot_state._DB_FILE)
+            try:
+                if action == "mark_filled":
+                    conn2.execute(
+                        "UPDATE trades SET outcome=?, exit_price_cents=?, "
+                        "pnl_dollars=?, fill_confirmed=1 WHERE id=?",
+                        (result["outcome"], result["exit_price_cents"], result["pnl_dollars"], trade_id),
+                    )
+                elif action == "mark_expired_unfilled":
+                    conn2.execute(
+                        "UPDATE trades SET outcome='expired_unfilled', exit_price_cents=0, "
+                        "pnl_dollars=0.0, fill_confirmed=0 WHERE id=?",
+                        (trade_id,),
+                    )
+                elif action == "mark_phantom":
+                    conn2.execute(
+                        "UPDATE trades SET outcome='phantom', exit_price_cents=0, "
+                        "pnl_dollars=0.0, fill_confirmed=0 WHERE id=?",
+                        (trade_id,),
+                    )
+                conn2.commit()
+            finally:
+                conn2.close()
+        except Exception as exc:
+            log.error("Reconcile DB update failed trade %s: %s", trade_id, exc, exc_info=True)
+            n_error += 1
+            continue
+
+        if action == "mark_filled":
+            n_filled += 1
+            detail = (f"trade {trade_id} ({row['market_id']}) → filled "
+                      f"outcome={result['outcome']} pnl=${result['pnl_dollars']:.2f}")
+        else:
+            n_phantom += 1
+            reason = result.get("reason", "")
+            detail = f"trade {trade_id} ({row['market_id']}) → {action} ({reason})"
+
+        if len(detail_lines) < 10:
+            log.info("Startup reconcile: %s", detail)
+        detail_lines.append(detail)
+
+    if len(detail_lines) > 10:
+        log.info("Startup reconcile: ... %d more trades (see DB)", len(detail_lines) - 10)
+
+    summary = (f"Startup reconcile: {n_filled} marked filled, {n_phantom} phantoms, "
+               f"{n_pending} left pending, {n_error} errors.")
+    log.info(summary)
+    await send_telegram(summary)
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 #  Entry point
 # ═══════════════════════════════════════════════════════════════════════════
@@ -47,34 +143,22 @@ async def main() -> None:
     init_db()
     test_db_write()
 
-    # Clean up zombie "pending" trades from prior crashed sessions.
-    # Any trade still pending after 30+ minutes never settled — mark it as expired.
-    try:
-        conn = sqlite3.connect(bot_state._DB_FILE)
+    # Reconcile pending trades against Kalshi before entering the main loop.
+    # Replaces the old blind zombie-trade cleanup that wrote -entry×count PnL without
+    # checking whether orders were actually filled.
+    _mode = read_config().get("mode", "paper")
+    async with aiohttp.ClientSession() as _startup_session:
         try:
-            cleaned = conn.execute(
-                """UPDATE trades
-                   SET outcome         = 'expired_untracked',
-                       exit_price_cents = 0,
-                       pnl_dollars      = -(COALESCE(entry_price_cents,0) * COALESCE(contracts,1) / 100.0),
-                       fill_confirmed   = 0
-                   WHERE outcome IN ('pending', '', NULL)
-                     AND ts < datetime('now', '-30 minutes')"""
-            ).rowcount
-            conn.commit()
-        finally:
-            conn.close()
-        if cleaned:
-            log.warning(f"Startup cleanup: marked {cleaned} zombie pending trade(s) as expired_untracked")
-    except Exception as _e:
-        log.warning(f"Startup zombie-trade cleanup failed (non-fatal): {_e}")
-
-
-    # Verify Kalshi credentials and log account balance before doing anything.
-    # Skipped in paper mode — no real credentials are loaded there.
-    if read_config().get("mode", "paper") != "paper":
-        async with aiohttp.ClientSession() as verify_session:
-            await verify_kalshi_connection(verify_session)
+            await _startup_reconcile(_startup_session, _mode)
+        except Exception as _re:
+            log.error(
+                "Reconcile failed at startup — proceeding with bot start, "
+                "manual review needed. %s", _re,
+            )
+        # Verify Kalshi credentials after reconcile (same session, same startup block).
+        # Skipped in paper mode — no real credentials are loaded there.
+        if _mode != "paper":
+            await verify_kalshi_connection(_startup_session)
 
     # Start Coinbase price feed for all assets
     _startup_config = read_config()
