@@ -10,6 +10,7 @@ import aiohttp
 
 import bot_state
 from bot_market import kalshi_headers
+from kalshi_compat import extract_fill_price_cents
 
 log = logging.getLogger("bot")
 
@@ -188,9 +189,9 @@ async def classify_pending_trade(
     matching = [f for f in fills if f.get("side") == side]
 
     if matching:
-        avg_fill = sum(
-            f.get("price", f.get("contract_price", 0)) for f in matching
-        ) / len(matching)
+        _prices = [extract_fill_price_cents(f, side) for f in matching]
+        _valid_prices = [p for p in _prices if p is not None]
+        avg_fill = sum(_valid_prices) / len(_valid_prices) if _valid_prices else 0
         # Winning side settles at 100 cents, losing side at 0.
         settle = 100 if (
             (side == "yes" and resolution == "resolved_yes") or

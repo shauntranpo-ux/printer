@@ -63,7 +63,7 @@ async def test_classify_live_with_fill_win():
 
     with patch("reconcile.fetch_market_resolution", new=AsyncMock(return_value="resolved_yes")):
         with patch("reconcile.fetch_fills_for_ticker", new=AsyncMock(return_value=[
-            {"side": "yes", "price": 60, "count": 3, "created_time": "2024-01-01T00:01:00Z"},
+            {"side": "yes", "yes_price": 60, "count": 3, "created_time": "2024-01-01T00:01:00Z"},
         ])):
             result = await classify_pending_trade(session, row, "live")
 
@@ -84,7 +84,7 @@ async def test_classify_live_with_fill_loss():
 
     with patch("reconcile.fetch_market_resolution", new=AsyncMock(return_value="resolved_no")):
         with patch("reconcile.fetch_fills_for_ticker", new=AsyncMock(return_value=[
-            {"side": "yes", "price": 70, "count": 2, "created_time": "2024-01-01T00:01:00Z"},
+            {"side": "yes", "yes_price": 70, "count": 2, "created_time": "2024-01-01T00:01:00Z"},
         ])):
             result = await classify_pending_trade(session, row, "live")
 
