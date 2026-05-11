@@ -276,16 +276,16 @@ def strategy_brain_s1(
 
 _S2_ASSET_CONFIG: dict = {
     #           min_dist  min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max
-    "BTC":  dict(min_dist=0.002, min_obi=0.02, min_vel_delta=0.03, vel_lookback=4,
+    "BTC":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.02, vel_lookback=4,
                  min_ev=0.01, time_min=0.5, time_max=14.0),
-    "ETH":  dict(min_dist=0.002, min_obi=0.02, min_vel_delta=0.03, vel_lookback=4,
+    "ETH":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.02, vel_lookback=4,
                  min_ev=0.01, time_min=0.5, time_max=14.0),
     # SOL/DOGE: low strike_increment -> small dist from strike; vel calibrated conservatively
-    "SOL":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.03, vel_lookback=3,
+    "SOL":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.02, vel_lookback=3,
                  min_ev=0.01, time_min=0.5, time_max=14.0),
-    "XRP":  dict(min_dist=0.002, min_obi=0.02, min_vel_delta=0.03, vel_lookback=4,
+    "XRP":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.02, vel_lookback=4,
                  min_ev=0.01, time_min=0.5, time_max=14.0),
-    "DOGE": dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.03, vel_lookback=3,
+    "DOGE": dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.02, vel_lookback=3,
                  min_ev=0.01, time_min=0.5, time_max=14.0),
 }
 
@@ -387,7 +387,7 @@ def _s2_contract_direction(ticker: str, min_delta: float, lookback: int):
     second_avg = sum(recent[mid:]) / max(1, len(recent) - mid)
     delta = second_avg - first_avg  # positive = YES price rising = market leans bullish
     if abs(delta) < min_delta:
-        return None, None
+        return None, abs(delta)
     return ("yes" if delta > 0 else "no"), abs(delta)
 
 
@@ -446,7 +446,8 @@ def strategy_brain_s2(
     # Direction pointer: contract price velocity
     direction, vel_delta = _s2_contract_direction(ticker, cfg["min_vel_delta"], cfg["vel_lookback"])
     if direction is None:
-        return _make_skip("yes", "s2_no_velocity_data", abs_pct, mins_left, variant="strategy2")
+        _vel_reason = "s2_no_velocity_data" if vel_delta is None else f"s2_vel_flat:{vel_delta:.3f}<{cfg['min_vel_delta']}"
+        return _make_skip("yes", _vel_reason, abs_pct, mins_left, variant="strategy2")
 
     side = direction
     entry_price = yes_ask if side == "yes" else no_ask

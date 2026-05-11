@@ -561,6 +561,7 @@ async def _settle_s1_orphans(
         }
 
         market_result = None
+        market_status = None
         try:
             _path = f"/markets/{ticker}"
             async with session.get(
@@ -569,18 +570,20 @@ async def _settle_s1_orphans(
                 timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
             ) as _resp:
                 _mdata = await _resp.json()
-            market_result = (_mdata.get("market") or _mdata).get("result")
+            _mkt = _mdata.get("market") or _mdata
+            market_result = _mkt.get("result")
+            market_status = _mkt.get("status", "")
         except Exception as exc:
             log.warning("S1 orphan: Kalshi fetch failed for %s: %s", ticker, exc)
 
         if market_result in ("yes", "no"):
             log.info("S1 orphan %s: resolved (%s) - settling now", ticker, market_result)
             await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
+        elif market_status in ("", None, "active", "open"):
+            log.info("S1 orphan %s: market still open (status=%r) - re-added to pending", ticker, market_status)
         else:
-            log.info(
-                "S1 orphan %s: market still open or unknown result - re-added to pending",
-                ticker,
-            )
+            log.warning("S1 orphan %s: closed (status=%r) but no result - settling via price fallback", ticker, market_status)
+            await _settle_s1_trade(ticker, None, btc_price, config, asset)
 
 
 async def _try_settle_orphaned_s1(
