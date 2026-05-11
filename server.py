@@ -1031,3 +1031,66 @@ def api_risk():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/metrics")
+def metrics():
+    """Lightweight JSON metrics for uptime, trading activity, config, and recent errors."""
+    try:
+        cfg = read_config()
+        state_file = os.environ.get("BOT_STATE_FILE", "bot_state.json")
+        db_path = os.environ.get("BOT_DB_FILE", "kalshi_bot.db")
+
+        last_trade_ts = None
+        trade_count_24h = 0
+        fill_confirmed_rate_24h = None
+        try:
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            row = conn.execute("SELECT MAX(ts) AS mx FROM trades").fetchone()
+            if row:
+                last_trade_ts = row["mx"]
+            row24 = conn.execute(
+                "SELECT COUNT(*) AS cnt, SUM(fill_confirmed) AS fc "
+                "FROM trades WHERE ts > datetime('now', '-24 hours')"
+            ).fetchone()
+            if row24 and row24["cnt"]:
+                trade_count_24h = row24["cnt"]
+                fc = row24["fc"] or 0
+                fill_confirmed_rate_24h = round(fc / trade_count_24h, 4)
+            conn.close()
+        except Exception:
+            pass
+
+        bot_state_age = None
+        try:
+            bot_state_age = round(time.time() - os.path.getmtime(state_file), 1)
+        except OSError:
+            pass
+
+        err = obs.get_last_error()
+        return jsonify({
+            "uptime_seconds":          round(time.time() - _PROCESS_START, 1),
+            "last_trade_ts":           last_trade_ts,
+            "trade_count_24h":         trade_count_24h,
+            "fill_confirmed_rate_24h": fill_confirmed_rate_24h,
+            "bot_enabled":             cfg.get("bot_enabled", False),
+            "mode":                    cfg.get("mode", "paper"),
+            "bot_state_age_seconds":   bot_state_age,
+            "last_error_ts":           err["ts"]  if err else None,
+            "last_error_msg":          err["msg"] if err else None,
+        })
+    except Exception as exc:
+        log.error(f"metrics error: {exc}", exc_info=True)
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/healthz")
+def healthz():
+    """Railway health check: 200 if bot_state.json updated recently, else 503."""
+    state_file = os.environ.get("BOT_STATE_FILE", "bot_state.json")
+    try:
+        age = time.time() - os.path.getmtime(state_file)
+        if age < 120:
+            return jsonify({"status": "ok"}), 200
+        return jsonify({"status": "stale", "age": round(age, 1)}), 503
+    except OSError:
+        return jsonify({"status": "stale", "age": None}), 503
