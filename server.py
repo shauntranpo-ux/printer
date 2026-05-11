@@ -29,6 +29,7 @@ except Exception as _import_err:
     traceback.print_exc()
     raise
 
+import notify
 import obs
 obs.setup_logging("server")
 log = logging.getLogger("server")
@@ -108,22 +109,7 @@ def _safe_json_read(path: str, default):
 
 def _telegram_notify(text: str) -> None:
     """Fire-and-forget Telegram notification from the Flask process."""
-    token   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID",   "")
-    if not token or not chat_id:
-        return
-    try:
-        payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
-        req = urllib.request.Request(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=5):
-            pass
-    except Exception as exc:
-        log.warning(f"Telegram notify error (server): {exc}")
+    notify.send_alert("INFO", text)
 
 
 _CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 25, "confidence_threshold": 72,

@@ -25,6 +25,7 @@ import sys
 import time
 import urllib.request
 
+import notify
 import obs
 
 
@@ -38,22 +39,7 @@ WEEKLY_INTERVAL      = 7 * 24 * 3600  # re-run weekly report every 7 days
 
 
 def _send_telegram_sync(text: str) -> None:
-    token   = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    chat_id = os.environ.get("TELEGRAM_CHAT_ID",   "")
-    if not token or not chat_id:
-        return
-    try:
-        payload = json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "HTML"}).encode()
-        req = urllib.request.Request(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=5):
-            pass
-    except Exception as exc:
-        print(f"[runner] Telegram error: {exc}")
+    notify.send_alert("INFO", text)
 
 
 # ── Process registry ──────────────────────────────────────────────────────────
