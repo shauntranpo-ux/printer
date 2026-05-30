@@ -71,3 +71,21 @@ def test_s1_lookup_eth_above_breakeven():
     from bot_strategy import _s1_lookup_win_rate
     wp = _s1_lookup_win_rate("ETH", 0.003, 3.0)
     assert wp >= 0.85, f"ETH (0,0) bucket WR={wp:.3f} unexpectedly low — recalibration needed"
+
+
+def test_s2_vel_flat_skips_below_threshold():
+    """S2 must skip when velocity delta < min_vel_delta (0.70 for ETH)."""
+    from collections import deque
+    import bot_state
+    from bot_strategy import strategy_brain_s2
+
+    bot_state._contract_price_history["TEST-ETH"] = deque(
+        [(0, 50.0), (1, 50.05), (2, 50.1), (3, 50.1), (4, 50.1)], maxlen=60
+    )
+    bot_state._ticker_obi["TEST-ETH"] = 0.5
+    result = strategy_brain_s2(
+        btc_price=2000, strike=2010, yes_ask=50, no_ask=51,
+        elapsed_seconds=300, secs_left=600, ticker="TEST-ETH", asset="ETH",
+    )
+    assert result["action"] == "skip", f"Expected skip, got: {result['reasoning']}"
+    assert "s2_vel" in result["reasoning"], f"Expected vel skip: {result['reasoning']}"

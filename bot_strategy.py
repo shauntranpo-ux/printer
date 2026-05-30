@@ -293,16 +293,18 @@ def strategy_brain_s1(
 
 _S2_ASSET_CONFIG: dict = {
     #           min_dist  min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max
-    "BTC":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.02, vel_lookback=4,
+    # min_vel_delta MUST match scripts/calibrate_winrates.py S2_ASSET_CONFIG — tanh WP estimate
+    # is anchored to signal strength measured during calibration. 0.02 is noise; use cal values.
+    "BTC":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.80, vel_lookback=4,
                  min_ev=0.01, time_min=0.5, time_max=14.0),
-    "ETH":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.02, vel_lookback=4,
+    "ETH":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.70, vel_lookback=4,
                  min_ev=0.01, time_min=0.5, time_max=14.0),
     # SOL/DOGE: low strike_increment -> small dist from strike; vel calibrated conservatively
-    "SOL":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.02, vel_lookback=3,
+    "SOL":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=1.20, vel_lookback=3,
                  min_ev=0.01, time_min=0.5, time_max=14.0),
-    "XRP":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.02, vel_lookback=4,
+    "XRP":  dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.90, vel_lookback=4,
                  min_ev=0.01, time_min=0.5, time_max=14.0),
-    "DOGE": dict(min_dist=0.001, min_obi=0.02, min_vel_delta=0.02, vel_lookback=3,
+    "DOGE": dict(min_dist=0.001, min_obi=0.02, min_vel_delta=1.50, vel_lookback=3,
                  min_ev=0.01, time_min=0.5, time_max=14.0),
 }
 

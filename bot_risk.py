@@ -14,6 +14,7 @@ import os
 import re
 import sys
 import time
+from collections import deque
 from datetime import datetime, timezone
 
 import aiohttp
@@ -28,7 +29,9 @@ from bot_market import (
     kalshi_headers, seconds_remaining, seconds_elapsed,
     place_order, calculate_contracts,
 )
-from bot_strategy import _strategy_name_for
+from bot_strategy import _strategy_name_for, brain_log as _brain_log
+
+_s1_rolling_outcomes: deque = deque(maxlen=50)  # last 50 S1 trades: (ts, outcome)
 from asset_manager import (
     get_price           as _am_get_price,
     price_age_seconds   as _am_price_age,
@@ -398,14 +401,33 @@ async def _execute_s1_trade(
     if contracts == 0 or dollars_used < trade_amount * 0.90:
         return
 
+    # Reserve slot BEFORE awaiting place_order — prevents a concurrent loop iteration from
+    # passing the `if ticker in _s1_pending_trades` check during the async yield.
+    bot_state._s1_pending_trades[ticker] = {
+        "trade_id":          None,
+        "side":              side,
+        "entry_price_cents": int(entry_price_cents),
+        "contracts":         contracts,
+        "strike":            strike,
+        "asset":             asset,
+        "mode":              mode,
+        "entry_ts":          time.time(),
+        "market_close_time": (market or {}).get("close_time", ""),
+    }
+
     result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market, asset=asset, secs_left=secs_left)
     if not result["fill_confirmed"]:
+        bot_state._s1_pending_trades.pop(ticker, None)  # release reservation so next loop can retry
         log.info(f"[S1] {ticker}: order not filled -- skipping")
         return
     _fp = result.get("fill_price_cents")
     fill_price = _fp if _fp is not None else int(entry_price_cents)
     _fc = result.get("filled_contracts")
     contracts = _fc if _fc is not None else contracts
+
+    # Update reservation with actual fill data
+    bot_state._s1_pending_trades[ticker]["entry_price_cents"] = fill_price
+    bot_state._s1_pending_trades[ticker]["contracts"] = contracts
 
     win_prob  = brain_s1.get("win_prob", 0.5)
     _entry_p  = fill_price / 100.0
@@ -434,17 +456,6 @@ async def _execute_s1_trade(
         "strategy_variant":     "strategy1",
         "strategy_version":     bot_state._S1_VERSION,
         "brain": "s1",
-    }
-    bot_state._s1_pending_trades[ticker] = {
-        "trade_id":          None,
-        "side":              side,
-        "entry_price_cents": fill_price,
-        "contracts":         contracts,
-        "strike":            strike,
-        "asset":             asset,
-        "mode":              mode,
-        "entry_ts":          time.time(),
-        "market_close_time": (market or {}).get("close_time", ""),
     }
     trade_id = await db_write_trade(trade_data)
     if trade_id is None:
@@ -496,6 +507,15 @@ async def _settle_s1_trade(
         "profit_percent":   round(profit_pct, 2),
     })
     log.info(f"[S1] {ticker}: settled -- {outcome}, P&L=${pnl:.2f}")
+
+    _s1_rolling_outcomes.append((time.time(), outcome))
+    _wins = sum(1 for _, o in _s1_rolling_outcomes if o == "win")
+    _rolling_wr = _wins / len(_s1_rolling_outcomes)
+    _brain_log.info(
+        "S1 SETTLE %s %s | outcome=%s pnl=%.2f | rolling_wr=%.3f n=%d",
+        asset, ticker, outcome, pnl, _rolling_wr, len(_s1_rolling_outcomes),
+    )
+
     _s1_mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
     _s1_pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
     _s1_result = "WIN" if outcome == "win" else "LOSS"
@@ -508,6 +528,12 @@ async def _settle_s1_trade(
         max_cl = config.get("max_consecutive_losses", 5)
         if bot_state._s1_consecutive_losses >= max_cl:
             await send_telegram(f"ERROR - {bot_state._s1_consecutive_losses} consecutive losses")
+
+    if len(_s1_rolling_outcomes) >= 20 and _rolling_wr < 0.65:
+        await send_telegram(
+            f"⚠️ S1 WIN RATE ALERT: rolling WR={_rolling_wr:.1%} "
+            f"({_wins}/{len(_s1_rolling_outcomes)}) — below 65% threshold. Recalibrate."
+        )
 
 
 async def _settle_s1_orphans(
