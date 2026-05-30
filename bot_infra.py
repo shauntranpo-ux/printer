@@ -147,6 +147,14 @@ def _init_config() -> None:
     for k, v in defaults.items():
         cfg.setdefault(k, v)
 
+    # Safety caps — enforce on every startup so stale on-disk values can't bypass limits.
+    cfg["max_s1_positions"]          = min(int(cfg.get("max_s1_positions", 5)), 5)
+    cfg["max_s1_positions_per_asset"] = min(int(cfg.get("max_s1_positions_per_asset", 1)), 1)
+    cfg["max_consecutive_losses"]    = min(int(cfg.get("max_consecutive_losses", 5)), 5)
+    cfg["min_entry_price_cents"]     = max(float(cfg.get("min_entry_price_cents", 20)), 20.0)
+    cfg["max_entry_price_cents"]     = min(float(cfg.get("max_entry_price_cents", 76)), 76.0)
+    cfg["daily_loss_limit_dollars"]  = min(float(cfg.get("daily_loss_limit_dollars", 150)), 150.0)
+
     write_config(cfg)
     log.info(f"Config ready: mode={cfg['mode']} enabled={cfg['bot_enabled']}")
 
