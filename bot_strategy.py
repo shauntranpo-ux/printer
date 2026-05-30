@@ -92,16 +92,17 @@ def _make_skip(side: str, reason: str, abs_pct: float, mins_left: float,
 
 _S1_ASSET_CONFIG: dict = {
     #           min_dist   max_rv   ema_short  ema_long  session  min_ev  t_min  t_max
-    "BTC":  dict(min_dist=0.002, max_rv=1.0, ema_short=3, ema_long=12,
+    # MUST match scripts/calibrate_winrates.py S1_ASSET_CONFIG — win rate tables are invalid otherwise.
+    "BTC":  dict(min_dist=0.0025, max_rv=1.0, ema_short=3, ema_long=10,
                  session_gate=False, min_ev=0.01, time_min=0.5, time_max=14.0),
-    "ETH":  dict(min_dist=0.002, max_rv=1.0, ema_short=3, ema_long=7,
+    "ETH":  dict(min_dist=0.0030, max_rv=1.0, ema_short=3, ema_long=10,
                  session_gate=False, min_ev=0.01, time_min=0.5, time_max=14.0),
-    "SOL":  dict(min_dist=0.002, max_rv=1.0, ema_short=3, ema_long=12,
+    "SOL":  dict(min_dist=0.0050, max_rv=1.0, ema_short=3, ema_long=8,
                  session_gate=False, min_ev=0.01, time_min=0.5, time_max=14.0),
-    "XRP":  dict(min_dist=0.002, max_rv=1.0, ema_short=3, ema_long=12,
+    "XRP":  dict(min_dist=0.0040, max_rv=1.0, ema_short=3, ema_long=10,
                  session_gate=False, min_ev=0.01, time_min=0.5, time_max=14.0),
     # DOGE: strike_increment=$0.001 at ~$0.15 -> max possible dist ~0.33%; keep min_dist below that
-    "DOGE": dict(min_dist=0.001, max_rv=1.0, ema_short=2, ema_long=12,
+    "DOGE": dict(min_dist=0.0080, max_rv=1.0, ema_short=2, ema_long=8,
                  session_gate=False, min_ev=0.01, time_min=0.5, time_max=14.0),
 }
 
