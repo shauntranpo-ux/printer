@@ -121,10 +121,10 @@ def test_s2_obi_gate_bearish_ticker():
     assert val == pytest.approx(0.5)
 
 
-def test_s2_obi_gate_none_fails_closed():
-    """Missing ticker in _ticker_obi → gate fails closed (False, None) — never trade without OBI data."""
+def test_s2_obi_gate_none_amm_passes():
+    """Missing ticker OBI (AMM market) → gate passes (True, None) — AMM has no real order depth."""
     from bot_strategy import _s2_obi_gate
     ticker = "KXBTC-25MAY15-T99999"
     confirmed, val = _s2_obi_gate(ticker, "yes", 0.20)
-    assert confirmed is False
+    assert confirmed is True
     assert val is None

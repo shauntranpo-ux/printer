@@ -414,12 +414,13 @@ def _s2_obi_gate(ticker: str, side: str, min_obi: float):
     """
     OBI confirmation gate for S2.
     Returns (confirmed, obi_val).
-    Fails closed (False) when no OBI data for this ticker — never allow trades on missing data.
+    Passes (True, None) when no OBI data — Kalshi AMM markets always return empty orderbook arrays,
+    so None OBI is structural, not a data error. S2 win rate tables were calibrated without OBI gate.
     Positive OBI = no_depth > yes_depth = bullish for YES.
     """
     obi_val = bot_state._ticker_obi.get(ticker)
     if obi_val is None:
-        return False, None
+        return True, None
     if side == "yes" and obi_val <= min_obi:
         return False, obi_val
     if side == "no"  and obi_val >= -min_obi:
