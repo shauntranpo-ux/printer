@@ -380,6 +380,17 @@ def api_config():
     return jsonify(config)
 
 
+@app.route("/api/test-telegram", methods=["POST"])
+def api_test_telegram():
+    """Send a test Telegram message to verify notification config."""
+    now_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+    try:
+        notify.send_alert("INFO", f"\U0001f514 <b>Telegram test</b>  —  {now_str}\nBot notifications are working.")
+        return jsonify({"ok": True, "message": "Test message sent"})
+    except Exception as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+
 @app.route("/api/reset_pnl", methods=["POST"])
 def api_reset_pnl():
     """
