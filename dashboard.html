@@ -515,14 +515,6 @@ tr:last-child td{border-bottom:none;}
 
   <!-- ── TRADES PANEL ── -->
   <div id="panel-trades" class="panel">
-    <!-- $ per trade -->
-    <div class="card" style="padding:12px 14px;margin-bottom:12px;display:flex;align-items:center;gap:10px;">
-      <span style="font-size:12px;font-weight:600;color:var(--ink-2);">$ per trade</span>
-      <input type="number" id="trade-amount-input" min="1" step="1" value="25" placeholder="25"
-             style="width:72px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-weight:600;">
-      <button onclick="setTradeAmount()" style="padding:4px 14px;font-size:12px;background:var(--accent);color:#fff;border:none;border-radius:4px;cursor:pointer;font-weight:600;">Set</button>
-      <span id="trade-amount-status" style="font-size:11px;color:var(--ink-3);"></span>
-    </div>
     <!-- Stat cards -->
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:12px;">
       <div class="card" style="padding:10px 12px;text-align:center;">
@@ -580,6 +572,22 @@ tr:last-child td{border-bottom:none;}
             <button id="s-mode-paper" class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('paper')">PAPER</button>
             <button id="s-mode-demo"  class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('demo')">DEMO</button>
             <button id="s-mode-live"  class="mode-sel-btn" style="padding:5px 10px;font-size:11px;" onclick="setMode('live')">LIVE</button>
+          </div>
+        </div>
+        <div class="s-group">
+          <label>$ per trade</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <input type="number" id="s-trade-amount-input" min="1" step="1" value="25"
+              style="width:72px;padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-weight:600;">
+            <button onclick="saveTradeAmount()" class="s-save">Save</button>
+            <span id="s-trade-amount-status" style="font-size:11px;color:var(--ink-3);"></span>
+          </div>
+        </div>
+        <div class="s-group">
+          <label>Telegram</label>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button onclick="testTelegram()" class="s-save">Send Test</button>
+            <span id="s-telegram-status" style="font-size:11px;color:var(--ink-3);"></span>
           </div>
         </div>
       </div>
@@ -1819,22 +1827,38 @@ async function pollTrades() {
 }
 function exportCSV() { window.location.href = '/api/export/trades'; }
 
-async function setTradeAmount() {
-  const val = parseInt(document.getElementById('trade-amount-input').value);
-  const status = document.getElementById('trade-amount-status');
+async function saveTradeAmount() {
+  const val = parseInt(document.getElementById('s-trade-amount-input').value);
+  const status = document.getElementById('s-trade-amount-status');
   if (!val || val < 1) { status.textContent = 'invalid'; return; }
   try {
     const r = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({trade_amount_dollars: val})});
     if (!r.ok) throw new Error(r.status);
-    status.textContent = 'saved';
+    status.textContent = 'saved ✓';
   } catch(e) { status.textContent = 'error'; }
   setTimeout(() => { status.textContent = ''; }, 2000);
 }
 
+async function testTelegram() {
+  const status = document.getElementById('s-telegram-status');
+  status.textContent = 'sending…';
+  try {
+    const r = await fetch('/api/test-telegram', {method:'POST'});
+    const d = await r.json();
+    status.textContent = d.ok ? 'sent ✓' : ('error: ' + d.error);
+  } catch(e) { status.textContent = 'error'; }
+  setTimeout(() => { status.textContent = ''; }, 4000);
+}
+
+function setTradeAmount() { saveTradeAmount(); }
+
 function initTradeAmountInput() {
   fetch('/api/state').then(r => r.json()).then(d => {
     const amt = (d.config || {}).trade_amount_dollars;
-    if (amt) document.getElementById('trade-amount-input').value = amt;
+    if (amt) {
+      const newEl = document.getElementById('s-trade-amount-input');
+      if (newEl) newEl.value = amt;
+    }
   }).catch(() => {});
 }
 
