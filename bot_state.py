@@ -17,7 +17,7 @@ __all__ = [
     "private_key", "api_key",
     "current_market", "current_phase", "current_position",
     "_s2_attempted_tickers", "_asset_states", "_s1_pending_trades",
-    "_market_cache", "_market_cache_ts", "_all_markets_cache", "_all_markets_cache_ts",
+    "_market_cache", "_market_cache_ts", "_all_markets_cache",
     "limit_triggered", "limit_reason", "pre_limit_mode", "daily_reset_date",
     "last_confidence_score", "last_confidence_breakdown", "last_action", "last_skip_reason",
     "_asset_eval", "_contract_price_history",
@@ -66,7 +66,6 @@ _s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, 
 _market_cache: dict | None = None
 _market_cache_ts: float = 0.0
 _all_markets_cache: list = []
-_all_markets_cache_ts: float = 0.0
 
 limit_triggered: bool = False
 limit_reason: str = ""

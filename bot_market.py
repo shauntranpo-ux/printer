@@ -398,7 +398,6 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
     bot_state._market_cache    = pool[0]
     bot_state._market_cache_ts = now
     bot_state._all_markets_cache    = pool
-    bot_state._all_markets_cache_ts = now
     log.info(
         f"Active market: {bot_state._market_cache.get('ticker')} | {bot_state._market_cache.get('title')} "
         f"| closes {bot_state._market_cache.get('close_time')} | ({len(pool)} window(s) total)"
