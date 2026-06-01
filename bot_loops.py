@@ -153,7 +153,8 @@ async def handle_ready_phase(
     """
 
     _use_state = state is not None
-    mode = config.get("mode", "paper")
+    mode = config.get("s2_mode", config.get("mode", "paper"))
+    mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
 
     # Hard expiry gate — truly nothing to do in the last 90 seconds
     if secs_left < 90:
@@ -290,7 +291,7 @@ async def handle_ready_phase(
 
     await _execute_s1_trade(
         session, brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
-        elapsed, secs_left, asset, config, mode, ob, market,
+        elapsed, secs_left, asset, config, mode_s1, ob, market,
     )
     side     = brain["side"]
     score    = brain["confidence"]
@@ -842,7 +843,7 @@ async def _process_asset(
             try:
                 ob_s1 = await fetch_orderbook(session, ticker, market)
                 if ob_s1:
-                    mode = config.get("mode", "paper")
+                    mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
                     brain_s1 = strategy_brain_s1(
                         price, strike,
                         ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
@@ -851,7 +852,7 @@ async def _process_asset(
                     await _execute_s1_trade(
                         session, brain_s1, ticker, price, strike,
                         ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
-                        elapsed, secs_left, asset, config, mode, ob_s1, market,
+                        elapsed, secs_left, asset, config, mode_s1, ob_s1, market,
                     )
             except Exception as exc:
                 log.debug("[%s] S1 LOCKED-phase entry attempt failed: %s", asset, exc)
@@ -1290,7 +1291,7 @@ async def main_loop() -> None:
                         try:
                             ob_s1 = await fetch_orderbook(session, ticker, market)
                             if ob_s1:
-                                mode = config.get("mode", "paper")
+                                mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
                                 brain_s1 = strategy_brain_s1(
                                     btc_price, strike,
                                     ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
@@ -1299,7 +1300,7 @@ async def main_loop() -> None:
                                 await _execute_s1_trade(
                                     session, brain_s1, ticker, btc_price, strike,
                                     ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
-                                    elapsed, secs_left, "BTC", config, mode, ob_s1, market,
+                                    elapsed, secs_left, "BTC", config, mode_s1, ob_s1, market,
                                 )
                         except Exception as exc:
                             log.debug("S1 LOCKED-phase entry attempt failed: %s", exc)

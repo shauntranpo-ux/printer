@@ -319,6 +319,7 @@ tr:last-child td{border-bottom:none;}
       </button>
       <button class="tb-tab" id="tbtab-DOGE" onclick="selectTab('DOGE')"><span id="logo-DOGE-sm"></span>DOGE</button>
       <button class="tb-tab" id="tbtab-trades" onclick="selectTab('trades')">Trades</button>
+      <button class="tb-tab" id="tbtab-settings" onclick="selectTab('settings')">Settings</button>
     </div>
 
     <div class="topbar-right">
@@ -344,10 +345,6 @@ tr:last-child td{border-bottom:none;}
       <!-- Clock -->
       <span id="clock-txt">—</span>
 
-      <!-- Settings gear -->
-      <button class="tb-btn" id="tbtab-settings" onclick="selectTab('settings')" title="Settings" style="padding:7px 10px;">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
     </div>
   </div>
 </div>
@@ -582,6 +579,22 @@ tr:last-child td{border-bottom:none;}
             <button onclick="saveTradeAmount()" class="s-save">Save</button>
             <span id="s-trade-amount-status" style="font-size:11px;color:var(--ink-3);"></span>
           </div>
+        </div>
+        <div class="s-group">
+          <label>S1 Mode</label>
+          <div class="tog-wrap" style="gap:5px;">
+            <button id="s1-mode-btn-paper" class="mode-sel-btn" onclick="setStrategyMode('s1','paper')"><span class="mode-btn-label">PAPER</span></button>
+            <button id="s1-mode-btn-live"  class="mode-sel-btn" onclick="setStrategyMode('s1','live')"><span class="mode-btn-label">LIVE</span></button>
+          </div>
+          <span id="s1-mode-status" style="font-size:11px;color:var(--ink-3);margin-left:6px;"></span>
+        </div>
+        <div class="s-group">
+          <label>S2 Mode</label>
+          <div class="tog-wrap" style="gap:5px;">
+            <button id="s2-mode-btn-paper" class="mode-sel-btn" onclick="setStrategyMode('s2','paper')"><span class="mode-btn-label">PAPER</span></button>
+            <button id="s2-mode-btn-live"  class="mode-sel-btn" onclick="setStrategyMode('s2','live')"><span class="mode-btn-label">LIVE</span></button>
+          </div>
+          <span id="s2-mode-status" style="font-size:11px;color:var(--ink-3);margin-left:6px;"></span>
         </div>
         <div class="s-group">
           <label>Telegram</label>
@@ -1381,7 +1394,7 @@ function renderMarketGrid(assets, dailyData) {
         <div class="mc-row"><span class="mc-lbl">Dist</span><span class="mc-val">${dist!=null?dist.toFixed(2)+'%':'—'}</span></div>
         <div class="mc-row"><span class="mc-lbl">YES / UP</span><span class="mc-val">${yask!=null?yask+'c':'—'}</span></div>
         <div class="mc-row"><span class="mc-lbl">NO / DOWN</span><span class="mc-val">${nask!=null?nask+'c':'—'}</span></div>
-        <div class="mc-row"><span class="mc-lbl">EV</span><span class="mc-val ${ev!=null&&ev>0?'g':ev!=null&&ev<0?'r':''}">${ev!=null?(ev>=0?'+':'')+ev.toFixed(1)+'%':'—'}</span></div>
+        <div class="mc-row"><span class="mc-lbl">EV</span><span class="mc-val ${ev!=null&&ev>0&&Math.abs(ev)<=200?'g':ev!=null&&ev<0&&Math.abs(ev)<=200?'r':''}">${ev!=null&&Math.abs(ev)<=200?(ev>=0?'+':'')+ev.toFixed(1)+'%':ev!=null?'—*':'—'}</span></div>
         <div class="mc-row"><span class="mc-lbl">Win Prob</span><span class="mc-val">${wp!=null?wp.toFixed(1)+'%':'—'}</span></div>
       </div>
       <div class="mc-row" style="margin-top:4px;"><span class="mc-lbl">Time Left</span><span class="mc-val">${a.secs_left>0?_fmtSecs(a.secs_left):'—'}</span></div>
@@ -1557,6 +1570,27 @@ function selectSignalAsset(asset) {
 }
 
 // ── Settings ──
+function _updateStrategyModePill(strategy, mode) {
+  ['paper','live'].forEach(m => {
+    const btn = document.getElementById(strategy+'-mode-btn-'+m);
+    if (btn) btn.className = 'mode-sel-btn' + (mode === m ? ' sel-'+m : '');
+  });
+}
+
+async function setStrategyMode(strategy, mode) {
+  const statusEl = document.getElementById(strategy+'-mode-status');
+  const body = {}; body[strategy+'_mode'] = mode;
+  try {
+    const r = await fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+    if (!r.ok) throw new Error(r.status);
+    _updateStrategyModePill(strategy, mode);
+    if (statusEl) statusEl.textContent = mode === 'live' ? '🔴 LIVE' : 'paper';
+  } catch(e) {
+    if (statusEl) statusEl.textContent = 'error';
+  }
+  if (statusEl) setTimeout(() => { statusEl.textContent = ''; }, 3000);
+}
+
 function populateSettings(cfg) {
   if (!cfg) return;
   const set = (id, val) => { const el=document.getElementById(id); if(el) el.value=val; };
@@ -1566,6 +1600,8 @@ function populateSettings(cfg) {
   set('s-vol-gate', cfg.vol_gate_thresh!=null?cfg.vol_gate_thresh:1.8);
   updateBotToggleUI(cfg.bot_enabled !== false);
   updateModePillVisual(cfg.mode || 'paper');
+  _updateStrategyModePill('s1', cfg.s1_mode || 'paper');
+  _updateStrategyModePill('s2', cfg.s2_mode || 'paper');
 }
 async function saveSetting(key, value, btn) {
   const body = {}; body[key] = value;

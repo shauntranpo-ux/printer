@@ -302,6 +302,8 @@ def api_config():
     validators = {
         "trade_amount_dollars":        is_positive_number,
         "mode":                        lambda v: v in ("live", "paper", "demo"),
+        "s1_mode":                     lambda v: v in ("live", "paper"),
+        "s2_mode":                     lambda v: v in ("live", "paper"),
         "daily_loss_limit_dollars":    is_positive_number,
         "daily_profit_target_dollars": is_positive_number,
         "confidence_threshold":        lambda v: isinstance(v, (int, float)) and 50 <= v <= 100,
