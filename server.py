@@ -484,24 +484,6 @@ def index():
         return f"<h1>Error: {exc}</h1>", 500
 
 
-@app.route("/new")
-def new_dashboard():
-    """Serve the Money Printer dashboard."""
-    try:
-        path = os.path.join(_BASE_DIR, "handoff", "Money Printer.html")
-        with open(path, "r", encoding="utf-8") as fh:
-            content = fh.read()
-        from flask import Response
-        return Response(content, mimetype="text/html", headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-        })
-    except Exception as exc:
-        log.error(f"new_dashboard() failed: {exc}", exc_info=True)
-        return f"<h1>Error: {exc}</h1>", 500
-
-
 @app.route("/api/config", methods=["GET"])
 def api_config_get():
     """Return the current config."""
