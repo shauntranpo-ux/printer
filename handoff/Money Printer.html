@@ -132,9 +132,9 @@ body{min-height:100vh;background:var(--bg);}
 .mode-seg button.active{background:var(--panel-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2);}
 .mode-seg button.active.live{color:var(--up);}
 .mode-seg button.active.demo{color:var(--accent);}
-.mode-seg-btn{padding:4px 10px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);color:var(--ink-3);font:600 10px/1 'Montserrat',sans-serif;letter-spacing:0.06em;cursor:pointer;}
-.mode-seg-btn.active-paper{background:var(--panel-2);color:var(--ink-2);border-color:var(--line-2);}
-.mode-seg-btn.active-live{background:oklch(0.42 0.13 155 / 0.12);color:oklch(0.42 0.13 155);border-color:oklch(0.42 0.13 155 / 0.4);}
+.mode-seg-btn{padding:4px 10px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);color:var(--ink-3);font:600 10px/1 'Montserrat',sans-serif;letter-spacing:0.06em;cursor:pointer;transition:background 0.15s,color 0.15s,border-color 0.15s;}
+.mode-seg-btn.active-paper{background:var(--panel);color:var(--ink);border-color:var(--ink-3);box-shadow:inset 0 0 0 1px var(--ink-3);}
+.mode-seg-btn.active-live{background:oklch(0.42 0.13 155 / 0.18);color:oklch(0.42 0.13 155);border-color:oklch(0.42 0.13 155 / 0.6);box-shadow:inset 0 0 0 1px oklch(0.42 0.13 155 / 0.3);}
 
 .clock{
   font:600 11px/1 'Montserrat',monospace;
@@ -1743,7 +1743,7 @@ async function fetchSettingsConfig(){
     _applyStrategyMode('s1', d.s1_mode || 'paper');
     _applyStrategyMode('s2', d.s2_mode || 'paper');
     const ta = document.getElementById('s-trade-amount');
-    if(ta && d.trade_amount != null) ta.value = d.trade_amount;
+    if(ta && d.trade_amount_dollars != null) ta.value = d.trade_amount_dollars;
   } catch(e){}
 }
 
@@ -1774,7 +1774,7 @@ async function saveTradeAmount(){
   const val = parseFloat(inp?.value);
   if(!inp || isNaN(val) || val < 1) { if(statusEl) statusEl.textContent='invalid'; return; }
   try {
-    const r = await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trade_amount:val})});
+    const r = await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({trade_amount_dollars:val})});
     if(!r.ok) throw new Error(r.status);
     if(statusEl){ statusEl.textContent='saved'; setTimeout(()=>{ statusEl.textContent=''; },3000); }
   } catch(e){
