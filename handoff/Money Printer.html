@@ -1132,7 +1132,7 @@ function renderMarketStrip(){
         <div class="mc-price">
           <span class="mc-price-label" style="color:${_evVal>0?'oklch(0.5 0.18 150)':_evVal<-0.01?'oklch(0.5 0.20 25)':'var(--ink-3)'}">EV</span>
           <span class="mc-price-val" style="color:${_evVal>0?'oklch(0.5 0.18 150)':_evVal<-0.01?'oklch(0.5 0.20 25)':'var(--ink-2)'}">
-            ${_evVal!=0?((_evVal>0?'+':'')+(_evVal*100).toFixed(1)+'%'):'—'}
+            ${_evVal!=0&&Math.abs(_evVal)<=200?((_evVal>0?'+':'')+_evVal.toFixed(1)+'%'):_evVal!=0?'—*':'—'}
           </span>
           ${_skipLabel?`<span style="font-size:9px;color:var(--ink-3);font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;display:block">${_skipLabel}</span>`:''}
         </div>
@@ -1285,7 +1285,7 @@ function renderSignals(){
       </div>
       <div></div>
       <div class="ds-gate ${evState}" title="${FIELD_TIP.ev_pass}">EV ${s.ev_pass?'✓':'✕'}</div>
-      <div class="ds-ev ${evCls}" title="${FIELD_TIP.yes_ev}">${evVal>=0?'+':''}${evVal.toFixed(1)}%</div>
+      <div class="ds-ev ${evCls}" title="${FIELD_TIP.yes_ev}">${Math.abs(evVal)<=200?(evVal>=0?'+':'')+evVal.toFixed(1)+'%':'—*'}</div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="ds-decision ${decisionTrade?'trade':'skip'}" title="${FIELD_TIP.final_decision}">${decisionTrade?'TRADE':'SKIP'}</div>
         ${caret}
