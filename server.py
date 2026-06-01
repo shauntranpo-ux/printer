@@ -57,8 +57,8 @@ _FULL_CONFIG_DEFAULT = {
     "mode": "paper",
     "trade_amount_dollars": 25,
     "confidence_threshold": 72,
-    "daily_loss_limit_dollars": 50000,
-    "daily_profit_target_dollars": 50000,
+    "daily_loss_limit_dollars": 50,
+    "daily_profit_target_dollars": 200,
 }
 if not os.path.exists("config.json"):
     try:
@@ -113,8 +113,8 @@ def _telegram_notify(text: str) -> None:
 
 
 _CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 25, "confidence_threshold": 72,
-                   "daily_loss_limit_dollars": 50000,
-                   "daily_profit_target_dollars": 50000}
+                   "daily_loss_limit_dollars": 50,
+                   "daily_profit_target_dollars": 200}
 _STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
                    "today_demo_pnl": 0.0, "phase": "waiting", "mode": "paper"}
 
