@@ -1285,7 +1285,7 @@ function renderSignals(){
       </div>
       <div></div>
       <div class="ds-gate ${evState}" title="${FIELD_TIP.ev_pass}">EV ${s.ev_pass?'✓':'✕'}</div>
-      <div class="ds-ev ${evCls}" title="${FIELD_TIP.yes_ev}">${Math.abs(evVal)<=200?(evVal>=0?'+':'')+evVal.toFixed(1)+'%':'—*'}</div>
+      <div class="ds-ev ${evCls}" title="${FIELD_TIP.yes_ev}">${evVal!=null&&Math.abs(evVal)<=200?(evVal>=0?'+':'')+evVal.toFixed(1)+'%':evVal!=null?'—*':'—'}</div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="ds-decision ${decisionTrade?'trade':'skip'}" title="${FIELD_TIP.final_decision}">${decisionTrade?'TRADE':'SKIP'}</div>
         ${caret}
