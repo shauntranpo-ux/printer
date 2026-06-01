@@ -199,7 +199,8 @@ def init_db() -> None:
                 asset                 TEXT DEFAULT 'BTC',
                 raw_p_yes             REAL,
                 entry_signals         TEXT,
-                strategy_variant      TEXT DEFAULT 'strategy2'
+                strategy_variant      TEXT DEFAULT 'strategy2',
+                brain                 TEXT
             )
         """)
 
