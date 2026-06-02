@@ -33,6 +33,7 @@ def test_s1_config_override_skips_on_overridden_min_dist():
     cfg = {
         "min_entry_price_cents": 20,
         "max_entry_price_cents": 76,
+        "quiet_hours_enabled": False,  # disable overnight gate so dist_gate is reachable
         "s1_config": {
             "ETH": {"min_dist": 0.9999},  # impossibly high → forces dist_gate
         },
@@ -74,6 +75,7 @@ def test_s2_config_override_skips_on_overridden_min_dist():
     cfg = {
         "min_entry_price_cents": 20,
         "max_entry_price_cents": 76,
+        "quiet_hours_enabled": False,  # disable overnight gate so dist_gate is reachable
         "s2_config": {
             "ETH": {"min_dist": 0.9999},  # impossibly high → forces dist_gate
         },

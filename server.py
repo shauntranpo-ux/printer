@@ -309,6 +309,9 @@ def api_config():
         "daily_profit_target_dollars": is_positive_number,
         "confidence_threshold":        lambda v: isinstance(v, (int, float)) and 50 <= v <= 100,
         "bot_enabled":                 lambda v: isinstance(v, bool),
+        "quiet_hours_enabled":         lambda v: isinstance(v, bool),
+        "quiet_start_et":              lambda v: isinstance(v, int) and 0 <= v <= 23,
+        "quiet_end_et":                lambda v: isinstance(v, int) and 0 <= v <= 23,
         "min_ev_base":                 lambda v: isinstance(v, (int, float)) and 0 <= v <= 20,
         "vol_gate_thresh":             lambda v: isinstance(v, (int, float)) and 0.5 <= v <= 10,
     }

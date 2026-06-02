@@ -118,6 +118,31 @@ def _s1_is_us_session() -> bool:
         return True  # fail open — never block trades on a clock error
 
 
+
+def _is_quiet_hours(config: dict) -> bool:
+    """
+    True when current ET time is in the overnight quiet window.
+    Default: 10pm-7am ET (22:00-07:00). Configurable via:
+      quiet_hours_enabled (bool, default True)
+      quiet_start_et      (int hour 0-23, default 22)
+      quiet_end_et        (int hour 0-23, default 7)
+    Returns False when disabled or on any clock error.
+    """
+    if not config.get("quiet_hours_enabled", True):
+        return False
+    try:
+        now_et = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-4)))
+        hour = now_et.hour
+        start = int(config.get("quiet_start_et", 22))
+        end   = int(config.get("quiet_end_et", 7))
+        if start > end:
+            return hour >= start or hour < end
+        else:
+            return start <= hour < end
+    except Exception:
+        return False
+
+
 def _s1_ema_direction(prices: list, short_min: float, long_min: float):
     """
     EMA crossover direction pointer.
@@ -173,6 +198,10 @@ def strategy_brain_s1(
         current_price = prices_list[-1][1] if prices_list else btc_price
 
     abs_pct = abs(current_price - strike) / strike if strike > 0 else 0.0
+
+    # Quiet hours gate — block overnight to avoid thin-market losses
+    if _is_quiet_hours(config):
+        return _make_skip("yes", "s1_quiet_hours", abs_pct, mins_left, variant="strategy1")
 
     # Cap gate: global S1 position limit
     _s1_global_cap = config.get("max_s1_positions", 3)
@@ -449,6 +478,10 @@ def strategy_brain_s2(
         current_price = raw[-1][1] if raw else btc_price
 
     abs_pct = abs(current_price - strike) / strike if strike > 0 else 0.0
+
+    # Quiet hours gate — block overnight to avoid thin-market losses
+    if _is_quiet_hours(config):
+        return _make_skip("yes", "s2_quiet_hours", abs_pct, mins_left, variant="strategy2")
 
     # Gate 1: time window
     if mins_left < cfg["time_min"] or mins_left > cfg["time_max"]:
