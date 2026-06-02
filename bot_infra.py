@@ -70,7 +70,7 @@ def read_config() -> dict:
     try:
         with open(bot_state._CONFIG_FILE, "r") as fh:
             cfg = json.load(fh)
-        cfg.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
+        cfg.setdefault("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
         bot_state._last_good_config = cfg
         return cfg
     except json.JSONDecodeError as exc:

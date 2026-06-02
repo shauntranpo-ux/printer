@@ -59,6 +59,7 @@ _FULL_CONFIG_DEFAULT = {
     "confidence_threshold": 72,
     "daily_loss_limit_dollars": 50,
     "daily_profit_target_dollars": 200,
+    "enabled_assets": ["BTC", "ETH", "SOL", "XRP", "DOGE"],
 }
 if not os.path.exists("config.json"):
     try:
