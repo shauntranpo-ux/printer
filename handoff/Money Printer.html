@@ -1690,7 +1690,7 @@ function renderTrades(filter='all'){
     return `<tr>
       <td><div>${time}</div><div style="font-size:9px;color:var(--ink-3);">${date}</div></td>
       <td><span class="td-sym"><span class="swatch" style="background:${colors[t.sym]};"></span>${t.sym}</span></td>
-      <td><span class="badge" style="${(t.brain==='s1'||t.strategy_variant==='strategy1')?'background:var(--amber-soft);color:var(--amber);':'background:var(--accent-soft);color:var(--accent);'}border:none;font-size:9px;">${(t.brain==='s1'||t.strategy_variant==='strategy1')?'S1':'S2'}</span></td>
+      <td><span class="badge" style="${(t.brain==='s1'||t.sv==='strategy1')?'background:var(--amber-soft);color:var(--amber);':'background:var(--accent-soft);color:var(--accent);'}border:none;font-size:9px;">${(t.brain==='s1'||t.sv==='strategy1')?'S1':'S2'}</span></td>
       <td><span class="td-dir ${t.dir==='UP'?'up':'down'}">${t.dir}</span></td>
       <td>${t.qty || '—'}</td>
       <td>${t.entry != null ? t.entry+'¢' : '—'}</td>
