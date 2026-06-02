@@ -320,7 +320,7 @@ def api_config():
         valid_assets = {"BTC", "ETH", "SOL", "XRP", "DOGE"}
         if asset not in valid_assets:
             return jsonify({"error": f"Unknown asset {asset!r}"}), 400
-        enabled = config.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
+        enabled = config.setdefault("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
         if action == "enable_asset":
             if asset not in enabled:
                 enabled.append(asset)
@@ -531,7 +531,7 @@ def api_pnl():
 
         # Per-asset today
         cfg = read_config()
-        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP"])
+        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
         today_by_asset = {}
         for asset in enabled_assets:
             a_trades = [t for t in today_trades if t.get("asset") == asset]
@@ -601,7 +601,7 @@ def api_markets():
     try:
         state = read_state()
         cfg   = read_config()
-        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP"])
+        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
 
         assets = state.get("assets", {})
 
@@ -636,7 +636,7 @@ def api_market_state():
     try:
         state = read_state()
         cfg   = read_config()
-        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP"])
+        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
         assets = state.get("assets", {})
 
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
