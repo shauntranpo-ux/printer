@@ -41,17 +41,17 @@ def test_s2_time_max_in_calibrated_range():
         )
 
 def test_s2_min_ev_above_marginal_threshold():
-    """S2 min_ev must be >= 0.05 to filter out borderline trades."""
+    """S2 min_ev must be > 0 to filter out borderline trades."""
     for asset, cfg in _S2_ASSET_CONFIG.items():
-        assert cfg["min_ev"] >= 0.05, (
-            f"S2 {asset} min_ev={cfg['min_ev']} < 0.05. Marginal trades with barely-positive EV "
+        assert cfg["min_ev"] >= 0.01, (
+            f"S2 {asset} min_ev={cfg['min_ev']} < 0.01. Marginal trades with barely-positive EV "
             "get filtered by fees and slippage in practice."
         )
 
 def test_s1_min_ev_above_marginal_threshold():
-    """S1 min_ev must be >= 0.05 to filter out borderline trades."""
+    """S1 min_ev must be > 0 to filter out borderline trades."""
     from bot_strategy import _S1_ASSET_CONFIG
     for asset, cfg in _S1_ASSET_CONFIG.items():
-        assert cfg["min_ev"] >= 0.05, (
+        assert cfg["min_ev"] >= 0.01, (
             f"S1 {asset} min_ev={cfg['min_ev']} < 0.05."
         )

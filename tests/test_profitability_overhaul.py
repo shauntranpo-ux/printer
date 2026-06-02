@@ -73,3 +73,29 @@ def test_quiet_hours_span_midnight_logic():
     assert _check_hour(22) is True,  "10pm (22) should be quiet"
     assert _check_hour(6)  is True,  "6am (6) should be quiet"
     assert _check_hour(7)  is False, "7am (7) should not be quiet"
+
+
+def test_s1_s2_min_ev_lowered():
+    """S1 and S2 min_ev must be <= 0.02 for all assets."""
+    import re
+    with open('bot_strategy.py', encoding='utf-8') as f:
+        src = f.read()
+    s1_start = src.index('_S1_ASSET_CONFIG: dict = {')
+    s1_end   = src.index('}', s1_start + 50)
+    for v in re.findall(r'min_ev=([\d.]+)', src[s1_start:s1_end]):
+        assert float(v) <= 0.02, f"S1 min_ev {v} still above 0.02"
+    s2_start = src.index('_S2_ASSET_CONFIG: dict = {')
+    s2_end   = src.index('}', s2_start + 50)
+    for v in re.findall(r'min_ev=([\d.]+)', src[s2_start:s2_end]):
+        assert float(v) <= 0.02, f"S2 min_ev {v} still above 0.02"
+
+
+def test_max_entry_price_default_expanded():
+    """Default max_entry_price_cents must be >= 85 in both S1 and S2."""
+    import re
+    with open('bot_strategy.py', encoding='utf-8') as f:
+        src = f.read()
+    defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', src)
+    assert defaults, "max_entry_price_cents default not found"
+    for d in defaults:
+        assert float(d) >= 85, f"max_entry_price_cents default {d} still below 85"

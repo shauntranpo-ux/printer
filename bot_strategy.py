@@ -94,16 +94,16 @@ _S1_ASSET_CONFIG: dict = {
     #           min_dist   max_rv   ema_short  ema_long  session  min_ev  t_min  t_max
     # MUST match scripts/calibrate_winrates.py S1_ASSET_CONFIG — win rate tables are invalid otherwise.
     "BTC":  dict(min_dist=0.0025, max_rv=1.0, ema_short=3, ema_long=10,
-                 session_gate=False, min_ev=0.05, time_min=0.5, time_max=14.0),
+                 session_gate=False, min_ev=0.02, time_min=0.5, time_max=14.0),
     "ETH":  dict(min_dist=0.0030, max_rv=1.0, ema_short=3, ema_long=10,
-                 session_gate=False, min_ev=0.05, time_min=0.5, time_max=14.0),
+                 session_gate=False, min_ev=0.02, time_min=0.5, time_max=14.0),
     "SOL":  dict(min_dist=0.0050, max_rv=1.0, ema_short=3, ema_long=8,
-                 session_gate=False, min_ev=0.05, time_min=0.5, time_max=14.0),
+                 session_gate=False, min_ev=0.02, time_min=0.5, time_max=14.0),
     "XRP":  dict(min_dist=0.0040, max_rv=1.0, ema_short=3, ema_long=10,
-                 session_gate=False, min_ev=0.05, time_min=0.5, time_max=14.0),
+                 session_gate=False, min_ev=0.02, time_min=0.5, time_max=14.0),
     # DOGE: strike_increment=$0.001 at ~$0.15 -> max possible dist ~0.33%; keep min_dist below that
     "DOGE": dict(min_dist=0.0080, max_rv=1.0, ema_short=2, ema_long=8,
-                 session_gate=False, min_ev=0.05, time_min=0.5, time_max=14.0),
+                 session_gate=False, min_ev=0.02, time_min=0.5, time_max=14.0),
 }
 
 
@@ -251,7 +251,7 @@ def strategy_brain_s1(
 
     # Gate 5: entry price range (per-asset via get_asset_config)
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
-    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 76.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 85.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           rv=rv, variant="strategy1", price_filter=True)
@@ -325,11 +325,11 @@ _S2_ASSET_CONFIG: dict = {
     # ALL values MUST match scripts/calibrate_winrates.py S2_ASSET_CONFIG.
     # min_dist and min_vel_delta are calibration inputs; tables are invalid otherwise.
     # time_min/time_max must stay within S2_ENTRY_OFFSETS=[2..12] min range.
-    "BTC":  dict(min_dist=0.0035, min_obi=0.02, min_vel_delta=0.80, vel_lookback=4, min_ev=0.05, time_min=2.0, time_max=12.5),
-    "ETH":  dict(min_dist=0.0030, min_obi=0.02, min_vel_delta=0.70, vel_lookback=4, min_ev=0.05, time_min=2.0, time_max=12.5),
-    "SOL":  dict(min_dist=0.0060, min_obi=0.02, min_vel_delta=1.20, vel_lookback=3, min_ev=0.05, time_min=2.0, time_max=12.5),
-    "XRP":  dict(min_dist=0.0050, min_obi=0.02, min_vel_delta=0.90, vel_lookback=4, min_ev=0.05, time_min=2.0, time_max=12.5),
-    "DOGE": dict(min_dist=0.0100, min_obi=0.02, min_vel_delta=1.50, vel_lookback=3, min_ev=0.05, time_min=2.0, time_max=12.5),
+    "BTC":  dict(min_dist=0.0035, min_obi=0.02, min_vel_delta=0.80, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
+    "ETH":  dict(min_dist=0.0030, min_obi=0.02, min_vel_delta=0.70, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
+    "SOL":  dict(min_dist=0.0060, min_obi=0.02, min_vel_delta=1.20, vel_lookback=3, min_ev=0.02, time_min=2.0, time_max=12.5),
+    "XRP":  dict(min_dist=0.0050, min_obi=0.02, min_vel_delta=0.90, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
+    "DOGE": dict(min_dist=0.0100, min_obi=0.02, min_vel_delta=1.50, vel_lookback=3, min_ev=0.02, time_min=2.0, time_max=12.5),
 }
 
 # ---------------------------------------------------------------------------
@@ -508,7 +508,7 @@ def strategy_brain_s2(
 
     # Gate 3: entry price range (per-asset via get_asset_config)
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
-    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 76.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 85.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s2_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           variant="strategy2", price_filter=True)
