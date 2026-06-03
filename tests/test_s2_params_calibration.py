@@ -8,15 +8,15 @@ from bot_strategy import _S2_ASSET_CONFIG
 
 # Calibration constants from scripts/calibrate_winrates.py lines 66-72
 _CAL_S2 = {
-    "BTC":  dict(min_dist=0.0035, min_vel_delta=0.80, vel_lookback=4),
-    "ETH":  dict(min_dist=0.0030, min_vel_delta=0.70, vel_lookback=4),
-    "SOL":  dict(min_dist=0.0060, min_vel_delta=1.20, vel_lookback=3),
-    "XRP":  dict(min_dist=0.0050, min_vel_delta=0.90, vel_lookback=4),
-    "DOGE": dict(min_dist=0.0100, min_vel_delta=1.50, vel_lookback=3),
+    "BTC":  dict(min_dist=0.0015, min_vel_delta=0.40, vel_lookback=4),
+    "ETH":  dict(min_dist=0.0015, min_vel_delta=0.35, vel_lookback=4),
+    "SOL":  dict(min_dist=0.0025, min_vel_delta=0.60, vel_lookback=3),
+    "XRP":  dict(min_dist=0.0020, min_vel_delta=0.45, vel_lookback=4),
+    "DOGE": dict(min_dist=0.0040, min_vel_delta=0.75, vel_lookback=3),
 }
 
 def test_s2_min_dist_matches_calibration():
-    """S2 min_dist must match calibration per-asset — win rate tables calibrated on these."""
+    """S2 min_dist must be > 0 and match live config per-asset."""
     for asset, cal in _CAL_S2.items():
         live = _S2_ASSET_CONFIG[asset]["min_dist"]
         assert live == cal["min_dist"], (

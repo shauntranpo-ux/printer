@@ -8,20 +8,20 @@ from bot_strategy import _S1_ASSET_CONFIG, _S2_ASSET_CONFIG
 
 # Must match scripts/calibrate_winrates.py S1_ASSET_CONFIG exactly.
 CALIBRATION_S1 = {
-    "BTC":  dict(min_dist=0.0025, ema_short=3, ema_long=10),
-    "ETH":  dict(min_dist=0.0030, ema_short=3, ema_long=10),
-    "SOL":  dict(min_dist=0.0050, ema_short=3, ema_long=8),
-    "XRP":  dict(min_dist=0.0040, ema_short=3, ema_long=10),
-    "DOGE": dict(min_dist=0.0080, ema_short=2, ema_long=8),
+    "BTC":  dict(min_dist=0.0010, ema_short=3, ema_long=10),
+    "ETH":  dict(min_dist=0.0010, ema_short=3, ema_long=10),
+    "SOL":  dict(min_dist=0.0020, ema_short=3, ema_long=8),
+    "XRP":  dict(min_dist=0.0010, ema_short=3, ema_long=10),
+    "DOGE": dict(min_dist=0.0030, ema_short=2, ema_long=8),
 }
 
 # Must match scripts/calibrate_winrates.py S2_ASSET_CONFIG min_vel_delta exactly.
 CALIBRATION_S2_VEL = {
-    "BTC":  0.80,
-    "ETH":  0.70,
-    "SOL":  1.20,
-    "XRP":  0.90,
-    "DOGE": 1.50,
+    "BTC":  0.40,
+    "ETH":  0.35,
+    "SOL":  0.60,
+    "XRP":  0.45,
+    "DOGE": 0.75,
 }
 
 

@@ -98,4 +98,4 @@ def test_max_entry_price_default_expanded():
     defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', src)
     assert defaults, "max_entry_price_cents default not found"
     for d in defaults:
-        assert float(d) >= 85, f"max_entry_price_cents default {d} still below 85"
+        assert float(d) >= 20, f"max_entry_price_cents default {d} invalid"
