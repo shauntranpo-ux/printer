@@ -250,7 +250,7 @@ def strategy_brain_s1(
 
     # Gate 5: entry price range (per-asset via get_asset_config)
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
-    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 60.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 75.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           rv=rv, variant="strategy1", price_filter=True)
@@ -322,11 +322,11 @@ def strategy_brain_s1(
 _S2_ASSET_CONFIG: dict = {
     #           min_dist  min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max
     # min_dist lowered; min_vel_delta cut 40% to fire in lower-volatility markets.
-    "BTC":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.40, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
-    "ETH":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.35, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
-    "SOL":  dict(min_dist=0.0025, min_obi=0.02, min_vel_delta=0.60, vel_lookback=3, min_ev=0.02, time_min=2.0, time_max=12.5),
-    "XRP":  dict(min_dist=0.0020, min_obi=0.02, min_vel_delta=0.45, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
-    "DOGE": dict(min_dist=0.0040, min_obi=0.02, min_vel_delta=0.75, vel_lookback=3, min_ev=0.02, time_min=2.0, time_max=12.5),
+    "BTC":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.20, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
+    "ETH":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.18, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
+    "SOL":  dict(min_dist=0.0025, min_obi=0.02, min_vel_delta=0.30, vel_lookback=3, min_ev=0.02, time_min=2.0, time_max=12.5),
+    "XRP":  dict(min_dist=0.0020, min_obi=0.02, min_vel_delta=0.22, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
+    "DOGE": dict(min_dist=0.0040, min_obi=0.02, min_vel_delta=0.35, vel_lookback=3, min_ev=0.02, time_min=2.0, time_max=12.5),
 }
 
 # ---------------------------------------------------------------------------
@@ -497,15 +497,9 @@ def strategy_brain_s2(
     side = direction
     entry_price = yes_ask if side == "yes" else no_ask
 
-    # Continuation-only: velocity direction must agree with price position relative to strike.
-    if side == "yes" and current_price < strike:
-        return _make_skip(side, "s2_reversal_gate:vel=yes_price_below", abs_pct, mins_left, variant="strategy2")
-    if side == "no" and current_price > strike:
-        return _make_skip(side, "s2_reversal_gate:vel=no_price_above", abs_pct, mins_left, variant="strategy2")
-
     # Gate 3: entry price range (per-asset via get_asset_config)
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
-    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 65.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 75.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s2_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           variant="strategy2", price_filter=True)

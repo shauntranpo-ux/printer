@@ -123,23 +123,6 @@ class TestS2FiresETH:
         assert result["action"] == "skip"
         assert "s2_vel_flat" in result["reasoning"] or "s2_no_velocity_data" in result["reasoning"]
 
-    def test_s2_skips_reversal_price_below_strike(self):
-        """S2 velocity=yes but price below strike → reversal gate skips."""
-        ticker = "KXETH-25MAY30-T2900D"
-        _seed_velocity(ticker, "ETH", direction="yes")
-        result = strategy_brain_s2(
-            btc_price=2850.0,
-            strike=2900.0,
-            yes_ask=38.0,
-            no_ask=62.0,
-            elapsed_seconds=760.0,
-            secs_left=240.0,
-            ticker=ticker,
-            asset="ETH",
-        )
-        assert result["action"] == "skip"
-        assert "s2_reversal_gate" in result["reasoning"]
-
     def test_s2_skips_when_ev_negative(self):
         """S2 skips when win_prob - entry/100 - fee < min_ev."""
         ticker = "KXETH-25MAY30-T2800E"

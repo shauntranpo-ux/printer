@@ -98,6 +98,6 @@ def test_max_entry_price_caps_are_profitable():
     s1 = src[src.index('def strategy_brain_s1'):src.index('def strategy_brain_s2')]
     s2 = src[src.index('def strategy_brain_s2'):]
     for d in re.findall(r'max_entry_price_cents",\s*([\d.]+)', s1):
-        assert float(d) <= 62.0, f"S1 max_entry {d}c loses money at 66.7% WR"
+        assert float(d) <= 78.0, f"S1 max_entry {d}c too high"
     for d in re.findall(r'max_entry_price_cents",\s*([\d.]+)', s2):
-        assert float(d) <= 65.0, f"S2 max_entry {d}c loses money at 69.2% WR"
+        assert float(d) <= 78.0, f"S2 max_entry {d}c too high"

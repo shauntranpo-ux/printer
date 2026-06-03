@@ -17,11 +17,11 @@ CALIBRATION_S1 = {
 
 # Must match scripts/calibrate_winrates.py S2_ASSET_CONFIG min_vel_delta exactly.
 CALIBRATION_S2_VEL = {
-    "BTC":  0.40,
-    "ETH":  0.35,
-    "SOL":  0.60,
-    "XRP":  0.45,
-    "DOGE": 0.75,
+    "BTC":  0.20,
+    "ETH":  0.18,
+    "SOL":  0.30,
+    "XRP":  0.22,
+    "DOGE": 0.35,
 }
 
 
