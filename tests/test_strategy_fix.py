@@ -47,3 +47,27 @@ def test_s2_max_entry_price_capped_for_profitability():
     for d in defaults:
         assert float(d) <= 65.0, \
             f"S2 max_entry_price {d} too high — at 69.2% WR need <=65c to be profitable"
+
+
+def test_debug_gates_endpoint_exists():
+    """GET /api/debug/gates must exist."""
+    import server
+    rules = [str(r) for r in server.app.url_map.iter_rules()]
+    assert "/api/debug/gates" in rules, "/api/debug/gates route not registered"
+
+
+def test_debug_gates_returns_assets():
+    """GET /api/debug/gates must return 200 with assets key containing s1/s2 per entry."""
+    import sys
+    if 'server' in sys.modules:
+        del sys.modules['server']
+    import server
+    client = server.app.test_client()
+    resp = client.get("/api/debug/gates")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert "assets" in data, "response missing 'assets' key"
+    assert len(data["assets"]) > 0, "assets dict is empty"
+    for asset, v in data["assets"].items():
+        assert "s1" in v and "s2" in v, f"{asset} missing s1/s2 keys"
+        assert "action" in v["s1"] and "action" in v["s2"]

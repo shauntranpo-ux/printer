@@ -1071,6 +1071,64 @@ def metrics():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/debug/gates")
+def api_debug_gates():
+    """
+    Real-time gate status per asset and strategy.
+    Useful for diagnosing why trades are not firing.
+    Uses price=strike so abs_pct=0; shows which gate fires first.
+    """
+    try:
+        import bot_state
+        from bot_strategy import strategy_brain_s1, strategy_brain_s2
+        from bot_market import get_btc_price
+        import asset_manager
+
+        cfg = read_config()
+        enabled = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        btc_price = get_btc_price() or 100000.0
+        result = {}
+
+        for asset in enabled:
+            price = (btc_price if asset == "BTC"
+                     else (asset_manager.get_price(asset) or 1.0))
+            strike = price  # dist=0 so only non-dist gates can pass
+
+            try:
+                s1 = strategy_brain_s1(
+                    price, strike, 55.0, 45.0,
+                    30.0, 360.0, f"DBG-{asset}", asset=asset,
+                )
+            except Exception as exc:
+                s1 = {"action": "error", "reasoning": str(exc), "abs_pct": 0}
+
+            try:
+                s2 = strategy_brain_s2(
+                    price, strike, 55.0, 45.0,
+                    30.0, 360.0, f"DBG-{asset}", asset=asset,
+                )
+            except Exception as exc:
+                s2 = {"action": "error", "reasoning": str(exc), "abs_pct": 0}
+
+            result[asset] = {
+                "price":  round(float(price), 4),
+                "s1": {"action": s1.get("action"), "gate": s1.get("reasoning", "")},
+                "s2": {"action": s2.get("action"), "gate": s2.get("reasoning", "")},
+            }
+
+        return jsonify({
+            "assets": result,
+            "config": {
+                "bot_enabled":         cfg.get("bot_enabled", False),
+                "mode":                cfg.get("mode", "paper"),
+                "quiet_hours_enabled": cfg.get("quiet_hours_enabled", True),
+                "quiet_hours_active":  False,
+            },
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
 @app.route("/healthz")
 def healthz():
     """Railway health check: 200 if bot_state.json updated recently, else 503."""
