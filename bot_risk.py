@@ -524,11 +524,7 @@ async def _settle_s1_trade(
         if bot_state._s1_consecutive_losses >= max_cl:
             await send_telegram(f"ERROR - {bot_state._s1_consecutive_losses} consecutive losses")
 
-    if len(_s1_rolling_outcomes) >= 20 and _rolling_wr < 0.65:
-        await send_telegram(
-            f"⚠️ S1 WIN RATE ALERT: rolling WR={_rolling_wr:.1%} "
-            f"({_wins}/{len(_s1_rolling_outcomes)}) — below 65% threshold. Recalibrate."
-        )
+
 
 
 async def _settle_s1_orphans(
