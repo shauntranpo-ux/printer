@@ -101,7 +101,7 @@ async def _send_brain_scorecard() -> None:
     global _last_scorecard_date
     try:
         now_lv = datetime.now(_LV_TZ)
-        if now_lv.hour != 23 or now_lv.minute < 55:
+        if now_lv.hour != 14:
             return
         today = now_lv.strftime("%Y-%m-%d")
         if today == _last_scorecard_date:
@@ -583,12 +583,7 @@ async def handle_ready_phase(
     else: bot_state._asset_eval[asset] = dict(_eval_snap)
     bot_state.last_action, bot_state.last_skip_reason = "trade", ""
     log.info(f"{ticker}: LOCKED.")
-    _s2_mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
-    _s2_wp     = int(brain.get("win_prob", 0.5) * 100)
-    _s2_payout = round((100 - fill_price) * contracts / 100, 2)
-    _s2_cost   = round(fill_price * contracts / 100, 2)
     _s2_dir = "UP" if side == "yes" else "DOWN"
-    await send_telegram(f"{_s2_mode_icon} ORDER FILLED - {asset} {_s2_dir}")
 
 
 async def handle_locked_phase(
@@ -704,9 +699,6 @@ async def handle_locked_phase(
             if bot_state._s2_consecutive_losses >= max_cl:
                 await send_telegram(f"ERROR - {bot_state._s2_consecutive_losses} consecutive losses")
 
-        mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(pos["mode"], "[LIVE]")
-        _s2_result = "WIN" if outcome == "win" else "LOSS"
-        await send_telegram(f"{mode_icon} {_s2_result} - {asset} {pnl_str}")
         await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
         return
 
@@ -1138,7 +1130,7 @@ async def main_loop() -> None:
 
                 await _send_brain_scorecard()
                 _now_lv = datetime.now(_LV_TZ)
-                if _now_lv.hour == 23 and _now_lv.minute >= 55:
+                if _now_lv.hour == 14:
                     await _check_daily_stats(_now_lv.strftime("%Y-%m-%d"))
 
                 # Fresh config read

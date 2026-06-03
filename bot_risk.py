@@ -463,10 +463,8 @@ async def _execute_s1_trade(
     else:
         bot_state._s1_pending_trades[ticker]["trade_id"] = trade_id
 
-    mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(mode, "[LIVE]")
     _dir = "UP" if side == "yes" else "DOWN"
     log.info(f"[S1] {ticker}: ORDER FILLED -- {side.upper()} {contracts}x @ {fill_price}c")
-    await send_telegram(f"{mode_icon} ORDER FILLED - {asset} {_dir}")
 
 
 async def _settle_s1_trade(
@@ -516,10 +514,7 @@ async def _settle_s1_trade(
         asset, ticker, outcome, pnl, _rolling_wr, len(_s1_rolling_outcomes),
     )
 
-    _s1_mode_icon = {"paper": "[PAPER]", "demo": "[DEMO]"}.get(s1_pos["mode"], "[LIVE]")
     _s1_pnl_str   = f"+${pnl:.2f}" if pnl >= 0 else f"-${abs(pnl):.2f}"
-    _s1_result = "WIN" if outcome == "win" else "LOSS"
-    await send_telegram(f"{_s1_mode_icon} {_s1_result} - {asset} {_s1_pnl_str}")
 
     if outcome == "win":
         bot_state._s1_consecutive_losses = 0
