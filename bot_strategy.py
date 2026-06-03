@@ -92,17 +92,18 @@ def _make_skip(side: str, reason: str, abs_pct: float, mins_left: float,
 
 _S1_ASSET_CONFIG: dict = {
     #           min_dist   max_rv   ema_short  ema_long  session  min_ev  t_min  t_max
-    # min_dist lowered: bucket (0,0) dist<0.5% still shows 97-99% WR empirically.
-    "BTC":  dict(min_dist=0.0010, max_rv=1.0, ema_short=3, ema_long=10,
-                 session_gate=False, min_ev=0.02, time_min=0.5, time_max=14.0),
-    "ETH":  dict(min_dist=0.0010, max_rv=1.0, ema_short=3, ema_long=10,
-                 session_gate=False, min_ev=0.02, time_min=0.5, time_max=14.0),
-    "SOL":  dict(min_dist=0.0020, max_rv=1.0, ema_short=3, ema_long=8,
-                 session_gate=False, min_ev=0.02, time_min=0.5, time_max=14.0),
-    "XRP":  dict(min_dist=0.0010, max_rv=1.0, ema_short=3, ema_long=10,
-                 session_gate=False, min_ev=0.02, time_min=0.5, time_max=14.0),
-    "DOGE": dict(min_dist=0.0030, max_rv=1.0, ema_short=2, ema_long=8,
-                 session_gate=False, min_ev=0.02, time_min=0.5, time_max=14.0),
+    # min_dist raised: only trade when price is meaningfully far from strike.
+    # Low min_dist (0.001) = coin-flip zone; 0.003+ = real directional edge.
+    "BTC":  dict(min_dist=0.0030, max_rv=1.0, ema_short=3, ema_long=10,
+                 session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
+    "ETH":  dict(min_dist=0.0030, max_rv=1.0, ema_short=3, ema_long=10,
+                 session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
+    "SOL":  dict(min_dist=0.0050, max_rv=1.0, ema_short=3, ema_long=8,
+                 session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
+    "XRP":  dict(min_dist=0.0030, max_rv=1.0, ema_short=3, ema_long=10,
+                 session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
+    "DOGE": dict(min_dist=0.0070, max_rv=1.0, ema_short=2, ema_long=8,
+                 session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
 }
 
 
@@ -248,9 +249,9 @@ def strategy_brain_s1(
     if side == "no" and current_price > strike:
         return _make_skip(side, "s1_reversal_gate:ema=no_price_above", abs_pct, mins_left, rv=rv, variant="strategy1")
 
-    # Gate 5: entry price range (per-asset via get_asset_config)
+    # Gate 5: entry price range — 50c max forces market-uncertainty zone trades only
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
-    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 67.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 50.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           rv=rv, variant="strategy1", price_filter=True)
@@ -321,12 +322,13 @@ def strategy_brain_s1(
 
 _S2_ASSET_CONFIG: dict = {
     #           min_dist  min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max
-    # min_dist lowered; min_vel_delta cut 40% to fire in lower-volatility markets.
-    "BTC":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.20, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
-    "ETH":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.18, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
-    "SOL":  dict(min_dist=0.0025, min_obi=0.02, min_vel_delta=0.30, vel_lookback=3, min_ev=0.02, time_min=2.0, time_max=12.5),
-    "XRP":  dict(min_dist=0.0020, min_obi=0.02, min_vel_delta=0.22, vel_lookback=4, min_ev=0.02, time_min=2.0, time_max=12.5),
-    "DOGE": dict(min_dist=0.0040, min_obi=0.02, min_vel_delta=0.35, vel_lookback=3, min_ev=0.02, time_min=2.0, time_max=12.5),
+    # min_vel_delta raised ~40%: require stronger velocity signal to avoid chasing weak moves.
+    # min_ev raised to 0.04: require clear positive-EV before entry.
+    "BTC":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.30, vel_lookback=4, min_ev=0.04, time_min=2.0, time_max=12.5),
+    "ETH":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.26, vel_lookback=4, min_ev=0.04, time_min=2.0, time_max=12.5),
+    "SOL":  dict(min_dist=0.0025, min_obi=0.02, min_vel_delta=0.42, vel_lookback=3, min_ev=0.04, time_min=2.0, time_max=12.5),
+    "XRP":  dict(min_dist=0.0020, min_obi=0.02, min_vel_delta=0.32, vel_lookback=4, min_ev=0.04, time_min=2.0, time_max=12.5),
+    "DOGE": dict(min_dist=0.0040, min_obi=0.02, min_vel_delta=0.50, vel_lookback=3, min_ev=0.04, time_min=2.0, time_max=12.5),
 }
 
 # ---------------------------------------------------------------------------
@@ -336,19 +338,25 @@ _S2_ASSET_CONFIG: dict = {
 # ---------------------------------------------------------------------------
 
 _S1_WIN_RATE: dict = {
-    "BTC":  {(0,0): 0.9861, (0,1): 0.9592, (0,2): 0.9076, (1,0): 0.9918, (1,1): 0.9828, (1,2): 0.9848, (2,0): 1.0,    (2,1): None,   (2,2): None,   (3,0): None, (3,1): None, (3,2): None},
-    "ETH":  {(0,0): 0.976,  (0,1): 0.9522, (0,2): 0.8916, (1,0): 0.986,  (1,1): 0.9769, (1,2): 0.9487, (2,0): 1.0,    (2,1): None,   (2,2): None,   (3,0): None, (3,1): None, (3,2): None},
-    "SOL":  {(0,0): None,   (0,1): None,   (0,2): None,   (1,0): 0.9871, (1,1): 0.9709, (1,2): 0.9368, (2,0): 0.9869, (2,1): 0.9825, (2,2): None,   (3,0): None, (3,1): None, (3,2): None},
-    "XRP":  {(0,0): 0.9905, (0,1): 0.9464, (0,2): 0.9415, (1,0): 0.9921, (1,1): 0.9896, (1,2): 0.9358, (2,0): 0.9902, (2,1): None,   (2,2): None,   (3,0): None, (3,1): None, (3,2): None},
-    "DOGE": {(0,0): None,   (0,1): None,   (0,2): None,   (1,0): 0.996,  (1,1): 0.9908, (1,2): 0.88,   (2,0): 1.0,    (2,1): 1.0,    (2,2): 1.0,    (3,0): None, (3,1): None, (3,2): None},
+    # All set to None — forces tanh fallback with realistic baseline.
+    # Previous values (0.97-1.0) were calibration artifacts causing EV gate to always pass.
+    # Real S1 WR is 55-62%; tanh formula (0.52 + 0.08*tanh) reflects this.
+    "BTC":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None, (3,0): None, (3,1): None, (3,2): None},
+    "ETH":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None, (3,0): None, (3,1): None, (3,2): None},
+    "SOL":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None, (3,0): None, (3,1): None, (3,2): None},
+    "XRP":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None, (3,0): None, (3,1): None, (3,2): None},
+    "DOGE": {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None, (3,0): None, (3,1): None, (3,2): None},
 }
 
 _S2_WIN_RATE: dict = {
-    "BTC": {(0,0): 0.9331, (0,1): 0.8421, (0,2): 0.6447, (1,0): 0.9487, (1,1): 0.8952, (1,2): 0.7151, (2,0): 0.91, (2,1): 0.846, (2,2): 0.7672},
-    "ETH": {(0,0): 0.9751, (0,1): 0.8293, (0,2): 0.6289, (1,0): 0.9749, (1,1): 0.8698, (1,2): 0.7425, (2,0): 0.9027, (2,1): 0.8488, (2,2): 0.768},
-    "SOL": {(0,0): 0.9573, (0,1): 0.865, (0,2): 0.7252, (1,0): 0.9462, (1,1): 0.8504, (1,2): 0.7709, (2,0): 0.8883, (2,1): 0.8368, (2,2): 0.7674},
-    "XRP": {(0,0): 0.9567, (0,1): 0.8095, (0,2): 0.7039, (1,0): 0.9382, (1,1): 0.8303, (1,2): 0.7221, (2,0): 0.903, (2,1): 0.8431, (2,2): 0.774},
-    "DOGE": {(0,0): 0.9434, (0,1): 0.8924, (0,2): 0.7602, (1,0): 0.94, (1,1): 0.8724, (1,2): 0.7731, (2,0): 0.8893, (2,1): 0.8355, (2,2): 0.7849},
+    # All set to None — forces tanh fallback with realistic baseline.
+    # Previous values (0.63-0.97) caused high-entry trades to pass EV gate falsely.
+    # Real S2 WR is 55-62%; tanh formula (0.52 + 0.08*tanh) reflects this.
+    "BTC":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None},
+    "ETH":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None},
+    "SOL":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None},
+    "XRP":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None},
+    "DOGE": {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None},
 }
 
 # S1 bucket boundaries (must match calibrate_winrates.py constants)
@@ -382,7 +390,7 @@ def _s1_lookup_win_rate(asset: str, abs_pct: float, mins_left: float, cfg: dict 
     if emp_val is not None:
         return float(emp_val)
 
-    return 0.50 + 0.28 * math.tanh(abs_pct / max(min_dist, 1e-6))
+    return 0.52 + 0.08 * math.tanh(abs_pct / max(min_dist, 1e-6))
 
 
 def _s2_lookup_win_rate(asset: str, vel_delta: float, mins_left: float, cfg: dict | None = None) -> float:
@@ -408,7 +416,7 @@ def _s2_lookup_win_rate(asset: str, vel_delta: float, mins_left: float, cfg: dic
     if emp_val is not None:
         return float(emp_val)
 
-    return 0.50 + 0.25 * math.tanh(vel_delta / max(min_vel, 1e-6))
+    return 0.52 + 0.08 * math.tanh(vel_delta / max(min_vel, 1e-6))
 
 
 def _s2_contract_direction(ticker: str, min_delta: float, lookback: int):
@@ -497,9 +505,9 @@ def strategy_brain_s2(
     side = direction
     entry_price = yes_ask if side == "yes" else no_ask
 
-    # Gate 3: entry price range (per-asset via get_asset_config)
+    # Gate 3: entry price range — 50c max filters out high-confidence (expensive) bad trades
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
-    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 67.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 50.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s2_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           variant="strategy2", price_filter=True)

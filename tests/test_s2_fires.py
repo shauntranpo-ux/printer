@@ -37,14 +37,13 @@ def _seed_velocity(ticker: str, asset: str, direction: str = "yes"):
         mid = n // 2
         first_avg  = base + (mid-1)/2 * step
         second_avg = base + (mid + (n-mid-1)/2) * step
-        delta      = second_avg - first_avg  ≈  2.0 * step  (for all n>=4)
+        delta      = second_avg - first_avg  ~  2.0 * step  (for all n>=4)
 
     So we need step >= min_vel_delta / 2.0.  Use 1.5x margin.
     """
     cfg = _S2_ASSET_CONFIG[asset]
     lookback = cfg["vel_lookback"]
     min_vel  = cfg["min_vel_delta"]
-    # Factor of 2.0 derived from half-avg arithmetic above; 1.5x safety margin
     step = (min_vel * 1.5) / 2.0
     base = 70.0
     n = lookback + 1
@@ -60,17 +59,17 @@ def _seed_velocity(ticker: str, asset: str, direction: str = "yes"):
 
 
 class TestS2FiresETH:
-    """S2 fires for ETH — 4-minute window, above-strike continuation."""
+    """S2 fires for ETH in the market-uncertainty zone (entry <= 50c)."""
 
     def test_s2_fires_amm_obi_none(self):
-        """S2 fires when OBI=None (AMM market), velocity strong enough."""
+        """S2 fires when OBI=None (AMM market), velocity strong, entry <=50c."""
         ticker = "KXETH-25MAY30-T2800"
         _seed_velocity(ticker, "ETH", direction="yes")
         result = strategy_brain_s2(
             btc_price=2850.0,
             strike=2800.0,
-            yes_ask=72.0,
-            no_ask=28.0,
+            yes_ask=45.0,
+            no_ask=55.0,
             elapsed_seconds=760.0,
             secs_left=240.0,
             ticker=ticker,
@@ -81,7 +80,7 @@ class TestS2FiresETH:
             "Likely OBI gate still fails closed — check _s2_obi_gate None branch."
         )
         assert result["side"] == "yes"
-        assert result["win_prob"] > 0.90
+        assert result["win_prob"] >= 0.54, f"win_prob {result['win_prob']:.3f} below realistic floor"
 
     def test_s2_fires_with_explicit_none_obi(self):
         """S2 fires when _ticker_obi[ticker] is explicitly set to None (AMM fetch path)."""
@@ -91,8 +90,8 @@ class TestS2FiresETH:
         result = strategy_brain_s2(
             btc_price=2850.0,
             strike=2800.0,
-            yes_ask=72.0,
-            no_ask=28.0,
+            yes_ask=45.0,
+            no_ask=55.0,
             elapsed_seconds=760.0,
             secs_left=240.0,
             ticker=ticker,
@@ -103,7 +102,7 @@ class TestS2FiresETH:
         )
 
     def test_s2_skips_when_velocity_below_threshold(self):
-        """S2 skips when velocity delta < min_vel_delta (not enough momentum)."""
+        """S2 skips when velocity delta < min_vel_delta."""
         ticker = "KXETH-25MAY30-T2800C"
         history = collections.deque(maxlen=60)
         now = time.time()
@@ -113,8 +112,8 @@ class TestS2FiresETH:
         result = strategy_brain_s2(
             btc_price=2850.0,
             strike=2800.0,
-            yes_ask=72.0,
-            no_ask=28.0,
+            yes_ask=45.0,
+            no_ask=55.0,
             elapsed_seconds=760.0,
             secs_left=240.0,
             ticker=ticker,
@@ -123,8 +122,8 @@ class TestS2FiresETH:
         assert result["action"] == "skip"
         assert "s2_vel_flat" in result["reasoning"] or "s2_no_velocity_data" in result["reasoning"]
 
-    def test_s2_skips_when_ev_negative(self):
-        """S2 skips when win_prob - entry/100 - fee < min_ev."""
+    def test_s2_skips_expensive_entry(self):
+        """S2 skips when entry > 50c cap — market already priced the move in."""
         ticker = "KXETH-25MAY30-T2800E"
         _seed_velocity(ticker, "ETH", direction="yes")
         result = strategy_brain_s2(
@@ -138,19 +137,23 @@ class TestS2FiresETH:
             asset="ETH",
         )
         assert result["action"] == "skip"
-        assert "s2_ev_gate" in result["reasoning"] or "s2_vel_flat" in result["reasoning"]
+        assert (
+            "s2_price_filter" in result["reasoning"]
+            or "s2_ev_gate" in result["reasoning"]
+            or "s2_vel_flat" in result["reasoning"]
+        )
 
 
 class TestS2FiresMultiAsset:
-    """S2 fires for all enabled assets with their calibrated thresholds."""
+    """S2 fires for all enabled assets at uncertainty-zone entries."""
 
     @pytest.mark.parametrize("asset,strike,price,yes_ask", [
-        ("ETH",  2800.0, 2850.0, 72.0),
-        ("SOL",  145.0,  148.0,  72.0),
-        ("XRP",  2.30,   2.35,   72.0),
+        ("ETH",  2800.0, 2850.0, 45.0),
+        ("SOL",  145.0,  148.0,  45.0),
+        ("XRP",  2.30,   2.35,   45.0),
     ])
     def test_s2_fires_per_asset(self, asset, strike, price, yes_ask):
-        """Each enabled asset's S2 fires with 4-min window and strong velocity."""
+        """Each enabled asset fires with strong velocity and <=50c entry."""
         ticker = f"KXMOCK-{asset}-T{int(strike)}"
         _seed_velocity(ticker, asset, direction="yes")
         result = strategy_brain_s2(

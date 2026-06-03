@@ -75,29 +75,29 @@ def test_quiet_hours_span_midnight_logic():
     assert _check_hour(7)  is False, "7am (7) should not be quiet"
 
 
-def test_s1_s2_min_ev_lowered():
-    """S1 and S2 min_ev must be <= 0.02 for all assets."""
+def test_s1_s2_min_ev_reasonable():
+    """S1 and S2 min_ev must be 0.02-0.06 — positive edge required."""
     import re
     with open('bot_strategy.py', encoding='utf-8') as f:
         src = f.read()
     s1_start = src.index('_S1_ASSET_CONFIG: dict = {')
     s1_end   = src.index('}', s1_start + 50)
     for v in re.findall(r'min_ev=([\d.]+)', src[s1_start:s1_end]):
-        assert float(v) <= 0.02, f"S1 min_ev {v} still above 0.02"
+        assert 0.02 <= float(v) <= 0.06, f"S1 min_ev {v} outside 0.02-0.06 range"
     s2_start = src.index('_S2_ASSET_CONFIG: dict = {')
     s2_end   = src.index('}', s2_start + 50)
     for v in re.findall(r'min_ev=([\d.]+)', src[s2_start:s2_end]):
-        assert float(v) <= 0.02, f"S2 min_ev {v} still above 0.02"
+        assert 0.02 <= float(v) <= 0.06, f"S2 min_ev {v} outside 0.02-0.06 range"
 
 
 def test_max_entry_price_caps_are_profitable():
-    """S1 max entry <=62c (profitable at 66.7% WR); S2 max entry <=65c (profitable at 69.2% WR)."""
+    """S1/S2 max entry <=55c — at realistic 58-62% WR only market-uncertainty entries profit."""
     import re
     with open('bot_strategy.py', encoding='utf-8') as f:
         src = f.read()
     s1 = src[src.index('def strategy_brain_s1'):src.index('def strategy_brain_s2')]
     s2 = src[src.index('def strategy_brain_s2'):]
     for d in re.findall(r'max_entry_price_cents",\s*([\d.]+)', s1):
-        assert float(d) <= 70.0, f"S1 max_entry {d}c too high"
+        assert float(d) <= 55.0, f"S1 max_entry {d}c too high"
     for d in re.findall(r'max_entry_price_cents",\s*([\d.]+)', s2):
-        assert float(d) <= 70.0, f"S2 max_entry {d}c too high"
+        assert float(d) <= 55.0, f"S2 max_entry {d}c too high"

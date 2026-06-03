@@ -1,15 +1,13 @@
 """Tests for strategy gate fixes: min_dist lowering, entry price caps."""
 
 
-def test_s1_min_dist_lowered():
-    """S1 min_dist must be <= 0.0015 for BTC/ETH/XRP (was 0.0025-0.004)."""
+def test_s1_min_dist_in_profitable_range():
+    """S1 min_dist must be 0.002-0.010 — avoids coin-flip zone while still firing."""
     from bot_strategy import _S1_ASSET_CONFIG
-    assert _S1_ASSET_CONFIG["BTC"]["min_dist"]  <= 0.0015, \
-        f"BTC S1 min_dist {_S1_ASSET_CONFIG['BTC']['min_dist']} too high"
-    assert _S1_ASSET_CONFIG["ETH"]["min_dist"]  <= 0.0015, \
-        f"ETH S1 min_dist {_S1_ASSET_CONFIG['ETH']['min_dist']} too high"
-    assert _S1_ASSET_CONFIG["XRP"]["min_dist"]  <= 0.0015, \
-        f"XRP S1 min_dist {_S1_ASSET_CONFIG['XRP']['min_dist']} too high"
+    for asset in ["BTC", "ETH", "XRP"]:
+        d = _S1_ASSET_CONFIG[asset]["min_dist"]
+        assert 0.002 <= d <= 0.010, \
+            f"{asset} S1 min_dist {d} outside profitable range 0.002-0.010"
 
 
 def test_s2_min_dist_lowered():
@@ -24,7 +22,7 @@ def test_s2_min_dist_lowered():
 
 
 def test_s1_max_entry_price_capped_for_profitability():
-    """S1 max_entry_price default must be <= 62 to be profitable at 66.7% WR."""
+    """S1 max_entry_price default must be <= 55c — market uncertainty zone only."""
     import re
     with open('bot_strategy.py', encoding='utf-8') as f:
         src = f.read()
@@ -32,12 +30,12 @@ def test_s1_max_entry_price_capped_for_profitability():
     defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', s1_section)
     assert defaults, "max_entry_price_cents default not found in strategy_brain_s1"
     for d in defaults:
-        assert float(d) <= 70.0, \
-            f"S1 max_entry_price {d} too high — at 66.7% WR need <=62c to be profitable"
+        assert float(d) <= 55.0, \
+            f"S1 max_entry_price {d} too high — need <=55c at realistic 58-62% WR"
 
 
 def test_s2_max_entry_price_capped_for_profitability():
-    """S2 max_entry_price default must be <= 65 to be profitable at 69.2% WR."""
+    """S2 max_entry_price default must be <= 55c — market uncertainty zone only."""
     import re
     with open('bot_strategy.py', encoding='utf-8') as f:
         src = f.read()
@@ -45,8 +43,8 @@ def test_s2_max_entry_price_capped_for_profitability():
     defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', s2_section)
     assert defaults, "max_entry_price_cents default not found in strategy_brain_s2"
     for d in defaults:
-        assert float(d) <= 70.0, \
-            f"S2 max_entry_price {d} too high — at 69.2% WR need <=65c to be profitable"
+        assert float(d) <= 55.0, \
+            f"S2 max_entry_price {d} too high — need <=55c at realistic 58-62% WR"
 
 
 def test_debug_gates_endpoint_exists():

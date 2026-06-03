@@ -6,22 +6,22 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from bot_strategy import _S1_ASSET_CONFIG, _S2_ASSET_CONFIG
 
-# Must match scripts/calibrate_winrates.py S1_ASSET_CONFIG exactly.
+# Updated after strategy overhaul: min_dist raised to filter coin-flip trades.
 CALIBRATION_S1 = {
-    "BTC":  dict(min_dist=0.0010, ema_short=3, ema_long=10),
-    "ETH":  dict(min_dist=0.0010, ema_short=3, ema_long=10),
-    "SOL":  dict(min_dist=0.0020, ema_short=3, ema_long=8),
-    "XRP":  dict(min_dist=0.0010, ema_short=3, ema_long=10),
-    "DOGE": dict(min_dist=0.0030, ema_short=2, ema_long=8),
+    "BTC":  dict(min_dist=0.0030, ema_short=3, ema_long=10),
+    "ETH":  dict(min_dist=0.0030, ema_short=3, ema_long=10),
+    "SOL":  dict(min_dist=0.0050, ema_short=3, ema_long=8),
+    "XRP":  dict(min_dist=0.0030, ema_short=3, ema_long=10),
+    "DOGE": dict(min_dist=0.0070, ema_short=2, ema_long=8),
 }
 
-# Must match scripts/calibrate_winrates.py S2_ASSET_CONFIG min_vel_delta exactly.
+# Updated after strategy overhaul: min_vel_delta raised ~40% to require stronger signal.
 CALIBRATION_S2_VEL = {
-    "BTC":  0.20,
-    "ETH":  0.18,
-    "SOL":  0.30,
-    "XRP":  0.22,
-    "DOGE": 0.35,
+    "BTC":  0.30,
+    "ETH":  0.26,
+    "SOL":  0.42,
+    "XRP":  0.32,
+    "DOGE": 0.50,
 }
 
 
@@ -57,24 +57,42 @@ def test_s2_vel_delta_matches_calibration():
         )
 
 
-def test_s1_win_rate_eth_common_buckets_not_none():
+def test_s1_win_rate_tables_all_none():
+    """All S1 WR table entries must be None — forces realistic tanh fallback."""
     from bot_strategy import _S1_WIN_RATE
-    for dist_idx in [0, 1]:
-        for time_idx in [0, 1, 2]:
-            val = _S1_WIN_RATE["ETH"].get((dist_idx, time_idx))
-            assert val is not None, (
-                f"ETH bucket ({dist_idx},{time_idx}) is None — insufficient calibration data"
+    for asset, buckets in _S1_WIN_RATE.items():
+        for key, val in buckets.items():
+            assert val is None, (
+                f"S1 WR {asset} bucket {key}={val} — must be None to use realistic tanh formula"
             )
 
 
-def test_s1_lookup_eth_above_breakeven():
+def test_s2_win_rate_tables_all_none():
+    """All S2 WR table entries must be None — forces realistic tanh fallback."""
+    from bot_strategy import _S2_WIN_RATE
+    for asset, buckets in _S2_WIN_RATE.items():
+        for key, val in buckets.items():
+            assert val is None, (
+                f"S2 WR {asset} bucket {key}={val} — must be None to use realistic tanh formula"
+            )
+
+
+def test_s1_lookup_conservative_baseline():
+    """S1 tanh fallback must return 55-65% — realistic for EMA momentum signal."""
     from bot_strategy import _s1_lookup_win_rate
     wp = _s1_lookup_win_rate("ETH", 0.003, 3.0)
-    assert wp >= 0.85, f"ETH (0,0) bucket WR={wp:.3f} unexpectedly low — recalibration needed"
+    assert 0.54 <= wp <= 0.65, f"ETH tanh WR={wp:.3f} outside realistic 54-65% range"
+
+
+def test_s2_lookup_conservative_baseline():
+    """S2 tanh fallback must return 55-65% — realistic for velocity signal."""
+    from bot_strategy import _s2_lookup_win_rate
+    wp = _s2_lookup_win_rate("ETH", 0.26, 4.0)
+    assert 0.54 <= wp <= 0.65, f"ETH S2 tanh WR={wp:.3f} outside realistic 54-65% range"
 
 
 def test_s2_vel_flat_skips_below_threshold():
-    """S2 must skip when velocity delta < min_vel_delta (0.70 for ETH)."""
+    """S2 must skip when velocity delta < min_vel_delta."""
     from collections import deque
     import bot_state
     from bot_strategy import strategy_brain_s2
