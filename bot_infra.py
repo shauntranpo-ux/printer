@@ -542,15 +542,7 @@ async def _maybe_fill_verification_notify(
     _slip_market_str = (
         f"{int(round(_filled - _ask)):+d}c vs market" if _ask is not None else "n/a vs market"
     )
-    _ctx = _notify_ctx(asset, ticker)
-    await send_telegram(
-        f"{_warn}<b>{_ctx} FILL VERIFICATION</b>\n"
-        f"Target:     <b>{_target_str}</b>\n"
-        f"Market ask: {_ask_str}\n"
-        f"Posted:     {_posted_str}\n"
-        f"Filled:     <b>{_filled_str}</b>\n"
-        f"Slippage:   {_slip_target_str}  |  {_slip_market_str}"
-    )
+    # Fill verification notifications suppressed — daily summary only
 
 
 async def send_telegram(text: str) -> None:
