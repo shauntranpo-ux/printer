@@ -72,8 +72,9 @@ def read_config() -> dict:
             cfg = json.load(fh)
         cfg.setdefault("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
         # Migrate old 10pm quiet start to 1am — 10pm was too aggressive
-        if cfg.get("quiet_start_et") == 22 and cfg.get("quiet_hours_enabled", True):
-            cfg["quiet_start_et"] = 1
+        # Migrate old quiet_start_et values to 5pm ET (2pm PDT)
+        if cfg.get("quiet_start_et") in (22, 1):
+            cfg["quiet_start_et"] = 17
         bot_state._last_good_config = cfg
         return cfg
     except json.JSONDecodeError as exc:

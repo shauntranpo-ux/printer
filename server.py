@@ -60,7 +60,7 @@ _FULL_CONFIG_DEFAULT = {
     "daily_loss_limit_dollars": 50,
     "daily_profit_target_dollars": 200,
     "quiet_hours_enabled": True,
-    "quiet_start_et": 1,
+    "quiet_start_et": 17,
     "quiet_end_et": 7,
     "enabled_assets": ["BTC", "ETH", "SOL", "XRP", "DOGE"],
 }

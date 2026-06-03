@@ -123,7 +123,7 @@ def _is_quiet_hours(config: dict) -> bool:
     True when current ET time is in the overnight quiet window.
     Default: 10pm-7am ET (22:00-07:00). Configurable via:
       quiet_hours_enabled (bool, default True)
-      quiet_start_et      (int hour 0-23, default 1)
+      quiet_start_et      (int hour 0-23, default 17)
       quiet_end_et        (int hour 0-23, default 7)
     Returns False when disabled or on any clock error.
     """
@@ -132,7 +132,7 @@ def _is_quiet_hours(config: dict) -> bool:
     try:
         now_et = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-4)))
         hour = now_et.hour
-        start = int(config.get("quiet_start_et", 22))
+        start = int(config.get("quiet_start_et", 17))
         end   = int(config.get("quiet_end_et", 7))
         if start > end:
             return hour >= start or hour < end
