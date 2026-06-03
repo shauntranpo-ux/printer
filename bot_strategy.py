@@ -94,6 +94,8 @@ _S1_ASSET_CONFIG: dict = {
     #           min_dist   max_rv   ema_short  ema_long  session  min_ev  t_min  t_max
     # min_dist raised: only trade when price is meaningfully far from strike.
     # Low min_dist (0.001) = coin-flip zone; 0.003+ = real directional edge.
+    # time_min=1.0: skip final minute (contract pricing at extremes, spreads widen).
+    # time_max=12.0: skip very-early phase (EMA needs time to establish, market reprices many times).
     "BTC":  dict(min_dist=0.0030, max_rv=1.0, ema_short=3, ema_long=10,
                  session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
     "ETH":  dict(min_dist=0.0030, max_rv=1.0, ema_short=3, ema_long=10,

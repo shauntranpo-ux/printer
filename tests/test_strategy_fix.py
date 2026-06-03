@@ -47,6 +47,16 @@ def test_s2_max_entry_price_capped_for_profitability():
             f"S2 max_entry_price {d} too high — need <=55c at realistic 58-62% WR"
 
 
+def test_s1_time_bounds_in_range():
+    """S1 time_min/time_max must keep trades away from settlement chaos and very-early noise."""
+    from bot_strategy import _S1_ASSET_CONFIG
+    for asset, cfg in _S1_ASSET_CONFIG.items():
+        assert cfg["time_min"] >= 0.5, f"{asset} time_min {cfg['time_min']} too small"
+        assert cfg["time_min"] <= 2.0, f"{asset} time_min {cfg['time_min']} too large"
+        assert cfg["time_max"] >= 10.0, f"{asset} time_max {cfg['time_max']} too small"
+        assert cfg["time_max"] <= 14.0, f"{asset} time_max {cfg['time_max']} too large"
+
+
 def test_debug_gates_endpoint_exists():
     """GET /api/debug/gates must exist."""
     import server
