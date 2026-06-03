@@ -32,7 +32,7 @@ def test_s1_max_entry_price_capped_for_profitability():
     defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', s1_section)
     assert defaults, "max_entry_price_cents default not found in strategy_brain_s1"
     for d in defaults:
-        assert float(d) <= 78.0, \
+        assert float(d) <= 70.0, \
             f"S1 max_entry_price {d} too high — at 66.7% WR need <=62c to be profitable"
 
 
@@ -45,7 +45,7 @@ def test_s2_max_entry_price_capped_for_profitability():
     defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', s2_section)
     assert defaults, "max_entry_price_cents default not found in strategy_brain_s2"
     for d in defaults:
-        assert float(d) <= 78.0, \
+        assert float(d) <= 70.0, \
             f"S2 max_entry_price {d} too high — at 69.2% WR need <=65c to be profitable"
 
 

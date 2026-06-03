@@ -250,7 +250,7 @@ def strategy_brain_s1(
 
     # Gate 5: entry price range (per-asset via get_asset_config)
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
-    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 75.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 67.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           rv=rv, variant="strategy1", price_filter=True)
@@ -499,7 +499,7 @@ def strategy_brain_s2(
 
     # Gate 3: entry price range (per-asset via get_asset_config)
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
-    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 75.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 67.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s2_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           variant="strategy2", price_filter=True)
