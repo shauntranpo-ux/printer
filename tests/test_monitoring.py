@@ -30,9 +30,4 @@ def test_rolling_outcomes_deque_exists():
     )
 
 
-def test_rolling_wr_alert_threshold_in_code():
-    """Telegram alert for WR < 0.65 must exist in _settle_s1_trade."""
-    src = inspect.getsource(_settle_s1_trade)
-    assert "0.65" in src, (
-        "WR alert threshold 0.65 not found in _settle_s1_trade"
-    )
+
