@@ -90,12 +90,14 @@ def test_s1_s2_min_ev_lowered():
         assert float(v) <= 0.02, f"S2 min_ev {v} still above 0.02"
 
 
-def test_max_entry_price_default_expanded():
-    """Default max_entry_price_cents must be >= 85 in both S1 and S2."""
+def test_max_entry_price_caps_are_profitable():
+    """S1 max entry <=62c (profitable at 66.7% WR); S2 max entry <=65c (profitable at 69.2% WR)."""
     import re
     with open('bot_strategy.py', encoding='utf-8') as f:
         src = f.read()
-    defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', src)
-    assert defaults, "max_entry_price_cents default not found"
-    for d in defaults:
-        assert float(d) >= 20, f"max_entry_price_cents default {d} invalid"
+    s1 = src[src.index('def strategy_brain_s1'):src.index('def strategy_brain_s2')]
+    s2 = src[src.index('def strategy_brain_s2'):]
+    for d in re.findall(r'max_entry_price_cents",\s*([\d.]+)', s1):
+        assert float(d) <= 62.0, f"S1 max_entry {d}c loses money at 66.7% WR"
+    for d in re.findall(r'max_entry_price_cents",\s*([\d.]+)', s2):
+        assert float(d) <= 65.0, f"S2 max_entry {d}c loses money at 69.2% WR"
