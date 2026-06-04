@@ -467,6 +467,10 @@ async def _execute_s1_trade(
 
     _dir = "UP" if side == "yes" else "DOWN"
     log.info(f"[S1] {ticker}: ORDER FILLED -- {side.upper()} {contracts}x @ {fill_price}c")
+    # Record fill time for per-asset fire rate guard
+    if asset not in bot_state._s1_asset_trade_times:
+        bot_state._s1_asset_trade_times[asset] = []
+    bot_state._s1_asset_trade_times[asset].append(time.time())
 
 
 async def _settle_s1_trade(

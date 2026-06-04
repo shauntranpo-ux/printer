@@ -62,6 +62,7 @@ recovery_unverified: bool = False
 _s2_attempted_tickers: set = set()
 _asset_states: dict = {}
 _s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
+_s1_asset_trade_times: dict = {}  # asset → list of float timestamps of S1 fills
 
 _market_cache: dict | None = None
 _market_cache_ts: float = 0.0

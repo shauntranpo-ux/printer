@@ -392,6 +392,20 @@ def strategy_brain_s1(
     if _s1_asset_count >= _s1_asset_cap:
         return _make_skip("yes", "s1_cap_asset", abs_pct, mins_left, variant="strategy1")
 
+    # S1 fire rate guard: max 2 S1 trades per asset per 60 minutes.
+    # Prevents overtrading when signals cluster during noisy market periods.
+    _max_per_hour = int(config.get("max_s1_per_asset_per_hour", 2))
+    _now_ts = time.time()
+    _recent_times = [t for t in bot_state._s1_asset_trade_times.get(asset, [])
+                     if _now_ts - t < 3600.0]
+    bot_state._s1_asset_trade_times[asset] = _recent_times  # prune stale entries
+    if len(_recent_times) >= _max_per_hour:
+        return _make_skip(
+            "yes",
+            f"s1_rate_limit:{len(_recent_times)}/{_max_per_hour}_per_hour",
+            abs_pct, mins_left, variant="strategy1",
+        )
+
     # Gate 1: time window
     if mins_left < cfg["time_min"] or mins_left > cfg["time_max"]:
         return _make_skip("yes", f"s1_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy1")

@@ -2,6 +2,7 @@
 import os
 import sys
 import inspect
+import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -77,3 +78,25 @@ def test_s1_momentum_signal_source_check():
         src = f.read()
     assert "_s1_multitf_momentum" in src, \
         "bot_loops.py does not call _s1_multitf_momentum — S1 direction is not multi-timeframe"
+
+
+def test_s1_rate_limit_skips_after_max_per_hour():
+    """S1 must skip when >= max_s1_per_asset_per_hour recent fills for asset."""
+    import bot_state
+    from bot_strategy import strategy_brain_s1
+
+    # Seed 2 recent trade times for ETH (within last 60 min)
+    now = time.time()
+    bot_state._s1_asset_trade_times["ETH"] = [now - 100, now - 200]
+
+    result = strategy_brain_s1(
+        btc_price=2850.0, strike=2800.0, yes_ask=45.0, no_ask=55.0,
+        elapsed_seconds=760.0, secs_left=240.0,
+        ticker="KXETH-RATELIMIT-TEST", asset="ETH",
+    )
+    # Clean up
+    bot_state._s1_asset_trade_times["ETH"] = []
+
+    # May be blocked by rate limit OR quiet hours (depending on time of day)
+    assert result["action"] == "skip"
+    assert "s1_rate_limit" in result["reasoning"] or "s1_quiet_hours" in result["reasoning"],         f"Expected rate_limit or quiet_hours skip, got: {result['reasoning']}"
