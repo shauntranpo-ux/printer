@@ -26,7 +26,7 @@ from bot_market import (
 from bot_strategy import (
     strategy_brain_s1, strategy_brain_s2,
     track_contract_price,
-    _s1_ema_direction, _S1_ASSET_CONFIG,
+    _s1_momentum_direction, _S1_ASSET_CONFIG,
     _s2_contract_direction, _S2_ASSET_CONFIG,
 )
 from bot_risk import (
@@ -339,12 +339,12 @@ async def handle_ready_phase(
     _s1_raw = asset_manager._prices.get(asset) if asset != "BTC" else None
     _s1_px_list = list(bot_state.btc_prices) if asset == "BTC" else (list(_s1_raw) if _s1_raw else [])
     _s1_cfg_d = _S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"])
-    _ema_dir, _ = _s1_ema_direction(_s1_px_list, _s1_cfg_d["ema_short"], _s1_cfg_d["ema_long"])
-    _s1_dir = "UP" if _ema_dir == "yes" else ("DOWN" if _ema_dir == "no" else "neutral")
+    _mom_dir, _ = _s1_momentum_direction(_s1_px_list, window_seconds=60.0, min_momentum=_s1_cfg_d["min_momentum"])
+    _s1_dir = "UP" if _mom_dir == "yes" else ("DOWN" if _mom_dir == "no" else "neutral")
     _s2_cfg_d = _S2_ASSET_CONFIG.get(asset, _S2_ASSET_CONFIG["BTC"])
     _vel_dir, _ = _s2_contract_direction(ticker, _s2_cfg_d["min_vel_delta"], _s2_cfg_d["vel_lookback"])
     _s2_dir = "UP" if _vel_dir == "yes" else ("DOWN" if _vel_dir == "no" else "neutral")
-    _S1_GATE_ORD = ["s1_session_gate", "s1_time_gate", "s1_dist_gate", "s1_rv_gate", "s1_no_ema_data", "s1_reversal_gate", "s1_ev_gate"]
+    _S1_GATE_ORD = ["s1_time_gate", "s1_dist_gate", "s1_no_momentum_data", "s1_momentum_flat", "s1_reversal_gate", "s1_price_filter", "s1_ev_gate"]
     _S2_GATE_ORD = ["s2_time_gate", "s2_dist_gate", "s2_no_velocity_data", "s2_reversal_gate", "s2_obi_gate", "s2_ev_gate"]
     def _cnt_gates(gates, reason, traded):
         if traded: return len(gates)
