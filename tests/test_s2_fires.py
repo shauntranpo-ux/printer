@@ -166,6 +166,45 @@ class TestS2FiresETH:
             f"Expected conviction skip, got: {result['reasoning']}"
 
 
+    def test_s2_skips_reversal_velocity_yes_but_price_below_strike(self):
+        """S2 must reject: velocity=YES but asset price < strike (reversal — no edge)."""
+        ticker = "KXETH-25MAY30-T2900G"
+        _seed_velocity(ticker, "ETH", direction="yes")
+        result = strategy_brain_s2(
+            btc_price=2850.0,   # price BELOW strike
+            strike=2900.0,
+            yes_ask=45.0,
+            no_ask=55.0,
+            elapsed_seconds=760.0,
+            secs_left=240.0,
+            ticker=ticker,
+            asset="ETH",
+        )
+        assert result["action"] == "skip", \
+            f"S2 should reject reversal but got: {result['reasoning']}"
+        assert "s2_reversal_gate" in result["reasoning"], \
+            f"Expected s2_reversal_gate, got: {result['reasoning']}"
+
+    def test_s2_skips_reversal_velocity_no_but_price_above_strike(self):
+        """S2 must reject: velocity=NO but asset price > strike (reversal — no edge)."""
+        ticker = "KXETH-25MAY30-T2700H"
+        _seed_velocity(ticker, "ETH", direction="no")
+        result = strategy_brain_s2(
+            btc_price=2850.0,   # price ABOVE strike
+            strike=2700.0,
+            yes_ask=70.0,
+            no_ask=30.0,
+            elapsed_seconds=760.0,
+            secs_left=240.0,
+            ticker=ticker,
+            asset="ETH",
+        )
+        assert result["action"] == "skip", \
+            f"S2 should reject reversal but got: {result['reasoning']}"
+        assert "s2_reversal_gate" in result["reasoning"], \
+            f"Expected s2_reversal_gate, got: {result['reasoning']}"
+
+
 class TestS2FiresMultiAsset:
     """S2 fires for all enabled assets at uncertainty-zone entries."""
 

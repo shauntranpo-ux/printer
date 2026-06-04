@@ -543,6 +543,13 @@ def strategy_brain_s2(
         )
 
     side = direction
+
+    # Continuation-only: velocity direction must match asset price position vs strike.
+    if side == "yes" and current_price < strike:
+        return _make_skip(side, "s2_reversal_gate:vel=yes_price_below", abs_pct, mins_left, variant="strategy2")
+    if side == "no" and current_price > strike:
+        return _make_skip(side, "s2_reversal_gate:vel=no_price_above", abs_pct, mins_left, variant="strategy2")
+
     entry_price = yes_ask if side == "yes" else no_ask
 
     # Gate 3: entry price range — 55c max filters out expensive trades beyond uncertainty zone

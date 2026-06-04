@@ -71,10 +71,6 @@ def read_config() -> dict:
         with open(bot_state._CONFIG_FILE, "r") as fh:
             cfg = json.load(fh)
         cfg.setdefault("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
-        # Migrate old 10pm quiet start to 1am — 10pm was too aggressive
-        # Migrate old quiet_start_et values to 5pm ET (2pm PDT)
-        if cfg.get("quiet_start_et") in (22, 1):
-            cfg["quiet_start_et"] = 17
         bot_state._last_good_config = cfg
         return cfg
     except json.JSONDecodeError as exc:
@@ -160,6 +156,13 @@ def _init_config() -> None:
     cfg["min_entry_price_cents"]     = max(float(cfg.get("min_entry_price_cents", 20)), 20.0)
     cfg["max_entry_price_cents"]     = min(float(cfg.get("max_entry_price_cents", 76)), 76.0)
     cfg["daily_loss_limit_dollars"]  = min(float(cfg.get("daily_loss_limit_dollars", 150)), 150.0)
+
+    # Restore evening trading — old migration forced quiet_start_et=17 (5pm ET).
+    # Default is now 22 (10pm ET). Overwrite stale 17 on first deploy after this change.
+    if cfg.get("quiet_start_et", 22) == 17:
+        cfg["quiet_start_et"] = 22
+    cfg.setdefault("quiet_start_et", 22)
+    cfg.setdefault("quiet_end_et", 7)
 
     write_config(cfg)
     log.info(f"Config ready: mode={cfg['mode']} enabled={cfg['bot_enabled']}")
