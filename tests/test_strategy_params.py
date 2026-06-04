@@ -107,3 +107,53 @@ def test_s2_vel_flat_skips_below_threshold():
     )
     assert result["action"] == "skip", f"Expected skip, got: {result['reasoning']}"
     assert "s2_vel" in result["reasoning"], f"Expected vel skip: {result['reasoning']}"
+
+
+def test_s1_momentum_direction_detects_up_move():
+    """_s1_momentum_direction returns ('yes', pct) on rising prices."""
+    import time
+    from bot_strategy import _s1_momentum_direction
+    now = time.time()
+    # 62 data points spanning 61s: price rose from 2500 to 2510 (+0.4%)
+    prices = [(now - 61 + i, 2500 + i * (10/61)) for i in range(62)]
+    side, mom = _s1_momentum_direction(prices, window_seconds=60.0, min_momentum=0.001)
+    assert side == "yes", f"Expected 'yes' on rising prices, got {side}"
+    assert mom is not None and mom > 0.001, f"momentum {mom} below threshold"
+
+
+def test_s1_momentum_direction_returns_none_on_flat():
+    """_s1_momentum_direction returns (None, small_val) when move < min_momentum."""
+    import time
+    from bot_strategy import _s1_momentum_direction
+    now = time.time()
+    # Very flat — 0.009% movement over 61s
+    prices = [(now - 61 + i, 2500 + i * 0.004) for i in range(62)]
+    side, mom = _s1_momentum_direction(prices, window_seconds=60.0, min_momentum=0.002)
+    assert side is None, f"Expected None on flat prices, got {side}"
+
+
+def test_s1_certainty_win_prob_increases_with_dist():
+    """Geometric certainty: farther from strike = higher WR."""
+    from bot_strategy import _s1_certainty_win_prob
+    wp_close = _s1_certainty_win_prob(0.002, 480.0, "ETH")
+    wp_far   = _s1_certainty_win_prob(0.008, 480.0, "ETH")
+    assert wp_far > wp_close, f"WR should increase with distance: {wp_close:.3f} vs {wp_far:.3f}"
+
+
+def test_s1_certainty_win_prob_increases_with_less_time():
+    """Geometric certainty: less time left = higher WR (less time to cross back)."""
+    from bot_strategy import _s1_certainty_win_prob
+    # dist=0.001 keeps both values below the 0.75 cap so the ordering is visible
+    wp_more_time = _s1_certainty_win_prob(0.001, 600.0, "ETH")
+    wp_less_time = _s1_certainty_win_prob(0.001, 180.0, "ETH")
+    assert wp_less_time > wp_more_time, \
+        f"WR should be higher with less time: {wp_more_time:.3f} vs {wp_less_time:.3f}"
+
+
+def test_s1_certainty_win_prob_range():
+    """WR must stay in 0.52-0.75 range — no fantasy numbers."""
+    from bot_strategy import _s1_certainty_win_prob
+    for dist in [0.001, 0.005, 0.010, 0.030]:
+        for t in [60.0, 300.0, 600.0, 840.0]:
+            wp = _s1_certainty_win_prob(dist, t, "ETH")
+            assert 0.52 <= wp <= 0.75, f"WR={wp:.3f} out of range at dist={dist} t={t}"

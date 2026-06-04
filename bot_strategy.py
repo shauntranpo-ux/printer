@@ -172,6 +172,50 @@ def _s1_ema_direction(prices: list, short_min: float, long_min: float):
     return ("yes" if s_ema > l_ema else "no"), ratio
 
 
+def _s1_momentum_direction(prices: list, window_seconds: float = 60.0, min_momentum: float = 0.003):
+    """
+    60-second raw momentum direction pointer.
+    Compares current price to the average price ~window_seconds ago.
+    Returns (side, momentum_pct): side='yes' if up, 'no' if down.
+    Returns (None, None) when data insufficient or move below min_momentum.
+    """
+    if not prices or len(prices) < 4:
+        return None, None
+    now_ts  = prices[-1][0]
+    current = float(prices[-1][1])
+    # Find prices in a 20-second band centred on window_seconds ago
+    lo = now_ts - window_seconds - 10
+    hi = now_ts - window_seconds + 10
+    older = [float(p) for ts, p in prices if lo <= ts <= hi]
+    if not older:
+        return None, None
+    past_price = sum(older) / len(older)
+    if past_price <= 0:
+        return None, None
+    momentum = (current - past_price) / past_price
+    if abs(momentum) < min_momentum:
+        return None, abs(momentum)
+    return ("yes" if momentum > 0 else "no"), abs(momentum)
+
+
+def _s1_certainty_win_prob(dist_pct: float, secs_left: float, asset: str) -> float:
+    """
+    Geometric Brownian Motion certainty model.
+    Estimates P(price stays on current side of strike until settlement).
+    Anchored to empirical 15-min vol per asset. Capped at 0.52-0.75.
+    """
+    # Empirical 15-min 1-sigma move as fraction of price
+    _ASSET_VOL_15M = {
+        "BTC": 0.008, "ETH": 0.007, "SOL": 0.012, "XRP": 0.010, "DOGE": 0.015,
+    }
+    vol_15m = _ASSET_VOL_15M.get(asset, 0.008)
+    time_frac  = max(0.01, secs_left / 900.0)
+    period_vol = vol_15m * math.sqrt(time_frac)
+    z    = dist_pct / period_vol
+    cert = 0.5 * (1.0 + math.erf(z / math.sqrt(2)))
+    return max(0.52, min(0.75, cert))
+
+
 def strategy_brain_s1(
     btc_price, strike, yes_ask, no_ask,
     elapsed_seconds, secs_left, ticker,
