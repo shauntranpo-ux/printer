@@ -223,6 +223,50 @@ def _trend_direction(prices: list, window_seconds: float = 600.0) -> int:
     return 0
 
 
+def _s1_multitf_momentum(prices: list, min_momentum: float = 0.003) -> tuple:
+    """
+    Multi-timeframe momentum composite: 30s(0.15) + 60s(0.30) + 120s(0.35) + 240s(0.20).
+    Returns (side, score): side='yes'/'no'/None, score=weighted directional agreement 0-1.
+    Returns (None, 0.0) when data insufficient or timeframes disagree.
+
+    Weight rationale: longer timeframes reduce micro-bounce noise (Polymarket v3 research).
+    """
+    _WINDOWS = [(30.0, 0.15), (60.0, 0.30), (120.0, 0.35), (240.0, 0.20)]
+    if not prices or len(prices) < 10:
+        return None, 0.0
+
+    now_ts = prices[-1][0]
+    current = float(prices[-1][1])
+    signals = []
+
+    for window_sec, weight in _WINDOWS:
+        lo = now_ts - window_sec - window_sec * 0.15
+        hi = now_ts - window_sec + window_sec * 0.15
+        older = [float(p) for ts, p in prices if lo <= ts <= hi]
+        if not older:
+            continue
+        past = sum(older) / len(older)
+        if past <= 0:
+            continue
+        mom = (current - past) / past
+        if abs(mom) >= min_momentum * (window_sec / 60.0) ** 0.5:
+            direction = 1 if mom > 0 else -1
+            signals.append((direction, weight, abs(mom)))
+
+    if not signals:
+        return None, 0.0
+
+    total_weight = sum(w for _, w, _ in signals)
+    weighted_direction = sum(d * w for d, w, _ in signals) / total_weight
+
+    if weighted_direction > 0.30:
+        return "yes", weighted_direction
+    elif weighted_direction < -0.30:
+        return "no", -weighted_direction
+    else:
+        return None, abs(weighted_direction)
+
+
 def _s1_certainty_win_prob(dist_pct: float, secs_left: float, asset: str) -> float:
     """
     Geometric Brownian Motion certainty model.
@@ -295,13 +339,11 @@ def strategy_brain_s1(
     if abs_pct < cfg["min_dist"]:
         return _make_skip("yes", f"s1_dist_gate:{abs_pct:.4f}<{cfg['min_dist']}", abs_pct, mins_left, variant="strategy1")
 
-    # Direction pointer: 60-second raw momentum (catches AMM lag after fast moves)
-    direction, momentum_pct = _s1_momentum_direction(
-        prices_list, window_seconds=60.0, min_momentum=cfg["min_momentum"]
-    )
+    # Direction pointer: multi-timeframe momentum composite (30s/60s/120s/240s weighted)
+    direction, momentum_pct = _s1_multitf_momentum(prices_list, min_momentum=cfg["min_momentum"])
     if direction is None:
-        _reason = "s1_no_momentum_data" if momentum_pct is None else f"s1_momentum_flat:{momentum_pct:.4f}<{cfg['min_momentum']}"
-        return _make_skip("yes", _reason, abs_pct, mins_left, variant="strategy1")
+        _reason = "s1_momentum_flat" if momentum_pct > 0 else "s1_no_momentum_data"
+        return _make_skip("yes", f"{_reason}:{momentum_pct:.4f}", abs_pct, mins_left, variant="strategy1")
 
     side = direction  # 'yes' = bullish, 'no' = bearish
     entry_price = yes_ask if side == "yes" else no_ask

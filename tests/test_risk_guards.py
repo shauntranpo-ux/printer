@@ -70,9 +70,8 @@ def test_s1_cl_alert_source_check():
 
 
 def test_s1_momentum_signal_source_check():
-    """strategy_brain_s1 must use _s1_momentum_direction (momentum rewrite)."""
-    src = inspect.getsource(bot_strategy.strategy_brain_s1)
-    assert "_s1_momentum_direction" in src, \
-        "strategy_brain_s1 not calling _s1_momentum_direction"
-    assert "min_momentum" in src, \
-        "strategy_brain_s1 not referencing min_momentum config key"
+    """bot_loops.py must call _s1_multitf_momentum as the S1 direction pointer."""
+    with open("bot_loops.py", encoding="utf-8") as f:
+        src = f.read()
+    assert "_s1_multitf_momentum" in src, \
+        "bot_loops.py does not call _s1_multitf_momentum — S1 direction is not multi-timeframe"

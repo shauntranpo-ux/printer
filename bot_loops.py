@@ -26,7 +26,7 @@ from bot_market import (
 from bot_strategy import (
     strategy_brain_s1, strategy_brain_s2,
     track_contract_price,
-    _s1_momentum_direction, _S1_ASSET_CONFIG,
+    _s1_multitf_momentum, _S1_ASSET_CONFIG,
     _s2_contract_direction, _S2_ASSET_CONFIG,
 )
 from bot_risk import (
@@ -339,7 +339,7 @@ async def handle_ready_phase(
     _s1_raw = asset_manager._prices.get(asset) if asset != "BTC" else None
     _s1_px_list = list(bot_state.btc_prices) if asset == "BTC" else (list(_s1_raw) if _s1_raw else [])
     _s1_cfg_d = _S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"])
-    _mom_dir, _ = _s1_momentum_direction(_s1_px_list, window_seconds=60.0, min_momentum=_s1_cfg_d["min_momentum"])
+    _mom_dir, _ = _s1_multitf_momentum(_s1_px_list, min_momentum=_s1_cfg_d["min_momentum"])
     _s1_dir = "UP" if _mom_dir == "yes" else ("DOWN" if _mom_dir == "no" else "neutral")
     _s2_cfg_d = _S2_ASSET_CONFIG.get(asset, _S2_ASSET_CONFIG["BTC"])
     _vel_dir, _ = _s2_contract_direction(ticker, _s2_cfg_d["min_vel_delta"], _s2_cfg_d["vel_lookback"])
