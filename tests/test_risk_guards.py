@@ -71,7 +71,9 @@ def test_s1_cl_alert_source_check():
 
 def test_s1_momentum_signal_source_check():
     """bot_loops.py must call _s1_multitf_momentum as the S1 direction pointer."""
-    with open("bot_loops.py", encoding="utf-8") as f:
+    from pathlib import Path
+    bot_loops_path = Path(__file__).parent.parent / "bot_loops.py"
+    with open(bot_loops_path, encoding="utf-8") as f:
         src = f.read()
     assert "_s1_multitf_momentum" in src, \
         "bot_loops.py does not call _s1_multitf_momentum — S1 direction is not multi-timeframe"

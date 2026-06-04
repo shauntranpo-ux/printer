@@ -253,7 +253,7 @@ def _s1_multitf_momentum(prices: list, min_momentum: float = 0.003) -> tuple:
             direction = 1 if mom > 0 else -1
             signals.append((direction, weight, abs(mom)))
 
-    if not signals:
+    if len(signals) < 2:
         return None, 0.0
 
     total_weight = sum(w for _, w, _ in signals)
