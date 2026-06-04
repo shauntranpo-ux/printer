@@ -6,13 +6,13 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from bot_strategy import _S1_ASSET_CONFIG, _S2_ASSET_CONFIG
 
-# Updated after strategy overhaul: min_dist raised to filter coin-flip trades.
+# Updated after momentum rewrite: ema_short/ema_long replaced with min_momentum.
 CALIBRATION_S1 = {
-    "BTC":  dict(min_dist=0.0030, ema_short=3, ema_long=10),
-    "ETH":  dict(min_dist=0.0030, ema_short=3, ema_long=10),
-    "SOL":  dict(min_dist=0.0050, ema_short=3, ema_long=8),
-    "XRP":  dict(min_dist=0.0030, ema_short=3, ema_long=10),
-    "DOGE": dict(min_dist=0.0070, ema_short=2, ema_long=8),
+    "BTC":  dict(min_dist=0.0030, min_momentum=0.0030),
+    "ETH":  dict(min_dist=0.0030, min_momentum=0.0025),
+    "SOL":  dict(min_dist=0.0050, min_momentum=0.0040),
+    "XRP":  dict(min_dist=0.0030, min_momentum=0.0025),
+    "DOGE": dict(min_dist=0.0070, min_momentum=0.0050),
 }
 
 # Updated after strategy overhaul: min_vel_delta raised ~40% to require stronger signal.
@@ -25,27 +25,21 @@ CALIBRATION_S2_VEL = {
 }
 
 
-def test_s1_ema_long_matches_calibration():
+def test_s1_momentum_thresholds_match_calibration():
+    """Live S1 min_momentum must match calibration values."""
     for asset, cal in CALIBRATION_S1.items():
         live = _S1_ASSET_CONFIG[asset]
-        assert live["ema_long"] == cal["ema_long"], (
-            f"{asset}: live ema_long={live['ema_long']} != calibration ema_long={cal['ema_long']}"
-        )
-
-
-def test_s1_ema_short_matches_calibration():
-    for asset, cal in CALIBRATION_S1.items():
-        live = _S1_ASSET_CONFIG[asset]
-        assert live["ema_short"] == cal["ema_short"], (
-            f"{asset}: live ema_short={live['ema_short']} != calibration ema_short={cal['ema_short']}"
+        assert abs(live["min_momentum"] - cal["min_momentum"]) < 1e-9, (
+            f"{asset}: live min_momentum={live['min_momentum']} != {cal['min_momentum']}"
         )
 
 
 def test_s1_min_dist_matches_calibration():
+    """Live S1 min_dist must match calibration values."""
     for asset, cal in CALIBRATION_S1.items():
         live = _S1_ASSET_CONFIG[asset]
         assert abs(live["min_dist"] - cal["min_dist"]) < 1e-9, (
-            f"{asset}: live min_dist={live['min_dist']} != calibration min_dist={cal['min_dist']}"
+            f"{asset}: live min_dist={live['min_dist']} != {cal['min_dist']}"
         )
 
 

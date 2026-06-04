@@ -91,21 +91,16 @@ def _make_skip(side: str, reason: str, abs_pct: float, mins_left: float,
 # ---------------------------------------------------------------------------
 
 _S1_ASSET_CONFIG: dict = {
-    #           min_dist   max_rv   ema_short  ema_long  session  min_ev  t_min  t_max
+    #           min_dist  max_rv  min_momentum  min_ev  t_min  t_max
     # min_dist raised: only trade when price is meaningfully far from strike.
-    # Low min_dist (0.001) = coin-flip zone; 0.003+ = real directional edge.
-    # time_min=1.0: skip final minute (contract pricing at extremes, spreads widen).
-    # time_max=12.0: skip very-early phase (EMA needs time to establish, market reprices many times).
-    "BTC":  dict(min_dist=0.0030, max_rv=1.0, ema_short=3, ema_long=10,
-                 session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
-    "ETH":  dict(min_dist=0.0030, max_rv=1.0, ema_short=3, ema_long=10,
-                 session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
-    "SOL":  dict(min_dist=0.0050, max_rv=1.0, ema_short=3, ema_long=8,
-                 session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
-    "XRP":  dict(min_dist=0.0030, max_rv=1.0, ema_short=3, ema_long=10,
-                 session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
-    "DOGE": dict(min_dist=0.0070, max_rv=1.0, ema_short=2, ema_long=8,
-                 session_gate=False, min_ev=0.04, time_min=1.0, time_max=12.0),
+    # min_momentum: 60-second price change required to confirm recent directional move.
+    # time_min=1.0: skip final minute (wide spreads, AMM settlement chaos).
+    # time_max=12.0: skip very early (AMM hasn't had time to anchor contract price).
+    "BTC":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0030, min_ev=0.04, time_min=1.0, time_max=12.0),
+    "ETH":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0025, min_ev=0.04, time_min=1.0, time_max=12.0),
+    "SOL":  dict(min_dist=0.0050, max_rv=1.0, min_momentum=0.0040, min_ev=0.04, time_min=1.0, time_max=12.0),
+    "XRP":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0025, min_ev=0.04, time_min=1.0, time_max=12.0),
+    "DOGE": dict(min_dist=0.0070, max_rv=1.0, min_momentum=0.0050, min_ev=0.04, time_min=1.0, time_max=12.0),
 }
 
 
@@ -177,7 +172,7 @@ def _s1_momentum_direction(prices: list, window_seconds: float = 60.0, min_momen
     60-second raw momentum direction pointer.
     Compares current price to the average price ~window_seconds ago.
     Returns (side, momentum_pct): side='yes' if up, 'no' if down.
-    Returns (None, None) when data insufficient or move below min_momentum.
+    Returns (None, None) when data insufficient; (None, small_val) when move below min_momentum.
     """
     if not prices or len(prices) < 4:
         return None, None
@@ -222,11 +217,11 @@ def strategy_brain_s1(
     asset: str = "BTC",
 ) -> dict:
     """
-    S1: EMA momentum strategy.
+    S1: 60-second momentum + geometric certainty strategy.
 
-    Direction: 3-min vs N-min EMA crossover on the asset price feed.
-    Confirmation: realized vol must be below per-asset ceiling.
-    BTC additionally requires US market-open or market-close session.
+    Direction: 60-second raw price momentum on the asset price feed.
+    Continuation-only: momentum must agree with price position vs strike.
+    Win probability: geometric Brownian motion certainty model (dist + remaining time).
     Per-asset thresholds for BTC / ETH / SOL / XRP / DOGE.
     """
     config = read_config()
@@ -262,12 +257,7 @@ def strategy_brain_s1(
     if _s1_asset_count >= _s1_asset_cap:
         return _make_skip("yes", "s1_cap_asset", abs_pct, mins_left, variant="strategy1")
 
-    # Gate 1: session (BTC always; alts if s1_session_gate set in per-asset config)
-    _effective_gate = get_asset_config(config, asset, "s1_session_gate", cfg["session_gate"])
-    if _effective_gate and not _s1_is_us_session():
-        return _make_skip("yes", "s1_session_gate", abs_pct, mins_left, variant="strategy1")
-
-    # Gate 2: time window
+    # Gate 1: time window
     if mins_left < cfg["time_min"] or mins_left > cfg["time_max"]:
         return _make_skip("yes", f"s1_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy1")
 
@@ -275,39 +265,34 @@ def strategy_brain_s1(
     if abs_pct < cfg["min_dist"]:
         return _make_skip("yes", f"s1_dist_gate:{abs_pct:.4f}<{cfg['min_dist']}", abs_pct, mins_left, variant="strategy1")
 
-    # Gate 4: realized vol ceiling — low vol means more predictable directional move
-    rv = _realized_vol(prices_list, window_minutes=5) if prices_list else 0.001
-    if rv > cfg["max_rv"]:
-        return _make_skip("yes", f"s1_rv_gate:{rv:.5f}>{cfg['max_rv']}", abs_pct, mins_left, rv=rv, variant="strategy1")
-
-    # Direction pointer: EMA crossover
-    direction, ema_ratio = _s1_ema_direction(prices_list, cfg["ema_short"], cfg["ema_long"])
+    # Direction pointer: 60-second raw momentum (catches AMM lag after fast moves)
+    direction, momentum_pct = _s1_momentum_direction(
+        prices_list, window_seconds=60.0, min_momentum=cfg["min_momentum"]
+    )
     if direction is None:
-        return _make_skip("yes", "s1_no_ema_data", abs_pct, mins_left, rv=rv, variant="strategy1")
+        _reason = "s1_no_momentum_data" if momentum_pct is None else f"s1_momentum_flat:{momentum_pct:.4f}<{cfg['min_momentum']}"
+        return _make_skip("yes", _reason, abs_pct, mins_left, variant="strategy1")
 
     side = direction  # 'yes' = bullish, 'no' = bearish
     entry_price = yes_ask if side == "yes" else no_ask
 
-    # Continuation-only: EMA direction must agree with price position relative to strike.
-    # EMA bullish but price below strike = reversal bet → skip (win prob ~20%, not 70%).
+    # Continuation-only: momentum direction must match price position vs strike.
     if side == "yes" and current_price < strike:
-        return _make_skip(side, "s1_reversal_gate:ema=yes_price_below", abs_pct, mins_left, rv=rv, variant="strategy1")
+        return _make_skip(side, "s1_reversal_gate:mom=yes_price_below", abs_pct, mins_left, variant="strategy1")
     if side == "no" and current_price > strike:
-        return _make_skip(side, "s1_reversal_gate:ema=no_price_above", abs_pct, mins_left, rv=rv, variant="strategy1")
+        return _make_skip(side, "s1_reversal_gate:mom=no_price_above", abs_pct, mins_left, variant="strategy1")
 
     # Gate 5: entry price range — 55c max: market-uncertainty zone, 57%+ WR profitable
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
     _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 55.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
-                          rv=rv, variant="strategy1", price_filter=True)
+                          variant="strategy1", price_filter=True)
 
-    # Win probability: empirical lookup (tanh fallback when bucket uncalibrated)
-    # No additive adjustments — calibration already prices EMA + session selection in.
-    base_p = _s1_lookup_win_rate(asset, abs_pct, mins_left, cfg)
-    win_prob = min(0.99, base_p)
+    # Win probability: geometric certainty model (dist + time → GBM probability)
+    win_prob = _s1_certainty_win_prob(abs_pct, secs_left, asset)
 
-    # EV gate — Kalshi fee from config (default 7 cents per contract)
+    # EV gate
     _ep_s1 = entry_price / 100.0
     _fee_cents_s1 = config.get("kalshi_fee_per_contract_cents", 7)
     fee = (_fee_cents_s1 / 100) * _ep_s1 * (1.0 - _ep_s1)
@@ -317,43 +302,43 @@ def strategy_brain_s1(
             "action": "skip", "side": side,
             "confidence": int(win_prob * 100),
             "reasoning": f"s1_ev_gate:{ev:.3f}<{cfg['min_ev']:.3f}",
-            "key_signals": [f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"ema:{direction}"],
-            "signals": {"win_prob": win_prob, "ev": ev, "ema_ratio": ema_ratio,
-                        "rv": rv, "abs_pct": abs_pct, "strike": strike},
+            "key_signals": [f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"mom:{direction}"],
+            "signals": {"win_prob": win_prob, "ev": ev, "momentum_pct": momentum_pct,
+                        "abs_pct": abs_pct, "strike": strike},
             "win_prob": float(win_prob), "mom_label": direction,
-            "mom_pct": float((ema_ratio or 1.0) - 1.0),
+            "mom_pct": float(momentum_pct or 0.0),
             "vel_signal": "neutral",
             "raw_p_yes": float(win_prob) if side == "yes" else float(1.0 - win_prob),
             "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
-            "_rv": rv, "_vol_ratio": None, "price_filter_skip": False,
+            "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
             "strategy_variant": "strategy1",
         }
 
     brain_log.info(
-        "S1 TRADE %s %s | ema=%s ratio=%.5f rv=%.5f dist=%.4f ev=%.3f wp=%.3f mins=%.1f",
-        asset, ticker, direction, ema_ratio or 0, rv, abs_pct, ev, win_prob, mins_left,
+        "S1 TRADE %s %s | mom=%s pct=%.4f dist=%.4f ev=%.3f wp=%.3f mins=%.1f",
+        asset, ticker, direction, momentum_pct or 0, abs_pct, ev, win_prob, mins_left,
     )
     return {
         "action": "trade", "side": side,
         "confidence": int(win_prob * 100),
         "reasoning": (
-            f"s1_ema ev={ev:.3f} wp={win_prob:.3f} ema={direction} "
-            f"dist={abs_pct:.3%} rv={rv:.5f} mins={mins_left:.1f}"
+            f"s1_mom ev={ev:.3f} wp={win_prob:.3f} mom={direction} "
+            f"dist={abs_pct:.3%} mom_pct={momentum_pct:.4f} mins={mins_left:.1f}"
         ),
         "key_signals": [
-            f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"ema:{direction}",
-            f"dist:{abs_pct:.3%}", f"rv:{rv:.5f}",
+            f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"mom:{direction}",
+            f"dist:{abs_pct:.3%}", f"mom_pct:{momentum_pct:.4f}",
         ],
         "signals": {
-            "win_prob": win_prob, "ev": ev, "ema_ratio": ema_ratio,
-            "rv": rv, "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
+            "win_prob": win_prob, "ev": ev, "momentum_pct": momentum_pct,
+            "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
         },
         "win_prob": float(win_prob), "mom_label": direction,
-        "mom_pct": float((ema_ratio or 1.0) - 1.0),
+        "mom_pct": float(momentum_pct or 0.0),
         "vel_signal": "neutral",
         "raw_p_yes": float(win_prob) if side == "yes" else float(1.0 - win_prob),
         "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
-        "_rv": rv, "_vol_ratio": None, "price_filter_skip": False,
+        "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
         "strategy_variant": "strategy1",
     }
 

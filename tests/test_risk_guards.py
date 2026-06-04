@@ -69,10 +69,10 @@ def test_s1_cl_alert_source_check():
         "_settle_s1_trade missing [S1] consecutive losses Telegram text"
 
 
-def test_s1_session_gate_source_check():
-    """strategy_brain_s1 must use get_asset_config for s1_session_gate and _effective_gate."""
+def test_s1_momentum_signal_source_check():
+    """strategy_brain_s1 must use _s1_momentum_direction (momentum rewrite)."""
     src = inspect.getsource(bot_strategy.strategy_brain_s1)
-    assert "s1_session_gate" in src, \
-        "strategy_brain_s1 not using s1_session_gate config key"
-    assert "_effective_gate" in src, \
-        "strategy_brain_s1 not using _effective_gate variable"
+    assert "_s1_momentum_direction" in src, \
+        "strategy_brain_s1 not calling _s1_momentum_direction"
+    assert "min_momentum" in src, \
+        "strategy_brain_s1 not referencing min_momentum config key"
