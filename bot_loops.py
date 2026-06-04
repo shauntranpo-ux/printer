@@ -379,7 +379,7 @@ async def handle_ready_phase(
     win_p_raw   = brain.get("win_prob", 0.5)
     _mom_label  = brain.get("mom_label",  "neutral")
     _vel_signal = brain.get("vel_signal", "neutral")
-    _abs_pct    = brain.get("abs_pct", abs((btc_price - strike) / strike))
+    _abs_pct    = brain.get("abs_pct", abs((btc_price - strike) / strike) if strike else 0.0)
     # Time score: less time remaining = outcome more certain = higher score (0→20)
     _time_score = round(max(0.0, min(20.0, 20.0 * (1.0 - secs_left / (13 * 60)))), 1)
     # Distance score: farther from strike = higher score (0→30, caps at 0.5%)
@@ -537,9 +537,11 @@ async def handle_ready_phase(
         "brain": "s2",
     }
     trade_id = await db_write_trade(trade_data)
+    if trade_id is None:
+        log.critical("[S2] %s: DB write failed — position tracked in-memory only; reconcile manually", ticker)
 
     _entry_ts = time.time()
-    _abs_pct_at_entry = abs(btc_price - strike) / strike
+    _abs_pct_at_entry = abs(btc_price - strike) / strike if strike else 0.0
     _mins_left_at_entry = secs_left / 60
     # Record the market's total duration (elapsed + remaining at entry) so
     # exit-side notifications can reference the market's window length.
