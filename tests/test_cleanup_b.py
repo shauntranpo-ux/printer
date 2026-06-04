@@ -35,7 +35,10 @@ def test_s1_config_override_skips_on_overridden_min_dist():
         "max_entry_price_cents": 76,
         "quiet_hours_enabled": False,  # disable overnight gate so dist_gate is reachable
         "s1_config": {
-            "ETH": {"min_dist": 0.9999},  # impossibly high → forces dist_gate
+            "ETH": {
+                "min_dist": 0.9999,       # impossibly high → forces dist_gate
+                "min_dislocation_edge": 9999.0,  # disable dislocation fast-path for this test
+            },
         },
     }
 

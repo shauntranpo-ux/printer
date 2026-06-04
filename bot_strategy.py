@@ -285,6 +285,44 @@ def _s1_certainty_win_prob(dist_pct: float, secs_left: float, asset: str) -> flo
     return max(0.52, min(0.75, cert))
 
 
+_DISLOCATION_THRESHOLD = 0.0005  # BTC must move >0.05% from strike for dislocation to fire
+
+
+def _s1_dislocation_check(
+    dist_pct: float,
+    yes_ask: float,
+    secs_left: float,
+    asset: str,
+    min_edge: float = 0.04,
+) -> tuple:
+    """
+    DISLOCATION signal: contract underpriced relative to BTC/asset move.
+
+    Fair value: P = 0.5 + (dist_pct / time_decay_vol) * scale, capped 0.45-0.80.
+    Returns (edge, fair_p): edge = fair_p - contract_price. Negative = no dislocation.
+
+    Research: Polymarket 5-min BTC study core alpha signal — fires when contract
+    price lags the asset move by >0.05%.
+    """
+    if dist_pct < _DISLOCATION_THRESHOLD:
+        return 0.0, 0.5
+
+    _ASSET_VOL_15M = {
+        "BTC": 0.008, "ETH": 0.007, "SOL": 0.012, "XRP": 0.010, "DOGE": 0.015,
+    }
+    vol = _ASSET_VOL_15M.get(asset, 0.008)
+    time_frac  = max(0.05, secs_left / 900.0)
+    time_decay = vol * math.sqrt(time_frac)
+
+    scale = 5.0
+    fair_p = 0.5 + (dist_pct / max(time_decay, 1e-6)) * scale / 20.0
+    fair_p = max(0.45, min(0.80, fair_p))
+
+    contract_price_frac = yes_ask / 100.0
+    edge = fair_p - contract_price_frac
+    return edge, fair_p
+
+
 def strategy_brain_s1(
     btc_price, strike, yes_ask, no_ask,
     elapsed_seconds, secs_left, ticker,
@@ -334,6 +372,36 @@ def strategy_brain_s1(
     # Gate 1: time window
     if mins_left < cfg["time_min"] or mins_left > cfg["time_max"]:
         return _make_skip("yes", f"s1_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy1")
+
+    # DISLOCATION fast-path: contract significantly underpriced vs BTC/asset move.
+    # Bypasses momentum gates — dislocation is structural underpricing, not momentum.
+    _disloc_entry_price = yes_ask if current_price >= strike else no_ask
+    _disloc_side = "yes" if current_price >= strike else "no"
+    _disloc_edge, _disloc_fair_p = _s1_dislocation_check(
+        abs_pct, _disloc_entry_price, secs_left, asset,
+        min_edge=cfg.get("min_dislocation_edge", 0.07),
+    )
+    if _disloc_edge >= cfg.get("min_dislocation_edge", 0.07):
+        _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
+        _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 55.0))
+        if _min_p <= _disloc_entry_price <= _max_p:
+            brain_log.info(
+                "S1 DISLOC %s %s | dist=%.4f fair_p=%.3f edge=%.3f ask=%.0fc mins=%.1f",
+                asset, ticker, abs_pct, _disloc_fair_p, _disloc_edge, _disloc_entry_price, mins_left,
+            )
+            return {
+                "action": "trade", "side": _disloc_side,
+                "confidence": int(_disloc_fair_p * 100),
+                "reasoning": f"s1_dislocation edge={_disloc_edge:.3f} fair_p={_disloc_fair_p:.3f} dist={abs_pct:.3%}",
+                "key_signals": [f"disloc_edge:{_disloc_edge:.3f}", f"fair_p:{_disloc_fair_p:.3f}"],
+                "signals": {"win_prob": _disloc_fair_p, "ev": _disloc_edge, "abs_pct": abs_pct},
+                "win_prob": float(_disloc_fair_p), "mom_label": _disloc_side,
+                "mom_pct": abs_pct, "vel_signal": "dislocation",
+                "raw_p_yes": float(_disloc_fair_p) if _disloc_side == "yes" else float(1.0 - _disloc_fair_p),
+                "mins_left": mins_left, "abs_pct": abs_pct, "above": _disloc_side == "yes",
+                "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+                "strategy_variant": "strategy1",
+            }
 
     # Gate 3: minimum distance from strike
     if abs_pct < cfg["min_dist"]:
