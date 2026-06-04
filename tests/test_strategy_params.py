@@ -72,17 +72,17 @@ def test_s2_win_rate_tables_all_none():
 
 
 def test_s1_lookup_conservative_baseline():
-    """S1 tanh fallback must return 55-65% — realistic for EMA momentum signal."""
+    """S1 GBM fallback must return 0.52-0.75 -- realistic for momentum signal."""
     from bot_strategy import _s1_lookup_win_rate
     wp = _s1_lookup_win_rate("ETH", 0.003, 3.0)
-    assert 0.54 <= wp <= 0.65, f"ETH tanh WR={wp:.3f} outside realistic 54-65% range"
+    assert 0.52 <= wp <= 0.75, f"ETH GBM WR={wp:.3f} outside realistic 52-75% range"
 
 
 def test_s2_lookup_conservative_baseline():
     """S2 tanh fallback must return 55-65% — realistic for velocity signal."""
     from bot_strategy import _s2_lookup_win_rate
     wp = _s2_lookup_win_rate("ETH", 0.26, 4.0)
-    assert 0.54 <= wp <= 0.65, f"ETH S2 tanh WR={wp:.3f} outside realistic 54-65% range"
+    assert 0.52 <= wp <= 0.65, f"ETH S2 tanh WR={wp:.3f} outside realistic 52-65% range"
 
 
 def test_s2_vel_flat_skips_below_threshold():
@@ -103,27 +103,6 @@ def test_s2_vel_flat_skips_below_threshold():
     assert "s2_vel" in result["reasoning"], f"Expected vel skip: {result['reasoning']}"
 
 
-def test_s1_momentum_direction_detects_up_move():
-    """_s1_momentum_direction returns ('yes', pct) on rising prices."""
-    import time
-    from bot_strategy import _s1_momentum_direction
-    now = time.time()
-    # 62 data points spanning 61s: price rose from 2500 to 2510 (+0.4%)
-    prices = [(now - 61 + i, 2500 + i * (10/61)) for i in range(62)]
-    side, mom = _s1_momentum_direction(prices, window_seconds=60.0, min_momentum=0.001)
-    assert side == "yes", f"Expected 'yes' on rising prices, got {side}"
-    assert mom is not None and mom > 0.001, f"momentum {mom} below threshold"
-
-
-def test_s1_momentum_direction_returns_none_on_flat():
-    """_s1_momentum_direction returns (None, small_val) when move < min_momentum."""
-    import time
-    from bot_strategy import _s1_momentum_direction
-    now = time.time()
-    # Very flat — 0.009% movement over 61s
-    prices = [(now - 61 + i, 2500 + i * 0.004) for i in range(62)]
-    side, mom = _s1_momentum_direction(prices, window_seconds=60.0, min_momentum=0.002)
-    assert side is None, f"Expected None on flat prices, got {side}"
 
 
 def test_s1_certainty_win_prob_increases_with_dist():

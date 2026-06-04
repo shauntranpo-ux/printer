@@ -104,18 +104,6 @@ _S1_ASSET_CONFIG: dict = {
 }
 
 
-def _s1_is_us_session() -> bool:
-    """True during US open (09:30-11:30 ET) or close (15:00-16:00 ET)."""
-    try:
-        # EDT = UTC-4; EST = UTC-5. Using UTC-4 year-round; up to 1h edge error acceptable.
-        now_et = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-4)))
-        t = now_et.hour * 60 + now_et.minute
-        return (9 * 60 + 30 <= t <= 11 * 60 + 30) or (15 * 60 <= t <= 16 * 60)
-    except Exception:
-        return True  # fail open — never block trades on a clock error
-
-
-
 def _is_quiet_hours(config: dict) -> bool:
     """
     True when current ET time is in the overnight quiet window.
@@ -139,58 +127,6 @@ def _is_quiet_hours(config: dict) -> bool:
     except Exception:
         return False
 
-
-def _s1_ema_direction(prices: list, short_min: float, long_min: float):
-    """
-    EMA crossover direction pointer.
-    Returns (side, ratio): side='yes' (bullish) or 'no' (bearish), ratio=short/long EMA.
-    Returns (None, None) when data is insufficient.
-    """
-    if not prices or len(prices) < 4:
-        return None, None
-    now = prices[-1][0]
-    short_px = [float(p) for ts, p in prices if ts >= now - short_min * 60]
-    long_px  = [float(p) for ts, p in prices if ts >= now - long_min  * 60]
-    if len(short_px) < 2 or len(long_px) < 3:
-        return None, None
-
-    def _ema(vals: list) -> float:
-        alpha = 2.0 / (len(vals) + 1)
-        v = float(vals[0])
-        for x in vals[1:]:
-            v = alpha * float(x) + (1.0 - alpha) * v
-        return v
-
-    s_ema = _ema(short_px)
-    l_ema = _ema(long_px)
-    ratio = s_ema / l_ema if l_ema > 0 else 1.0
-    return ("yes" if s_ema > l_ema else "no"), ratio
-
-
-def _s1_momentum_direction(prices: list, window_seconds: float = 60.0, min_momentum: float = 0.003):
-    """
-    60-second raw momentum direction pointer.
-    Compares current price to the average price ~window_seconds ago.
-    Returns (side, momentum_pct): side='yes' if up, 'no' if down.
-    Returns (None, None) when data insufficient; (None, small_val) when move below min_momentum.
-    """
-    if not prices or len(prices) < 4:
-        return None, None
-    now_ts  = prices[-1][0]
-    current = float(prices[-1][1])
-    # Find prices in a 20-second band centred on window_seconds ago
-    lo = now_ts - window_seconds - 10
-    hi = now_ts - window_seconds + 10
-    older = [float(p) for ts, p in prices if lo <= ts <= hi]
-    if not older:
-        return None, None
-    past_price = sum(older) / len(older)
-    if past_price <= 0:
-        return None, None
-    momentum = (current - past_price) / past_price
-    if abs(momentum) < min_momentum:
-        return None, abs(momentum)
-    return ("yes" if momentum > 0 else "no"), abs(momentum)
 
 
 def _trend_direction(prices: list, window_seconds: float = 600.0) -> int:
@@ -480,8 +416,9 @@ def strategy_brain_s1(
         return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           variant="strategy1", price_filter=True)
 
-    # Win probability: geometric certainty model (dist + time → GBM probability)
-    win_prob = _s1_certainty_win_prob(abs_pct, secs_left, asset)
+    # Win probability: empirical WR from settled trades when ≥20 samples, else GBM.
+    _s1_mode = config.get("mode", "paper")
+    win_prob = _s1_lookup_win_rate(asset, abs_pct, mins_left, cfg=cfg, mode=_s1_mode)
 
     # EV gate
     _ep_s1 = entry_price / 100.0
@@ -596,11 +533,10 @@ def _s1_lookup_win_rate(asset: str, abs_pct: float, mins_left: float,
     Look up S1 win rate. Priority:
     1. Empirical (from live settled trades) if >= 20 samples in bucket.
     2. Hardcoded table if non-None.
-    3. Tanh fallback (realistic 54-65% baseline).
+    3. GBM certainty model (dist + time → probability).
     """
     if cfg is None:
         cfg = _S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"])
-    min_dist = cfg["min_dist"]
 
     # Empirical from live trades (most accurate after burn-in period of ~20 trades/bucket)
     try:
@@ -627,7 +563,7 @@ def _s1_lookup_win_rate(asset: str, abs_pct: float, mins_left: float,
     if emp_val is not None:
         return float(emp_val)
 
-    return 0.52 + 0.08 * math.tanh(abs_pct / max(min_dist, 1e-6))
+    return _s1_certainty_win_prob(abs_pct, mins_left * 60.0, asset)
 
 
 def _s2_lookup_win_rate(asset: str, vel_delta: float, mins_left: float, cfg: dict | None = None) -> float:
