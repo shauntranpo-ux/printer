@@ -657,6 +657,38 @@ def _s2_obi_gate(ticker: str, side: str, min_obi: float):
     return True, obi_val
 
 
+def check_dual_side_arb(
+    yes_ask: float,
+    no_ask: float,
+    fee_per_contract_cents: float = 7,
+    threshold: float = 93.0,
+) -> dict:
+    """
+    Structural arbitrage check: YES + NO < threshold → guaranteed profit.
+
+    When YES_ask + NO_ask < 93c: one side always pays $1.00, net profit > 0
+    after fees. At threshold=93c: net profit = 100 - yes_ask - no_ask > 7c.
+
+    Returns dict with:
+      arb (bool): True if arbitrage opportunity exists
+      net_edge_cents (float): 100 - yes_ask - no_ask - estimated_fees
+      combined (float): yes_ask + no_ask
+      yes_ask, no_ask: inputs echoed back
+    """
+    combined = yes_ask + no_ask
+    fee_yes = fee_per_contract_cents * (yes_ask / 100.0) * (1.0 - yes_ask / 100.0)
+    fee_no  = fee_per_contract_cents * (no_ask  / 100.0) * (1.0 - no_ask  / 100.0)
+    net_edge = 100.0 - yes_ask - no_ask - fee_yes - fee_no
+    arb_fires = combined < threshold and net_edge > 0
+    return {
+        "arb": arb_fires,
+        "net_edge_cents": round(net_edge, 2),
+        "combined": combined,
+        "yes_ask": yes_ask,
+        "no_ask": no_ask,
+    }
+
+
 def strategy_brain_s2(
     btc_price, strike, yes_ask, no_ask,
     elapsed_seconds, secs_left, ticker,
