@@ -413,6 +413,8 @@ async def _execute_s1_trade(
         "mode":              mode,
         "entry_ts":          time.time(),
         "market_close_time": (market or {}).get("close_time", ""),
+        "abs_pct_at_entry":  abs(btc_price - strike) / strike if strike else 0.0,
+        "secs_left_at_entry": int(secs_left),
     }
 
     result = await place_order(session, ticker, side, contracts, int(entry_price_cents), mode, market, asset=asset, secs_left=secs_left)
@@ -505,6 +507,20 @@ async def _settle_s1_trade(
         "profit_percent":   round(profit_pct, 2),
     })
     log.info(f"[S1] {ticker}: settled -- {outcome}, P&L=${pnl:.2f}")
+
+    # Live WR calibration: update empirical win rate bucket for this trade.
+    try:
+        from bot_infra import _update_wr_bucket
+        _update_wr_bucket(
+            asset,
+            s1_pos.get("abs_pct_at_entry", 0.0),
+            s1_pos.get("secs_left_at_entry", 900) / 60.0,
+            outcome,
+            s1_pos.get("mode", "live"),
+            strategy="s1",
+        )
+    except Exception as _exc:
+        log.debug("WR calibration update failed: %s", _exc)
 
     _s1_rolling_outcomes.append((time.time(), outcome))
     _wins = sum(1 for _, o in _s1_rolling_outcomes if o == "win")

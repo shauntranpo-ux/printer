@@ -29,6 +29,7 @@ __all__ = [
     # DB
     "init_db", "test_db_write", "db_write_trade", "db_update_trade",
     "db_brain_scorecard", "db_write_market_log", "db_get_today_pnl",
+    "_update_wr_bucket", "_get_empirical_wr",
     # Notify
     "send_telegram", "_maybe_fill_verification_notify", "_notify_ctx", "_phase_for_eth",
 ]
@@ -292,6 +293,19 @@ def init_db() -> None:
                 except Exception as exc:
                     log.warning("DB: could not drop column %s: %s", dead_col, exc)
 
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS wr_calibration (
+                asset       TEXT NOT NULL,
+                dist_bucket INTEGER NOT NULL,
+                time_bucket INTEGER NOT NULL,
+                strategy    TEXT NOT NULL DEFAULT 's1',
+                mode        TEXT NOT NULL DEFAULT 'live',
+                win_count   INTEGER NOT NULL DEFAULT 0,
+                total_count INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (asset, dist_bucket, time_bucket, strategy, mode)
+            )
+        """)
+
         conn.commit()
         conn.close()
         log.info("Database initialized.")
@@ -487,6 +501,72 @@ async def db_get_today_pnl(mode: str) -> float:
     except Exception as exc:
         log.error(f"DB get_today_pnl error: {exc}")
         return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Live WR calibration helpers
+# ---------------------------------------------------------------------------
+
+def _update_wr_bucket(
+    asset: str, abs_pct: float, mins_left: float,
+    outcome: str, mode: str, strategy: str = "s1",
+) -> None:
+    """Increment win/total counters for the matching WR calibration bucket."""
+    from bot_strategy import _S1_DIST_BOUNDS, _S1_TIME_BOUNDS
+    dist_idx = len(_S1_DIST_BOUNDS)
+    for i, b in enumerate(_S1_DIST_BOUNDS):
+        if abs_pct < b:
+            dist_idx = i
+            break
+    time_idx = len(_S1_TIME_BOUNDS)
+    for i, b in enumerate(_S1_TIME_BOUNDS):
+        if mins_left < b:
+            time_idx = i
+            break
+    win_inc = 1 if outcome == "win" else 0
+    try:
+        conn = sqlite3.connect(bot_state._DB_FILE)
+        conn.execute("""
+            INSERT INTO wr_calibration (asset, dist_bucket, time_bucket, strategy, mode, win_count, total_count)
+            VALUES (?, ?, ?, ?, ?, ?, 1)
+            ON CONFLICT(asset, dist_bucket, time_bucket, strategy, mode)
+            DO UPDATE SET win_count=win_count+excluded.win_count, total_count=total_count+1
+        """, (asset, dist_idx, time_idx, strategy, mode, win_inc))
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        log.warning("_update_wr_bucket error: %s", exc)
+
+
+def _get_empirical_wr(
+    asset: str, abs_pct: float, mins_left: float,
+    mode: str, strategy: str = "s1", min_samples: int = 20,
+) -> "float | None":
+    """Return empirical WR for bucket if >= min_samples, else None (forces tanh fallback)."""
+    from bot_strategy import _S1_DIST_BOUNDS, _S1_TIME_BOUNDS
+    dist_idx = len(_S1_DIST_BOUNDS)
+    for i, b in enumerate(_S1_DIST_BOUNDS):
+        if abs_pct < b:
+            dist_idx = i
+            break
+    time_idx = len(_S1_TIME_BOUNDS)
+    for i, b in enumerate(_S1_TIME_BOUNDS):
+        if mins_left < b:
+            time_idx = i
+            break
+    try:
+        conn = sqlite3.connect(bot_state._DB_FILE)
+        row = conn.execute(
+            "SELECT win_count, total_count FROM wr_calibration "
+            "WHERE asset=? AND dist_bucket=? AND time_bucket=? AND strategy=? AND mode=?",
+            (asset, dist_idx, time_idx, strategy, mode),
+        ).fetchone()
+        conn.close()
+        if row and row[1] >= min_samples:
+            return row[0] / row[1]
+        return None
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------

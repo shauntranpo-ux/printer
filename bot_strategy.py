@@ -553,11 +553,26 @@ _S2_VEL_MULTIPLIERS = [2.0, 4.0]
 _S2_TIME_BOUNDS_S2  = [5.0, 8.0]
 
 
-def _s1_lookup_win_rate(asset: str, abs_pct: float, mins_left: float, cfg: dict | None = None) -> float:
-    """Look up empirical S1 win rate. Falls back to tanh when bucket is None or missing."""
+def _s1_lookup_win_rate(asset: str, abs_pct: float, mins_left: float,
+                        cfg: dict | None = None, mode: str = "live") -> float:
+    """
+    Look up S1 win rate. Priority:
+    1. Empirical (from live settled trades) if >= 20 samples in bucket.
+    2. Hardcoded table if non-None.
+    3. Tanh fallback (realistic 54-65% baseline).
+    """
     if cfg is None:
         cfg = _S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"])
     min_dist = cfg["min_dist"]
+
+    # Empirical from live trades (most accurate after burn-in period of ~20 trades/bucket)
+    try:
+        from bot_infra import _get_empirical_wr
+        empirical = _get_empirical_wr(asset, abs_pct, mins_left, mode, strategy="s1", min_samples=20)
+        if empirical is not None:
+            return empirical
+    except Exception:
+        pass
 
     dist_idx = len(_S1_DIST_BOUNDS)
     for i, bound in enumerate(_S1_DIST_BOUNDS):
