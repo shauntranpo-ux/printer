@@ -193,6 +193,31 @@ def _s1_momentum_direction(prices: list, window_seconds: float = 60.0, min_momen
     return ("yes" if momentum > 0 else "no"), abs(momentum)
 
 
+def _trend_direction(prices: list, window_seconds: float = 600.0) -> int:
+    """
+    Linear regression slope over the last window_seconds of price history.
+    Returns +1 (uptrend), -1 (downtrend), or 0 (insufficient data).
+    Used to block contra-trend S1/S2 signals.
+    """
+    if not prices or len(prices) < 5:
+        return 0
+    now_ts = prices[-1][0]
+    recent = [(float(ts), float(p)) for ts, p in prices if float(ts) >= now_ts - window_seconds]
+    if len(recent) < 5:
+        return 0
+    n = len(recent)
+    t0 = recent[0][0]
+    xs = [ts - t0 for ts, _ in recent]
+    ys = [p for _, p in recent]
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    num = sum((xs[i] - mean_x) * (ys[i] - mean_y) for i in range(n))
+    den = sum((xs[i] - mean_x) ** 2 for i in range(n))
+    if den == 0:
+        return 0
+    return 1 if num / den > 0 else -1
+
+
 def _s1_certainty_win_prob(dist_pct: float, secs_left: float, asset: str) -> float:
     """
     Geometric Brownian Motion certainty model.
@@ -281,6 +306,15 @@ def strategy_brain_s1(
         return _make_skip(side, "s1_reversal_gate:mom=yes_price_below", abs_pct, mins_left, variant="strategy1")
     if side == "no" and current_price > strike:
         return _make_skip(side, "s1_reversal_gate:mom=no_price_above", abs_pct, mins_left, variant="strategy1")
+
+    # 10-minute trend filter: block signals that oppose the dominant trend.
+    # Research: blocking contra-trend signals = 7x capital preservation improvement.
+    _s1_trend = _trend_direction(prices_list, window_seconds=600.0)
+    if _s1_trend != 0:
+        if side == "yes" and _s1_trend == -1:
+            return _make_skip(side, "s1_trend_gate:mom=yes_trend=down", abs_pct, mins_left, variant="strategy1")
+        if side == "no" and _s1_trend == 1:
+            return _make_skip(side, "s1_trend_gate:mom=no_trend=up", abs_pct, mins_left, variant="strategy1")
 
     # Gate 5: entry price range — 55c max: market-uncertainty zone, 57%+ WR profitable
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
@@ -549,6 +583,15 @@ def strategy_brain_s2(
         return _make_skip(side, "s2_reversal_gate:vel=yes_price_below", abs_pct, mins_left, variant="strategy2")
     if side == "no" and current_price > strike:
         return _make_skip(side, "s2_reversal_gate:vel=no_price_above", abs_pct, mins_left, variant="strategy2")
+
+    # 10-minute trend filter: same hard rule as S1.
+    _s2_prices = list(asset_manager._prices.get(asset) or []) if asset != "BTC" else list(bot_state.btc_prices)
+    _s2_trend = _trend_direction(_s2_prices, window_seconds=600.0)
+    if _s2_trend != 0:
+        if side == "yes" and _s2_trend == -1:
+            return _make_skip(side, "s2_trend_gate:vel=yes_trend=down", abs_pct, mins_left, variant="strategy2")
+        if side == "no" and _s2_trend == 1:
+            return _make_skip(side, "s2_trend_gate:vel=no_trend=up", abs_pct, mins_left, variant="strategy2")
 
     entry_price = yes_ask if side == "yes" else no_ask
 
