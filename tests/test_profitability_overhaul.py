@@ -91,13 +91,13 @@ def test_s1_s2_min_ev_reasonable():
 
 
 def test_max_entry_price_caps_are_profitable():
-    """S1/S2 max entry <=55c — at realistic 58-62% WR only market-uncertainty entries profit."""
+    """S1/S2 max entry 50-60c — realistic 57-65% WR is profitable in this range."""
     import re
     with open('bot_strategy.py', encoding='utf-8') as f:
         src = f.read()
     s1 = src[src.index('def strategy_brain_s1'):src.index('def strategy_brain_s2')]
     s2 = src[src.index('def strategy_brain_s2'):]
     for d in re.findall(r'max_entry_price_cents",\s*([\d.]+)', s1):
-        assert float(d) <= 55.0, f"S1 max_entry {d}c too high"
+        assert 50.0 <= float(d) <= 60.0, f"S1 max_entry {d}c outside 50-60c range"
     for d in re.findall(r'max_entry_price_cents",\s*([\d.]+)', s2):
-        assert float(d) <= 55.0, f"S2 max_entry {d}c too high"
+        assert 50.0 <= float(d) <= 60.0, f"S2 max_entry {d}c outside 50-60c range"

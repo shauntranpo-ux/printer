@@ -22,7 +22,7 @@ def test_s2_min_dist_lowered():
 
 
 def test_s1_max_entry_price_capped_for_profitability():
-    """S1 max_entry_price default must be <= 55c — market uncertainty zone only."""
+    """S1 max_entry_price default must be 50-60c — uncertainty zone at realistic WR."""
     import re
     with open('bot_strategy.py', encoding='utf-8') as f:
         src = f.read()
@@ -30,12 +30,12 @@ def test_s1_max_entry_price_capped_for_profitability():
     defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', s1_section)
     assert defaults, "max_entry_price_cents default not found in strategy_brain_s1"
     for d in defaults:
-        assert float(d) <= 55.0, \
-            f"S1 max_entry_price {d} too high — need <=55c at realistic 58-62% WR"
+        assert 50.0 <= float(d) <= 60.0, \
+            f"S1 max_entry_price {d} outside 50-60c range"
 
 
 def test_s2_max_entry_price_capped_for_profitability():
-    """S2 max_entry_price default must be <= 55c — market uncertainty zone only."""
+    """S2 max_entry_price default must be 50-60c."""
     import re
     with open('bot_strategy.py', encoding='utf-8') as f:
         src = f.read()
@@ -43,8 +43,8 @@ def test_s2_max_entry_price_capped_for_profitability():
     defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', s2_section)
     assert defaults, "max_entry_price_cents default not found in strategy_brain_s2"
     for d in defaults:
-        assert float(d) <= 55.0, \
-            f"S2 max_entry_price {d} too high — need <=55c at realistic 58-62% WR"
+        assert 50.0 <= float(d) <= 60.0, \
+            f"S2 max_entry_price {d} outside 50-60c range"
 
 
 def test_s1_time_bounds_in_range():

@@ -251,9 +251,9 @@ def strategy_brain_s1(
     if side == "no" and current_price > strike:
         return _make_skip(side, "s1_reversal_gate:ema=no_price_above", abs_pct, mins_left, rv=rv, variant="strategy1")
 
-    # Gate 5: entry price range — 50c max forces market-uncertainty zone trades only
+    # Gate 5: entry price range — 55c max: market-uncertainty zone, 57%+ WR profitable
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
-    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 50.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 55.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           rv=rv, variant="strategy1", price_filter=True)
@@ -507,9 +507,9 @@ def strategy_brain_s2(
     side = direction
     entry_price = yes_ask if side == "yes" else no_ask
 
-    # Gate 3: entry price range — 50c max filters out high-confidence (expensive) bad trades
+    # Gate 3: entry price range — 55c max filters out expensive trades beyond uncertainty zone
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
-    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 50.0))
+    _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 55.0))
     if entry_price < _min_p or entry_price > _max_p:
         return _make_skip(side, f"s2_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
                           variant="strategy2", price_filter=True)
