@@ -215,7 +215,12 @@ def _trend_direction(prices: list, window_seconds: float = 600.0) -> int:
     den = sum((xs[i] - mean_x) ** 2 for i in range(n))
     if den == 0:
         return 0
-    return 1 if num / den > 0 else -1
+    slope = num / den
+    if slope > 0:
+        return 1
+    if slope < 0:
+        return -1
+    return 0
 
 
 def _s1_certainty_win_prob(dist_pct: float, secs_left: float, asset: str) -> float:

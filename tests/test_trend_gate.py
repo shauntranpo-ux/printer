@@ -35,3 +35,10 @@ def test_trend_direction_uses_only_last_600s():
     prices = ancient + recent
     result = _trend_direction(prices, window_seconds=600.0)
     assert result == -1, f"Should detect recent downtrend, got {result}"
+
+
+def test_trend_direction_flat_returns_zero():
+    """Perfectly flat prices (no slope) must return 0, not -1."""
+    now = time.time()
+    prices = [(now - i * 10, 2000.0) for i in range(70, 0, -1)]
+    assert _trend_direction(prices) == 0, "Flat market should be neutral (0), not downtrend (-1)"
