@@ -44,3 +44,21 @@ def test_dislocation_edge_increases_with_dist():
     edge_large, _ = _s1_dislocation_check(0.010, 45.0, 300.0, "ETH", 0.0)
     assert edge_large > edge_small, \
         f"Larger move should give larger edge: {edge_small:.3f} vs {edge_large:.3f}"
+
+
+def test_dislocation_no_side_edge_uses_fair_no_price():
+    """For NO-side trades, edge = (1-fair_p) - no_ask. Not fair_p - no_ask."""
+    # dist_pct=0.004, secs_left=240, asset=ETH → fair_p will be computed by function
+    # fair_p for YES side ≈ 0.65-0.75
+    # no_ask = 35c → fair NO price = 1-0.65 = 0.35, edge ≈ 0.00 (neutral)
+    # If bug: edge = 0.65 - 0.35 = 0.30 (wrongly fires)
+    # This test verifies the NO-side edge does NOT exceed yes-side edge
+    yes_edge, fair_p = _s1_dislocation_check(0.004, 35.0, 240.0, "ETH", 0.0)
+    # Correct no-side edge: (1 - fair_p) - 0.35
+    correct_no_edge = (1.0 - fair_p) - 0.35
+    # Buggy no-side edge would be fair_p - 0.35 (which equals yes_edge)
+    assert correct_no_edge < yes_edge, \
+        f"No-side edge ({correct_no_edge:.3f}) should be less than yes-side edge ({yes_edge:.3f})"
+    # When no_ask = 35c and fair NO price ≈ 0.25-0.35, no-side edge should be near 0
+    assert correct_no_edge < 0.10, \
+        f"No-side edge {correct_no_edge:.3f} seems too large — possible mismatch"

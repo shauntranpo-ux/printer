@@ -377,10 +377,15 @@ def strategy_brain_s1(
     # Bypasses momentum gates — dislocation is structural underpricing, not momentum.
     _disloc_entry_price = yes_ask if current_price >= strike else no_ask
     _disloc_side = "yes" if current_price >= strike else "no"
-    _disloc_edge, _disloc_fair_p = _s1_dislocation_check(
+    _disloc_edge_raw, _disloc_fair_p = _s1_dislocation_check(
         abs_pct, _disloc_entry_price, secs_left, asset,
         min_edge=cfg.get("min_dislocation_edge", 0.07),
     )
+    # fair_p is always the YES-side probability; for NO trades, flip to get correct edge
+    if _disloc_side == "yes":
+        _disloc_edge = _disloc_edge_raw
+    else:
+        _disloc_edge = (1.0 - _disloc_fair_p) - (_disloc_entry_price / 100.0)
     if _disloc_edge >= cfg.get("min_dislocation_edge", 0.07):
         _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
         _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 55.0))
