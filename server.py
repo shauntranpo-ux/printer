@@ -1129,6 +1129,69 @@ def api_debug_gates():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/api/trade-stats")
+def api_trade_stats():
+    """Return 24h win/loss/WR/PnL and top-5 skip reasons from brain.log tail."""
+    import re as _re
+    config = read_config()
+    mode = config.get("mode", "paper")
+
+    # DB stats: wins/losses/PnL last 24h
+    wins = losses = 0
+    pnl_24h = 0.0
+    try:
+        since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        conn = get_db()
+        rows = conn.execute(
+            "SELECT outcome, COUNT(*), COALESCE(SUM(pnl_dollars), 0) "
+            "FROM trades WHERE mode=? AND ts > ? AND outcome != 'pending' "
+            "GROUP BY outcome",
+            (mode, since),
+        ).fetchall()
+        conn.close()
+        for outcome, count, pnl in rows:
+            if outcome == "win":
+                wins, pnl_24h = count, pnl_24h + pnl
+            elif outcome == "loss":
+                losses, pnl_24h = count, pnl_24h + pnl
+    except Exception as exc:
+        log.warning("api_trade_stats DB error: %s", exc)
+
+    total = wins + losses
+    wr = round(wins / total, 3) if total else None
+
+    # Brain log: skip reasons from last 500 lines
+    skip_counts: dict = {}
+    try:
+        import bot_strategy as _bs
+        brain_log_path = getattr(_bs, "_brain_log_path", "brain.log")
+        with open(brain_log_path, "r", encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()[-500:]
+        for line in lines:
+            if "TRADE" in line or "SETTLE" in line:
+                continue
+            m = _re.search(r"\b(s[12]_\w+)", line)
+            if m:
+                key = m.group(1).split(":")[0]
+                skip_counts[key] = skip_counts.get(key, 0) + 1
+    except Exception:
+        pass
+
+    top_skips = sorted(skip_counts.items(), key=lambda x: -x[1])[:5]
+
+    payload = {
+        "mode": mode,
+        "period_hours": 24,
+        "wins": wins,
+        "losses": losses,
+        "total": total,
+        "win_rate": wr,
+        "pnl_dollars": round(pnl_24h, 2),
+        "top_skip_reasons": [{"reason": r, "count": c} for r, c in top_skips],
+    }
+    return jsonify(payload)
+
+
 @app.route("/healthz")
 def healthz():
     """Railway health check: 200 if bot_state.json updated recently, else 503."""
