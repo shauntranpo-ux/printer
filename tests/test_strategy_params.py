@@ -151,3 +151,13 @@ def test_s1_certainty_win_prob_range():
         for t in [60.0, 300.0, 600.0, 840.0]:
             wp = _s1_certainty_win_prob(dist, t, "ETH")
             assert 0.52 <= wp <= 0.75, f"WR={wp:.3f} out of range at dist={dist} t={t}"
+
+
+def test_certainty_win_prob_range_with_vol_multiplier():
+    """Win prob stays in 0.52-0.75 regardless of time-of-day vol adjustment."""
+    from bot_strategy import _s1_certainty_win_prob
+    for dist in [0.001, 0.005, 0.015]:
+        for t in [60.0, 300.0, 600.0, 840.0]:
+            wp = _s1_certainty_win_prob(dist, t, "ETH")
+            assert 0.52 <= wp <= 0.75, \
+                f"WR={wp:.3f} out of [0.52, 0.75] at dist={dist} t={t}"

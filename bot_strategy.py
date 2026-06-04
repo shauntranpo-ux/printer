@@ -277,12 +277,35 @@ def _s1_certainty_win_prob(dist_pct: float, secs_left: float, asset: str) -> flo
     _ASSET_VOL_15M = {
         "BTC": 0.008, "ETH": 0.007, "SOL": 0.012, "XRP": 0.010, "DOGE": 0.015,
     }
-    vol_15m = _ASSET_VOL_15M.get(asset, 0.008)
+    vol_15m = _ASSET_VOL_15M.get(asset, 0.008) * _time_of_day_vol_multiplier()
     time_frac  = max(0.01, secs_left / 900.0)
     period_vol = vol_15m * math.sqrt(time_frac)
     z    = dist_pct / period_vol
     cert = 0.5 * (1.0 + math.erf(z / math.sqrt(2)))
     return max(0.52, min(0.75, cert))
+
+
+def _time_of_day_vol_multiplier() -> float:
+    """
+    Adjusts realized vol by time of day (ET).
+    US open (9:30-11:30 ET): 1.30x — high vol period, be conservative.
+    US close (15:00-16:30 ET): 1.20x — elevated vol.
+    Overnight (0:00-7:00 ET): 0.80x — thin market, lower vol.
+    Otherwise: 1.00x baseline.
+    Fail-open: returns 1.00 on any clock error.
+    """
+    try:
+        now_et = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-4)))
+        t = now_et.hour * 60 + now_et.minute
+        if 9 * 60 + 30 <= t <= 11 * 60 + 30:
+            return 1.30
+        if 15 * 60 <= t <= 16 * 60 + 30:
+            return 1.20
+        if t < 7 * 60 or t >= 23 * 60:
+            return 0.80
+        return 1.00
+    except Exception:
+        return 1.00
 
 
 _DISLOCATION_THRESHOLD = 0.0005  # BTC must move >0.05% from strike for dislocation to fire
