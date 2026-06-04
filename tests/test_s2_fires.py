@@ -29,14 +29,14 @@ def _clean_state():
 
 def _seed_velocity(ticker: str, asset: str, direction: str = "yes"):
     """
-    Seed contract price history with a strong velocity signal (4x minimum).
-    Conviction gate requires 3x min_vel_delta; 4x gives safety margin.
-    delta ~= 2*step, so step = 2*min_vel gives delta = 4*min_vel.
+    Seed contract price history with a strong velocity signal (3x minimum).
+    Conviction gate requires 1.5x min_vel_delta; 3x gives safety margin.
+    delta ~= 2*step, so step = 1.5*min_vel gives delta = 3*min_vel.
     """
     cfg = _S2_ASSET_CONFIG[asset]
     lookback = cfg["vel_lookback"]
     min_vel  = cfg["min_vel_delta"]
-    step = (min_vel * 4.0) / 2.0
+    step = (min_vel * 3.0) / 2.0
     base = 70.0
     n = lookback + 1
     history = collections.deque(maxlen=60)
@@ -135,14 +135,14 @@ class TestS2FiresETH:
             or "s2_vel_flat" in result["reasoning"]
         )
 
-    def test_s2_skips_weak_velocity_below_3x(self):
-        """S2 must skip when velocity < 3x min_vel_delta (not enough conviction)."""
+    def test_s2_skips_weak_velocity_below_1x5(self):
+        """S2 must skip when velocity < 1.5x min_vel_delta (conviction gate)."""
         ticker = "KXETH-25MAY30-T2800F"
         cfg = _S2_ASSET_CONFIG["ETH"]
-        # Seed velocity at exactly 1.5x threshold — passes detection, fails conviction
+        # Seed velocity at exactly 1.0x threshold — passes detection, fails 1.5x conviction
         lookback = cfg["vel_lookback"]
         min_vel  = cfg["min_vel_delta"]
-        step = (min_vel * 1.5) / 2.0  # gives vel_delta ~= 1.5x min_vel
+        step = (min_vel * 1.0) / 2.0  # gives vel_delta ~= 1.0x min_vel
         base = 70.0
         history = collections.deque(maxlen=60)
         now = time.time()

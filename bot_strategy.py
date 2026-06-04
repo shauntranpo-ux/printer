@@ -771,8 +771,9 @@ def strategy_brain_s2(
         _vel_reason = "s2_no_velocity_data" if vel_delta is None else f"s2_vel_flat:{vel_delta:.3f}<{cfg['min_vel_delta']}"
         return _make_skip("yes", _vel_reason, abs_pct, mins_left, variant="strategy2")
 
-    # Conviction gate: require 3× minimum velocity — strong signal only, not noise
-    _min_conviction = 3.0 * cfg["min_vel_delta"]
+    # Conviction gate: require 1.5× minimum velocity — filters noise without killing signal.
+    # 3× was too strict: ~70% of historically-profitable S2 signals were below that threshold.
+    _min_conviction = 1.5 * cfg["min_vel_delta"]
     if vel_delta < _min_conviction:
         return _make_skip(
             direction,
@@ -787,15 +788,6 @@ def strategy_brain_s2(
         return _make_skip(side, "s2_reversal_gate:vel=yes_price_below", abs_pct, mins_left, variant="strategy2")
     if side == "no" and current_price > strike:
         return _make_skip(side, "s2_reversal_gate:vel=no_price_above", abs_pct, mins_left, variant="strategy2")
-
-    # 10-minute trend filter: same hard rule as S1.
-    _s2_prices = list(asset_manager._prices.get(asset) or []) if asset != "BTC" else list(bot_state.btc_prices)
-    _s2_trend = _trend_direction(_s2_prices, window_seconds=600.0)
-    if _s2_trend != 0:
-        if side == "yes" and _s2_trend == -1:
-            return _make_skip(side, "s2_trend_gate:vel=yes_trend=down", abs_pct, mins_left, variant="strategy2")
-        if side == "no" and _s2_trend == 1:
-            return _make_skip(side, "s2_trend_gate:vel=no_trend=up", abs_pct, mins_left, variant="strategy2")
 
     entry_price = yes_ask if side == "yes" else no_ask
 

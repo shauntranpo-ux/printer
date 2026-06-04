@@ -60,9 +60,9 @@ _FULL_CONFIG_DEFAULT = {
     "daily_loss_limit_dollars": 50,
     "daily_profit_target_dollars": 200,
     "quiet_hours_enabled": True,
-    "quiet_start_et": 17,
+    "quiet_start_et": 22,
     "quiet_end_et": 7,
-    "enabled_assets": ["BTC", "ETH", "SOL", "XRP", "DOGE"],
+    "enabled_assets": ["ETH", "SOL", "XRP"],
 }
 if not os.path.exists("config.json"):
     try:
@@ -326,7 +326,7 @@ def api_config():
         valid_assets = {"BTC", "ETH", "SOL", "XRP", "DOGE"}
         if asset not in valid_assets:
             return jsonify({"error": f"Unknown asset {asset!r}"}), 400
-        enabled = config.setdefault("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        enabled = config.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
         if action == "enable_asset":
             if asset not in enabled:
                 enabled.append(asset)
@@ -537,7 +537,7 @@ def api_pnl():
 
         # Per-asset today
         cfg = read_config()
-        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        enabled_assets = cfg.get("enabled_assets", ["ETH", "SOL", "XRP"])
         today_by_asset = {}
         for asset in enabled_assets:
             a_trades = [t for t in today_trades if t.get("asset") == asset]
@@ -607,7 +607,7 @@ def api_markets():
     try:
         state = read_state()
         cfg   = read_config()
-        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        enabled_assets = cfg.get("enabled_assets", ["ETH", "SOL", "XRP"])
 
         assets = state.get("assets", {})
 
@@ -642,7 +642,7 @@ def api_market_state():
     try:
         state = read_state()
         cfg   = read_config()
-        enabled_assets = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        enabled_assets = cfg.get("enabled_assets", ["ETH", "SOL", "XRP"])
         assets = state.get("assets", {})
 
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -1085,7 +1085,7 @@ def api_debug_gates():
         import asset_manager
 
         cfg = read_config()
-        enabled = cfg.get("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        enabled = cfg.get("enabled_assets", ["ETH", "SOL", "XRP"])
         btc_price = get_btc_price() or 100000.0
         result = {}
 

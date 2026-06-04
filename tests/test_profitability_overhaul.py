@@ -10,21 +10,21 @@ def test_dashboard_badge_uses_brain_field():
         "Badge does not use brain field for S1/S2 label"
 
 
-def test_bot_infra_default_includes_all_5_assets():
-    """bot_infra read_config default must include all 5 assets."""
+def test_bot_infra_default_includes_3_active_assets():
+    """bot_infra read_config default must include ETH, SOL, XRP (BTC and DOGE disabled)."""
     with open('bot_infra.py', encoding='utf-8') as f:
         src = f.read()
-    assert '"BTC"' in src and '"DOGE"' in src, \
-        "bot_infra.py enabled_assets default missing BTC or DOGE"
     idx = src.find('setdefault("enabled_assets"')
     assert idx != -1, "setdefault for enabled_assets not found"
     chunk = src[idx:idx+100]
-    assert 'BTC' in chunk and 'DOGE' in chunk, \
-        f"setdefault line does not include BTC and DOGE: {chunk!r}"
+    for asset in ('ETH', 'SOL', 'XRP'):
+        assert asset in chunk, f"setdefault line missing {asset}: {chunk!r}"
+    assert 'BTC' not in chunk and 'DOGE' not in chunk, \
+        f"setdefault should not include BTC or DOGE: {chunk!r}"
 
 
-def test_server_full_config_default_includes_all_5_assets():
-    """server._FULL_CONFIG_DEFAULT must include all 5 assets."""
+def test_server_full_config_default_includes_active_assets():
+    """server._FULL_CONFIG_DEFAULT must include ETH, SOL, XRP (BTC and DOGE disabled)."""
     import sys
     if 'server' in sys.modules:
         del sys.modules['server']
@@ -32,8 +32,10 @@ def test_server_full_config_default_includes_all_5_assets():
     assert 'enabled_assets' in server._FULL_CONFIG_DEFAULT, \
         "_FULL_CONFIG_DEFAULT missing enabled_assets key"
     ea = server._FULL_CONFIG_DEFAULT['enabled_assets']
-    for asset in ['BTC', 'ETH', 'SOL', 'XRP', 'DOGE']:
+    for asset in ['ETH', 'SOL', 'XRP']:
         assert asset in ea, f"{asset} not in _FULL_CONFIG_DEFAULT enabled_assets: {ea}"
+    for asset in ['BTC', 'DOGE']:
+        assert asset not in ea, f"{asset} should be disabled in _FULL_CONFIG_DEFAULT: {ea}"
 
 
 def test_quiet_hours_gate_exists_in_strategy():

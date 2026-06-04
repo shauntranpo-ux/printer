@@ -71,7 +71,7 @@ def read_config() -> dict:
     try:
         with open(bot_state._CONFIG_FILE, "r") as fh:
             cfg = json.load(fh)
-        cfg.setdefault("enabled_assets", ["BTC", "ETH", "SOL", "XRP", "DOGE"])
+        cfg.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
         bot_state._last_good_config = cfg
         return cfg
     except json.JSONDecodeError as exc:
@@ -157,6 +157,12 @@ def _init_config() -> None:
     cfg["min_entry_price_cents"]     = max(float(cfg.get("min_entry_price_cents", 20)), 20.0)
     cfg["max_entry_price_cents"]     = min(float(cfg.get("max_entry_price_cents", 76)), 76.0)
     cfg["daily_loss_limit_dollars"]  = min(float(cfg.get("daily_loss_limit_dollars", 150)), 150.0)
+
+    # Disable BTC and DOGE — only trade ETH, SOL, XRP.
+    cfg["enabled_assets"] = [a for a in cfg.get("enabled_assets", ["ETH", "SOL", "XRP"])
+                             if a not in ("BTC", "DOGE")]
+    if not cfg["enabled_assets"]:
+        cfg["enabled_assets"] = ["ETH", "SOL", "XRP"]
 
     # Restore evening trading — old migration forced quiet_start_et=17 (5pm ET).
     # Default is now 22 (10pm ET). Overwrite stale 17 on first deploy after this change.
