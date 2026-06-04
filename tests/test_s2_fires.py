@@ -29,22 +29,14 @@ def _clean_state():
 
 def _seed_velocity(ticker: str, asset: str, direction: str = "yes"):
     """
-    Seed contract price history with a strong enough velocity signal.
-
-    _s2_contract_direction compares first-half avg vs second-half avg of
-    the last (lookback+1) ticks.  For n=lookback+1 ticks with a constant
-    step between them:
-        mid = n // 2
-        first_avg  = base + (mid-1)/2 * step
-        second_avg = base + (mid + (n-mid-1)/2) * step
-        delta      = second_avg - first_avg  ~  2.0 * step  (for all n>=4)
-
-    So we need step >= min_vel_delta / 2.0.  Use 1.5x margin.
+    Seed contract price history with a strong velocity signal (4x minimum).
+    Conviction gate requires 3x min_vel_delta; 4x gives safety margin.
+    delta ~= 2*step, so step = 2*min_vel gives delta = 4*min_vel.
     """
     cfg = _S2_ASSET_CONFIG[asset]
     lookback = cfg["vel_lookback"]
     min_vel  = cfg["min_vel_delta"]
-    step = (min_vel * 1.5) / 2.0
+    step = (min_vel * 4.0) / 2.0
     base = 70.0
     n = lookback + 1
     history = collections.deque(maxlen=60)
@@ -142,6 +134,36 @@ class TestS2FiresETH:
             or "s2_ev_gate" in result["reasoning"]
             or "s2_vel_flat" in result["reasoning"]
         )
+
+    def test_s2_skips_weak_velocity_below_3x(self):
+        """S2 must skip when velocity < 3x min_vel_delta (not enough conviction)."""
+        ticker = "KXETH-25MAY30-T2800F"
+        cfg = _S2_ASSET_CONFIG["ETH"]
+        # Seed velocity at exactly 1.5x threshold — passes detection, fails conviction
+        lookback = cfg["vel_lookback"]
+        min_vel  = cfg["min_vel_delta"]
+        step = (min_vel * 1.5) / 2.0  # gives vel_delta ~= 1.5x min_vel
+        base = 70.0
+        history = collections.deque(maxlen=60)
+        now = time.time()
+        prices = [base + i * step for i in range(lookback + 1)]
+        for i, p in enumerate(prices):
+            history.append((now - (lookback - i) * 10, p))
+        bot_state._contract_price_history[ticker] = history
+
+        result = strategy_brain_s2(
+            btc_price=2850.0,
+            strike=2800.0,
+            yes_ask=45.0,
+            no_ask=55.0,
+            elapsed_seconds=760.0,
+            secs_left=480.0,
+            ticker=ticker,
+            asset="ETH",
+        )
+        assert result["action"] == "skip"
+        assert "s2_vel_weak" in result["reasoning"], \
+            f"Expected conviction skip, got: {result['reasoning']}"
 
 
 class TestS2FiresMultiAsset:

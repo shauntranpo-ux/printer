@@ -533,6 +533,15 @@ def strategy_brain_s2(
         _vel_reason = "s2_no_velocity_data" if vel_delta is None else f"s2_vel_flat:{vel_delta:.3f}<{cfg['min_vel_delta']}"
         return _make_skip("yes", _vel_reason, abs_pct, mins_left, variant="strategy2")
 
+    # Conviction gate: require 3× minimum velocity — strong signal only, not noise
+    _min_conviction = 3.0 * cfg["min_vel_delta"]
+    if vel_delta < _min_conviction:
+        return _make_skip(
+            direction,
+            f"s2_vel_weak:{vel_delta:.3f}<{_min_conviction:.3f}",
+            abs_pct, mins_left, variant="strategy2",
+        )
+
     side = direction
     entry_price = yes_ask if side == "yes" else no_ask
 
@@ -552,9 +561,9 @@ def strategy_brain_s2(
             abs_pct, mins_left, variant="strategy2",
         )
 
-    # Win probability: empirical lookup (tanh fallback when bucket uncalibrated)
-    base_p = _s2_lookup_win_rate(asset, vel_delta, mins_left, cfg)
-    win_prob = min(0.99, base_p)
+    # Win probability: geometric certainty model (velocity qualifies direction,
+    # dist+time determines how certain the outcome is)
+    win_prob = _s1_certainty_win_prob(abs_pct, secs_left, asset)
 
     # EV gate — Kalshi fee from config (default 7 cents per contract)
     _ep_s2 = entry_price / 100.0
@@ -579,8 +588,10 @@ def strategy_brain_s2(
         }
 
     brain_log.info(
-        "S2 TRADE %s %s | vel=%s delta=%.2f obi=%s dist=%.4f ev=%.3f wp=%.3f mins=%.1f",
-        asset, ticker, direction, vel_delta or 0, _obi_str, abs_pct, ev, win_prob, mins_left,
+        "S2 TRADE %s %s | vel=%s delta=%.2f(%.1fx) obi=%s dist=%.4f ev=%.3f wp=%.3f mins=%.1f",
+        asset, ticker, direction, vel_delta or 0,
+        (vel_delta or 0) / max(cfg["min_vel_delta"], 1e-9),
+        _obi_str, abs_pct, ev, win_prob, mins_left,
     )
     return {
         "action": "trade", "side": side,
