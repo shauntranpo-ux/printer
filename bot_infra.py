@@ -158,6 +158,12 @@ def _init_config() -> None:
     cfg["max_entry_price_cents"]     = min(float(cfg.get("max_entry_price_cents", 76)), 76.0)
     cfg["daily_loss_limit_dollars"]  = min(float(cfg.get("daily_loss_limit_dollars", 150)), 150.0)
 
+    # confidence_threshold: 72 was the old server.py default and blocks GBM-based trades.
+    # GBM win_prob is capped at 0.75 (75%), so 72% threshold allows almost nothing.
+    # 0 = disabled (bot_loops.py hardcoded fallback of 65 never applies when config key exists).
+    if cfg.get("confidence_threshold", 0) >= 70:
+        cfg["confidence_threshold"] = 0
+
     # Disable BTC and DOGE — only trade ETH, SOL, XRP.
     cfg["enabled_assets"] = [a for a in cfg.get("enabled_assets", ["ETH", "SOL", "XRP"])
                              if a not in ("BTC", "DOGE")]

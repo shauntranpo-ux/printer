@@ -252,7 +252,6 @@ def _s1_dislocation_check(
     yes_ask: float,
     secs_left: float,
     asset: str,
-    min_edge: float = 0.04,
 ) -> tuple:
     """
     DISLOCATION signal: contract underpriced relative to BTC/asset move.
@@ -352,7 +351,6 @@ def strategy_brain_s1(
     _disloc_side = "yes" if current_price >= strike else "no"
     _disloc_edge_raw, _disloc_fair_p = _s1_dislocation_check(
         abs_pct, _disloc_entry_price, secs_left, asset,
-        min_edge=cfg.get("min_dislocation_edge", 0.07),
     )
     # fair_p is always the YES-side probability; for NO trades, flip to get correct edge
     if _disloc_side == "yes":
@@ -544,8 +542,8 @@ def _s1_lookup_win_rate(asset: str, abs_pct: float, mins_left: float,
         empirical = _get_empirical_wr(asset, abs_pct, mins_left, mode, strategy="s1", min_samples=20)
         if empirical is not None:
             return empirical
-    except Exception:
-        pass
+    except Exception as _exc:
+        log.debug("_s1_lookup_win_rate empirical lookup failed: %s", _exc)
 
     dist_idx = len(_S1_DIST_BOUNDS)
     for i, bound in enumerate(_S1_DIST_BOUNDS):

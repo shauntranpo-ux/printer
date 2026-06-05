@@ -56,7 +56,7 @@ _FULL_CONFIG_DEFAULT = {
     "bot_enabled": True,
     "mode": "paper",
     "trade_amount_dollars": 25,
-    "confidence_threshold": 72,
+    "confidence_threshold": 0,
     "daily_loss_limit_dollars": 50,
     "daily_profit_target_dollars": 200,
     "quiet_hours_enabled": True,
@@ -116,7 +116,7 @@ def _telegram_notify(text: str) -> None:
     notify.send_alert("INFO", text)
 
 
-_CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 25, "confidence_threshold": 72,
+_CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 25, "confidence_threshold": 0,
                    "daily_loss_limit_dollars": 50,
                    "daily_profit_target_dollars": 200}
 _STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
@@ -310,7 +310,7 @@ def api_config():
         "s2_mode":                     lambda v: v in ("live", "paper"),
         "daily_loss_limit_dollars":    is_positive_number,
         "daily_profit_target_dollars": is_positive_number,
-        "confidence_threshold":        lambda v: isinstance(v, (int, float)) and 50 <= v <= 100,
+        "confidence_threshold":        lambda v: isinstance(v, (int, float)) and 0 <= v <= 100,
         "bot_enabled":                 lambda v: isinstance(v, bool),
         "quiet_hours_enabled":         lambda v: isinstance(v, bool),
         "quiet_start_et":              lambda v: isinstance(v, int) and 0 <= v <= 23,

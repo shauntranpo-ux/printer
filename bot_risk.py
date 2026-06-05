@@ -585,16 +585,22 @@ async def _settle_s1_orphans(
         except Exception:
             strike = 0.0
 
+        try:
+            _sigs = json.loads(signals_json) if signals_json else {}
+        except Exception:
+            _sigs = {}
         bot_state._s1_pending_trades[ticker] = {
-            "trade_id":          trade_id,
-            "side":              side,
-            "entry_price_cents": entry_price_cents,
-            "contracts":         contracts,
-            "strike":            strike,
-            "asset":             asset,
-            "mode":              mode,
-            "entry_ts":          0.0,
-            "market_close_time": "",
+            "trade_id":           trade_id,
+            "side":               side,
+            "entry_price_cents":  entry_price_cents,
+            "contracts":          contracts,
+            "strike":             strike,
+            "asset":              asset,
+            "mode":               mode,
+            "entry_ts":           0.0,
+            "market_close_time":  "",
+            "abs_pct_at_entry":   float(_sigs.get("abs_pct", 0.0)),
+            "secs_left_at_entry": int(float(_sigs.get("mins_left", 15.0)) * 60),
         }
 
         market_result = None
