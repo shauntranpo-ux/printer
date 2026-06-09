@@ -361,6 +361,28 @@ def strategy_brain_s1(
         _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
         _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 55.0))
         if _min_p <= _disloc_entry_price <= _max_p:
+            _disloc_trend = _trend_direction(prices_list, window_seconds=600.0)
+            if _disloc_trend == 1 and _disloc_side == "no":
+                return _make_skip(
+                    _disloc_side, "s1_disloc_trend_gate:no_trend=up",
+                    abs_pct, mins_left, variant="strategy1",
+                )
+            if _disloc_trend == -1 and _disloc_side == "yes":
+                return _make_skip(
+                    _disloc_side, "s1_disloc_trend_gate:yes_trend=down",
+                    abs_pct, mins_left, variant="strategy1",
+                )
+            _disloc_1hr_trend = _trend_direction(prices_list, window_seconds=3600.0)
+            if _disloc_1hr_trend == 1 and _disloc_side == "no":
+                return _make_skip(
+                    _disloc_side, "s1_1hr_trend_gate:no_trend=up",
+                    abs_pct, mins_left, variant="strategy1",
+                )
+            if _disloc_1hr_trend == -1 and _disloc_side == "yes":
+                return _make_skip(
+                    _disloc_side, "s1_1hr_trend_gate:yes_trend=down",
+                    abs_pct, mins_left, variant="strategy1",
+                )
             brain_log.info(
                 "S1 DISLOC %s %s | dist=%.4f fair_p=%.3f edge=%.3f ask=%.0fc mins=%.1f",
                 asset, ticker, abs_pct, _disloc_fair_p, _disloc_edge, _disloc_entry_price, mins_left,
@@ -406,6 +428,14 @@ def strategy_brain_s1(
             return _make_skip(side, "s1_trend_gate:mom=yes_trend=down", abs_pct, mins_left, variant="strategy1")
         if side == "no" and _s1_trend == 1:
             return _make_skip(side, "s1_trend_gate:mom=no_trend=up", abs_pct, mins_left, variant="strategy1")
+
+    # 1-hour macro trend filter: block trades that oppose the dominant hourly regime.
+    _s1_1hr_trend = _trend_direction(prices_list, window_seconds=3600.0)
+    if _s1_1hr_trend != 0:
+        if side == "yes" and _s1_1hr_trend == -1:
+            return _make_skip(side, "s1_1hr_trend_gate:yes_trend=down", abs_pct, mins_left, variant="strategy1")
+        if side == "no" and _s1_1hr_trend == 1:
+            return _make_skip(side, "s1_1hr_trend_gate:no_trend=up", abs_pct, mins_left, variant="strategy1")
 
     # Gate 5: entry price range — 55c max: market-uncertainty zone, 57%+ WR profitable
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
