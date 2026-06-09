@@ -314,6 +314,15 @@ def strategy_brain_s1(
     if _is_quiet_hours(config):
         return _make_skip("yes", "s1_quiet_hours", abs_pct, mins_left, variant="strategy1")
 
+    # Per-asset regime cooldown: block after N consecutive losses on this asset.
+    _cooldown_until = bot_state._s1_cooldown_until.get(asset, 0.0)
+    if time.time() < _cooldown_until:
+        _remaining = _cooldown_until - time.time()
+        return _make_skip(
+            "yes", f"s1_cooldown:{_remaining:.0f}s_remaining",
+            abs_pct, mins_left, variant="strategy1",
+        )
+
     # Cap gate: global S1 position limit
     _s1_global_cap = config.get("max_s1_positions", 3)
     if len(bot_state._s1_pending_trades) >= _s1_global_cap:

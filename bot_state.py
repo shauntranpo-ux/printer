@@ -23,6 +23,7 @@ __all__ = [
     "_asset_eval", "_contract_price_history",
     "_CAL_DEFAULTS", "_brain_cal_s1", "_brain_cal_s2",
     "_last_good_config", "_consecutive_losses", "_s1_consecutive_losses", "_s2_consecutive_losses", "_consecutive_price_skips",
+    "_s1_consec_losses_by_asset", "_s1_cooldown_until",
     "_S1_VERSION", "_S2_VERSION", "_S1_ASSET_VOL_RATIO",
 ]
 
@@ -92,6 +93,8 @@ _brain_cal_s2: dict = {**_CAL_DEFAULTS}
 _last_good_config: dict | None = None
 _consecutive_losses: int       = 0
 _s1_consecutive_losses: int   = 0
+_s1_consec_losses_by_asset: dict = {}  # asset → consecutive loss count since last win
+_s1_cooldown_until: dict = {}          # asset → epoch timestamp when cooldown expires
 _s2_consecutive_losses: int   = 0
 _consecutive_price_skips: int  = 0
 

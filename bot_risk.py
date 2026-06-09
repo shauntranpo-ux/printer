@@ -538,11 +538,23 @@ async def _settle_s1_trade(
 
     if outcome == "win":
         bot_state._s1_consecutive_losses = 0
+        bot_state._s1_consec_losses_by_asset[asset] = 0
+        bot_state._s1_cooldown_until.pop(asset, None)
     else:
         bot_state._s1_consecutive_losses += 1
         max_cl = config.get("max_consecutive_losses", 5)
         if bot_state._s1_consecutive_losses >= max_cl:
             await send_telegram(f"ERROR - {bot_state._s1_consecutive_losses} consecutive losses")
+        streak = bot_state._s1_consec_losses_by_asset.get(asset, 0) + 1
+        bot_state._s1_consec_losses_by_asset[asset] = streak
+        _per_asset_limit = config.get("s1_consec_loss_cooldown_count", 3)
+        if streak >= _per_asset_limit:
+            _cooldown_secs = float(config.get("s1_consec_loss_cooldown_secs", 900))
+            bot_state._s1_cooldown_until[asset] = time.time() + _cooldown_secs
+            log.warning(
+                "[S1] %s: %d consecutive losses — cooling down %.0fs",
+                asset, streak, _cooldown_secs,
+            )
 
 
 
