@@ -140,3 +140,12 @@ def test_certainty_win_prob_range_with_vol_multiplier():
             wp = _s1_certainty_win_prob(dist, t, "ETH")
             assert 0.52 <= wp <= 0.75, \
                 f"WR={wp:.3f} out of [0.52, 0.75] at dist={dist} t={t}"
+
+
+def test_s1_min_ev_at_least_010():
+    """S1 min_ev must be >= 0.10 — low-EV entries perform worse in trending regimes."""
+    for asset, cfg in _S1_ASSET_CONFIG.items():
+        assert cfg["min_ev"] >= 0.10, (
+            f"{asset}: min_ev={cfg['min_ev']} < 0.10 — raises marginal trades "
+            f"that evaporate in adverse regimes"
+        )

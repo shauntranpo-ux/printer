@@ -85,7 +85,7 @@ def test_s1_s2_min_ev_reasonable():
     s1_start = src.index('_S1_ASSET_CONFIG: dict = {')
     s1_end   = src.index('}', s1_start + 50)
     for v in re.findall(r'min_ev=([\d.]+)', src[s1_start:s1_end]):
-        assert 0.02 <= float(v) <= 0.06, f"S1 min_ev {v} outside 0.02-0.06 range"
+        assert 0.02 <= float(v) <= 0.15, f"S1 min_ev {v} outside 0.02-0.15 range"
     s2_start = src.index('_S2_ASSET_CONFIG: dict = {')
     s2_end   = src.index('}', s2_start + 50)
     for v in re.findall(r'min_ev=([\d.]+)', src[s2_start:s2_end]):

@@ -96,11 +96,11 @@ _S1_ASSET_CONFIG: dict = {
     # min_momentum: 60-second price change required to confirm recent directional move.
     # time_min=1.0: skip final minute (wide spreads, AMM settlement chaos).
     # time_max=12.0: skip very early (AMM hasn't had time to anchor contract price).
-    "BTC":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0030, min_ev=0.04, time_min=1.0, time_max=12.0),
-    "ETH":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0025, min_ev=0.04, time_min=1.0, time_max=12.0),
-    "SOL":  dict(min_dist=0.0050, max_rv=1.0, min_momentum=0.0040, min_ev=0.04, time_min=1.0, time_max=12.0),
-    "XRP":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0025, min_ev=0.04, time_min=1.0, time_max=12.0),
-    "DOGE": dict(min_dist=0.0070, max_rv=1.0, min_momentum=0.0050, min_ev=0.04, time_min=1.0, time_max=12.0),
+    "BTC":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0030, min_ev=0.10, time_min=1.0, time_max=12.0),
+    "ETH":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0025, min_ev=0.10, time_min=1.0, time_max=12.0),
+    "SOL":  dict(min_dist=0.0050, max_rv=1.0, min_momentum=0.0040, min_ev=0.10, time_min=1.0, time_max=12.0),
+    "XRP":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0025, min_ev=0.10, time_min=1.0, time_max=12.0),
+    "DOGE": dict(min_dist=0.0070, max_rv=1.0, min_momentum=0.0050, min_ev=0.10, time_min=1.0, time_max=12.0),
 }
 
 
