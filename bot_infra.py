@@ -552,10 +552,22 @@ def _update_wr_bucket(
 
 def _get_empirical_wr(
     asset: str, abs_pct: float, mins_left: float,
-    mode: str, strategy: str = "s1", min_samples: int = 20,
+    mode: str, strategy: str = "s1", min_samples: int = 30,
+    breakeven_wr: float = 0.38,
 ) -> "float | None":
-    """Return empirical WR for bucket if >= min_samples, else None (forces tanh fallback)."""
+    """
+    Return empirical WR only when statistically proven to exceed breakeven.
+
+    Uses one-sided 95% Wilson CI lower bound. Returns None when:
+      - fewer than min_samples trades in bucket
+      - Wilson lower bound <= breakeven_wr (not enough evidence of edge)
+
+    Raising min_samples 20->30 and adding Wilson CI prevents the bot from
+    acting on noise during burn-in. 0.38 breakeven matches ~38-40c entry prices.
+    """
+    import math
     from bot_strategy import _S1_DIST_BOUNDS, _S1_TIME_BOUNDS
+
     dist_idx = len(_S1_DIST_BOUNDS)
     for i, b in enumerate(_S1_DIST_BOUNDS):
         if abs_pct < b:
@@ -574,9 +586,15 @@ def _get_empirical_wr(
             (asset, dist_idx, time_idx, strategy, mode),
         ).fetchone()
         conn.close()
-        if row and row[1] >= min_samples:
-            return row[0] / row[1]
-        return None
+        if not row or row[1] < min_samples:
+            return None
+        wins, n = row[0], row[1]
+        p = wins / n
+        z = 1.645
+        wlb = (p + z*z/(2*n) - z * math.sqrt((p*(1-p) + z*z/(4*n)) / n)) / (1 + z*z/n)
+        if wlb <= breakeven_wr:
+            return None
+        return p
     except Exception:
         return None
 
