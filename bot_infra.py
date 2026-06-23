@@ -115,7 +115,7 @@ def _init_config() -> None:
         "s1_mode": "paper",
         "s2_mode": "paper",
         "confidence_threshold": 0,
-        "daily_loss_limit_dollars": 50,
+        "daily_loss_limit_dollars": 75,
         "daily_profit_target_dollars": 200,
         "max_consecutive_losses": 5,
         "enable_reversal_signal": False,
@@ -597,6 +597,23 @@ def _get_empirical_wr(
         return p
     except Exception:
         return None
+
+
+def get_today_pnl(mode: str = "paper") -> float:
+    """Sum pnl_dollars for all settled trades today (UTC date)."""
+    try:
+        import datetime
+        today = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        conn = sqlite3.connect(bot_state._DB_FILE)
+        row = conn.execute(
+            "SELECT COALESCE(SUM(pnl_dollars), 0.0) FROM trades "
+            "WHERE outcome IN ('win','loss') AND mode=? AND ts LIKE ?",
+            (mode, today + "%"),
+        ).fetchone()
+        conn.close()
+        return float(row[0]) if row else 0.0
+    except Exception:
+        return 0.0
 
 
 # ---------------------------------------------------------------------------

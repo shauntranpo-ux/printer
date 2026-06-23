@@ -283,6 +283,18 @@ async def handle_ready_phase(
     # Track YES price for velocity signal
     track_contract_price(ticker, yes_ask)
 
+    # Daily drawdown kill switch — skip all trading when today's loss exceeds limit
+    _daily_limit = float(config.get("daily_loss_limit_dollars", 75))
+    if _daily_limit > 0:
+        from bot_infra import get_today_pnl
+        _today_pnl = get_today_pnl(mode=config.get("mode", "paper"))
+        if _today_pnl <= -_daily_limit:
+            log.warning(
+                "DAILY LOSS LIMIT HIT: %.2f <= -%.2f — skipping all trades for today",
+                _today_pnl, _daily_limit,
+            )
+            return
+
     # S2: contract velocity + OBI per-asset strategy
     brain = strategy_brain_s2(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
                      asset=asset)
