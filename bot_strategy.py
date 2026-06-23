@@ -96,11 +96,11 @@ _S1_ASSET_CONFIG: dict = {
     # min_momentum: 60-second price change required to confirm recent directional move.
     # time_min=1.0: skip final minute (wide spreads, AMM settlement chaos).
     # time_max=12.0: skip very early (AMM hasn't had time to anchor contract price).
-    "BTC":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0030, min_ev=0.10, time_min=1.0, time_max=12.0),
-    "ETH":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0025, min_ev=0.10, time_min=1.0, time_max=12.0),
-    "SOL":  dict(min_dist=0.0050, max_rv=1.0, min_momentum=0.0040, min_ev=0.10, time_min=1.0, time_max=12.0),
-    "XRP":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0025, min_ev=0.10, time_min=1.0, time_max=12.0),
-    "DOGE": dict(min_dist=0.0070, max_rv=1.0, min_momentum=0.0050, min_ev=0.10, time_min=1.0, time_max=12.0),
+    "BTC":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0030, min_ev=0.15, time_min=1.0, time_max=12.0),
+    "ETH":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0025, min_ev=0.15, time_min=1.0, time_max=12.0),
+    "SOL":  dict(min_dist=0.0050, max_rv=1.0, min_momentum=0.0040, min_ev=0.15, time_min=1.0, time_max=12.0),
+    "XRP":  dict(min_dist=0.0030, max_rv=1.0, min_momentum=0.0025, min_ev=0.15, time_min=1.0, time_max=12.0),
+    "DOGE": dict(min_dist=0.0070, max_rv=1.0, min_momentum=0.0050, min_ev=0.15, time_min=1.0, time_max=12.0),
 }
 
 
@@ -369,7 +369,9 @@ def strategy_brain_s1(
     if _disloc_edge >= cfg.get("min_dislocation_edge", 0.07):
         _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
         _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 55.0))
-        if _min_p <= _disloc_entry_price <= _max_p:
+        _no_max_p = float(get_asset_config(config, asset, "max_no_entry_price_cents", 37.0))
+        _disloc_max = min(_max_p, _no_max_p) if _disloc_side == "no" else _max_p
+        if _min_p <= _disloc_entry_price <= _disloc_max:
             _disloc_trend = _trend_direction(prices_list, window_seconds=600.0)
             if _disloc_trend == 1 and _disloc_side == "no":
                 return _make_skip(
@@ -446,12 +448,15 @@ def strategy_brain_s1(
         if side == "no" and _s1_1hr_trend == 1:
             return _make_skip(side, "s1_1hr_trend_gate:no_trend=up", abs_pct, mins_left, variant="strategy1")
 
-    # Gate 5: entry price range — 55c max: market-uncertainty zone, 57%+ WR profitable
+    # Gate 5: entry price range, with side-specific NO cap.
+    # Data: NO at 40c = -$3/trade (183 trades). NO at 35c = +$3/trade. Cap NO at 37c.
     _min_p = float(get_asset_config(config, asset, "min_entry_price_cents", 20.0))
     _max_p = float(get_asset_config(config, asset, "max_entry_price_cents", 55.0))
-    if entry_price < _min_p or entry_price > _max_p:
-        return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
-                          variant="strategy1", price_filter=True)
+    _no_max_p = float(get_asset_config(config, asset, "max_no_entry_price_cents", 37.0))
+    _effective_max = min(_max_p, _no_max_p) if side == "no" else _max_p
+    if entry_price < _min_p or entry_price > _effective_max:
+        return _make_skip(side, f"s1_price_filter:{entry_price:.0f}c(side={side},max={_effective_max:.0f}c)",
+                          abs_pct, mins_left, variant="strategy1", price_filter=True)
 
     # Win probability: empirical WR from settled trades when ≥20 samples, else GBM.
     _s1_mode = config.get("mode", "paper")
