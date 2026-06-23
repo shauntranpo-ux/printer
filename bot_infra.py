@@ -607,8 +607,8 @@ def get_today_pnl(mode: str = "paper") -> float:
         conn = sqlite3.connect(bot_state._DB_FILE)
         row = conn.execute(
             "SELECT COALESCE(SUM(pnl_dollars), 0.0) FROM trades "
-            "WHERE outcome IN ('win','loss') AND mode=? AND ts LIKE ?",
-            (mode, today + "%"),
+            "WHERE outcome IN ('win','loss') AND mode=? AND DATE(ts) = ?",
+            (mode, today),
         ).fetchone()
         conn.close()
         return float(row[0]) if row else 0.0
