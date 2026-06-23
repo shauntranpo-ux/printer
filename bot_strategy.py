@@ -531,11 +531,11 @@ _S2_ASSET_CONFIG: dict = {
     #           min_dist  min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max
     # min_vel_delta raised ~40%: require stronger velocity signal to avoid chasing weak moves.
     # min_ev raised to 0.04: require clear positive-EV before entry.
-    "BTC":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.30, vel_lookback=4, min_ev=0.04, time_min=2.0, time_max=12.5),
-    "ETH":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.26, vel_lookback=4, min_ev=0.04, time_min=2.0, time_max=12.5),
-    "SOL":  dict(min_dist=0.0025, min_obi=0.02, min_vel_delta=0.42, vel_lookback=3, min_ev=0.04, time_min=2.0, time_max=12.5),
-    "XRP":  dict(min_dist=0.0020, min_obi=0.02, min_vel_delta=0.32, vel_lookback=4, min_ev=0.04, time_min=2.0, time_max=12.5),
-    "DOGE": dict(min_dist=0.0040, min_obi=0.02, min_vel_delta=0.50, vel_lookback=3, min_ev=0.04, time_min=2.0, time_max=12.5),
+    "BTC":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.30, vel_lookback=4, min_ev=0.03, time_min=2.0, time_max=12.5),
+    "ETH":  dict(min_dist=0.0015, min_obi=0.02, min_vel_delta=0.26, vel_lookback=4, min_ev=0.03, time_min=2.0, time_max=12.5),
+    "SOL":  dict(min_dist=0.0025, min_obi=0.02, min_vel_delta=0.42, vel_lookback=3, min_ev=0.03, time_min=2.0, time_max=12.5),
+    "XRP":  dict(min_dist=0.0020, min_obi=0.02, min_vel_delta=0.32, vel_lookback=4, min_ev=0.03, time_min=2.0, time_max=12.5),
+    "DOGE": dict(min_dist=0.0040, min_obi=0.02, min_vel_delta=0.50, vel_lookback=3, min_ev=0.03, time_min=2.0, time_max=12.5),
 }
 
 # ---------------------------------------------------------------------------
@@ -755,9 +755,8 @@ def strategy_brain_s2(
         _vel_reason = "s2_no_velocity_data" if vel_delta is None else f"s2_vel_flat:{vel_delta:.3f}<{cfg['min_vel_delta']}"
         return _make_skip("yes", _vel_reason, abs_pct, mins_left, variant="strategy2")
 
-    # Conviction gate: require 1.5× minimum velocity — filters noise without killing signal.
-    # 3× was too strict: ~70% of historically-profitable S2 signals were below that threshold.
-    _min_conviction = 1.5 * cfg["min_vel_delta"]
+    # Conviction gate: require 1.2x minimum velocity — 56% WR on 16 S2 trades shows underuse.
+    _min_conviction = 1.2 * cfg["min_vel_delta"]
     if vel_delta < _min_conviction:
         return _make_skip(
             direction,
