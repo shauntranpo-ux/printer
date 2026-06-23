@@ -175,7 +175,7 @@ def _init_config() -> None:
     if cfg.get("quiet_start_et", 22) == 17:
         cfg["quiet_start_et"] = 22
     cfg.setdefault("quiet_start_et", 22)
-    cfg.setdefault("quiet_end_et", 7)
+    cfg.setdefault("quiet_end_et", 9)
 
     write_config(cfg)
     log.info(f"Config ready: mode={cfg['mode']} enabled={cfg['bot_enabled']}")
