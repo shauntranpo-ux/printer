@@ -299,6 +299,12 @@ def strategy_brain_s1(
            **config.get("s1_config", {}).get(asset, {})}
     mins_left = secs_left / 60.0
 
+    # XRP disabled in S1: 113 trades, 32.7% WR, -$522. Every bucket negative EV.
+    # Re-enable via config: s1_xrp_enabled: true
+    if asset == "XRP" and not config.get("s1_xrp_enabled", False):
+        abs_pct_early = abs(btc_price - strike) / strike if strike > 0 else 0.0
+        return _make_skip("yes", "s1_xrp_disabled", abs_pct_early, mins_left, variant="strategy1")
+
     # Resolve asset price — callers pass the asset price as the first arg for non-BTC.
     if asset == "BTC":
         prices_list = list(bot_state.btc_prices)
