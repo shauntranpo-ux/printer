@@ -544,10 +544,14 @@ _S2_ASSET_CONFIG: dict = {
 # None entries → tanh formula fallback (insufficient calibration data).
 # ---------------------------------------------------------------------------
 
+# Last calibrated: 2026-06-23 via scripts/calibrate_from_csv.py.
+# Source: 398 paper trades 2026-06-05 to 2026-06-23. All trades in dist_bucket=0.
+# All WLBs <= 0.40 — no bucket has statistically proven edge above breakeven.
+# Re-run calibration after 2 more weeks with new gates active.
 _S1_WIN_RATE: dict = {
-    # All set to None — forces tanh fallback with realistic baseline.
-    # Previous values (0.97-1.0) were calibration artifacts causing EV gate to always pass.
-    # Real S1 WR is 55-62%; tanh formula (0.52 + 0.08*tanh) reflects this.
+    # All None — forces GBM certainty fallback.
+    # 398-trade calibration: all buckets WLB <= 0.40. No proven edge worth hardcoding.
+    # GBM floor (0.52) + min_ev=0.15 gate now filters entries lacking real signal.
     "BTC":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None, (3,0): None, (3,1): None, (3,2): None},
     "ETH":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None, (3,0): None, (3,1): None, (3,2): None},
     "SOL":  {(0,0): None, (0,1): None, (0,2): None, (1,0): None, (1,1): None, (1,2): None, (2,0): None, (2,1): None, (2,2): None, (3,0): None, (3,1): None, (3,2): None},
