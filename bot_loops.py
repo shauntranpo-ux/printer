@@ -309,6 +309,11 @@ async def handle_ready_phase(
     do_trade = brain["action"] == "trade"
     skip_reason_ai = brain["reasoning"]
 
+    # S1+S2 same-ticker dedup: if S1 just reserved this ticker, skip S2 to avoid double entry.
+    if do_trade and ticker in bot_state._s1_pending_trades:
+        skip_reason_ai = "s2_dedup:s1_active"
+        do_trade = False
+
     # ── allowed_sides gate — disable NO side when model is uncalibrated ──────
     _side_aliases = {"up": "yes", "down": "no"}
     side = _side_aliases.get(side.lower(), side.lower()) if side else side
