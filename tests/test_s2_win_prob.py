@@ -90,3 +90,20 @@ def test_s2_win_prob_increases_with_velocity():
             f"At ratio={ratio}, wp={wp:.4f} < prev={prev_wp:.4f}"
         )
         prev_wp = wp
+
+
+def test_s2_tanh_ceiling_is_at_least_62_pct():
+    """tanh ceiling (high velocity limit) must be at least 0.62 to match observed 55-62% WR."""
+    from bot_strategy import _s2_lookup_win_rate
+    # At high velocity, tanh saturates to ~1.0, so ceiling = 0.52 + 0.10 * 1.0 = 0.62
+    high_vel = 10.0  # Arbitrary high velocity (well above any min_vel)
+    wp = _s2_lookup_win_rate("ETH", vel_delta=high_vel, mins_left=60.0)
+    assert wp >= 0.62, f"win_prob ceiling must be >= 0.62; got {wp:.4f}"
+
+
+def test_s2_tanh_floor_is_0_52():
+    """tanh floor (zero velocity) must be exactly 0.52."""
+    from bot_strategy import _s2_lookup_win_rate
+    # At zero velocity, tanh(0) = 0, so floor = 0.52 + 0.10 * 0 = 0.52
+    wp = _s2_lookup_win_rate("ETH", vel_delta=0.0, mins_left=60.0)
+    assert wp == 0.52, f"win_prob floor must be 0.52; got {wp:.4f}"

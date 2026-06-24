@@ -656,7 +656,7 @@ def _s2_lookup_win_rate(asset: str, vel_delta: float, mins_left: float, cfg: dic
     if emp_val is not None:
         return float(emp_val)
 
-    return 0.52 + 0.08 * math.tanh(vel_delta / max(min_vel, 1e-6))
+    return 0.52 + 0.10 * math.tanh(vel_delta / max(min_vel, 1e-6))
 
 
 def _s2_contract_direction(ticker: str, min_delta: float, lookback: int):
