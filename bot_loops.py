@@ -28,6 +28,7 @@ from bot_strategy import (
     track_contract_price,
     _s1_multitf_momentum, _S1_ASSET_CONFIG,
     _s2_contract_direction, _S2_ASSET_CONFIG,
+    _is_quiet_hours,
 )
 from bot_risk import (
     check_daily_limits, midnight_reset, write_state_file, _log_entry,
@@ -894,9 +895,14 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
     Independent 10-second loop processing all non-BTC enabled assets.
     Runs as a background asyncio task alongside main_loop (which handles BTC).
     """
+    _prev_quiet_nb: bool = False
     while True:
         try:
             config = read_config()
+            _now_q_nb = _is_quiet_hours(config)
+            if _now_q_nb and not _prev_quiet_nb:
+                asyncio.create_task(_check_daily_stats(datetime.now(_LV_TZ).strftime("%Y-%m-%d")))
+            _prev_quiet_nb = _now_q_nb
             if not config.get("bot_enabled", False):
                 # Populate PAUSED state so dashboard shows prices instead of OFFLINE.
                 # Don't clobber LOCKED — those positions must still settle.
@@ -1131,6 +1137,7 @@ async def main_loop() -> None:
         # gated by the BTC state machine's continue/sleep cycle.
         asyncio.create_task(_non_btc_asset_loop(session))
 
+        _prev_quiet_main: bool = False
         while True:
             try:
                 midnight_reset()
@@ -1158,6 +1165,11 @@ async def main_loop() -> None:
                     log.error(f"Config read error: {exc}")
                     await asyncio.sleep(10)
                     continue
+
+                _now_q_main = _is_quiet_hours(config)
+                if _now_q_main and not _prev_quiet_main:
+                    asyncio.create_task(_check_daily_stats(datetime.now(_LV_TZ).strftime("%Y-%m-%d")))
+                _prev_quiet_main = _now_q_main
 
                 if not config.get("bot_enabled", False) and bot_state.current_phase != "LOCKED":
                     await write_state_file(config, bot_state.current_market, "PAUSED", 0,
