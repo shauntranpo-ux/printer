@@ -356,6 +356,21 @@ def strategy_brain_s1(
             abs_pct, mins_left, variant="strategy1",
         )
 
+    # Cross-asset S1 window guard: block non-BTC assets for 300s after any other non-BTC fires.
+    # Prevents simultaneous correlated entries when all crypto moves together.
+    if asset != "BTC":
+        _xwin_sec = float(config.get("s1_cross_asset_window_seconds", 300.0))
+        _now_xwin = time.time()
+        for _other, _other_times in bot_state._s1_asset_trade_times.items():
+            if _other == asset:
+                continue
+            if any(_now_xwin - t < _xwin_sec for t in _other_times):
+                return _make_skip(
+                    "yes",
+                    f"s1_window_guard:{_other}",
+                    abs_pct, mins_left, variant="strategy1",
+                )
+
     # Gate 1: time window
     if mins_left < cfg["time_min"] or mins_left > cfg["time_max"]:
         return _make_skip("yes", f"s1_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy1")
