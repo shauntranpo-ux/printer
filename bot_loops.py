@@ -15,7 +15,7 @@ import bot_state
 import bot_stats
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
-from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard
+from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl
 from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
@@ -286,8 +286,7 @@ async def handle_ready_phase(
     # Daily drawdown kill switch — skip all trading when today's loss exceeds limit
     _daily_limit = float(config.get("daily_loss_limit_dollars", 75))
     if _daily_limit > 0:
-        from bot_infra import get_today_pnl
-        _today_pnl = get_today_pnl(mode=config.get("mode", "paper"))
+        _today_pnl = await db_get_today_pnl(mode=config.get("mode", "paper"))
         if _today_pnl <= -_daily_limit:
             log.warning(
                 "DAILY LOSS LIMIT HIT: %.2f <= -%.2f — skipping all trades for today",
