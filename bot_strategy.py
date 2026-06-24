@@ -219,7 +219,7 @@ def _s1_certainty_win_prob(dist_pct: float, secs_left: float, asset: str) -> flo
     period_vol = vol_15m * math.sqrt(time_frac)
     z    = dist_pct / period_vol
     cert = 0.5 * (1.0 + math.erf(z / math.sqrt(2)))
-    return max(0.52, min(0.75, cert))
+    return max(0.50, min(0.85, cert))
 
 
 def _time_of_day_vol_multiplier() -> float:

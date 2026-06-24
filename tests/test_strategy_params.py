@@ -72,10 +72,10 @@ def test_s2_win_rate_tables_all_none():
 
 
 def test_s1_lookup_conservative_baseline():
-    """S1 GBM fallback must return 0.52-0.75 -- realistic for momentum signal."""
+    """S1 GBM fallback must return 0.50-0.85 -- realistic for momentum signal."""
     from bot_strategy import _s1_lookup_win_rate
     wp = _s1_lookup_win_rate("ETH", 0.003, 3.0)
-    assert 0.52 <= wp <= 0.75, f"ETH GBM WR={wp:.3f} outside realistic 52-75% range"
+    assert 0.50 <= wp <= 0.85, f"ETH GBM WR={wp:.3f} outside realistic 50-85% range"
 
 
 def test_s2_lookup_conservative_baseline():
@@ -124,22 +124,22 @@ def test_s1_certainty_win_prob_increases_with_less_time():
 
 
 def test_s1_certainty_win_prob_range():
-    """WR must stay in 0.52-0.75 range — no fantasy numbers."""
+    """WR must stay in 0.50-0.85 range — no fantasy numbers."""
     from bot_strategy import _s1_certainty_win_prob
     for dist in [0.001, 0.005, 0.010, 0.030]:
         for t in [60.0, 300.0, 600.0, 840.0]:
             wp = _s1_certainty_win_prob(dist, t, "ETH")
-            assert 0.52 <= wp <= 0.75, f"WR={wp:.3f} out of range at dist={dist} t={t}"
+            assert 0.50 <= wp <= 0.85, f"WR={wp:.3f} out of range at dist={dist} t={t}"
 
 
 def test_certainty_win_prob_range_with_vol_multiplier():
-    """Win prob stays in 0.52-0.75 regardless of time-of-day vol adjustment."""
+    """Win prob stays in 0.50-0.85 regardless of time-of-day vol adjustment."""
     from bot_strategy import _s1_certainty_win_prob
     for dist in [0.001, 0.005, 0.015]:
         for t in [60.0, 300.0, 600.0, 840.0]:
             wp = _s1_certainty_win_prob(dist, t, "ETH")
-            assert 0.52 <= wp <= 0.75, \
-                f"WR={wp:.3f} out of [0.52, 0.75] at dist={dist} t={t}"
+            assert 0.50 <= wp <= 0.85, \
+                f"WR={wp:.3f} out of [0.50, 0.85] at dist={dist} t={t}"
 
 
 def test_s1_min_ev_at_least_010():
