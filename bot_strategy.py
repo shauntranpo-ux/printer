@@ -208,7 +208,7 @@ def _s1_certainty_win_prob(dist_pct: float, secs_left: float, asset: str) -> flo
     """
     Geometric Brownian Motion certainty model.
     Estimates P(price stays on current side of strike until settlement).
-    Anchored to empirical 15-min vol per asset. Capped at 0.52-0.75.
+    Anchored to empirical 15-min vol per asset. Capped at 0.50-0.85.
     """
     # Empirical 15-min 1-sigma move as fraction of price
     _ASSET_VOL_15M = {
