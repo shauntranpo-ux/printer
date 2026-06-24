@@ -6,6 +6,7 @@ import math
 import os
 import time
 from collections import deque
+from zoneinfo import ZoneInfo
 
 import bot_state
 from bot_infra import read_config, get_asset_config
@@ -116,7 +117,7 @@ def _is_quiet_hours(config: dict) -> bool:
     if not config.get("quiet_hours_enabled", True):
         return False
     try:
-        now_et = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-4)))
+        now_et = datetime.datetime.now(ZoneInfo("America/New_York"))
         hour = now_et.hour
         start = int(config.get("quiet_start_et", 22))
         end   = int(config.get("quiet_end_et", 9))
@@ -231,7 +232,7 @@ def _time_of_day_vol_multiplier() -> float:
     Fail-open: returns 1.00 on any clock error.
     """
     try:
-        now_et = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=-4)))
+        now_et = datetime.datetime.now(ZoneInfo("America/New_York"))
         t = now_et.hour * 60 + now_et.minute
         if 9 * 60 + 30 <= t <= 11 * 60 + 30:
             return 1.30
