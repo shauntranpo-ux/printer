@@ -808,9 +808,8 @@ def strategy_brain_s2(
             abs_pct, mins_left, variant="strategy2",
         )
 
-    # Win probability: geometric certainty model (velocity qualifies direction,
-    # dist+time determines how certain the outcome is)
-    win_prob = _s1_certainty_win_prob(abs_pct, secs_left, asset)
+    # Win probability: velocity-aware S2 model — velocity delta + time determines confidence.
+    win_prob = _s2_lookup_win_rate(asset, vel_delta, mins_left, cfg)
 
     # EV gate — Kalshi fee from config (default 7 cents per contract)
     _ep_s2 = entry_price / 100.0
