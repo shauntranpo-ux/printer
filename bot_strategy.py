@@ -360,11 +360,10 @@ def strategy_brain_s1(
     # Prevents simultaneous correlated entries when all crypto moves together.
     if asset != "BTC":
         _xwin_sec = float(config.get("s1_cross_asset_window_seconds", 300.0))
-        _now_xwin = time.time()
         for _other, _other_times in bot_state._s1_asset_trade_times.items():
-            if _other == asset:
+            if _other == asset or _other == "BTC":
                 continue
-            if any(_now_xwin - t < _xwin_sec for t in _other_times):
+            if any(_now_ts - t < _xwin_sec for t in _other_times):
                 return _make_skip(
                     "yes",
                     f"s1_window_guard:{_other}",

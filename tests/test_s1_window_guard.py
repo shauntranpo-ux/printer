@@ -94,3 +94,12 @@ def test_window_guard_allows_when_no_recent_trades():
     assert "s1_window_guard" not in result.get("reasoning", ""), (
         f"Empty trade times must not trigger window guard: {result.get('reasoning')}"
     )
+
+
+def test_window_guard_btc_fill_does_not_block_sol():
+    """BTC filling S1 must not block SOL — BTC is excluded as both blocker and blocked."""
+    btc_fired_30s_ago = time.time() - 30
+    result = _run_s1_for_asset("SOL", 60.0, {"BTC": [btc_fired_30s_ago]})
+    assert "s1_window_guard" not in result.get("reasoning", ""), (
+        f"BTC fill must not block SOL via window guard: {result.get('reasoning')}"
+    )
