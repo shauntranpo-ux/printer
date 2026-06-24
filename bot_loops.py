@@ -46,6 +46,9 @@ _LV_TZ = ZoneInfo("America/Los_Angeles")
 
 _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 
+_prev_quiet_nb: bool = False
+_prev_quiet_main: bool = False
+
 _last_orphan_settle_ts: float = 0.0
 
 
@@ -895,7 +898,7 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
     Independent 10-second loop processing all non-BTC enabled assets.
     Runs as a background asyncio task alongside main_loop (which handles BTC).
     """
-    _prev_quiet_nb: bool = False
+    global _prev_quiet_nb
     while True:
         try:
             config = read_config()
@@ -1137,7 +1140,7 @@ async def main_loop() -> None:
         # gated by the BTC state machine's continue/sleep cycle.
         asyncio.create_task(_non_btc_asset_loop(session))
 
-        _prev_quiet_main: bool = False
+        global _prev_quiet_main
         while True:
             try:
                 midnight_reset()
