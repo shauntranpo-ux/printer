@@ -69,11 +69,13 @@ def test_s2_high_velocity_gets_higher_win_prob_than_low_velocity():
     result_hi = _run_s2(ticker_hi, vel_ratio=3.0, btc_price=2830.0, strike=2800.0)
     result_lo = _run_s2(ticker_lo, vel_ratio=1.3, btc_price=2830.0, strike=2800.0)
 
-    # Both may trade or skip EV gate, but win_prob must differ
-    wp_hi = result_hi.get("win_prob", 0)
-    wp_lo = result_lo.get("win_prob", 0)
+    # The reported win_prob is now anchored/shrunk toward the market mid (capped), so it
+    # can saturate. The velocity-awareness regression is guarded on the RAW model prob,
+    # exposed in signals.model_raw_p_yes — that must still differentiate by velocity.
+    wp_hi = result_hi.get("signals", {}).get("model_raw_p_yes", 0)
+    wp_lo = result_lo.get("signals", {}).get("model_raw_p_yes", 0)
     assert wp_hi > wp_lo, (
-        f"High velocity (3x) must give higher win_prob than low velocity (1.3x). "
+        f"High velocity (3x) must give higher raw model prob than low velocity (1.3x). "
         f"Got hi={wp_hi:.4f}, lo={wp_lo:.4f} — S2 is using S1 distance-only model."
     )
 
@@ -84,7 +86,7 @@ def test_s2_win_prob_increases_with_velocity():
     prev_wp = 0.0
     for ratio in [1.5, 2.0, 3.0, 5.0]:
         result = _run_s2(ticker, vel_ratio=ratio, btc_price=2830.0, strike=2800.0)
-        wp = result.get("win_prob", 0)
+        wp = result.get("signals", {}).get("model_raw_p_yes", 0)
         assert wp >= prev_wp - 0.001, (
             f"win_prob must not decrease as vel_ratio increases. "
             f"At ratio={ratio}, wp={wp:.4f} < prev={prev_wp:.4f}"

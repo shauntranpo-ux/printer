@@ -72,7 +72,11 @@ class TestS2FiresETH:
             "Likely OBI gate still fails closed — check _s2_obi_gate None branch."
         )
         assert result["side"] == "yes"
-        assert result["win_prob"] >= 0.54, f"win_prob {result['win_prob']:.3f} below realistic floor"
+        # win_prob is now anchored to the de-vigged market mid and shrunk up by the
+        # bullish velocity signal — it must sit above the mid with a positive market edge.
+        assert result["signals"]["market_edge"] > 0, (
+            f"expected positive market edge, got {result['signals']['market_edge']:.3f}")
+        assert result["win_prob"] >= 0.50, f"win_prob {result['win_prob']:.3f} below 0.50"
 
     def test_s2_fires_with_explicit_none_obi(self):
         """S2 fires when _ticker_obi[ticker] is explicitly set to None (AMM fetch path)."""
