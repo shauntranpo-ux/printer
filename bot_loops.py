@@ -43,6 +43,11 @@ _last_stats_date: str = ""
 _last_scorecard_date: str = ""
 
 _LV_TZ = ZoneInfo("America/Los_Angeles")
+# Daily reports anchor to Eastern Time — the same timezone the markets, settlement
+# and quiet-hours logic use — so the report "day" matches the trading day and the
+# scorecard fires at one consistent market-aligned instant (17:00 ET == 14:00 PT).
+_ET_TZ = ZoneInfo("America/New_York")
+_DAILY_REPORT_HOUR_ET = 17
 
 _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 
@@ -104,10 +109,10 @@ async def _send_brain_scorecard() -> None:
     """Query DB and send daily brain scorecard via Telegram. Non-fatal on error."""
     global _last_scorecard_date
     try:
-        now_lv = datetime.now(_LV_TZ)
-        if now_lv.hour != 14:
+        now_et = datetime.now(_ET_TZ)
+        if now_et.hour != _DAILY_REPORT_HOUR_ET:
             return
-        today = now_lv.strftime("%Y-%m-%d")
+        today = now_et.strftime("%Y-%m-%d")
         if today == _last_scorecard_date:
             return
         data = await db_brain_scorecard(today)
@@ -652,10 +657,10 @@ async def handle_locked_phase(
 
     # Expiry check
     if secs_left <= 0:
-        # Ask Kalshi for the official settlement result — retry up to 6x (30s)
-        # to give the exchange time to settle the market.
+        # Ask Kalshi for the official settlement result — retry up to 8x (40s)
+        # to give the exchange time to settle the market before we guess.
         market_result = None
-        for _attempt in range(6):
+        for _attempt in range(8):
             try:
                 _path = f"/markets/{ticker}"
                 async with session.get(
@@ -671,19 +676,26 @@ async def handle_locked_phase(
                 log.warning(f"Market result fetch error (attempt {_attempt}): {_exc}")
             await asyncio.sleep(5)
 
+        # Track whether the outcome is the exchange's official result or our own
+        # spot-price estimate, so settlement guesses are visible in the DB and
+        # never silently masquerade as official (reconciliation can re-check later).
+        _settled_official = market_result in ("yes", "no")
         if market_result == "yes":
             outcome = "win" if pos["side"] == "yes" else "loss"
         elif market_result == "no":
             outcome = "win" if pos["side"] == "no" else "loss"
         else:
-            # Kalshi didn't settle in time — fall back to BTC price comparison
-            log.warning(f"{ticker}: settlement result unavailable, falling back to BTC price check")
+            # Kalshi didn't settle in time — estimate from the asset price vs strike.
+            # btc_price here is this asset's latest price (caller passes the asset price).
+            log.warning(f"{ticker}: official settlement unavailable after 40s — "
+                        f"estimating outcome from spot price {btc_price:.4g} vs strike {pos['strike']:.4g}")
             outcome = "win" if (
                 (pos["side"] == "yes" and btc_price > pos["strike"]) or
                 (pos["side"] == "no"  and btc_price <= pos["strike"])
             ) else "loss"
 
-        log.info(f"{ticker}: result={market_result!r} → {outcome}")
+        _exit_reason = "expiry" if _settled_official else "expiry_estimated"
+        log.info(f"{ticker}: result={market_result!r} ({'official' if _settled_official else 'ESTIMATED'}) → {outcome}")
         exit_price = 100 if outcome == "win" else 0
         _entry_p = pos["entry_price_cents"] / 100.0
         _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
@@ -697,7 +709,7 @@ async def handle_locked_phase(
 
         await db_update_trade(pos["trade_id"], {
             "exit_price_cents": exit_price,
-            "exit_reason": "expiry",
+            "exit_reason": _exit_reason,
             "outcome": outcome,
             "pnl_dollars": round(pnl, 2),
             "profit_percent": round(profit_pct, 2),
@@ -718,8 +730,9 @@ async def handle_locked_phase(
         else:
             bot_state._s2_consecutive_losses += 1
             max_cl = config.get("max_consecutive_losses", 5)
-            if bot_state._s2_consecutive_losses >= max_cl:
-                await send_telegram(f"ERROR - {bot_state._s2_consecutive_losses} consecutive losses")
+            # Alert once on the exact crossing — re-fires only after a win resets the streak.
+            if bot_state._s2_consecutive_losses == max_cl:
+                await send_telegram(f"⚠️ S2: {bot_state._s2_consecutive_losses} consecutive losses (threshold {max_cl})")
 
         await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
         return
@@ -904,7 +917,7 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
             config = read_config()
             _now_q_nb = _is_quiet_hours(config)
             if _now_q_nb and not _prev_quiet_nb:
-                asyncio.create_task(_check_daily_stats(datetime.now(_LV_TZ).strftime("%Y-%m-%d")))
+                asyncio.create_task(_check_daily_stats(datetime.now(_ET_TZ).strftime("%Y-%m-%d")))
             _prev_quiet_nb = _now_q_nb
             if not config.get("bot_enabled", False):
                 # Populate PAUSED state so dashboard shows prices instead of OFFLINE.
@@ -1157,9 +1170,9 @@ async def main_loop() -> None:
                         _last_orphan_settle_ts = time.time()
 
                 await _send_brain_scorecard()
-                _now_lv = datetime.now(_LV_TZ)
-                if _now_lv.hour == 14:
-                    await _check_daily_stats(_now_lv.strftime("%Y-%m-%d"))
+                _now_et = datetime.now(_ET_TZ)
+                if _now_et.hour == _DAILY_REPORT_HOUR_ET:
+                    await _check_daily_stats(_now_et.strftime("%Y-%m-%d"))
 
                 # Fresh config read
                 try:
@@ -1171,7 +1184,7 @@ async def main_loop() -> None:
 
                 _now_q_main = _is_quiet_hours(config)
                 if _now_q_main and not _prev_quiet_main:
-                    asyncio.create_task(_check_daily_stats(datetime.now(_LV_TZ).strftime("%Y-%m-%d")))
+                    asyncio.create_task(_check_daily_stats(datetime.now(_ET_TZ).strftime("%Y-%m-%d")))
                 _prev_quiet_main = _now_q_main
 
                 if not config.get("bot_enabled", False) and bot_state.current_phase != "LOCKED":
