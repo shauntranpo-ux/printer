@@ -139,14 +139,17 @@ class TestS2FiresETH:
             or "s2_vel_flat" in result["reasoning"]
         )
 
-    def test_s2_skips_weak_velocity_below_1x5(self):
-        """S2 must skip when velocity < 1.5x min_vel_delta (conviction gate)."""
+    def test_s2_skips_weak_velocity_below_conviction(self):
+        """S2 must skip when velocity is detectable but below the 1.2x conviction gate."""
         ticker = "KXETH-25MAY30-T2800F"
         cfg = _S2_ASSET_CONFIG["ETH"]
-        # Seed velocity at exactly 1.0x threshold — passes detection, fails 1.5x conviction
+        # Seed velocity at ~1.1x min_vel — above detection (1.0x) but below conviction (1.2x).
+        # _s2_contract_direction averages first vs second half of `lookback+1` ticks, so for
+        # the evenly-spaced ramp below the computed delta is 2.5*step. Solve for ~1.1x:
+        #   delta = 2.5*step = 1.1*min_vel  ->  step = 1.1*min_vel/2.5
         lookback = cfg["vel_lookback"]
         min_vel  = cfg["min_vel_delta"]
-        step = (min_vel * 1.0) / 2.0  # gives vel_delta ~= 1.0x min_vel
+        step = (min_vel * 1.1) / 2.5  # yields vel_delta ~= 1.1x min_vel (< 1.2x conviction)
         base = 70.0
         history = collections.deque(maxlen=60)
         now = time.time()
