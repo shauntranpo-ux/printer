@@ -632,6 +632,56 @@ def api_markets():
         return jsonify({"error": str(exc)}), 500
 
 
+def _frontend_signals(a: dict) -> dict:
+    """
+    Map the bot's per-asset eval snapshot onto the schema the dashboard's
+    Decision Signals panel (renderSignals) expects. Projects side-relative
+    probabilities (win_prob, market mid) onto a consistent P(YES) basis.
+    """
+    sig = a.get("signals") or {}
+    direction = (a.get("direction") or "").upper()
+    up = direction == "UP"
+
+    def _yes(p_side):
+        """Project a side-relative probability onto P(YES)."""
+        if p_side is None:
+            return None
+        return float(p_side) if up else 1.0 - float(p_side)
+
+    ev = a.get("ev")  # chosen-side EV in percent
+    win_prob = a.get("win_prob")  # chosen-side prob in percent
+    s1g = a.get("s1_gates") or {}
+    s2g = a.get("s2_gates") or {}
+    votes = min(5, int(s1g.get("passed", 0) or 0) + int(s2g.get("passed", 0) or 0))
+    status = (a.get("status") or "").upper()
+
+    p_ev = _yes((win_prob / 100.0) if win_prob is not None else sig.get("win_prob"))
+    market_prob = _yes(sig.get("mkt_p"))
+    raw_p_yes = sig.get("model_raw_p_yes")
+
+    s1_dir = (a.get("s1_dir") or "").lower()
+    s2_dir = (a.get("s2_dir") or "").lower()
+    supertrend = 1 if "up" in s1_dir or s1_dir == "yes" else (-1 if "down" in s1_dir or s1_dir == "no" else 0)
+    velocity = "rising" if "up" in s2_dir or s2_dir == "yes" else ("falling" if "down" in s2_dir or s2_dir == "no" else "flat")
+
+    return {
+        "final_decision": "trade" if status == "TRADING" else "skip",
+        "vote_count": votes,
+        "ev_pass": bool(ev is not None and ev > 0),
+        "skip_reason": a.get("skip_reason") or None,
+        "decision_mode": "S1+S2",
+        "raw_p_yes": raw_p_yes if raw_p_yes is not None else 0.5,
+        "p_ev": p_ev if p_ev is not None else 0.5,
+        "market_prob": market_prob if market_prob is not None else 0.5,
+        # Bot computes EV for the chosen side only; show it on that side, 0 on the other
+        # (numeric, never None — the frontend calls .toFixed on both).
+        "yes_ev": float(ev) if (ev is not None and up) else 0.0,
+        "no_ev": float(ev) if (ev is not None and not up) else 0.0,
+        "supertrend": supertrend,
+        "velocity": velocity,
+    }
+
+
 @app.route("/api/market-state")
 def api_market_state():
     """
@@ -670,7 +720,9 @@ def api_market_state():
         result = {}
         for asset in enabled_assets:
             a_state = assets.get(asset, {"phase": "OFFLINE", "price": None})
-            result[asset] = {**a_state, "daily": daily.get(asset, {"wins": 0, "losses": 0, "pnl": 0.0})}
+            _merged_sig = {**(a_state.get("signals") or {}), **_frontend_signals(a_state)}
+            result[asset] = {**a_state, "signals": _merged_sig,
+                             "daily": daily.get(asset, {"wins": 0, "losses": 0, "pnl": 0.0})}
 
         return jsonify({"assets": result, "ts": state.get("ts"), "bot_enabled": cfg.get("bot_enabled", False)})
     except Exception as exc:

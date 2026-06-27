@@ -792,6 +792,14 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
+  <!-- DECISION SIGNALS -->
+  <div class="card" style="margin-top:14px;">
+    <div class="card-head">
+      <div class="card-title"><span class="accent"></span>Decision Signals &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">per-asset · live</span></div>
+    </div>
+    <div id="sig-list"></div>
+  </div>
+
 </div><!-- /panel-overview -->
 
 
@@ -1654,10 +1662,6 @@ function renderMarketPanel(sym){
       <div class="card">
         <div class="card-head"><div class="card-title"><span class="accent"></span>Quick Actions</div></div>
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <button class="icon-btn" style="width:100%;justify-content:flex-start;padding:10px 12px;display:flex;gap:10px;font-family:'Montserrat';font-size:11px;font-weight:600;color:var(--ink-2);">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18.4 8L12 14.4 9 11.4 4 16.4"/></svg>
-            View full backtest
-          </button>
           <button class="icon-btn" data-action="pause" data-sym="${sym}" style="width:100%;justify-content:flex-start;padding:10px 12px;display:flex;gap:10px;font-family:'Montserrat';font-size:11px;font-weight:600;color:var(--ink-2);">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             Pause ${sym} only
