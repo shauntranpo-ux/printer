@@ -88,7 +88,10 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
 
     pnl = await db_get_today_pnl(mode)
 
-    if pnl < 0 and abs(pnl) >= config.get("daily_loss_limit_dollars", 20):
+    # 0 / negative limit = disabled (no daily loss cap). Without this guard a 0 limit
+    # would make `abs(pnl) >= 0` always true and halt on the first cent of loss.
+    _dll = float(config.get("daily_loss_limit_dollars", 0))
+    if _dll > 0 and pnl < 0 and abs(pnl) >= _dll:
         if not bot_state.limit_triggered:
             bot_state.limit_triggered = True
             bot_state.limit_reason = "daily loss limit reached"
@@ -114,7 +117,8 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
                 )
         return True, bot_state.limit_reason
 
-    if pnl > 0 and pnl >= config.get("daily_profit_target_dollars", 50):
+    _dpt = float(config.get("daily_profit_target_dollars", 0))
+    if _dpt > 0 and pnl > 0 and pnl >= _dpt:
         if not bot_state.limit_triggered:
             bot_state.limit_triggered = True
             bot_state.limit_reason = "daily profit target reached"

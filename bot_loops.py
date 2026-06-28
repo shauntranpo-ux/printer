@@ -292,8 +292,9 @@ async def handle_ready_phase(
     # Track YES price for velocity signal
     track_contract_price(ticker, yes_ask)
 
-    # Daily drawdown kill switch — skip all trading when today's loss exceeds limit
-    _daily_limit = float(config.get("daily_loss_limit_dollars", 75))
+    # Daily drawdown kill switch — only active when a positive limit is configured.
+    # Default 0 = no daily loss cap (the bot keeps trading; bleed control is the EV gate).
+    _daily_limit = float(config.get("daily_loss_limit_dollars", 0))
     if _daily_limit > 0:
         _today_pnl = await db_get_today_pnl(mode=config.get("mode", "paper"))
         if _today_pnl <= -_daily_limit:
@@ -865,8 +866,10 @@ async def _process_asset(
             await handle_locked_phase(session, price, secs_left, config, asset=asset, state=st)
         except Exception as exc:
             log.error(f"[{asset}] LOCKED phase error: {exc}", exc_info=True)
-        # S1 runs independently — try entry even when S2 is LOCKED
-        if secs_left > 30:
+        # S1 runs independently — try entry even when S2 is LOCKED.
+        # Block the final 90s: settlement-auction / liquidity-collapse zone where taker
+        # entries are picked off as price snaps to 1c/99c.
+        if secs_left > 90:
             try:
                 ob_s1 = await fetch_orderbook(session, ticker, market)
                 if ob_s1:
@@ -1324,8 +1327,9 @@ async def main_loop() -> None:
                         )
                     except Exception as exc:
                         log.error(f"LOCKED phase error: {exc}", exc_info=True)
-                    # S1 runs independently — try entry even when S2 is LOCKED
-                    if secs_left > 30:
+                    # S1 runs independently — try entry even when S2 is LOCKED.
+                    # Block the final 90s (settlement-auction / liquidity-collapse zone).
+                    if secs_left > 90:
                         try:
                             ob_s1 = await fetch_orderbook(session, ticker, market)
                             if ob_s1:

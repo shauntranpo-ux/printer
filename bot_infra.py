@@ -115,7 +115,7 @@ def _init_config() -> None:
         "s1_mode": "paper",
         "s2_mode": "paper",
         "confidence_threshold": 0,
-        "daily_loss_limit_dollars": 75,
+        "daily_loss_limit_dollars": 0,
         "daily_profit_target_dollars": 200,
         "max_consecutive_losses": 5,
         "enable_reversal_signal": False,
@@ -156,7 +156,9 @@ def _init_config() -> None:
     cfg["max_consecutive_losses"]    = min(int(cfg.get("max_consecutive_losses", 5)), 5)
     cfg["min_entry_price_cents"]     = max(float(cfg.get("min_entry_price_cents", 20)), 20.0)
     cfg["max_entry_price_cents"]     = min(float(cfg.get("max_entry_price_cents", 76)), 76.0)
-    cfg["daily_loss_limit_dollars"]  = min(float(cfg.get("daily_loss_limit_dollars", 150)), 150.0)
+    # 0 (default) = NO daily loss cap — the bot never halts itself for the day.
+    # A positive value re-enables the cap (clamped to 150 for safety).
+    cfg["daily_loss_limit_dollars"]  = min(max(float(cfg.get("daily_loss_limit_dollars", 0)), 0.0), 150.0)
 
     # confidence_threshold: 72 was the old server.py default and blocks GBM-based trades.
     # GBM win_prob is capped at 0.75 (75%), so 72% threshold allows almost nothing.

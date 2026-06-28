@@ -79,8 +79,12 @@ def _realized_vol(prices: list, window_minutes: int = 5) -> float:
 # from it (shrinkage toward the market prior). EV is then measured against the
 # price actually paid, net of the half-spread crossed and Kalshi fees.
 #
-# Threshold params (max_model_edge, min_market_edge, anchored min_ev) are
-# conservative defaults pending CSV calibration (see scripts/calibrate_from_csv.py).
+# Threshold params (max_model_edge, min_market_edge, anchored min_ev):
+#   min_market_edge=0.035  model must beat the de-vigged mid by >=3.5 prob-pts
+#   min_ev_anchored=0.025  require >=2.5 pts of profit AFTER spread+fee (hold-to-settlement
+#                          hurdle: one taker fee ~1.5-1.75c + half-spread, no exit fee)
+# These are conservative cost-based defaults (NOT fabricated win rates) that make the bot
+# trade selectively; refine per-asset from real settled data (scripts/calibrate_from_csv.py).
 # ---------------------------------------------------------------------------
 
 def _kalshi_fee_frac(price_frac: float, fee_rate: float = 0.07) -> float:
@@ -565,8 +569,8 @@ def strategy_brain_s1(
         return _make_skip(side, "s1_no_market_data", abs_pct, mins_left, variant="strategy1")
     ev, _model_p_side, _mkt_p_side, _market_edge = _anchored
     win_prob = _model_p_side  # report the shrunk (honest) probability downstream
-    _min_market_edge = float(cfg.get("min_market_edge", 0.02))
-    _min_ev = float(cfg.get("min_ev_anchored", 0.015))
+    _min_market_edge = float(cfg.get("min_market_edge", 0.035))
+    _min_ev = float(cfg.get("min_ev_anchored", 0.025))
     if ev < _min_ev or _market_edge < _min_market_edge:
         return {
             "action": "skip", "side": side,
@@ -901,8 +905,8 @@ def strategy_brain_s2(
         return _make_skip(side, "s2_no_market_data", abs_pct, mins_left, variant="strategy2")
     ev, _model_p_side, _mkt_p_side, _market_edge = _anchored
     win_prob = _model_p_side  # report the shrunk (honest) probability downstream
-    _min_market_edge = float(cfg.get("min_market_edge", 0.02))
-    _min_ev = float(cfg.get("min_ev_anchored", 0.015))
+    _min_market_edge = float(cfg.get("min_market_edge", 0.035))
+    _min_ev = float(cfg.get("min_ev_anchored", 0.025))
     _obi_str = f"{obi_val:.2f}" if obi_val is not None else "n/a"
     if ev < _min_ev or _market_edge < _min_market_edge:
         return {
