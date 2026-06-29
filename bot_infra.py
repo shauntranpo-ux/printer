@@ -346,6 +346,27 @@ def init_db() -> None:
         c.execute("CREATE INDEX IF NOT EXISTS idx_decision_ticker ON decision_log(ticker)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_decision_outcome ON decision_log(outcome)")
 
+        # maker_log: per settled trade, the maker-vs-taker counterfactual (measurement only).
+        # See bot_loops._record_maker_counterfactual + scripts/maker_report.py.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS maker_log (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts               TEXT,
+                ticker           TEXT,
+                asset            TEXT,
+                strategy         TEXT,
+                mode             TEXT,
+                side             TEXT,
+                entry_ask_cents  REAL,
+                maker_price_cents REAL,
+                filled           INTEGER,
+                outcome          TEXT,
+                taker_pnl        REAL,
+                maker_pnl        REAL,
+                contracts        INTEGER
+            )
+        """)
+
         conn.commit()
         conn.close()
         log.info("Database initialized.")
@@ -493,6 +514,29 @@ async def db_backfill_decision_outcome(ticker: str, outcome: str) -> None:
             await db.commit()
     except Exception as exc:
         log.debug("db_backfill_decision_outcome skipped for %s: %s", ticker, exc)
+
+
+async def db_write_maker_sample(sample: dict) -> None:
+    """Record one maker-vs-taker counterfactual sample (fire-and-forget; never raises)."""
+    try:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("""
+                INSERT INTO maker_log (
+                    ts, ticker, asset, strategy, mode, side,
+                    entry_ask_cents, maker_price_cents, filled, outcome,
+                    taker_pnl, maker_pnl, contracts
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                sample.get("ts"), sample.get("ticker"), sample.get("asset"),
+                sample.get("strategy"), sample.get("mode"), sample.get("side"),
+                sample.get("entry_ask_cents"), sample.get("maker_price_cents"),
+                int(bool(sample.get("filled"))), sample.get("outcome"),
+                sample.get("taker_pnl"), sample.get("maker_pnl"), sample.get("contracts"),
+            ))
+            await db.commit()
+    except Exception as exc:
+        log.debug("db_write_maker_sample skipped: %s", exc)
 
 
 async def db_pending_decision_tickers(older_than_iso: str, limit: int = 30) -> list:

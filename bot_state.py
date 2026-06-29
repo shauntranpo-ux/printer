@@ -86,6 +86,11 @@ _contract_price_history: dict = {}
 # our Coinbase spot-vs-strike implied side vs Kalshi's official YES/NO result.
 _settlement_basis: deque      = deque(maxlen=500)
 
+# Per-ticker held-book path {ticker: deque[(ts, yes_ask, no_ask)]} captured DURING the hold
+# phase, used to compute the maker-vs-taker counterfactual at settlement (measurement only).
+# Separate from _contract_price_history so S2's (ts, price) tuple shape is untouched.
+_maker_track: dict            = {}
+
 _CAL_DEFAULTS: dict = {
     "last_count": 0, "prob_scale": 1.0, "min_edge_override": None,
     "confidence_bonus": 0, "reward_tier": 0, "overall_wr": 0.0,

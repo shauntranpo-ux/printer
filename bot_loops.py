@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import time
+from collections import deque
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
@@ -15,7 +16,7 @@ import bot_state
 import bot_stats
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
-from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers
+from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers, db_write_maker_sample
 from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
@@ -146,6 +147,51 @@ def _record_settlement_basis(ticker: str, asset: str, strike: float, our_spot: f
                      asset, ticker, market_result, our_side, signed_dist)
     except Exception as exc:
         log.debug("_record_settlement_basis skipped for %s: %s", ticker, exc)
+
+
+def _maker_fee_frac(price_cents: float) -> float:
+    """Kalshi maker fee per contract in dollars: 0.0175 * p * (1-p) (~25% of taker)."""
+    p = max(0.0, min(1.0, price_cents / 100.0))
+    return 0.0175 * p * (1.0 - p)
+
+
+async def _record_maker_counterfactual(pos: dict, asset: str, outcome: str, config: dict) -> None:
+    """
+    MEASUREMENT ONLY — would a passive maker (1c inside the entry-side ask, posted at entry)
+    have filled, and at what P&L vs the taker fill we actually took? Uses the real settlement
+    outcome so adverse selection is captured (a fill correlates with the contract moving
+    against us). Writes one maker_log row. Never raises. No execution change.
+    """
+    ticker = pos.get("ticker")
+    try:
+        track = bot_state._maker_track.get(ticker)
+        side = pos.get("side")
+        entry_ask = float(pos.get("entry_price_cents") or 0.0)
+        entry_ts = float(pos.get("entry_ts") or 0.0)
+        contracts = int(pos.get("contracts") or 0)
+        maker_price = entry_ask - 1.0                 # 1c inside the ask (passive)
+        idx = 1 if side == "yes" else 2               # held-book tuple (ts, yes_ask, no_ask)
+        filled = False
+        if track and maker_price > 0:
+            for row in track:
+                if row[0] >= entry_ts and float(row[idx]) <= maker_price:
+                    filled = True
+                    break
+        payoff = 100.0 if outcome == "win" else 0.0
+        taker_pnl = (payoff - entry_ask) / 100.0 - (0.07 * (entry_ask / 100.0) * (1 - entry_ask / 100.0))
+        maker_pnl = ((payoff - maker_price) / 100.0 - _maker_fee_frac(maker_price)) if filled else None
+        await db_write_maker_sample({
+            "ts": datetime.now(timezone.utc).isoformat(), "ticker": ticker, "asset": asset,
+            "strategy": "strategy2", "mode": config.get("mode", "paper"), "side": side,
+            "entry_ask_cents": entry_ask, "maker_price_cents": maker_price, "filled": filled,
+            "outcome": outcome, "taker_pnl": round(taker_pnl, 4),
+            "maker_pnl": round(maker_pnl, 4) if maker_pnl is not None else None,
+            "contracts": contracts,
+        })
+    except Exception as exc:
+        log.debug("_record_maker_counterfactual skipped for %s: %s", ticker, exc)
+    finally:
+        bot_state._maker_track.pop(ticker, None)
 
 _prev_quiet_nb: bool = False
 _prev_quiet_main: bool = False
@@ -802,6 +848,7 @@ async def handle_locked_phase(
         _settle_side = market_result if _settled_official else ("yes" if btc_price > pos["strike"] else "no")
         await db_backfill_decision_outcome(ticker, _settle_side)
         _record_settlement_basis(ticker, asset, pos["strike"], btc_price, market_result, _settled_official)
+        await _record_maker_counterfactual(pos, asset, outcome, config)
         exit_price = 100 if outcome == "win" else 0
         _entry_p = pos["entry_price_cents"] / 100.0
         _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
@@ -848,6 +895,19 @@ async def handle_locked_phase(
         f"[HOLDING] {ticker} | side={pos['side'].upper()} | entry={pos['entry_price_cents']}c "
         f"| price=${btc_price:,.4g} | strike=${pos['strike']:,.4g} | {secs_left:.0f}s left"
     )
+
+    # Maker counterfactual instrumentation: record the held-book path (yes/no ask) so we can
+    # compute at settlement whether a passive maker order posted at entry would have filled.
+    # Measurement only — no execution change. See _record_maker_counterfactual.
+    try:
+        _hb = await fetch_orderbook(session, ticker, None)
+        if _hb is not None:
+            _ya, _na = _hb.get("best_yes_ask"), _hb.get("best_no_ask")
+            if _ya is not None and _na is not None:
+                bot_state._maker_track.setdefault(ticker, deque(maxlen=120)).append(
+                    (time.time(), float(_ya), float(_na)))
+    except Exception as _mexc:
+        log.debug("maker-track fetch failed for %s: %s", ticker, _mexc)
 
 
 # ══════════════════════════════════════════════════════════════════════════════════
