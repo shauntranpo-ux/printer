@@ -69,6 +69,88 @@ def _realized_vol(prices: list, window_minutes: int = 5) -> float:
 
 
 # ---------------------------------------------------------------------------
+# Digital-option fair value (Bachelier/lognormal, zero-drift) + live realized vol
+# ---------------------------------------------------------------------------
+
+# Empirical 15-min 1-sigma move as a FRACTION of price (static fallback for live vol).
+_ASSET_VOL_15M = {
+    "BTC": 0.008, "ETH": 0.007, "SOL": 0.012, "XRP": 0.010, "DOGE": 0.015,
+}
+
+# Live-vol estimator tuning (see scripts design-verify workflow).
+_SIGMA_MIN_FRAC   = 1e-4     # floor a fractional sigma so z stays finite
+_SIGMA_MIN_PERIOD = 1e-6     # degenerate period-sigma -> hard 0/1 digital
+_VOL_WINDOW_MIN   = 10.0     # lookback for live realized vol
+_MIN_PAIRS        = 8        # need this many valid return pairs, else static
+_MIN_SPAN_SEC     = 180.0    # need this much real time coverage, else static
+_DT_MIN           = 10.0     # drop sub-10s pairs (microstructure noise ~ 2*s_n^2/dt)
+_DT_MAX           = 120.0    # drop stale-gap/reconnect pairs
+_FLOOR_MULT       = 0.5      # clamp live sigma to [0.5x, 2x] static
+_CEIL_MULT        = 2.0
+_WINSOR_K         = 9.0      # cap per-pair per-second variance at k*static^2/900 (3-sigma)
+
+
+def _bachelier_p_above(spot: float, strike: float, secs_left: float,
+                       sigma_15m_frac: float) -> float:
+    """
+    P(price > strike at expiry) for a short-horizon zero-drift digital, via the normal CDF.
+    RAW and UNCAPPED, in (0,1); callers take p for the above-side (YES), 1-p for below (NO).
+    Zero drift is justified: mu*T ~ 2.4e-5 over 15 min << sigma ~ 3e-3..1.5e-2.
+    """
+    if strike <= 0 or spot <= 0:
+        return 0.5
+    sig = max(float(sigma_15m_frac), _SIGMA_MIN_FRAC)
+    time_frac = max(1.0 / 900.0, secs_left / 900.0)
+    period_sigma = sig * math.sqrt(time_frac)
+    if period_sigma <= _SIGMA_MIN_PERIOD:
+        return 1.0 if spot >= strike else 0.0
+    z = math.log(spot / strike) / period_sigma
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
+
+
+def _live_sigma_15m(asset: str, window_minutes: float = _VOL_WINDOW_MIN) -> float:
+    """
+    Live 15-minute 1-sigma FRACTIONAL move from the irregular-interval price deque.
+
+    Uses the quadratic-variation estimator sqrt( (sum r^2 / sum dt) * 900 ) — time-weighted,
+    NOT mean(r^2/dt) — over pairs with _DT_MIN<=dt<=_DT_MAX, winsorizing each pair's
+    per-second variance so one fat-finger print can't inflate sigma. Falls back to the static
+    _ASSET_VOL_15M (with the time-of-day multiplier) on thin/degenerate data. The LIVE estimate
+    deliberately does NOT apply the ToD multiplier (it already reflects realized intraday vol).
+    """
+    base = _ASSET_VOL_15M.get(asset, 0.008)
+    static = base * _time_of_day_vol_multiplier()
+    raw = asset_manager._prices.get(asset)
+    if not raw or len(raw) < _MIN_PAIRS + 1:
+        return static
+    pts = list(raw)
+    now = pts[-1][0]
+    win = [(ts, p) for ts, p in pts if ts >= now - window_minutes * 60 and p > 0]
+    if len(win) < _MIN_PAIRS + 1 or (win[-1][0] - win[0][0]) < _MIN_SPAN_SEC:
+        return static
+    var_cap = _WINSOR_K * (base ** 2) / 900.0   # per-second variance cap (3-sigma)
+    sum_r2 = 0.0
+    sum_dt = 0.0
+    n = 0
+    for i in range(1, len(win)):
+        dt = win[i][0] - win[i - 1][0]
+        if dt < _DT_MIN or dt > _DT_MAX:
+            continue
+        r = math.log(win[i][1] / win[i - 1][1])
+        per_sec = min((r * r) / dt, var_cap)    # winsorize per-pair
+        sum_r2 += per_sec * dt
+        sum_dt += dt
+        n += 1
+    if n < _MIN_PAIRS or sum_dt <= 0:
+        return static
+    var_per_sec = sum_r2 / sum_dt
+    if var_per_sec <= 0:
+        return static
+    sigma_15m = math.sqrt(var_per_sec * 900.0)
+    return max(_FLOOR_MULT * base, min(_CEIL_MULT * base, sigma_15m))
+
+
+# ---------------------------------------------------------------------------
 # Market-anchored edge framework
 #
 # Root-cause fix: on efficient 15-min binary markets the contract ask ~= the
@@ -282,17 +364,16 @@ def _s1_multitf_momentum(prices: list, min_momentum: float = 0.003) -> tuple:
 
 def _s1_certainty_win_prob(dist_pct: float, secs_left: float, asset: str) -> float:
     """
-    Geometric Brownian Motion certainty model.
+    Normal/Bachelier certainty model.
     Estimates P(price stays on current side of strike until settlement).
-    Anchored to empirical 15-min vol per asset. Capped at 0.50-0.85.
+    Sigma is the LIVE realized 15-min vol (regime-adaptive), falling back to the static
+    per-asset constant on thin data. Capped at 0.50-0.85.
     """
-    # Empirical 15-min 1-sigma move as fraction of price
-    _ASSET_VOL_15M = {
-        "BTC": 0.008, "ETH": 0.007, "SOL": 0.012, "XRP": 0.010, "DOGE": 0.015,
-    }
-    vol_15m = _ASSET_VOL_15M.get(asset, 0.008) * _time_of_day_vol_multiplier()
+    # _live_sigma_15m already includes the time-of-day multiplier on its static fallback;
+    # do NOT re-apply it here or US-open vol would be double-counted.
+    vol_15m = _live_sigma_15m(asset)
     time_frac  = max(0.01, secs_left / 900.0)
-    period_vol = vol_15m * math.sqrt(time_frac)
+    period_vol = max(vol_15m * math.sqrt(time_frac), _SIGMA_MIN_PERIOD)
     z    = dist_pct / period_vol
     cert = 0.5 * (1.0 + math.erf(z / math.sqrt(2)))
     return max(0.50, min(0.85, cert))
@@ -342,9 +423,8 @@ def _s1_dislocation_check(
     if dist_pct < _DISLOCATION_THRESHOLD:
         return 0.0, 0.5
 
-    _ASSET_VOL_15M = {
-        "BTC": 0.008, "ETH": 0.007, "SOL": 0.012, "XRP": 0.010, "DOGE": 0.015,
-    }
+    # Dislocation stays on the STATIC vol dict for v1 (the fast-path bypasses momentum gates,
+    # so we don't couple it to the live sigma until that is harness-validated).
     vol = _ASSET_VOL_15M.get(asset, 0.008)
     time_frac  = max(0.05, secs_left / 900.0)
     time_decay = vol * math.sqrt(time_frac)
@@ -500,7 +580,8 @@ def strategy_brain_s1(
                 "confidence": int(_disloc_fair_p * 100),
                 "reasoning": f"s1_dislocation edge={_disloc_edge:.3f} fair_p={_disloc_fair_p:.3f} dist={abs_pct:.3%}",
                 "key_signals": [f"disloc_edge:{_disloc_edge:.3f}", f"fair_p:{_disloc_fair_p:.3f}"],
-                "signals": {"win_prob": _disloc_fair_p, "ev": _disloc_edge, "abs_pct": abs_pct},
+                "signals": {"win_prob": _disloc_fair_p, "ev": _disloc_edge, "abs_pct": abs_pct,
+                            "model_raw_p_yes": float(_disloc_fair_p) if _disloc_side == "yes" else float(1.0 - _disloc_fair_p)},
                 "win_prob": float(_disloc_fair_p), "mom_label": _disloc_side,
                 "mom_pct": abs_pct, "vel_signal": "dislocation",
                 "raw_p_yes": float(_disloc_fair_p) if _disloc_side == "yes" else float(1.0 - _disloc_fair_p),
@@ -578,7 +659,8 @@ def strategy_brain_s1(
             "reasoning": f"s1_ev_gate:ev={ev:.3f}<{_min_ev:.3f}|mkt_edge={_market_edge:.3f}<{_min_market_edge:.3f}",
             "key_signals": [f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"mkt_edge:{_market_edge:.3f}", f"mom:{direction}"],
             "signals": {"win_prob": win_prob, "ev": ev, "market_edge": _market_edge,
-                        "mkt_p": _mkt_p_side, "momentum_pct": momentum_pct,
+                        "mkt_p": _mkt_p_side, "model_raw_p_yes": float(_raw_p_yes),
+                        "momentum_pct": momentum_pct,
                         "abs_pct": abs_pct, "strike": strike},
             "win_prob": float(win_prob), "mom_label": direction,
             "mom_pct": float(momentum_pct or 0.0),
@@ -605,7 +687,9 @@ def strategy_brain_s1(
             f"dist:{abs_pct:.3%}", f"mom_pct:{momentum_pct:.4f}",
         ],
         "signals": {
-            "win_prob": win_prob, "ev": ev, "momentum_pct": momentum_pct,
+            "win_prob": win_prob, "ev": ev, "market_edge": _market_edge,
+            "mkt_p": _mkt_p_side, "model_raw_p_yes": float(_raw_p_yes),
+            "momentum_pct": momentum_pct,
             "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
         },
         "win_prob": float(win_prob), "mom_label": direction,

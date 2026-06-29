@@ -122,6 +122,31 @@ async def _backfill_pending_decisions(session) -> None:
     except Exception as exc:
         log.debug("_backfill_pending_decisions skipped: %s", exc)
 
+
+def _record_settlement_basis(ticker: str, asset: str, strike: float, our_spot: float,
+                             market_result: str, settled_official: bool) -> None:
+    """
+    MEASUREMENT ONLY — record the gap between our Coinbase spot-vs-strike implied side and
+    Kalshi's official settlement, to later characterize the settlement-reference basis.
+    Applies NO correction to any pricer or strike. Never raises.
+    """
+    try:
+        if not settled_official or market_result not in ("yes", "no") or not strike:
+            return  # only official results are trustworthy basis ground truth
+        our_side = "yes" if our_spot > strike else "no"
+        signed_dist = (our_spot - strike) / strike if strike > 0 else 0.0
+        bot_state._settlement_basis.append({
+            "ts": datetime.now(timezone.utc).isoformat(), "ticker": ticker, "asset": asset,
+            "strike": strike, "our_spot": our_spot, "kalshi": market_result,
+            "ours": our_side, "agree": our_side == market_result, "signed_dist": signed_dist,
+        })
+        if our_side != market_result:
+            # disagreements near the strike are where the basis (index vs spot, snap timing) shows
+            log.info("SETTLE_BASIS %s %s kalshi=%s ours=%s dist=%.5f (DISAGREE)",
+                     asset, ticker, market_result, our_side, signed_dist)
+    except Exception as exc:
+        log.debug("_record_settlement_basis skipped for %s: %s", ticker, exc)
+
 _prev_quiet_nb: bool = False
 _prev_quiet_main: bool = False
 
@@ -776,6 +801,7 @@ async def handle_locked_phase(
         # decision_log rows (the periodic backfill covers skipped/untraded tickers).
         _settle_side = market_result if _settled_official else ("yes" if btc_price > pos["strike"] else "no")
         await db_backfill_decision_outcome(ticker, _settle_side)
+        _record_settlement_basis(ticker, asset, pos["strike"], btc_price, market_result, _settled_official)
         exit_price = 100 if outcome == "win" else 0
         _entry_p = pos["entry_price_cents"] / 100.0
         _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0

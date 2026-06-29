@@ -82,6 +82,10 @@ last_skip_reason: str  = ""
 _asset_eval: dict             = {}
 _contract_price_history: dict = {}
 
+# Settlement-reference basis samples (measurement only — no correction applied yet):
+# our Coinbase spot-vs-strike implied side vs Kalshi's official YES/NO result.
+_settlement_basis: deque      = deque(maxlen=500)
+
 _CAL_DEFAULTS: dict = {
     "last_count": 0, "prob_scale": 1.0, "min_edge_override": None,
     "confidence_bonus": 0, "reward_tier": 0, "overall_wr": 0.0,
