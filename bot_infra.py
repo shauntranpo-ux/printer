@@ -156,6 +156,8 @@ def _init_config() -> None:
     cfg["max_consecutive_losses"]    = min(int(cfg.get("max_consecutive_losses", 5)), 5)
     cfg["min_entry_price_cents"]     = max(float(cfg.get("min_entry_price_cents", 20)), 20.0)
     cfg["max_entry_price_cents"]     = min(float(cfg.get("max_entry_price_cents", 76)), 76.0)
+    # Hard per-trade clip cap: $25 max (user directive). Never size a single entry above this.
+    cfg["trade_amount_dollars"]      = min(max(float(cfg.get("trade_amount_dollars", 25)), 0.0), 25.0)
     # 0 (default) = NO daily loss cap — the bot never halts itself for the day.
     # A positive value re-enables the cap (clamped to 150 for safety).
     cfg["daily_loss_limit_dollars"]  = min(max(float(cfg.get("daily_loss_limit_dollars", 0)), 0.0), 150.0)
@@ -320,6 +322,30 @@ def init_db() -> None:
             )
         """)
 
+        # decision_log: every brain evaluation (NOT just taken trades) so the edge of the
+        # signal can be measured without survivorship bias. outcome is backfilled at
+        # settlement. See scripts/edge_report.py.
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS decision_log (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts               TEXT,
+                ticker           TEXT,
+                asset            TEXT,
+                strategy         TEXT,
+                mode             TEXT,
+                side             TEXT,
+                model_p_yes      REAL,
+                market_mid_p_yes REAL,
+                market_edge      REAL,
+                entry_price_cents REAL,
+                secs_left        REAL,
+                would_trade      INTEGER DEFAULT 0,
+                outcome          TEXT DEFAULT 'pending'
+            )
+        """)
+        c.execute("CREATE INDEX IF NOT EXISTS idx_decision_ticker ON decision_log(ticker)")
+        c.execute("CREATE INDEX IF NOT EXISTS idx_decision_outcome ON decision_log(outcome)")
+
         conn.commit()
         conn.close()
         log.info("Database initialized.")
@@ -423,6 +449,67 @@ async def db_update_trade(trade_id: int, fields: dict) -> None:
     except Exception as exc:
         log.error(f"DB update_trade error: {exc}")
         raise
+
+
+async def db_write_decision(decision: dict) -> None:
+    """
+    Record one brain evaluation in decision_log (fire-and-forget; never raises into the
+    hot loop). Logs ALL decisions, not just taken trades, so edge measurement is free of
+    survivorship bias. outcome stays 'pending' until db_backfill_decision_outcome runs.
+    """
+    try:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute("""
+                INSERT INTO decision_log (
+                    ts, ticker, asset, strategy, mode, side,
+                    model_p_yes, market_mid_p_yes, market_edge,
+                    entry_price_cents, secs_left, would_trade
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                decision.get("ts"), decision.get("ticker"), decision.get("asset"),
+                decision.get("strategy"), decision.get("mode"), decision.get("side"),
+                decision.get("model_p_yes"), decision.get("market_mid_p_yes"),
+                decision.get("market_edge"), decision.get("entry_price_cents"),
+                decision.get("secs_left"), int(bool(decision.get("would_trade"))),
+            ))
+            await db.commit()
+    except Exception as exc:
+        # Logging must never break trading — swallow and move on.
+        log.debug("db_write_decision skipped: %s", exc)
+
+
+async def db_backfill_decision_outcome(ticker: str, outcome: str) -> None:
+    """Stamp the settled YES/NO outcome onto all pending decision_log rows for a ticker."""
+    if outcome not in ("yes", "no"):
+        return
+    try:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+            await db.execute("PRAGMA journal_mode=WAL")
+            await db.execute(
+                "UPDATE decision_log SET outcome = ? WHERE ticker = ? AND outcome = 'pending'",
+                (outcome, ticker),
+            )
+            await db.commit()
+    except Exception as exc:
+        log.debug("db_backfill_decision_outcome skipped for %s: %s", ticker, exc)
+
+
+async def db_pending_decision_tickers(older_than_iso: str, limit: int = 30) -> list:
+    """Distinct tickers in decision_log still 'pending', evaluated before older_than_iso
+    (so their window has closed). Used by the periodic settlement backfill."""
+    try:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+            cur = await db.execute(
+                "SELECT DISTINCT ticker FROM decision_log "
+                "WHERE outcome = 'pending' AND ts < ? LIMIT ?",
+                (older_than_iso, limit),
+            )
+            rows = await cur.fetchall()
+            return [r[0] for r in rows if r[0]]
+    except Exception as exc:
+        log.debug("db_pending_decision_tickers skipped: %s", exc)
+        return []
 
 
 async def db_brain_scorecard(today: str) -> dict:

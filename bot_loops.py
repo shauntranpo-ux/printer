@@ -15,7 +15,7 @@ import bot_state
 import bot_stats
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
-from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl
+from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers
 from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
@@ -28,7 +28,7 @@ from bot_strategy import (
     track_contract_price,
     _s1_multitf_momentum, _S1_ASSET_CONFIG,
     _s2_contract_direction, _S2_ASSET_CONFIG,
-    _is_quiet_hours,
+    _is_quiet_hours, _market_implied_p_yes,
 )
 from bot_risk import (
     check_daily_limits, midnight_reset, write_state_file, _log_entry,
@@ -50,6 +50,77 @@ _ET_TZ = ZoneInfo("America/New_York")
 _DAILY_REPORT_HOUR_ET = 17
 
 _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
+
+# Edge-measurement: dedup so we log at most one decision_log row per (ticker, strategy)
+# per window (each 15-min window has a unique ticker). Bounded to avoid unbounded growth.
+_logged_decisions: set = set()
+
+
+async def _log_decision(brain: dict, ticker: str, asset: str, secs_left: float,
+                        yes_ask, no_ask, config: dict, strategy: str) -> None:
+    """
+    Record one brain evaluation in decision_log (once per ticker+strategy). Only logs
+    decisions that reached the model/EV stage (signals carry model_raw_p_yes), i.e. the
+    population relevant to measuring whether the signal beats the market. Never raises.
+    """
+    try:
+        sig = brain.get("signals") or {}
+        if "model_raw_p_yes" not in sig:
+            return  # gate-stage skip (time/dist/etc.) — no model opinion to score
+        key = (ticker, strategy)
+        if key in _logged_decisions:
+            return
+        if len(_logged_decisions) > 5000:
+            _logged_decisions.clear()
+        _logged_decisions.add(key)
+
+        side = brain.get("side")
+        mkt_p_side = sig.get("mkt_p")
+        market_mid_p_yes = _market_implied_p_yes(yes_ask, no_ask)
+        entry_price = yes_ask if side == "yes" else no_ask
+        await db_write_decision({
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "ticker": ticker, "asset": asset, "strategy": strategy,
+            "mode": config.get("mode", "paper"), "side": side,
+            "model_p_yes": sig.get("model_raw_p_yes"),
+            "market_mid_p_yes": market_mid_p_yes,
+            "market_edge": sig.get("market_edge"),
+            "entry_price_cents": entry_price,
+            "secs_left": secs_left,
+            "would_trade": brain.get("action") == "trade",
+        })
+    except Exception as exc:
+        log.debug("_log_decision skipped (%s/%s): %s", ticker, strategy, exc)
+
+
+_last_decision_backfill_ts: float = 0.0
+
+
+async def _backfill_pending_decisions(session) -> None:
+    """
+    Fetch official settlement results for pending decision_log tickers — including ones we
+    never traded — so SKIPPED decisions can be scored (this is what makes the edge report
+    free of survivorship bias). Bounded per call; only touches tickers whose window closed.
+    """
+    try:
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=16)).isoformat()
+        tickers = await db_pending_decision_tickers(cutoff, limit=25)
+        for _t in tickers:
+            try:
+                _path = f"/markets/{_t}"
+                async with session.get(
+                    bot_state.KALSHI_BASE_URL + _path,
+                    headers=kalshi_headers("GET", _path),
+                    timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
+                ) as _resp:
+                    _mdata = await _resp.json()
+                _res = (_mdata.get("market") or _mdata).get("result")
+                if _res in ("yes", "no"):
+                    await db_backfill_decision_outcome(_t, _res)
+            except Exception as _exc:
+                log.debug("decision backfill fetch failed for %s: %s", _t, _exc)
+    except Exception as exc:
+        log.debug("_backfill_pending_decisions skipped: %s", exc)
 
 _prev_quiet_nb: bool = False
 _prev_quiet_main: bool = False
@@ -309,6 +380,10 @@ async def handle_ready_phase(
                      asset=asset)
     # S1: EMA momentum per-asset strategy (different direction + gates from S2)
     brain_s1 = strategy_brain_s1(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)
+
+    # Edge-measurement: log both brains' decisions (once per ticker) for offline scoring.
+    await _log_decision(brain, ticker, asset, secs_left, yes_ask, no_ask, config, "strategy2")
+    await _log_decision(brain_s1, ticker, asset, secs_left, yes_ask, no_ask, config, "strategy1")
 
     await _execute_s1_trade(
         session, brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
@@ -697,6 +772,10 @@ async def handle_locked_phase(
 
         _exit_reason = "expiry" if _settled_official else "expiry_estimated"
         log.info(f"{ticker}: result={market_result!r} ({'official' if _settled_official else 'ESTIMATED'}) → {outcome}")
+        # Edge-measurement: stamp the absolute YES/NO settlement onto this ticker's
+        # decision_log rows (the periodic backfill covers skipped/untraded tickers).
+        _settle_side = market_result if _settled_official else ("yes" if btc_price > pos["strike"] else "no")
+        await db_backfill_decision_outcome(ticker, _settle_side)
         exit_price = 100 if outcome == "win" else 0
         _entry_p = pos["entry_price_cents"] / 100.0
         _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
@@ -1171,6 +1250,12 @@ async def main_loop() -> None:
                         except Exception as _oe:
                             log.error("Periodic orphan settlement error: %s", _oe, exc_info=True)
                         _last_orphan_settle_ts = time.time()
+
+                # Periodic edge-measurement backfill: score skipped/untraded decisions.
+                global _last_decision_backfill_ts
+                if time.time() - _last_decision_backfill_ts >= 120:
+                    await _backfill_pending_decisions(session)
+                    _last_decision_backfill_ts = time.time()
 
                 await _send_brain_scorecard()
                 _now_et = datetime.now(_ET_TZ)
