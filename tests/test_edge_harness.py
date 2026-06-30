@@ -71,6 +71,32 @@ def test_trade_amount_clamped_to_25(tmp_path, monkeypatch):
     assert cfg["trade_amount_dollars"] == 25.0, "per-trade clip must be hard-capped at $25"
 
 
+async def test_measurement_flag_disables_decision_logging(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path, monkeypatch)
+    import bot_loops
+    bot_loops._logged_decisions.clear()
+    brain = {"action": "skip", "side": "yes", "above": True,
+             "signals": {"model_raw_p_yes": 0.6, "mkt_p": 0.5, "market_edge": 0.1}}
+    # measurement_enabled=False -> nothing logged
+    await bot_loops._log_decision(brain, "KX-OFF", "ETH", 300, 45, 55,
+                                  {"measurement_enabled": False}, "strategy1")
+    conn = sqlite3.connect(bot_state._DB_FILE)
+    assert conn.execute("SELECT COUNT(*) FROM decision_log").fetchone()[0] == 0
+    conn.close()
+    # measurement_enabled=True -> one row
+    await bot_loops._log_decision(brain, "KX-ON", "ETH", 300, 45, 55,
+                                  {"measurement_enabled": True}, "strategy1")
+    conn = sqlite3.connect(bot_state._DB_FILE)
+    assert conn.execute("SELECT COUNT(*) FROM decision_log").fetchone()[0] == 1
+    conn.close()
+
+
+def test_measurement_enabled_defaults_on():
+    import inspect
+    src = inspect.getsource(bot_infra)
+    assert '"measurement_enabled": True' in src, "measurement must default on"
+
+
 def test_edge_report_math():
     from scripts.edge_report import wilson_lower, _win, _p_side, _auc, _kalshi_fee
     assert _win("yes", "yes") == 1 and _win("yes", "no") == 0

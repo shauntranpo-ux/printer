@@ -56,6 +56,11 @@ _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 # per window (each 15-min window has a unique ticker). Bounded to avoid unbounded growth.
 _logged_decisions: set = set()
 
+# Throttle the maker held-book fetch: {ticker: last_fetch_ts}. ~25s sampling of the ask path
+# is plenty for the counterfactual — avoids an extra orderbook fetch on every ~10s hold cycle.
+_maker_track_last_fetch: dict = {}
+_MAKER_TRACK_MIN_INTERVAL = 25.0
+
 
 async def _log_decision(brain: dict, ticker: str, asset: str, secs_left: float,
                         yes_ask, no_ask, config: dict, strategy: str) -> None:
@@ -65,6 +70,8 @@ async def _log_decision(brain: dict, ticker: str, asset: str, secs_left: float,
     population relevant to measuring whether the signal beats the market. Never raises.
     """
     try:
+        if not config.get("measurement_enabled", True):
+            return
         sig = brain.get("signals") or {}
         if "model_raw_p_yes" not in sig:
             return  # gate-stage skip (time/dist/etc.) — no model opinion to score
@@ -192,6 +199,7 @@ async def _record_maker_counterfactual(pos: dict, asset: str, outcome: str, conf
         log.debug("_record_maker_counterfactual skipped for %s: %s", ticker, exc)
     finally:
         bot_state._maker_track.pop(ticker, None)
+        _maker_track_last_fetch.pop(ticker, None)
 
 _prev_quiet_nb: bool = False
 _prev_quiet_main: bool = False
@@ -846,9 +854,10 @@ async def handle_locked_phase(
         # Edge-measurement: stamp the absolute YES/NO settlement onto this ticker's
         # decision_log rows (the periodic backfill covers skipped/untraded tickers).
         _settle_side = market_result if _settled_official else ("yes" if btc_price > pos["strike"] else "no")
-        await db_backfill_decision_outcome(ticker, _settle_side)
-        _record_settlement_basis(ticker, asset, pos["strike"], btc_price, market_result, _settled_official)
-        await _record_maker_counterfactual(pos, asset, outcome, config)
+        if config.get("measurement_enabled", True):
+            await db_backfill_decision_outcome(ticker, _settle_side)
+            _record_settlement_basis(ticker, asset, pos["strike"], btc_price, market_result, _settled_official)
+            await _record_maker_counterfactual(pos, asset, outcome, config)
         exit_price = 100 if outcome == "win" else 0
         _entry_p = pos["entry_price_cents"] / 100.0
         _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
@@ -899,15 +908,20 @@ async def handle_locked_phase(
     # Maker counterfactual instrumentation: record the held-book path (yes/no ask) so we can
     # compute at settlement whether a passive maker order posted at entry would have filled.
     # Measurement only — no execution change. See _record_maker_counterfactual.
-    try:
-        _hb = await fetch_orderbook(session, ticker, None)
-        if _hb is not None:
-            _ya, _na = _hb.get("best_yes_ask"), _hb.get("best_no_ask")
-            if _ya is not None and _na is not None:
-                bot_state._maker_track.setdefault(ticker, deque(maxlen=120)).append(
-                    (time.time(), float(_ya), float(_na)))
-    except Exception as _mexc:
-        log.debug("maker-track fetch failed for %s: %s", ticker, _mexc)
+    # Gated by config + throttled to ~once per 25s/ticker so it can't load the trading loop.
+    if config.get("measurement_enabled", True):
+        _now_mt = time.time()
+        if _now_mt - _maker_track_last_fetch.get(ticker, 0.0) >= _MAKER_TRACK_MIN_INTERVAL:
+            _maker_track_last_fetch[ticker] = _now_mt
+            try:
+                _hb = await fetch_orderbook(session, ticker, None)
+                if _hb is not None:
+                    _ya, _na = _hb.get("best_yes_ask"), _hb.get("best_no_ask")
+                    if _ya is not None and _na is not None:
+                        bot_state._maker_track.setdefault(ticker, deque(maxlen=120)).append(
+                            (_now_mt, float(_ya), float(_na)))
+            except Exception as _mexc:
+                log.debug("maker-track fetch failed for %s: %s", ticker, _mexc)
 
 
 # ══════════════════════════════════════════════════════════════════════════════════
@@ -1340,7 +1354,8 @@ async def main_loop() -> None:
                 # Periodic edge-measurement backfill: score skipped/untraded decisions.
                 global _last_decision_backfill_ts
                 if time.time() - _last_decision_backfill_ts >= 120:
-                    await _backfill_pending_decisions(session)
+                    if read_config().get("measurement_enabled", True):
+                        await _backfill_pending_decisions(session)
                     _last_decision_backfill_ts = time.time()
 
                 await _send_brain_scorecard()

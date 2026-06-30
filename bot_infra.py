@@ -122,6 +122,9 @@ def _init_config() -> None:
         "min_ev_base": 8,
         "kalshi_fee_per_contract_cents": 7,
         "preflight_override": False,
+        # Edge-measurement instrumentation (decision_log / maker_log / settlement basis).
+        # Default on; set false to disable all measurement if it ever pressures rate limits.
+        "measurement_enabled": True,
     }
 
     if os.path.exists(bot_state._CONFIG_FILE):
