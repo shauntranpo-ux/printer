@@ -630,6 +630,7 @@ tbody tr:last-child td{border-bottom:none;}
       <button class="tab" data-tab="XRP"><span class="dot" data-sym="XRP"></span>XRP</button>
       <button class="tab" data-tab="DOGE"><span class="dot" data-sym="DOGE"></span>DOGE</button>
       <button class="tab" data-tab="trades">Trades</button>
+      <button class="tab" data-tab="edge">Edge</button>
       <button class="tab" data-tab="settings">Settings</button>
     </div>
 
@@ -862,6 +863,34 @@ tbody tr:last-child td{border-bottom:none;}
         </tr></thead>
         <tbody></tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════════════ EDGE PANEL (harness / GATE-1) ═════════════════ -->
+<div class="panel" id="panel-edge">
+  <div style="display:flex;flex-direction:column;gap:14px;padding:8px 0;">
+    <div class="card" id="edge-verdict-card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Do we have an edge? &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">GATE&nbsp;1 · decision_log</span></div></div>
+      <div id="edge-verdict" style="font-family:'Montserrat';font-weight:700;font-size:15px;padding:6px 2px;">—</div>
+      <div id="edge-counts" style="font-size:11px;color:var(--ink-3);margin-top:6px;">Collecting paper data…</div>
+      <div class="meter-bar" style="margin-top:8px;"><div id="edge-progress" class="up" style="width:0%"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Calibration &amp; net edge · per strategy</div></div>
+      <div style="overflow-x:auto;"><table style="width:100%;"><thead><tr>
+        <th>Strategy</th><th>Picks</th><th>Win%</th><th>Model P</th><th>Mkt P</th>
+        <th>Brier M/K</th><th>Net $/ct</th><th>Wilson LB</th>
+      </tr></thead><tbody id="edge-decisions"></tbody></table></div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Net $/ct = realized P&amp;L per contract after fees on the gate's picks. Wilson LB &gt; 0 = statistically positive edge.</div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Maker vs taker &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">maker_log · counterfactual</span></div></div>
+      <div id="edge-maker-verdict" style="font-family:'Montserrat';font-weight:700;font-size:13px;padding:4px 2px;">—</div>
+      <div style="overflow-x:auto;margin-top:6px;"><table style="width:100%;"><thead><tr>
+        <th>Strategy</th><th>n</th><th>Fill%</th><th>Taker $/ct</th><th>Maker $/ct</th><th>Δ $/ct</th><th>Δ SE</th>
+      </tr></thead><tbody id="edge-maker"></tbody></table></div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Maker $/ct counts an unfilled order as $0 (no trade). Build resting-order execution only once Δ clears ~2·SE.</div>
     </div>
   </div>
 </div>
@@ -1732,12 +1761,81 @@ function switchTab(tab){
     document.getElementById('panel-market').classList.add('active');
     renderMarketPanel(tab);
     fetchMarketDetail(tab);
+  } else if(tab==='edge'){
+    _activeMarketSym = null;
+    document.getElementById('panel-edge').classList.add('active');
+    fetchEdge();
   } else if(tab==='settings'){
     _activeMarketSym = null;
     document.getElementById('panel-settings').classList.add('active');
     fetchSettingsConfig();
   }
   window.scrollTo(0,0);
+}
+
+// ── Edge panel (harness / GATE-1) ───────────────────────────────────────────
+function _edgeCell(v, nd, pct){
+  if(v==null) return '<span class="muted">—</span>';
+  const x = pct ? (v*100).toFixed(nd)+'%' : v.toFixed(nd);
+  return x;
+}
+function renderEdge(d){
+  const dec = (d&&d.decisions)||{}, mk=(d&&d.maker)||{}, c=(d&&d.counts)||{logged:0,settled:0,pending:0};
+  // verdict headline (color-coded)
+  const vEl = document.getElementById('edge-verdict');
+  const v = dec.verdict || 'insufficient data';
+  let col = 'var(--amber)';
+  if(/net positive/.test(v)) col='var(--up)';
+  else if(/no edge/.test(v)) col='var(--down)';
+  vEl.textContent = v; vEl.style.color = col;
+  document.getElementById('edge-counts').textContent =
+    `${c.logged} decisions logged · ${c.settled} settled · ${c.pending} pending`;
+  const pct = Math.min(100, Math.round((c.settled/200)*100));
+  const pb = document.getElementById('edge-progress'); pb.style.width = pct+'%';
+  pb.className = pct>=100 ? 'up' : 'amber';
+  // per-strategy decisions table
+  const rows = [];
+  const bs = dec.by_strategy||{};
+  const keys = Object.keys(bs).sort();
+  if(dec.overall) keys.push('__overall__');
+  for(const k of keys){
+    const g = k==='__overall__' ? dec.overall : bs[k];
+    if(!g) continue;
+    const lbl = k==='__overall__' ? '<b>ALL</b>' : (k==='strategy1'?'S1':k==='strategy2'?'S2':k);
+    const netCls = g.net_pnl_per_contract>0?'up':g.net_pnl_per_contract<0?'down':'muted';
+    const lbCls  = g.wilson_lb_pnl>0?'up':'down';
+    rows.push(`<tr><td>${lbl}</td><td>${g.n}</td><td>${_edgeCell(g.win_rate,1,true)}</td>
+      <td>${_edgeCell(g.mean_model_p,2)}</td><td>${_edgeCell(g.mean_market_p,2)}</td>
+      <td>${_edgeCell(g.brier_model,3)} / ${_edgeCell(g.brier_market,3)}</td>
+      <td class="${netCls}">${_edgeCell(g.net_pnl_per_contract,4)}</td>
+      <td class="${lbCls}">${_edgeCell(g.wilson_lb_pnl,4)}</td></tr>`);
+  }
+  document.getElementById('edge-decisions').innerHTML = rows.join('') ||
+    '<tr><td colspan="8" class="muted">No settled picks yet.</td></tr>';
+  // maker
+  const mvEl = document.getElementById('edge-maker-verdict');
+  const mv = mk.verdict || 'insufficient data';
+  mvEl.textContent = mv;
+  mvEl.style.color = /clearly better/.test(mv)?'var(--up)':/not better/.test(mv)?'var(--down)':'var(--amber)';
+  const mrows=[]; const mbs=mk.by_strategy||{}; const mkeys=Object.keys(mbs).sort();
+  if(mk.overall) mkeys.push('__overall__');
+  for(const k of mkeys){
+    const g = k==='__overall__'?mk.overall:mbs[k];
+    if(!g) continue;
+    const lbl = k==='__overall__'?'<b>ALL</b>':(k==='strategy1'?'S1':k==='strategy2'?'S2':k);
+    const dCls = g.delta>0?'up':g.delta<0?'down':'muted';
+    mrows.push(`<tr><td>${lbl}</td><td>${g.n}</td><td>${_edgeCell(g.fill_rate,1,true)}</td>
+      <td>${_edgeCell(g.taker_mean,4)}</td><td>${_edgeCell(g.maker_strategy_mean,4)}</td>
+      <td class="${dCls}">${_edgeCell(g.delta,4)}</td><td>${_edgeCell(g.delta_se,4)}</td></tr>`);
+  }
+  document.getElementById('edge-maker').innerHTML = mrows.join('') ||
+    '<tr><td colspan="7" class="muted">No maker samples yet.</td></tr>';
+}
+async function fetchEdge(){
+  try{
+    const d = await fetch('/api/edge').then(r=>r.json());
+    renderEdge(d);
+  }catch(e){}
 }
 
 // ── Settings panel ────────────────────────────────────────────────────────────
@@ -2189,6 +2287,7 @@ setInterval(fetchMarketState, 30_000);
 setInterval(fetchEventLog,    30_000);
 setInterval(fetchPnl,         60_000);
 setInterval(fetchPnlS1,       60_000);
+setInterval(()=>{ if(document.getElementById('panel-edge')?.classList.contains('active')) fetchEdge(); }, 60_000);
 </script>
 </body>
 </html>
