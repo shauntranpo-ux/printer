@@ -29,13 +29,19 @@ def _stats(rows):
     if n == 0:
         return None
     filled = sum(1 for r in rows if r["filled"])
-    taker = [r["taker_pnl"] for r in rows if r["taker_pnl"] is not None]
-    # maker strategy: realized maker_pnl when filled, else 0 (no trade)
-    maker_strat = [(r["maker_pnl"] if (r["filled"] and r["maker_pnl"] is not None) else 0.0)
-                   for r in rows]
-    maker_filled = [r["maker_pnl"] for r in rows if r["filled"] and r["maker_pnl"] is not None]
-    taker_mean = sum(taker) / len(taker) if taker else 0.0
-    ms_mean = sum(maker_strat) / n
+    # Build aligned per-row (taker, maker-strategy) pairs in a SINGLE pass so the paired-diff
+    # SE is never computed on misaligned lists (taker_pnl can be NULL on a malformed row).
+    # maker strategy: realized maker_pnl when filled, else 0 (an unfilled order = no trade).
+    pairs, maker_filled = [], []
+    for r in rows:
+        ms = r["maker_pnl"] if (r["filled"] and r["maker_pnl"] is not None) else 0.0
+        if r["taker_pnl"] is not None:
+            pairs.append((r["taker_pnl"], ms))
+        if r["filled"] and r["maker_pnl"] is not None:
+            maker_filled.append(r["maker_pnl"])
+    m = len(pairs)
+    taker_mean = (sum(t for t, _ in pairs) / m) if m else 0.0
+    ms_mean = (sum(s for _, s in pairs) / m) if m else 0.0
     delta = ms_mean - taker_mean
 
     def _se(xs, mean):
@@ -48,7 +54,7 @@ def _stats(rows):
         "n": n, "fill_rate": filled / n,
         "taker_mean": taker_mean, "ms_mean": ms_mean, "delta": delta,
         "maker_filled_mean": (sum(maker_filled) / len(maker_filled)) if maker_filled else float("nan"),
-        "delta_se": _se([m - t for m, t in zip(maker_strat, taker)], delta) if taker else float("nan"),
+        "delta_se": _se([s - t for t, s in pairs], delta) if m else float("nan"),
     }
 
 

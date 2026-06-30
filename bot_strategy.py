@@ -644,14 +644,14 @@ def strategy_brain_s1(
     # raw win_prob is P(traded side wins); convert to P(YES) for the anchoring helper.
     _raw_p_yes = win_prob if side == "yes" else (1.0 - win_prob)
     _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
-    _max_edge = float(cfg.get("max_model_edge", 0.08))
+    _max_edge = float(cfg.get("max_model_edge", config.get("max_model_edge", 0.08)))
     _anchored = _anchored_ev(side, yes_ask, no_ask, _raw_p_yes, _max_edge, _fee_rate)
     if _anchored is None:
         return _make_skip(side, "s1_no_market_data", abs_pct, mins_left, variant="strategy1")
     ev, _model_p_side, _mkt_p_side, _market_edge = _anchored
     win_prob = _model_p_side  # report the shrunk (honest) probability downstream
-    _min_market_edge = float(cfg.get("min_market_edge", 0.035))
-    _min_ev = float(cfg.get("min_ev_anchored", 0.025))
+    _min_market_edge = float(cfg.get("min_market_edge", config.get("min_market_edge", 0.035)))
+    _min_ev = float(cfg.get("min_ev_anchored", config.get("min_ev_anchored", 0.025)))
     if ev < _min_ev or _market_edge < _min_market_edge:
         return {
             "action": "skip", "side": side,
@@ -665,7 +665,7 @@ def strategy_brain_s1(
             "win_prob": float(win_prob), "mom_label": direction,
             "mom_pct": float(momentum_pct or 0.0),
             "vel_signal": "neutral",
-            "raw_p_yes": float(win_prob) if side == "yes" else float(1.0 - win_prob),
+            "raw_p_yes": float(_raw_p_yes),  # pre-shrink raw model P(YES) — see _anchored_ev
             "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
             "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
             "strategy_variant": "strategy1",
@@ -695,7 +695,7 @@ def strategy_brain_s1(
         "win_prob": float(win_prob), "mom_label": direction,
         "mom_pct": float(momentum_pct or 0.0),
         "vel_signal": "neutral",
-        "raw_p_yes": float(win_prob) if side == "yes" else float(1.0 - win_prob),
+        "raw_p_yes": float(_raw_p_yes),  # pre-shrink raw model P(YES) — see _anchored_ev
         "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
         "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
         "strategy_variant": "strategy1",
@@ -983,14 +983,14 @@ def strategy_brain_s2(
     # EV gate — anchored to the de-vigged market mid (shrinkage toward market prior).
     _raw_p_yes = win_prob if side == "yes" else (1.0 - win_prob)
     _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
-    _max_edge = float(cfg.get("max_model_edge", 0.08))
+    _max_edge = float(cfg.get("max_model_edge", config.get("max_model_edge", 0.08)))
     _anchored = _anchored_ev(side, yes_ask, no_ask, _raw_p_yes, _max_edge, _fee_rate)
     if _anchored is None:
         return _make_skip(side, "s2_no_market_data", abs_pct, mins_left, variant="strategy2")
     ev, _model_p_side, _mkt_p_side, _market_edge = _anchored
     win_prob = _model_p_side  # report the shrunk (honest) probability downstream
-    _min_market_edge = float(cfg.get("min_market_edge", 0.035))
-    _min_ev = float(cfg.get("min_ev_anchored", 0.025))
+    _min_market_edge = float(cfg.get("min_market_edge", config.get("min_market_edge", 0.035)))
+    _min_ev = float(cfg.get("min_ev_anchored", config.get("min_ev_anchored", 0.025)))
     _obi_str = f"{obi_val:.2f}" if obi_val is not None else "n/a"
     if ev < _min_ev or _market_edge < _min_market_edge:
         return {
@@ -1004,7 +1004,7 @@ def strategy_brain_s2(
                         "obi": obi_val, "abs_pct": abs_pct, "strike": strike},
             "win_prob": float(win_prob), "mom_label": direction, "mom_pct": 0.0,
             "vel_signal": direction,
-            "raw_p_yes": float(win_prob) if side == "yes" else float(1.0 - win_prob),
+            "raw_p_yes": float(_raw_p_yes),  # pre-shrink raw model P(YES) — see _anchored_ev
             "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
             "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
             "strategy_variant": "strategy2", "strategy_version": bot_state._S2_VERSION,
@@ -1034,7 +1034,7 @@ def strategy_brain_s2(
         },
         "win_prob": float(win_prob), "mom_label": direction, "mom_pct": 0.0,
         "vel_signal": direction,
-        "raw_p_yes": float(win_prob) if side == "yes" else float(1.0 - win_prob),
+        "raw_p_yes": float(_raw_p_yes),  # pre-shrink raw model P(YES) — see _anchored_ev
         "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
         "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
         "strategy_variant": "strategy2", "strategy_version": bot_state._S2_VERSION,

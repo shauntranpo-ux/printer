@@ -1318,7 +1318,8 @@ def api_edge():
             picks = conn.execute(
                 "SELECT strategy, side, model_p_yes, market_mid_p_yes, entry_price_cents, outcome "
                 "FROM decision_log WHERE outcome IN ('yes','no') AND would_trade=1 "
-                "AND model_p_yes IS NOT NULL AND side IS NOT NULL").fetchall()
+                "AND model_p_yes IS NOT NULL AND side IS NOT NULL "
+                "AND entry_price_cents IS NOT NULL").fetchall()
         except sqlite3.OperationalError:
             picks = []
         groups = {}

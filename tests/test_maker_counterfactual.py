@@ -91,6 +91,32 @@ async def test_never_raises_on_missing_track(tmp_path, monkeypatch):
     assert row[0] == 0
 
 
+async def test_counterfactual_skips_when_no_entry_ts(tmp_path, monkeypatch):
+    _use_tmp_db(tmp_path, monkeypatch)
+    _track("KX-NOTS", [(100.0, 43.0, 58.0)])
+    pos = {"ticker": "KX-NOTS", "side": "yes", "entry_price_cents": 45.0,
+           "entry_ts": 0.0, "contracts": 50}  # orphan-recovered: no entry_ts
+    await bot_loops._record_maker_counterfactual(pos, "ETH", "win", {"mode": "paper"})
+    conn = sqlite3.connect(bot_state._DB_FILE)
+    cnt = conn.execute("SELECT COUNT(*) FROM maker_log").fetchone()[0]
+    conn.close()
+    assert cnt == 0, "must not log a sample when entry_ts is unreliable (would over-count fills)"
+
+
+def test_stats_aligns_pairs_when_taker_pnl_none():
+    from scripts.maker_report import _stats
+    rows = [
+        {"filled": 1, "taker_pnl": -0.20, "maker_pnl": 0.55},
+        {"filled": 0, "taker_pnl": None, "maker_pnl": None},   # malformed: taker None
+        {"filled": 1, "taker_pnl": 0.50, "maker_pnl": 0.51},
+    ]
+    s = _stats(rows)  # must not crash or misalign
+    assert s["n"] == 3
+    # taker/maker means computed over the 2 rows with known taker_pnl, aligned
+    assert abs(s["taker_mean"] - (-0.20 + 0.50) / 2) < 1e-9
+    assert abs(s["ms_mean"] - (0.55 + 0.51) / 2) < 1e-9
+
+
 def test_maker_fee_is_quarter_of_taker():
     # maker fee 0.0175*p*(1-p) is 25% of the 0.07 taker fee at the same price
     assert abs(bot_loops._maker_fee_frac(50.0) - 0.0175 * 0.25) < 1e-9

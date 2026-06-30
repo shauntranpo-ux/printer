@@ -176,6 +176,8 @@ async def _record_maker_counterfactual(pos: dict, asset: str, outcome: str, conf
         entry_ask = float(pos.get("entry_price_cents") or 0.0)
         entry_ts = float(pos.get("entry_ts") or 0.0)
         contracts = int(pos.get("contracts") or 0)
+        if entry_ts <= 0:
+            return  # no reliable entry time (e.g. orphan-recovered pos) — don't log a bad sample
         maker_price = entry_ask - 1.0                 # 1c inside the ask (passive)
         idx = 1 if side == "yes" else 2               # held-book tuple (ts, yes_ask, no_ask)
         filled = False
@@ -748,6 +750,15 @@ async def handle_ready_phase(
         "order_id": order_id,
         "asset": asset,
     }
+    # Seed the maker held-book track at entry so the counterfactual covers the entry→lock
+    # window (handle_locked_phase only samples post-lock). Anchors t0 = entry_ts.
+    if config.get("measurement_enabled", True):
+        try:
+            bot_state._maker_track.setdefault(ticker, deque(maxlen=120)).append(
+                (_entry_ts, float(yes_ask), float(no_ask)))
+            _maker_track_last_fetch[ticker] = _entry_ts
+        except Exception:
+            pass
     if _use_state:
         state["position"] = _new_position
         state["phase"] = "LOCKED"
