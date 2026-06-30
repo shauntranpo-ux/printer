@@ -5,8 +5,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from bot_strategy import _s1_certainty_win_prob
 
 
-def test_gbm_floor_is_50_pct_not_52():
+def test_gbm_floor_is_50_pct_not_52(monkeypatch):
     """At zero distance from strike, GBM cert is 0.50 — floor must not artificially boost it."""
+    # Pin the time-of-day vol multiplier so the assertion isn't flaky by wall-clock ET
+    # (overnight 0.8x shrinks sigma and nudges the near-zero-distance cert just over 0.51).
+    import bot_strategy
+    monkeypatch.setattr(bot_strategy, "_time_of_day_vol_multiplier", lambda: 1.0)
     result = _s1_certainty_win_prob(dist_pct=0.0001, secs_left=450.0, asset="ETH")
     assert result <= 0.51, (
         f"GBM at near-zero distance must return ~0.50 (no edge). "

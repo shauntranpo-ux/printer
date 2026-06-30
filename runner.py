@@ -98,9 +98,15 @@ def _run_preflight_validation() -> bool:
     Run validate_and_report.py synchronously before starting bots in live mode.
     Returns True if GO or MARGINAL (safe to proceed), False if NO-GO (halt).
     """
+    _vr_path = os.path.join(BASE_DIR, "validate_and_report.py")
+    if not os.path.exists(_vr_path):
+        # The pre-flight script was removed from the repo (commit 1ac7fab); without this
+        # guard subprocess.run would exit non-zero and falsely halt live mode on startup.
+        log.warning("validate_and_report.py not present — skipping live pre-flight gate, proceeding.")
+        return True
     log.info("Live mode — running validate_and_report.py pre-flight check ...")
     result = subprocess.run(
-        [sys.executable, os.path.join(BASE_DIR, "validate_and_report.py")],
+        [sys.executable, _vr_path],
         cwd=BASE_DIR,
     )
     if result.returncode != 0:

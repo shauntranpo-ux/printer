@@ -563,7 +563,7 @@ async def handle_ready_phase(
     _vel_signal = brain.get("vel_signal", "neutral")
     _abs_pct    = brain.get("abs_pct", abs((btc_price - strike) / strike) if strike else 0.0)
     # Time score: less time remaining = outcome more certain = higher score (0→20)
-    _time_score = round(max(0.0, min(20.0, 20.0 * (1.0 - secs_left / (13 * 60)))), 1)
+    _time_score = round(max(0.0, min(20.0, 20.0 * (1.0 - secs_left / (15 * 60)))), 1)
     # Distance score: farther from strike = higher score (0→30, caps at 0.5%)
     _dist_score = round(min(30.0, _abs_pct * 100.0 / 0.5 * 30.0), 1)
     _brain_rv       = brain.get("_rv")
@@ -1120,7 +1120,9 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
                         continue
                     _pa_st = bot_state._asset_states.get(_pa)
                     if _pa_st is None:
-                        bot_state._asset_states[_pa] = {"phase": "PAUSED", "market": None, "eval": {}}
+                        # Use the full state shape so order_attempted/position exist — a bare
+                        # stub caused a KeyError on st["order_attempted"] after re-enable.
+                        bot_state._asset_states[_pa] = {**_init_asset_state(_pa), "phase": "PAUSED", "eval": {}}
                     elif _pa_st.get("phase") != "LOCKED":
                         _pa_st["phase"] = "PAUSED"
                 # Still process any LOCKED assets so they can settle

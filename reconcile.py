@@ -201,7 +201,11 @@ async def classify_pending_trade(
     if matching:
         _prices = [extract_fill_price_cents(f, side) for f in matching]
         _valid_prices = [p for p in _prices if p is not None]
-        avg_fill = sum(_valid_prices) / len(_valid_prices) if _valid_prices else 0
+        if not _valid_prices:
+            # No usable fill price → can't compute PnL (avg_fill=0 would mislabel a loss
+            # as a break-even "win"). Leave pending and retry rather than booking garbage.
+            return {"action": "leave_pending", "reason": "fills found but no valid fill price"}
+        avg_fill = sum(_valid_prices) / len(_valid_prices)
         # Winning side settles at 100 cents, losing side at 0.
         settle = 100 if (
             (side == "yes" and resolution == "resolved_yes") or
@@ -212,7 +216,9 @@ async def classify_pending_trade(
             "action":           "mark_filled",
             "exit_price_cents": settle,
             "pnl_dollars":      round(pnl, 2),
-            "outcome":          "win" if pnl >= 0 else "loss",
+            # Outcome reflects whether the contract resolved in our favor (matches live
+            # settlement semantics), not the PnL sign.
+            "outcome":          "win" if settle == 100 else "loss",
             "fill_confirmed":   True,
         }
 

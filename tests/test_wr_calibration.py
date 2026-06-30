@@ -61,7 +61,10 @@ def test_wr_buckets_isolated_by_asset():
         eth_wr = _get_empirical_wr("ETH", 0.006, 4.0, "live", min_samples=20)
         btc_wr = _get_empirical_wr("BTC", 0.006, 4.0, "live", min_samples=20)
         assert eth_wr is not None and eth_wr > 0.9, f"ETH should be high WR: {eth_wr}"
-        assert btc_wr is not None and btc_wr < 0.1, f"BTC should be low WR: {btc_wr}"
+        # BTC's bucket is all losses → Wilson LB is far below breakeven, so _get_empirical_wr
+        # correctly returns None (it only surfaces a WR statistically PROVEN above breakeven).
+        # That ETH stays high while BTC is gated out also proves the buckets are isolated.
+        assert btc_wr is None, f"BTC (all losses) must be gated to None, got: {btc_wr}"
     finally:
         bot_state._DB_FILE = orig
         os.unlink(db_path)

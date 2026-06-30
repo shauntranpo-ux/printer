@@ -1259,7 +1259,17 @@ def api_edge():
     Reuses the exact math from scripts/edge_report.py and scripts/maker_report.py.
     Always returns HTTP 200 with an 'insufficient data' shape when tables are empty/missing.
     """
-    from scripts.edge_report import wilson_lower, _win, _p_side, _kalshi_fee
+    _empty = {
+        "decisions": {"by_strategy": {}, "overall": None, "verdict": "insufficient data"},
+        "maker": {"by_strategy": {}, "overall": None, "verdict": "insufficient data"},
+        "counts": {"logged": 0, "settled": 0, "pending": 0},
+    }
+    try:
+        from scripts.edge_report import wilson_lower, _win, _p_side, _kalshi_fee
+    except Exception as exc:
+        # scripts/ isn't part of the "15 live flat files" contract — degrade to 200, not 500.
+        log.warning("api_edge: edge_report import unavailable: %s", exc)
+        return jsonify(_empty)
     try:
         from scripts.maker_report import _stats as _maker_stats
     except Exception:

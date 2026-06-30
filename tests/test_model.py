@@ -1,5 +1,7 @@
 import numpy as np
 import pytest
+
+pytest.importorskip("sklearn")  # strategies/strategy_a is non-live and needs sklearn; skip if absent
 from strategy_a.model import StrategyAModel
 
 _FEES = {"kalshi": {"taker_fee_rate": 0.03, "maker_fee_rate": 0.00}, "safety_margin": 0.005}
