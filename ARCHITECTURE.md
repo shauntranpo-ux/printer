@@ -67,7 +67,19 @@ runner.py
 Raw sqlite3. **No ORM. No Alembic migrations.**
 
 - Schema defined in: `bot_infra.py:158` (`init_db()`)
-- Tables: `trades`, `market_log`, `daily_summary`, `stress_test_results`
+- Tables: `trades`, `market_log`, `daily_summary`, `stress_test_results`, `wr_calibration`,
+  `decision_log`, `maker_log`
+  - **`decision_log`** — the edge-measurement harness. One row per brain evaluation that
+    reached the model/EV stage (`would_trade` = whether the gate would trade), with
+    `model_p_yes`, `market_mid_p_yes`, `market_edge`, settlement `outcome` backfilled at
+    expiry. Logs ALL evaluated decisions (not just taken trades) so signal edge is measured
+    free of survivorship bias. Written by `bot_loops._log_decision`; scored by
+    `scripts/edge_report.py` and `GET /api/edge`.
+  - **`maker_log`** — the maker-vs-taker counterfactual (measurement only, no execution).
+    Per settled trade: whether a passive maker order would have filled and its P&L vs the
+    realized taker fill. Written by `bot_loops._record_maker_counterfactual`; summarized by
+    `scripts/maker_report.py` and `GET /api/edge`.
+  - All harness writes are gated by the `measurement_enabled` config flag (default true).
 - Connection in `bot_infra.py` uses `sqlite3.connect(bot_state._DB_FILE)` and `aiosqlite` for async reads.
 - Dashboard queries use `sqlite3.connect()` directly in `server.py:159` (`get_db()`).
 - The `alembic/` directory at repo root belongs to the abandoned rewrite and **does not run**.
@@ -81,6 +93,24 @@ Raw sqlite3. **No ORM. No Alembic migrations.**
 Written to disk at startup if missing (`bot_infra.py:~131`). Edited via dashboard `/api/config` POST (`server.py:299`). Not committed to git (`.gitignore`).
 
 Key fields: `bot_enabled`, `mode` (paper|demo|live), `trade_amount_dollars`, `daily_loss_limit_dollars`, `enabled_assets`.
+
+Config normalization in `_init_config()` enforces (current behavior):
+- **`trade_amount_dollars`** is hard-clamped to **≤ $25** (per-trade clip cap).
+- **`daily_loss_limit_dollars`** defaults to **0 = no daily loss cap** (the bot does not halt
+  itself for the day). A positive value re-enables the cap (clamped ≤150); `check_daily_limits`
+  and the `bot_loops` kill-switch both treat a non-positive limit as disabled.
+- **`measurement_enabled`** (default **true**) gates all edge-measurement instrumentation
+  (`decision_log` / `maker_log` writes, held-book tracking, periodic settlement backfill).
+- EV-gate tuning: `max_model_edge`, `min_market_edge`, `min_ev_anchored` (the market-anchored
+  gate, `bot_strategy._anchored_ev`) are read per-asset from `s1_config`/`s2_config[asset]` and
+  fall back to a top-level config value, then to conservative defaults (0.08 / 0.035 / 0.025).
+
+### Dashboard API (additions)
+
+`GET /api/edge` (`server.py`) surfaces the harness for the dashboard **Edge** tab: per-strategy
+calibration + net-of-fee edge with Wilson lower bounds and a GATE-1 verdict (from `decision_log`),
+plus the maker-vs-taker counterfactual (from `maker_log`). Reuses the math in
+`scripts/edge_report.py` and `scripts/maker_report.py`.
 
 ### Environment Variables (runtime-verified)
 
