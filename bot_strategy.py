@@ -68,6 +68,78 @@ def _realized_vol(prices: list, window_minutes: int = 5) -> float:
     return math.sqrt(var) if var > 0 else 0.001
 
 
+# ---------------------------------------------------------------------------
+# Market-anchored edge framework
+#
+# Root-cause fix: on efficient 15-min binary markets the contract ask ~= the
+# true probability + spread. A free-floating model probability (S1 GBM, S2
+# tanh) that ignores the market price manufactures fake edge and buys fairly
+# priced contracts. These helpers anchor every decision to the de-vigged
+# market-implied probability and only allow a *bounded*, calibrated deviation
+# from it (shrinkage toward the market prior). EV is then measured against the
+# price actually paid, net of the half-spread crossed and Kalshi fees.
+#
+# Threshold params (max_model_edge, min_market_edge, anchored min_ev) are
+# conservative defaults pending CSV calibration (see scripts/calibrate_from_csv.py).
+# ---------------------------------------------------------------------------
+
+def _kalshi_fee_frac(price_frac: float, fee_rate: float = 0.07) -> float:
+    """Kalshi per-contract fee in dollars: rate * p * (1-p). price_frac in [0,1]."""
+    p = max(0.0, min(1.0, price_frac))
+    return fee_rate * p * (1.0 - p)
+
+
+def _market_implied_p_yes(yes_ask, no_ask):
+    """
+    De-vigged market-implied P(YES) as a fraction in [0,1], from both asks (cents).
+
+    On a two-sided Kalshi book yes_bid = 100 - no_ask, so the de-vigged YES mid is
+    avg(yes_ask, 100 - no_ask). Using both asks removes the bid/ask vig. Returns
+    None when either ask is missing/non-positive (book not usable).
+    """
+    try:
+        ya = float(yes_ask)
+        na = float(no_ask)
+    except (TypeError, ValueError):
+        return None
+    if ya <= 0 or na <= 0 or ya >= 100 or na >= 100:
+        return None
+    yes_bid = 100.0 - na
+    mid = (ya + yes_bid) / 2.0
+    return max(0.0, min(1.0, mid / 100.0))
+
+
+def _anchored_ev(side, yes_ask, no_ask, raw_model_p_yes,
+                 max_edge_cap, fee_rate=0.07):
+    """
+    Shrink the model's P(YES) toward the de-vigged market mid (cap absolute
+    deviation at max_edge_cap), then compute EV against the price actually paid.
+
+    Returns (ev, model_p_side, mkt_p_side, market_edge) or None when the book is
+    unusable. market_edge = the (capped) model edge over the market mid for the
+    traded side — this, net of spread+fee, is the only honest source of EV.
+    """
+    mid_yes = _market_implied_p_yes(yes_ask, no_ask)
+    if mid_yes is None:
+        return None
+    # Shrinkage toward the market prior: the model may deviate from consensus by
+    # at most max_edge_cap. This is what kills the "0.58 model vs 0.29 market" runaway.
+    capped_p_yes = max(mid_yes - max_edge_cap,
+                       min(mid_yes + max_edge_cap, float(raw_model_p_yes)))
+    if side == "yes":
+        entry = float(yes_ask) / 100.0
+        model_p_side = capped_p_yes
+        mkt_p_side = mid_yes
+    else:
+        entry = float(no_ask) / 100.0
+        model_p_side = 1.0 - capped_p_yes
+        mkt_p_side = 1.0 - mid_yes
+    fee = _kalshi_fee_frac(entry, fee_rate)
+    ev = model_p_side - entry - fee
+    market_edge = model_p_side - mkt_p_side
+    return ev, model_p_side, mkt_p_side, market_edge
+
+
 def _make_skip(side: str, reason: str, abs_pct: float, mins_left: float,
                rv: float = 0.0, variant: str = "strategy1",
                price_filter: bool = False) -> dict:
@@ -483,18 +555,26 @@ def strategy_brain_s1(
     _s1_mode = config.get("mode", "paper")
     win_prob = _s1_lookup_win_rate(asset, abs_pct, mins_left, cfg=cfg, mode=_s1_mode)
 
-    # EV gate
-    _ep_s1 = entry_price / 100.0
-    _fee_cents_s1 = config.get("kalshi_fee_per_contract_cents", 7)
-    fee = (_fee_cents_s1 / 100) * _ep_s1 * (1.0 - _ep_s1)
-    ev = win_prob - _ep_s1 - fee
-    if ev < cfg["min_ev"]:
+    # EV gate — anchored to the de-vigged market mid (shrinkage toward market prior).
+    # raw win_prob is P(traded side wins); convert to P(YES) for the anchoring helper.
+    _raw_p_yes = win_prob if side == "yes" else (1.0 - win_prob)
+    _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
+    _max_edge = float(cfg.get("max_model_edge", 0.08))
+    _anchored = _anchored_ev(side, yes_ask, no_ask, _raw_p_yes, _max_edge, _fee_rate)
+    if _anchored is None:
+        return _make_skip(side, "s1_no_market_data", abs_pct, mins_left, variant="strategy1")
+    ev, _model_p_side, _mkt_p_side, _market_edge = _anchored
+    win_prob = _model_p_side  # report the shrunk (honest) probability downstream
+    _min_market_edge = float(cfg.get("min_market_edge", 0.02))
+    _min_ev = float(cfg.get("min_ev_anchored", 0.015))
+    if ev < _min_ev or _market_edge < _min_market_edge:
         return {
             "action": "skip", "side": side,
             "confidence": int(win_prob * 100),
-            "reasoning": f"s1_ev_gate:{ev:.3f}<{cfg['min_ev']:.3f}",
-            "key_signals": [f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"mom:{direction}"],
-            "signals": {"win_prob": win_prob, "ev": ev, "momentum_pct": momentum_pct,
+            "reasoning": f"s1_ev_gate:ev={ev:.3f}<{_min_ev:.3f}|mkt_edge={_market_edge:.3f}<{_min_market_edge:.3f}",
+            "key_signals": [f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"mkt_edge:{_market_edge:.3f}", f"mom:{direction}"],
+            "signals": {"win_prob": win_prob, "ev": ev, "market_edge": _market_edge,
+                        "mkt_p": _mkt_p_side, "momentum_pct": momentum_pct,
                         "abs_pct": abs_pct, "strike": strike},
             "win_prob": float(win_prob), "mom_label": direction,
             "mom_pct": float(momentum_pct or 0.0),
@@ -812,19 +892,27 @@ def strategy_brain_s2(
     # Win probability: velocity-aware S2 model — velocity delta + time determines confidence.
     win_prob = _s2_lookup_win_rate(asset, vel_delta, mins_left, cfg)
 
-    # EV gate — Kalshi fee from config (default 7 cents per contract)
-    _ep_s2 = entry_price / 100.0
-    _fee_cents = config.get("kalshi_fee_per_contract_cents", 7)
-    fee = (_fee_cents / 100) * _ep_s2 * (1.0 - _ep_s2)
-    ev = win_prob - _ep_s2 - fee
+    # EV gate — anchored to the de-vigged market mid (shrinkage toward market prior).
+    _raw_p_yes = win_prob if side == "yes" else (1.0 - win_prob)
+    _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
+    _max_edge = float(cfg.get("max_model_edge", 0.08))
+    _anchored = _anchored_ev(side, yes_ask, no_ask, _raw_p_yes, _max_edge, _fee_rate)
+    if _anchored is None:
+        return _make_skip(side, "s2_no_market_data", abs_pct, mins_left, variant="strategy2")
+    ev, _model_p_side, _mkt_p_side, _market_edge = _anchored
+    win_prob = _model_p_side  # report the shrunk (honest) probability downstream
+    _min_market_edge = float(cfg.get("min_market_edge", 0.02))
+    _min_ev = float(cfg.get("min_ev_anchored", 0.015))
     _obi_str = f"{obi_val:.2f}" if obi_val is not None else "n/a"
-    if ev < cfg["min_ev"]:
+    if ev < _min_ev or _market_edge < _min_market_edge:
         return {
             "action": "skip", "side": side,
             "confidence": int(win_prob * 100),
-            "reasoning": f"s2_ev_gate:{ev:.3f}<{cfg['min_ev']:.3f}",
-            "key_signals": [f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"vel:{direction}"],
-            "signals": {"win_prob": win_prob, "ev": ev, "vel_delta": vel_delta,
+            "reasoning": f"s2_ev_gate:ev={ev:.3f}<{_min_ev:.3f}|mkt_edge={_market_edge:.3f}<{_min_market_edge:.3f}",
+            "key_signals": [f"ev:{ev:.3f}", f"wp:{win_prob:.3f}", f"mkt_edge:{_market_edge:.3f}", f"vel:{direction}"],
+            "signals": {"win_prob": win_prob, "ev": ev, "market_edge": _market_edge,
+                        "mkt_p": _mkt_p_side, "vel_delta": vel_delta,
+                        "model_raw_p_yes": float(_raw_p_yes),
                         "obi": obi_val, "abs_pct": abs_pct, "strike": strike},
             "win_prob": float(win_prob), "mom_label": direction, "mom_pct": 0.0,
             "vel_signal": direction,
@@ -853,6 +941,7 @@ def strategy_brain_s2(
         ],
         "signals": {
             "win_prob": win_prob, "ev": ev, "vel_delta": vel_delta,
+            "model_raw_p_yes": float(_raw_p_yes), "market_edge": _market_edge,
             "obi": obi_val, "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
         },
         "win_prob": float(win_prob), "mom_label": direction, "mom_pct": 0.0,
