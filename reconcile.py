@@ -1,7 +1,7 @@
-"""reconcile.py — Read-only Kalshi reconciliation helpers for crash recovery.
+"""reconcile.py - Read-only Kalshi reconciliation helpers for crash recovery.
 
 All functions are pure async, no global state, no side effects on Kalshi.
-Only GET endpoints used — no order placement or cancellation.
+Only GET endpoints used - no order placement or cancellation.
 """
 import logging
 from datetime import datetime, timezone
@@ -166,7 +166,7 @@ async def classify_pending_trade(
       {"action": "mark_phantom", "reason": str}
       {"action": "leave_pending", "reason": str}
 
-    Gross PnL only (no fee deduction) — consistent with how _settle_s1_orphans works
+    Gross PnL only (no fee deduction) - consistent with how _settle_s1_orphans works
     for orphan reconcile at startup.
     """
     # Paper mode: no real money at stake, skip Kalshi entirely.
@@ -202,7 +202,7 @@ async def classify_pending_trade(
         _prices = [extract_fill_price_cents(f, side) for f in matching]
         _valid_prices = [p for p in _prices if p is not None]
         if not _valid_prices:
-            # No usable fill price → can't compute PnL (avg_fill=0 would mislabel a loss
+            # No usable fill price -> can't compute PnL (avg_fill=0 would mislabel a loss
             # as a break-even "win"). Leave pending and retry rather than booking garbage.
             return {"action": "leave_pending", "reason": "fills found but no valid fill price"}
         avg_fill = sum(_valid_prices) / len(_valid_prices)
@@ -230,11 +230,11 @@ async def classify_pending_trade(
     if ticker in open_pos:
         return {"action": "leave_pending", "reason": "position still open, will settle next cycle"}
 
-    # Step 4: Market closed, no fill, no open position — order never filled.
+    # Step 4: Market closed, no fill, no open position - order never filled.
     return {
         "action": "mark_phantom",
         "reason": (
-            f"market {resolution}, no fill found, no open position — "
+            f"market {resolution}, no fill found, no open position - "
             "order likely never filled; entry cost not charged"
         ),
     }

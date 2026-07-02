@@ -1,15 +1,15 @@
-# OBI Fix Design — Replace Coinbase WebSocket OBI with Kalshi Contract Depth OBI
+# OBI Fix Design - Replace Coinbase WebSocket OBI with Kalshi Contract Depth OBI
 
 **Date:** 2026-05-08
 **Status:** Approved
 
 ## Problem
 
-`OBIMonitor` (obi_monitor.py) connects to the Coinbase Exchange WebSocket and reads spot crypto orderbook depth (BTC-USD, ETH-USD, etc.) to compute Order Book Imbalance for the S2 strategy gate. This is conceptually wrong: S2 trades Kalshi prediction market contracts, so the relevant OBI is the imbalance of YES vs NO contract depth on Kalshi — not spot crypto depth on Coinbase.
+`OBIMonitor` (obi_monitor.py) connects to the Coinbase Exchange WebSocket and reads spot crypto orderbook depth (BTC-USD, ETH-USD, etc.) to compute Order Book Imbalance for the S2 strategy gate. This is conceptually wrong: S2 trades Kalshi prediction market contracts, so the relevant OBI is the imbalance of YES vs NO contract depth on Kalshi - not spot crypto depth on Coinbase.
 
 ## Solution
 
-Delete `OBIMonitor` and the Coinbase WebSocket entirely. Compute Kalshi contract OBI inside `fetch_orderbook()` — which already receives the raw YES/NO depth arrays from `/markets/{ticker}/orderbook` — and store the result in `bot_state._ticker_obi` keyed by ticker. S2's `_s2_obi_gate` reads from that dict.
+Delete `OBIMonitor` and the Coinbase WebSocket entirely. Compute Kalshi contract OBI inside `fetch_orderbook()` - which already receives the raw YES/NO depth arrays from `/markets/{ticker}/orderbook` - and store the result in `bot_state._ticker_obi` keyed by ticker. S2's `_s2_obi_gate` reads from that dict.
 
 Zero new API calls. Zero new async tasks. OBI is always as fresh as the price data it was fetched alongside.
 
@@ -73,9 +73,9 @@ strategy_brain_s2(... ticker=ticker ...)
 
 ## Error Handling
 
-- **AMM markets** — `/orderbook` returns empty arrays → `_kalshi_obi([], [])` returns `None` → `_ticker_obi[ticker] = None` → gate fails open
-- **Network error** — `fetch_orderbook()` returns `None` → bot_loops skips the store → stale or absent `_ticker_obi` entry → gate fails open
-- **No stale-seconds check needed** — OBI is written and read within the same cycle; no background task that can lag
+- **AMM markets** - `/orderbook` returns empty arrays → `_kalshi_obi([], [])` returns `None` → `_ticker_obi[ticker] = None` → gate fails open
+- **Network error** - `fetch_orderbook()` returns `None` → bot_loops skips the store → stale or absent `_ticker_obi` entry → gate fails open
+- **No stale-seconds check needed** - OBI is written and read within the same cycle; no background task that can lag
 
 ## Tests
 

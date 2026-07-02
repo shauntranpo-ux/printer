@@ -1,4 +1,4 @@
-# Section 5: SOL Strategy — Research Audit
+# Section 5: SOL Strategy - Research Audit
 
 ## Problem Statement
 
@@ -11,8 +11,8 @@ from Solana validator outages. Both are handled explicitly.
 ## Component 1: High-Beta Concurrent BTC Signal (Primary)
 
 **Basis:** Kurihara & Matsumoto (2026), same source as ETH. SOL is a
-large-cap and reacts to BTC at lag 0. Beta is higher than ETH's —
-approximately 1.5–2.0x on 1-minute returns, reflecting SOL's higher
+large-cap and reacts to BTC at lag 0. Beta is higher than ETH's -
+approximately 1.5-2.0x on 1-minute returns, reflecting SOL's higher
 retail participation and lower liquidity relative to BTC.
 
 **Implementation:** Same BTC 3-min return signal as ETHStrategy, but with
@@ -46,7 +46,7 @@ network incidents between 2022 and 2024:
 - 2022-10-01: ~6h outage (non-determinism bug)
 - 2024-02-06: ~5h outage (compute overflow bug)
 
-During each event, SOL spot price dropped 3–12% in the first hour while
+During each event, SOL spot price dropped 3-12% in the first hour while
 Kalshi YES contracts would have expired worthless mid-window.
 
 **Implementation:** `check_solana_health()` queries `getHealth` on the
@@ -71,6 +71,6 @@ small (±3pp), direction is opposite to the extreme move.
 
 ## Intentional Deviations from Legacy
 
-1. No BV3 table — SOL uses Brownian bridge + adjustments
+1. No BV3 table - SOL uses Brownian bridge + adjustments
 2. Network health kill switch not present in any legacy strategy
 3. `min_ev_base: 9` (higher than ETH's 8) due to elevated tail risk

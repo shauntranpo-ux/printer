@@ -1,17 +1,17 @@
 """
-scripts/maker_report.py — is maker execution worth the (invasive) build?
+scripts/maker_report.py - is maker execution worth the (invasive) build?
 
 Reads the `maker_log` counterfactual table (written at settlement by
 bot_loops._record_maker_counterfactual) and compares, per strategy/asset:
   - maker fill rate (how often a passive 1c-inside-the-ask order would have filled)
   - TAKER net $/contract = what we actually realized (pay the ask + 7% fee)
   - MAKER-STRATEGY net $/contract = maker_pnl when filled, else 0 (an unfilled maker order
-    means we simply DON'T trade that window — so unfilled = $0, not a loss). This already
+    means we simply DON'T trade that window - so unfilled = $0, not a loss). This already
     bakes in adverse selection: fills are settled with the real outcome.
   - delta = maker_strategy - taker, with a rough standard error.
 
 Decision: build maker execution (step 3B) only if the delta is clearly positive across a
-meaningful sample. A positive fill rate alone is NOT enough — unfilled-as-skip can help or
+meaningful sample. A positive fill rate alone is NOT enough - unfilled-as-skip can help or
 hurt depending on whether the skipped trades were winners or losers.
 
 Usage:
@@ -84,7 +84,7 @@ def main():
         groups.setdefault((r["strategy"], r["asset"]), []).append(r)
     groups[("ALL", "ALL")] = list(rows)
 
-    print(f"Maker-vs-taker counterfactual — {len(rows)} settled trades from {path}\n")
+    print(f"Maker-vs-taker counterfactual - {len(rows)} settled trades from {path}\n")
     print(f"{'strat/asset':<22} {'n':>5} {'fill%':>6} {'taker$':>8} {'maker$':>8} "
           f"{'delta$':>8} {'delta_se':>8} {'mkrFill$':>8}")
     print("-" * 82)
@@ -101,13 +101,13 @@ def main():
     print(f"VERDICT (ALL): n={overall['n']}, fill={overall['fill_rate']*100:.1f}%, "
           f"maker-vs-taker delta={overall['delta']:+.4f}/contract (se {_fmt(overall['delta_se'])})")
     if overall["n"] < 200:
-        print(f"  → INSUFFICIENT DATA ({overall['n']}<200). Keep collecting before deciding on 3B.")
+        print(f"  -> INSUFFICIENT DATA ({overall['n']}<200). Keep collecting before deciding on 3B.")
     elif not math.isnan(overall["delta_se"]) and overall["delta"] > 2 * overall["delta_se"] and overall["delta"] > 0:
-        print("  → Maker looks clearly better than taker. Worth building step 3B (resting orders).")
+        print("  -> Maker looks clearly better than taker. Worth building step 3B (resting orders).")
     elif overall["delta"] <= 0:
-        print("  → Maker NOT better than taker. Do NOT build 3B; stay taker.")
+        print("  -> Maker NOT better than taker. Do NOT build 3B; stay taker.")
     else:
-        print("  → Inconclusive (delta within ~2 SE of 0). Collect more data before building 3B.")
+        print("  -> Inconclusive (delta within ~2 SE of 0). Collect more data before building 3B.")
 
 
 if __name__ == "__main__":

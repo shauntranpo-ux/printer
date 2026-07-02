@@ -164,7 +164,7 @@ git commit -m "feat: scaffold strategy layer directory structure and shared type
 
 ---
 
-## Task 2: Shared utilities — `probability_utils.py`, `regime_filters.py`, `fees.yaml`
+## Task 2: Shared utilities - `probability_utils.py`, `regime_filters.py`, `fees.yaml`
 
 **Files:**
 - Create: `strategies/shared/probability_utils.py`
@@ -518,7 +518,7 @@ class HARRSJForecaster:
         rv      = float(sq.sum())
         rv_pos  = float(sq[r > 0].sum())
         rv_neg  = float(sq[r < 0].sum())
-        # BV = (π/2) · Σ|r_t|·|r_{t-1}| — scaled to match RV units
+        # BV = (π/2) · Σ|r_t|·|r_{t-1}| - scaled to match RV units
         bv = float((np.pi / 2) * (np.abs(r[1:]) * np.abs(r[:-1])).sum()) if r.size > 1 else rv
         jump         = max(rv - bv, 0.0)
         signed_jump  = rv_pos - rv_neg
@@ -846,12 +846,12 @@ from __future__ import annotations
 Time-of-day regime encoder for Kalshi 15-minute crypto markets.
 
 Sessions (UTC):
-  asia_deep_night  00:00–04:00   Low liquidity, wide spreads
-  asia_active      04:00–08:00   Tokyo / Singapore active
-  eu_open          08:00–13:00   London open, highest volume
-  eu_us_overlap    13:00–16:00   Peak global liquidity
-  us_afternoon     16:00–20:00   US afternoon, Fed-news window
-  us_late          20:00–24:00   Thin US tail, Asia pre-open
+  asia_deep_night  00:00-04:00   Low liquidity, wide spreads
+  asia_active      04:00-08:00   Tokyo / Singapore active
+  eu_open          08:00-13:00   London open, highest volume
+  eu_us_overlap    13:00-16:00   Peak global liquidity
+  us_afternoon     16:00-20:00   US afternoon, Fed-news window
+  us_late          20:00-24:00   Thin US tail, Asia pre-open
 """
 import numpy as np
 import pandas as pd
@@ -1030,7 +1030,7 @@ _SENTINEL: dict[str, float] = {
 def compute(data_window: dict) -> dict[str, float]:
     """
     data_window keys:
-      btc_features: {"har_rv": {...}, "order_flow": {...}}  — output of BTC's compute()
+      btc_features: {"har_rv": {...}, "order_flow": {...}}  - output of BTC's compute()
       btc_returns:  {"1m": float, "5m": float, "15m": float}
       config: asset config dict (cross_asset section; currently unused here)
     """
@@ -1174,8 +1174,8 @@ class FundingFeatures:
     def compute(self, data_window: dict) -> dict[str, float]:
         """
         data_window keys:
-          funding_rate: float   — latest funding rate (dimensionless; Binance returns ~0.0001)
-          open_interest: float  — latest OI in base currency units
+          funding_rate: float   - latest funding rate (dimensionless; Binance returns ~0.0001)
+          open_interest: float  - latest OI in base currency units
           timestamp: (optional; not consumed, kept for interface uniformity)
         """
         fr = float(data_window.get("funding_rate", 0.0))
@@ -1206,7 +1206,7 @@ git commit -m "feat: add funding/OI z-score feature module with crowded-position
 
 ---
 
-## Task 8: Strategy A model — `predict_proba`, `get_edge`, `should_trade`
+## Task 8: Strategy A model - `predict_proba`, `get_edge`, `should_trade`
 
 **Files:**
 - Create: `strategies/strategy_a/model.py`
@@ -1327,7 +1327,7 @@ class StrategyAModel:
         self._feature_names: Optional[list[str]] = None
         self._fitted = False
 
-    # ── interface contract (locked — backtester and executor depend on these) ─
+    # ── interface contract (locked - backtester and executor depend on these) ─
 
     def predict_proba(self, features: dict) -> float:
         """Calibrated P(up at 15-min expiry) in [0, 1]. Returns 0.5 if unfitted."""
@@ -1699,7 +1699,7 @@ git commit -m "feat: add Strategy A YAML configs for BTC/ETH/SOL/XRP"
 
 ---
 
-## Task 10: Strategy B — contract dislocation detector
+## Task 10: Strategy B - contract dislocation detector
 
 **Files:**
 - Create: `strategies/strategy_b/contract_dislocation.py`
@@ -2041,13 +2041,13 @@ Two-strategy architecture for Kalshi 15-minute crypto binary markets (BTC, ETH, 
 
 ## Two-Strategy Architecture
 
-**Strategy A** — Calibrated probability model.
+**Strategy A** - Calibrated probability model.
 Five feature modules (HAR-RS-J volatility, order flow, time-of-day regimes, cross-asset
 BTC signals, funding/OI z-scores) are concatenated and passed to a calibrated logistic
 regression that outputs P_model(up at 15-min expiry). A trade is placed when
 |P_model − P_market| exceeds a fee-adjusted, regime-aware edge threshold.
 
-**Strategy B** — Contract dislocation detector.
+**Strategy B** - Contract dislocation detector.
 Detects when the Kalshi YES price moves more or less than the underlying spot price
 implies (via a Brownian-with-drift implied probability translation). Fades the residual
 back toward fair value with a confidence-scaled signal.
@@ -2112,7 +2112,7 @@ A Kalshi YES ask of 70c → p_market = 0.70.
 pre-trade edge threshold checks. The actual Kalshi taker fee is
 `ceil(0.07 × C × p × (1−p))` per contract (peaks at ~3.5% at p=0.50).
 The execution layer in `src/strategies/fees.py` uses the exact formula for EV
-computation — do not bypass it.
+computation - do not bypass it.
 
 ## Running Tests
 
@@ -2158,16 +2158,16 @@ git commit -m "feat: add strategies/README with architecture, data assumptions, 
 | `shared/probability_utils.py`: drift_vol_to_prob, prob_to_contract_price, dp→dc | Task 2 |
 | `shared/regime_filters.py`: 3 functions | Task 2 |
 | `shared/fees.yaml` | Task 2 |
-| Tests: smoke + type-and-range + shape per module | Tasks 3–10 |
+| Tests: smoke + type-and-range + shape per module | Tasks 3-10 |
 | README | Task 12 |
-| NO price-level triggers | verified — all decisions via probability comparison |
-| NO pooling across assets | verified — configs are separate, no shared training |
-| NO magic numbers | verified — all tunables in YAML |
+| NO price-level triggers | verified - all decisions via probability comparison |
+| NO pooling across assets | verified - configs are separate, no shared training |
+| NO magic numbers | verified - all tunables in YAML |
 
 **Placeholder scan:** No TBD, TODO, or "implement later" patterns. All `null` values in configs are documented placeholders for training output.
 
 **Type consistency:**
-- `DislocationSignal` defined in Task 1, imported in Task 10 tests — ✓
-- `_SENTINEL` keys in `cross_asset.py` match test assertions — ✓
-- `should_trade` signature in model.py matches test calls — ✓
-- `compute(data_window) -> dict[str, float]` present on all feature modules — ✓
+- `DislocationSignal` defined in Task 1, imported in Task 10 tests - ✓
+- `_SENTINEL` keys in `cross_asset.py` match test assertions - ✓
+- `should_trade` signature in model.py matches test calls - ✓
+- `compute(data_window) -> dict[str, float]` present on all feature modules - ✓

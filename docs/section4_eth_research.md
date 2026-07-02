@@ -1,4 +1,4 @@
-# Section 4: ETH Strategy — Research Audit
+# Section 4: ETH Strategy - Research Audit
 
 ## Problem Statement
 
@@ -12,7 +12,7 @@ evidence-based components of the new ETHStrategy.
 
 **Basis:** Kurihara & Matsumoto (2026), *Applied Finance & Markets*, Springer
 open-access. 1-min Binance data, four 2024-2025 regimes. Key finding: ETH
-reacts to BTC at **lag 0** on 1-minute returns — co-movement is synchronous,
+reacts to BTC at **lag 0** on 1-minute returns - co-movement is synchronous,
 not lagged.
 
 **Implementation:** Compute BTC's 3-minute log return from the running
@@ -63,6 +63,6 @@ Rising → +2pp on p_yes. Falling → -2pp.
 
 ## Intentional Deviations from Legacy
 
-1. No BV3 table — ETH uses physics (Brownian bridge) + evidence adjustments
-2. Bidirectional by default — no continuation-only override for ETH
+1. No BV3 table - ETH uses physics (Brownian bridge) + evidence adjustments
+2. Bidirectional by default - no continuation-only override for ETH
 3. Per-asset `min_ev_base: 8` (vs BTC's legacy `min_ev_base: 5`)

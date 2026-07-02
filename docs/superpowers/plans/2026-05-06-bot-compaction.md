@@ -32,10 +32,10 @@ Create `bot_state.py` in the repo root with this exact content:
 
 ```python
 """
-bot_state.py — Shared mutable globals and constants for the kalshi bot.
+bot_state.py - Shared mutable globals and constants for the kalshi bot.
 
 Every other module does `import bot_state` and reads/writes attributes here.
-No classes, no dataclasses — plain module attributes for zero-overhead access.
+No classes, no dataclasses - plain module attributes for zero-overhead access.
 """
 import os
 from collections import deque
@@ -60,10 +60,10 @@ _DATA_DIR    = os.path.dirname(os.path.abspath(_DB_FILE))
 _PRICE_VAL_CSV = os.path.join(_DATA_DIR, "price_validation_log.csv")
 
 # ── mutable runtime state ────────────────────────────────────────────────────
-import asset_manager  # noqa: E402 — after os/path setup
+import asset_manager  # noqa: E402 - after os/path setup
 btc_prices: deque = asset_manager._prices["BTC"]
 
-_obi_monitor       = None   # OBIMonitor | None  — set in main()
+_obi_monitor       = None   # OBIMonitor | None  - set in main()
 _funding_monitor_btc = None  # FundingDispersionMonitor | None
 _funding_monitor_eth = None  # FundingDispersionMonitor | None
 
@@ -130,13 +130,13 @@ _S1_ASSET_VOL_RATIO: dict = {
 
 - [ ] **Step 2a:** Open `bot.py`. Delete lines that define the same names now in `bot_state.py`.
   Remove from bot.py (approximate line ranges, verify before deleting):
-  - Lines 59–65: `KALSHI_LIVE_BASE_URL`, `KALSHI_DEMO_BASE_URL`, `KALSHI_BASE_URL`, `KALSHI_PATH_PREFIX`, `API_TIMEOUT`, `MARKET_CACHE_TTL`, `WATCH_PHASE_SECONDS`, `KALSHI_FEE`
-  - Lines 73–76: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
-  - Lines 79–82: `_CONFIG_FILE`, `_DB_FILE`, `_STATE_FILE`, `_DATA_DIR`
-  - Lines 86–174: all runtime globals from `btc_prices` through `_consecutive_price_skips`
-  - Lines 1585–1588: `_S2_SINGLETONS`, `_config_mtime`, `_current_window` (mid-file globals)
-  - Lines 1829–1830: `_S1_VERSION`, `_S2_VERSION`
-  - Lines 1851–1857: `_S1_ASSET_VOL_RATIO`
+  - Lines 59-65: `KALSHI_LIVE_BASE_URL`, `KALSHI_DEMO_BASE_URL`, `KALSHI_BASE_URL`, `KALSHI_PATH_PREFIX`, `API_TIMEOUT`, `MARKET_CACHE_TTL`, `WATCH_PHASE_SECONDS`, `KALSHI_FEE`
+  - Lines 73-76: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`
+  - Lines 79-82: `_CONFIG_FILE`, `_DB_FILE`, `_STATE_FILE`, `_DATA_DIR`
+  - Lines 86-174: all runtime globals from `btc_prices` through `_consecutive_price_skips`
+  - Lines 1585-1588: `_S2_SINGLETONS`, `_config_mtime`, `_current_window` (mid-file globals)
+  - Lines 1829-1830: `_S1_VERSION`, `_S2_VERSION`
+  - Lines 1851-1857: `_S1_ASSET_VOL_RATIO`
 
 - [ ] **Step 2b:** At the top of `bot.py`, directly after the existing `import asset_manager` line, add:
   ```python
@@ -148,7 +148,7 @@ _S1_ASSET_VOL_RATIO: dict = {
 
 ```python
 """
-_task1_rewrite.py — one-shot: rewrite bot.py global references to bot_state.*
+_task1_rewrite.py - one-shot: rewrite bot.py global references to bot_state.*
 Run from repo root: py -3 _task1_rewrite.py
 """
 import re, sys
@@ -211,7 +211,7 @@ print("Done. Review the diff before committing.")
 ```
 
 > **Important:** After running the script, review `git diff bot.py` manually.
-> Check for false positives — the script can incorrectly prefix local variables
+> Check for false positives - the script can incorrectly prefix local variables
 > that happen to share a global name. Fix any false-positive replacements manually.
 > Known safe patterns: function parameters named `config`, `mode`, `asset` are NOT globals.
 
@@ -252,7 +252,7 @@ print("Done. Review the diff before committing.")
 - [ ] **Step 1a:** Create `bot_config.py`:
 
 ```python
-"""bot_config.py — Config read/write and atomic JSON helper."""
+"""bot_config.py - Config read/write and atomic JSON helper."""
 import json
 import logging
 import os
@@ -264,27 +264,27 @@ log = logging.getLogger("bot")
 
 
 def atomic_write_json(data: dict, path: str) -> None:
-    # (move verbatim from bot.py lines 179–206)
+    # (move verbatim from bot.py lines 179-206)
     ...
 
 
 def read_config() -> dict:
-    # (move verbatim from bot.py lines 306–329)
+    # (move verbatim from bot.py lines 306-329)
     ...
 
 
 def write_config(data: dict) -> None:
-    # (move verbatim from bot.py lines 331–334)
+    # (move verbatim from bot.py lines 331-334)
     ...
 
 
 def get_asset_config(config: dict, asset: str, field: str, default=None):
-    # (move verbatim from bot.py lines 336–342)
+    # (move verbatim from bot.py lines 336-342)
     ...
 
 
 def _init_config() -> None:
-    # (move verbatim from bot.py lines 344–403)
+    # (move verbatim from bot.py lines 344-403)
     ...
 ```
 
@@ -296,7 +296,7 @@ def _init_config() -> None:
 
 ### Step 2: Update bot.py
 
-- [ ] **Step 2a:** Delete functions `atomic_write_json`, `read_config`, `write_config`, `get_asset_config`, `_init_config` from bot.py (lines 179–403).
+- [ ] **Step 2a:** Delete functions `atomic_write_json`, `read_config`, `write_config`, `get_asset_config`, `_init_config` from bot.py (lines 179-403).
 
 - [ ] **Step 2b:** After `import bot_state` in bot.py, add:
   ```python
@@ -308,8 +308,8 @@ def _init_config() -> None:
 
 ### Step 3: Verify
 
-- [ ] **Step 3a:** `py -3 -c "import bot"` — no error.
-- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` — 606 passed.
+- [ ] **Step 3a:** `py -3 -c "import bot"` - no error.
+- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` - 606 passed.
 
 ### Step 4: Commit
 
@@ -332,7 +332,7 @@ def _init_config() -> None:
 - [ ] **Step 1a:** Create `bot_db.py`:
 
 ```python
-"""bot_db.py — SQLite trade log: init, write, update, query."""
+"""bot_db.py - SQLite trade log: init, write, update, query."""
 import logging
 import sqlite3
 import time
@@ -345,32 +345,32 @@ log = logging.getLogger("bot")
 
 
 def init_db() -> None:
-    # (move verbatim from bot.py lines 406–531)
+    # (move verbatim from bot.py lines 406-531)
     ...
 
 
 def test_db_write() -> None:
-    # (move verbatim from bot.py lines 534–562)
+    # (move verbatim from bot.py lines 534-562)
     ...
 
 
 async def db_write_trade(trade: dict) -> int | None:
-    # (move verbatim from bot.py lines 565–598)
+    # (move verbatim from bot.py lines 565-598)
     ...
 
 
 async def db_update_trade(trade_id: int, fields: dict) -> None:
-    # (move verbatim from bot.py lines 601–613)
+    # (move verbatim from bot.py lines 601-613)
     ...
 
 
 async def db_write_market_log(entry: dict) -> None:
-    # (move verbatim from bot.py lines 616–636)
+    # (move verbatim from bot.py lines 616-636)
     ...
 
 
 async def db_get_today_pnl(mode: str) -> float:
-    # (move verbatim from bot.py lines 639–658)
+    # (move verbatim from bot.py lines 639-658)
     ...
 ```
 
@@ -379,7 +379,7 @@ async def db_get_today_pnl(mode: str) -> float:
 
 ### Step 2: Update bot.py
 
-- [ ] **Step 2a:** Delete the six functions from bot.py (lines 406–658).
+- [ ] **Step 2a:** Delete the six functions from bot.py (lines 406-658).
 
 - [ ] **Step 2b:** Add to bot.py imports:
   ```python
@@ -391,8 +391,8 @@ async def db_get_today_pnl(mode: str) -> float:
 
 ### Step 3: Verify
 
-- [ ] **Step 3a:** `py -3 -c "import bot"` — no error.
-- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` — 606 passed.
+- [ ] **Step 3a:** `py -3 -c "import bot"` - no error.
+- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` - 606 passed.
 
 ### Step 4: Commit
 
@@ -419,7 +419,7 @@ async def db_get_today_pnl(mode: str) -> float:
 - [ ] **Step 1a:** Create `bot_notify.py`:
 
 ```python
-"""bot_notify.py — Telegram notifications and phase/context helpers."""
+"""bot_notify.py - Telegram notifications and phase/context helpers."""
 import asyncio
 import logging
 
@@ -431,33 +431,33 @@ log = logging.getLogger("bot")
 
 
 def _phase_for_eth(asset, elapsed_seconds):
-    # (move verbatim from bot.py lines 661–675)
+    # (move verbatim from bot.py lines 661-675)
     ...
 
 
 def _notify_ctx(asset, ticker, duration_min=15.0, phase=None):
-    # (move verbatim from bot.py lines 678–681)
+    # (move verbatim from bot.py lines 678-681)
     ...
 
 
 async def _maybe_fill_verification_notify(
     order_id, asset, ticker, side, contracts, entry_price_cents, ev
 ):
-    # (move verbatim from bot.py lines 684–737)
+    # (move verbatim from bot.py lines 684-737)
     ...
 
 
 async def send_telegram(text: str) -> None:
-    # (move verbatim from bot.py lines 740–766)
+    # (move verbatim from bot.py lines 740-766)
     ...
 ```
 
-> Bodies use `bot_state.TELEGRAM_BOT_TOKEN` and `bot_state.TELEGRAM_CHAT_ID` —
+> Bodies use `bot_state.TELEGRAM_BOT_TOKEN` and `bot_state.TELEGRAM_CHAT_ID` -
 > already rewritten by Task 1.
 
 ### Step 2: Update bot.py
 
-- [ ] **Step 2a:** Delete functions `_phase_for_eth`, `_notify_ctx`, `_maybe_fill_verification_notify`, `send_telegram` from bot.py (lines 661–766).
+- [ ] **Step 2a:** Delete functions `_phase_for_eth`, `_notify_ctx`, `_maybe_fill_verification_notify`, `send_telegram` from bot.py (lines 661-766).
 
 - [ ] **Step 2b:** Add to bot.py imports:
   ```python
@@ -469,9 +469,9 @@ async def send_telegram(text: str) -> None:
 
 ### Step 3: Verify
 
-- [ ] **Step 3a:** `py -3 -c "import bot"` — no error.
-- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` — 606 passed.
-  (test_notify_ctx.py must pass — it tests `_notify_ctx` and `_phase_for_eth`
+- [ ] **Step 3a:** `py -3 -c "import bot"` - no error.
+- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` - 606 passed.
+  (test_notify_ctx.py must pass - it tests `_notify_ctx` and `_phase_for_eth`
   via the re-exported names in bot.py's namespace.)
 
 ### Step 4: Commit
@@ -495,7 +495,7 @@ async def send_telegram(text: str) -> None:
 - [ ] **Step 1a:** Create `bot_kalshi.py`:
 
 ```python
-"""bot_kalshi.py — RSA auth, Kalshi API calls, price helpers."""
+"""bot_kalshi.py - RSA auth, Kalshi API calls, price helpers."""
 import logging
 import os
 import re
@@ -514,28 +514,28 @@ log = logging.getLogger("bot")
 
 
 def load_credentials(mode: str = "paper") -> None:
-    # (move verbatim from bot.py lines 770–869)
+    # (move verbatim from bot.py lines 770-869)
     # References bot_state.private_key, bot_state.api_key,
-    # bot_state.KALSHI_BASE_URL, bot_state.KALSHI_DEMO_BASE_URL — already rewritten.
+    # bot_state.KALSHI_BASE_URL, bot_state.KALSHI_DEMO_BASE_URL - already rewritten.
     ...
 
 
 def kalshi_headers(method: str, path: str) -> dict:
-    # (move verbatim from bot.py lines 872–906)
+    # (move verbatim from bot.py lines 872-906)
     # References bot_state.private_key, bot_state.api_key,
-    # bot_state.KALSHI_PATH_PREFIX — already rewritten.
+    # bot_state.KALSHI_PATH_PREFIX - already rewritten.
     ...
 
 
 def get_btc_price() -> float | None:
-    # (move verbatim from bot.py lines 909–915)
+    # (move verbatim from bot.py lines 909-915)
     ...
 
 
 async def fetch_current_market(
     session: aiohttp.ClientSession, return_all: bool = False
 ) -> dict | None | list:
-    # (move verbatim from bot.py lines 918–1073)
+    # (move verbatim from bot.py lines 918-1073)
     # References bot_state._market_cache, bot_state._market_cache_ts,
     # bot_state._all_markets_cache, bot_state._all_markets_cache_ts,
     # bot_state.KALSHI_BASE_URL, bot_state.API_TIMEOUT, bot_state.MARKET_CACHE_TTL
@@ -545,22 +545,22 @@ async def fetch_current_market(
 async def fetch_market_for_asset(
     session: aiohttp.ClientSession, asset: str
 ) -> dict | None:
-    # (move verbatim from bot.py lines 1076–1137)
+    # (move verbatim from bot.py lines 1076-1137)
     ...
 
 
 def parse_strike(market: dict) -> float | None:
-    # (move verbatim from bot.py lines 1140–1178)
+    # (move verbatim from bot.py lines 1140-1178)
     ...
 
 
 def seconds_remaining(market: dict) -> float:
-    # (move verbatim from bot.py lines 1181–1190)
+    # (move verbatim from bot.py lines 1181-1190)
     ...
 
 
 def seconds_elapsed(market: dict) -> float:
-    # (move verbatim from bot.py lines 1193–1210)
+    # (move verbatim from bot.py lines 1193-1210)
     ...
 
 
@@ -569,19 +569,19 @@ async def fetch_orderbook(
     ticker: str,
     depth: int = 5,
 ) -> dict | None:
-    # (move verbatim from bot.py lines 1213–1390)
+    # (move verbatim from bot.py lines 1213-1390)
     ...
 
 
 def _simulated_amm_midpoint(btc_price: float, strike: float) -> tuple[float, float]:
-    # (move verbatim from bot.py lines 209–229)
+    # (move verbatim from bot.py lines 209-229)
     ...
 
 
 def _log_price_validation(
     market, btc_price, sim_yes_ask, real_yes_ask=None
 ) -> None:
-    # (move verbatim from bot.py lines 232–303)
+    # (move verbatim from bot.py lines 232-303)
     # References bot_state._PRICE_VAL_CSV, bot_state._price_val_count,
     # bot_state._price_val_gap_n, bot_state._price_val_sim_sum,
     # bot_state._price_val_real_sum, bot_state._price_val_gap_sum
@@ -594,7 +594,7 @@ def _log_price_validation(
 
 ### Step 2: Update bot.py
 
-- [ ] **Step 2a:** Delete all twelve functions listed above from bot.py (lines 209–303 and 770–1390).
+- [ ] **Step 2a:** Delete all twelve functions listed above from bot.py (lines 209-303 and 770-1390).
 
 - [ ] **Step 2b:** Add to bot.py imports:
   ```python
@@ -608,8 +608,8 @@ def _log_price_validation(
 
 ### Step 3: Verify
 
-- [ ] **Step 3a:** `py -3 -c "import bot"` — no error.
-- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` — 606 passed.
+- [ ] **Step 3a:** `py -3 -c "import bot"` - no error.
+- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` - 606 passed.
 
 ### Step 4: Commit
 
@@ -632,7 +632,7 @@ def _log_price_validation(
 - [ ] **Step 1a:** Create `bot_orders.py`:
 
 ```python
-"""bot_orders.py — Contract math, order placement, fill verification."""
+"""bot_orders.py - Contract math, order placement, fill verification."""
 import asyncio
 import logging
 import time
@@ -650,19 +650,19 @@ log = logging.getLogger("bot")
 def calculate_contracts(
     config: dict, asset: str, side: str, price_cents: float
 ) -> int:
-    # (move verbatim from bot.py lines 2090–2128)
+    # (move verbatim from bot.py lines 2090-2128)
     ...
 
 
 def implied_prob(contract_price_cents: float) -> float:
-    # (move verbatim from bot.py lines 2131–2138)
+    # (move verbatim from bot.py lines 2131-2138)
     ...
 
 
 async def _portfolio_has_position(
     session: aiohttp.ClientSession, ticker: str
 ) -> bool:
-    # (move verbatim from bot.py lines 2141–2170)
+    # (move verbatim from bot.py lines 2141-2170)
     ...
 
 
@@ -671,7 +671,7 @@ async def _verify_order_fill(
     order_id: str,
     expected_contracts: int,
 ) -> dict | None:
-    # (move verbatim from bot.py lines 2173–2218)
+    # (move verbatim from bot.py lines 2173-2218)
     ...
 
 
@@ -685,17 +685,17 @@ async def place_order(
     ev: float,
     config: dict,
 ) -> dict | None:
-    # (move verbatim from bot.py lines 2221–2596)
+    # (move verbatim from bot.py lines 2221-2596)
     # References bot_state.KALSHI_BASE_URL, bot_state.api_key,
     # bot_state.KALSHI_FEE, bot_state.current_phase, bot_state._brain_cal_s1,
     # bot_state._brain_cal_s2, bot_state._order_attempted_tickers,
-    # bot_state.last_action — already rewritten.
+    # bot_state.last_action - already rewritten.
     ...
 ```
 
 ### Step 2: Update bot.py
 
-- [ ] **Step 2a:** Delete functions `calculate_contracts`, `implied_prob`, `_portfolio_has_position`, `_verify_order_fill`, `place_order` from bot.py (lines 2090–2596).
+- [ ] **Step 2a:** Delete functions `calculate_contracts`, `implied_prob`, `_portfolio_has_position`, `_verify_order_fill`, `place_order` from bot.py (lines 2090-2596).
 
 - [ ] **Step 2b:** Add to bot.py imports:
   ```python
@@ -707,8 +707,8 @@ async def place_order(
 
 ### Step 3: Verify
 
-- [ ] **Step 3a:** `py -3 -c "import bot"` — no error.
-- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` — 606 passed.
+- [ ] **Step 3a:** `py -3 -c "import bot"` - no error.
+- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` - 606 passed.
 
 ### Step 4: Commit
 
@@ -727,10 +727,10 @@ async def place_order(
 - Modify: `bot.py` (delete moved functions AND dead code)
 
 > **Dead code removed here** (do NOT carry to new module):
-> - `calibrate_from_history` (~lines 1405–1457)
-> - `_calibrate_one_brain` (~lines 1460–1517)
-> - `calibrate_brain` (~lines 1519–1527)
-> - `recalibrate_asset_strategies` (~lines 1529–1578)
+> - `calibrate_from_history` (~lines 1405-1457)
+> - `_calibrate_one_brain` (~lines 1460-1517)
+> - `calibrate_brain` (~lines 1519-1527)
+> - `recalibrate_asset_strategies` (~lines 1529-1578)
 > - `_adaptive` dict was already removed in Task 1 (it was a global).
 
 ### Step 1: Write bot_strategy.py
@@ -738,7 +738,7 @@ async def place_order(
 - [ ] **Step 1a:** Create `bot_strategy.py`:
 
 ```python
-"""bot_strategy.py — S1 (BV3 empirical) and S2 (D3 hybrid) strategy brains."""
+"""bot_strategy.py - S1 (BV3 empirical) and S2 (D3 hybrid) strategy brains."""
 import logging
 import math
 import time
@@ -759,25 +759,25 @@ brain_log.addHandler(_brain_fh)
 
 
 def track_contract_price(ticker: str, price: float) -> None:
-    # (move verbatim from bot.py lines 1393–1402)
-    # Uses bot_state._contract_price_history — already rewritten.
+    # (move verbatim from bot.py lines 1393-1402)
+    # Uses bot_state._contract_price_history - already rewritten.
     ...
 
 
 def _session_ev_adjustment() -> float:
-    # (move verbatim from bot.py lines 1581–1583)
+    # (move verbatim from bot.py lines 1581-1583)
     ...
 
 
 def _strategy_name_for(asset, duration_min=15.0):
-    # (move verbatim from bot.py lines 1592–1594)
+    # (move verbatim from bot.py lines 1592-1594)
     ...
 
 
 def _get_or_make_strategy_s2(asset: str, config, market_duration_min: float = 15.0):
-    # (move verbatim from bot.py lines 1597–1673)
+    # (move verbatim from bot.py lines 1597-1673)
     # Uses bot_state._S2_SINGLETONS, bot_state._config_mtime,
-    # bot_state._current_window — already rewritten.
+    # bot_state._current_window - already rewritten.
     ...
 
 
@@ -785,29 +785,29 @@ def strategy_brain_s2(
     asset, market, above, yes_ask_cents, no_ask_cents,
     elapsed_seconds, session, config, obi_monitor=None,
 ):
-    # (move verbatim from bot.py lines 1676–1826)
+    # (move verbatim from bot.py lines 1676-1826)
     ...
 
 
 def _s1_empirical_win_prob(asset: str, abs_pct: float, mins_left: float) -> float:
-    # (move verbatim from bot.py lines 1860–1872)
-    # Uses bot_state._S1_ASSET_VOL_RATIO — already rewritten.
+    # (move verbatim from bot.py lines 1860-1872)
+    # Uses bot_state._S1_ASSET_VOL_RATIO - already rewritten.
     ...
 
 
 def _s1_calculate_momentum(prices, seconds: int = 180, threshold: float = 0.0005) -> tuple:
-    # (move verbatim from bot.py lines 1875–1888)
+    # (move verbatim from bot.py lines 1875-1888)
     ...
 
 
 def _s1_realized_vol(prices, window_minutes: int = 10) -> float:
-    # (move verbatim from bot.py lines 1891–1904)
+    # (move verbatim from bot.py lines 1891-1904)
     ...
 
 
 def _s1_contract_velocity(ticker: str) -> str:
-    # (move verbatim from bot.py lines 1907–1920)
-    # Uses bot_state._contract_price_history — already rewritten.
+    # (move verbatim from bot.py lines 1907-1920)
+    # Uses bot_state._contract_price_history - already rewritten.
     ...
 
 
@@ -815,34 +815,34 @@ def strategy_brain_s1(
     asset, market, above, yes_ask_cents, no_ask_cents,
     elapsed_seconds, config, obi_monitor=None,
 ):
-    # (move verbatim from bot.py lines 1923–2087)
+    # (move verbatim from bot.py lines 1923-2087)
     # Uses bot_state._brain_cal_s1, bot_state._obi_monitor,
-    # bot_state._funding_monitor_btc, bot_state._funding_monitor_eth — already rewritten.
+    # bot_state._funding_monitor_btc, bot_state._funding_monitor_eth - already rewritten.
     ...
 ```
 
 > `brain_log` and its `FileHandler` are **defined in bot_strategy.py**, not bot.py.
-> Remove the `brain_log` setup block from bot.py (lines 54–60) when bot.py is
-> cleaned up in Task 12. For now, leave it in bot.py — duplicate loggers with the
+> Remove the `brain_log` setup block from bot.py (lines 54-60) when bot.py is
+> cleaned up in Task 12. For now, leave it in bot.py - duplicate loggers with the
 > same name share the handler registry; the FileHandler won't double-write.
 
 ### Step 2: Update bot.py (move + delete dead code)
 
 - [ ] **Step 2a:** Delete from bot.py:
-  - `track_contract_price` (lines 1393–1402)
-  - `calibrate_from_history` (lines 1405–1457) — **dead code, do not port**
-  - `_calibrate_one_brain` (lines 1460–1517) — **dead code, do not port**
-  - `calibrate_brain` (lines 1519–1527) — **dead code, do not port**
-  - `recalibrate_asset_strategies` (lines 1529–1578) — **dead code, do not port**
-  - `_session_ev_adjustment` (lines 1581–1583)
-  - `_strategy_name_for` (lines 1592–1594)
-  - `_get_or_make_strategy_s2` (lines 1597–1673)
-  - `strategy_brain_s2` (lines 1676–1826)
-  - `_s1_empirical_win_prob` (lines 1860–1872)
-  - `_s1_calculate_momentum` (lines 1875–1888)
-  - `_s1_realized_vol` (lines 1891–1904)
-  - `_s1_contract_velocity` (lines 1907–1920)
-  - `strategy_brain_s1` (lines 1923–2087)
+  - `track_contract_price` (lines 1393-1402)
+  - `calibrate_from_history` (lines 1405-1457) - **dead code, do not port**
+  - `_calibrate_one_brain` (lines 1460-1517) - **dead code, do not port**
+  - `calibrate_brain` (lines 1519-1527) - **dead code, do not port**
+  - `recalibrate_asset_strategies` (lines 1529-1578) - **dead code, do not port**
+  - `_session_ev_adjustment` (lines 1581-1583)
+  - `_strategy_name_for` (lines 1592-1594)
+  - `_get_or_make_strategy_s2` (lines 1597-1673)
+  - `strategy_brain_s2` (lines 1676-1826)
+  - `_s1_empirical_win_prob` (lines 1860-1872)
+  - `_s1_calculate_momentum` (lines 1875-1888)
+  - `_s1_realized_vol` (lines 1891-1904)
+  - `_s1_contract_velocity` (lines 1907-1920)
+  - `strategy_brain_s1` (lines 1923-2087)
 
 - [ ] **Step 2b:** Add to bot.py imports:
   ```python
@@ -856,8 +856,8 @@ def strategy_brain_s1(
 
 ### Step 3: Verify
 
-- [ ] **Step 3a:** `py -3 -c "import bot"` — no error.
-- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` — 606 passed.
+- [ ] **Step 3a:** `py -3 -c "import bot"` - no error.
+- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` - 606 passed.
   (Dead code removal should not affect any test.)
 
 ### Step 4: Commit
@@ -884,7 +884,7 @@ def strategy_brain_s1(
 - [ ] **Step 1a:** Create `bot_risk.py`:
 
 ```python
-"""bot_risk.py — Daily limits, midnight reset, state file, strike parser."""
+"""bot_risk.py - Daily limits, midnight reset, state file, strike parser."""
 import logging
 import re
 import time
@@ -897,34 +897,34 @@ from bot_notify import send_telegram
 
 log = logging.getLogger("bot")
 
-# Compiled regexes for ticker strike parsing — live next to _parse_strike_from_ticker
+# Compiled regexes for ticker strike parsing - live next to _parse_strike_from_ticker
 _STRIKE_RE_T_SUFFIX      = re.compile(r"-T(\d+)$")
 _STRIKE_RE_NUMERIC_SUFFIX = re.compile(r"-(\d{3,7})$")
 
 
 async def check_daily_limits(config: dict) -> tuple[bool, str]:
-    # (move verbatim from bot.py lines 2599–2654)
+    # (move verbatim from bot.py lines 2599-2654)
     # Uses bot_state.limit_triggered, bot_state.limit_reason,
-    # bot_state.pre_limit_mode, bot_state._consecutive_losses — already rewritten.
+    # bot_state.pre_limit_mode, bot_state._consecutive_losses - already rewritten.
     ...
 
 
 def midnight_reset() -> None:
-    # (move verbatim from bot.py lines 2657–2686)
+    # (move verbatim from bot.py lines 2657-2686)
     # Uses bot_state.limit_triggered, bot_state.limit_reason,
     # bot_state.pre_limit_mode, bot_state.daily_reset_date,
-    # bot_state._consecutive_losses, bot_state._consecutive_price_skips — already rewritten.
+    # bot_state._consecutive_losses, bot_state._consecutive_price_skips - already rewritten.
     ...
 
 
 def _parse_strike_from_ticker(ticker):
-    # (move verbatim from bot.py lines 2689–2702)
+    # (move verbatim from bot.py lines 2689-2702)
     ...
 
 
 async def write_state_file(config: dict) -> None:
-    # (move verbatim from bot.py lines 2705–2843)
-    # Uses many bot_state.* fields — already rewritten.
+    # (move verbatim from bot.py lines 2705-2843)
+    # Uses many bot_state.* fields - already rewritten.
     ...
 
 
@@ -932,13 +932,13 @@ async def _log_entry(
     session, asset, ticker, market, above, ev, action, reason,
     contracts=0, price_cents=0, duration_min=15.0
 ) -> None:
-    # (move verbatim from bot.py lines 2846–2872)
+    # (move verbatim from bot.py lines 2846-2872)
     ...
 ```
 
 ### Step 2: Update bot.py
 
-- [ ] **Step 2a:** Delete functions `check_daily_limits`, `midnight_reset`, `_parse_strike_from_ticker`, `write_state_file`, `_log_entry` from bot.py (lines 2599–2872).
+- [ ] **Step 2a:** Delete functions `check_daily_limits`, `midnight_reset`, `_parse_strike_from_ticker`, `write_state_file`, `_log_entry` from bot.py (lines 2599-2872).
 
 - [ ] **Step 2b:** Add to bot.py imports:
   ```python
@@ -950,8 +950,8 @@ async def _log_entry(
 
 ### Step 3: Verify
 
-- [ ] **Step 3a:** `py -3 -c "import bot"` — no error.
-- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` — 606 passed.
+- [ ] **Step 3a:** `py -3 -c "import bot"` - no error.
+- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` - 606 passed.
   (test_notify_ctx.py's `_parse_strike_from_ticker` tests must pass.)
 
 ### Step 4: Commit
@@ -975,7 +975,7 @@ async def _log_entry(
 - [ ] **Step 1a:** Create `bot_trade.py`:
 
 ```python
-"""bot_trade.py — S1 trade execution, settlement, orphan recovery."""
+"""bot_trade.py - S1 trade execution, settlement, orphan recovery."""
 import asyncio
 import logging
 import time
@@ -1007,7 +1007,7 @@ async def _execute_s1_trade(
     contracts: int,
     config: dict,
 ) -> None:
-    # (move verbatim from bot.py lines 2875–2981)
+    # (move verbatim from bot.py lines 2875-2981)
     ...
 
 
@@ -1017,7 +1017,7 @@ async def _settle_s1_trade(
     asset: str,
     config: dict,
 ) -> None:
-    # (move verbatim from bot.py lines 2984–3037)
+    # (move verbatim from bot.py lines 2984-3037)
     ...
 
 
@@ -1026,13 +1026,13 @@ async def _try_settle_orphaned_s1(
     asset: str,
     config: dict,
 ) -> None:
-    # (move verbatim from bot.py lines 3040–3066)
+    # (move verbatim from bot.py lines 3040-3066)
     ...
 ```
 
 ### Step 2: Update bot.py
 
-- [ ] **Step 2a:** Delete `_execute_s1_trade`, `_settle_s1_trade`, `_try_settle_orphaned_s1` from bot.py (lines 2875–3066).
+- [ ] **Step 2a:** Delete `_execute_s1_trade`, `_settle_s1_trade`, `_try_settle_orphaned_s1` from bot.py (lines 2875-3066).
 
 - [ ] **Step 2b:** Add to bot.py imports:
   ```python
@@ -1041,8 +1041,8 @@ async def _try_settle_orphaned_s1(
 
 ### Step 3: Verify
 
-- [ ] **Step 3a:** `py -3 -c "import bot"` — no error.
-- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` — 606 passed.
+- [ ] **Step 3a:** `py -3 -c "import bot"` - no error.
+- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` - 606 passed.
 
 ### Step 4: Commit
 
@@ -1065,7 +1065,7 @@ async def _try_settle_orphaned_s1(
 - [ ] **Step 1a:** Create `bot_preflight.py`:
 
 ```python
-"""bot_preflight.py — Startup credential check and preflight verification."""
+"""bot_preflight.py - Startup credential check and preflight verification."""
 import logging
 import sys
 
@@ -1080,20 +1080,20 @@ log = logging.getLogger("bot")
 
 
 async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
-    # (move verbatim from bot.py lines 4139–4244)
+    # (move verbatim from bot.py lines 4139-4244)
     # Uses bot_state.KALSHI_BASE_URL, bot_state.API_TIMEOUT,
-    # bot_state.api_key — already rewritten.
+    # bot_state.api_key - already rewritten.
     ...
 
 
 async def run_preflight_checks(config: dict) -> None:
-    # (move verbatim from bot.py lines 4247–4337)
+    # (move verbatim from bot.py lines 4247-4337)
     ...
 ```
 
 ### Step 2: Update bot.py
 
-- [ ] **Step 2a:** Delete `verify_kalshi_connection` and `run_preflight_checks` from bot.py (lines 4139–4337).
+- [ ] **Step 2a:** Delete `verify_kalshi_connection` and `run_preflight_checks` from bot.py (lines 4139-4337).
 
 - [ ] **Step 2b:** Add to bot.py imports:
   ```python
@@ -1102,8 +1102,8 @@ async def run_preflight_checks(config: dict) -> None:
 
 ### Step 3: Verify
 
-- [ ] **Step 3a:** `py -3 -c "import bot"` — no error.
-- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` — 606 passed.
+- [ ] **Step 3a:** `py -3 -c "import bot"` - no error.
+- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` - 606 passed.
 
 ### Step 4: Commit
 
@@ -1121,7 +1121,7 @@ async def run_preflight_checks(config: dict) -> None:
 - Create: `bot_loops.py`
 - Modify: `bot.py`
 
-> This is the largest extraction — ~1,100 lines covering all phase handlers and
+> This is the largest extraction - ~1,100 lines covering all phase handlers and
 > the main trading loop. `_no_data_eval` is a **nested closure** defined inside
 > `_process_asset`; it moves with `_process_asset` and is not a top-level function.
 
@@ -1130,7 +1130,7 @@ async def run_preflight_checks(config: dict) -> None:
 - [ ] **Step 1a:** Create `bot_loops.py`:
 
 ```python
-"""bot_loops.py — Phase handlers, asset loop, main trading loop."""
+"""bot_loops.py - Phase handlers, asset loop, main trading loop."""
 import asyncio
 import logging
 import time
@@ -1168,7 +1168,7 @@ async def handle_ready_phase(
     asset: str,
     config: dict,
 ) -> None:
-    # (move verbatim from bot.py lines 3069–3528)
+    # (move verbatim from bot.py lines 3069-3528)
     ...
 
 
@@ -1178,12 +1178,12 @@ async def handle_locked_phase(
     asset: str,
     config: dict,
 ) -> None:
-    # (move verbatim from bot.py lines 3531–3691)
+    # (move verbatim from bot.py lines 3531-3691)
     ...
 
 
 def _init_asset_state(asset: str) -> dict:
-    # (move verbatim from bot.py lines 3694–3702)
+    # (move verbatim from bot.py lines 3694-3702)
     ...
 
 
@@ -1192,24 +1192,24 @@ async def _process_asset(
     asset: str,
     config: dict,
 ) -> None:
-    # (move verbatim from bot.py lines 3705–3834)
-    # NOTE: _no_data_eval is a nested closure inside this function — it moves here too.
+    # (move verbatim from bot.py lines 3705-3834)
+    # NOTE: _no_data_eval is a nested closure inside this function - it moves here too.
     ...
 
 
 async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
-    # (move verbatim from bot.py lines 3837–3869)
+    # (move verbatim from bot.py lines 3837-3869)
     ...
 
 
 async def main_loop() -> None:
-    # (move verbatim from bot.py lines 3872–4136)
+    # (move verbatim from bot.py lines 3872-4136)
     ...
 ```
 
 ### Step 2: Update bot.py
 
-- [ ] **Step 2a:** Delete all six functions from bot.py (lines 3069–4136).
+- [ ] **Step 2a:** Delete all six functions from bot.py (lines 3069-4136).
 
 - [ ] **Step 2b:** Add to bot.py imports:
   ```python
@@ -1222,8 +1222,8 @@ async def main_loop() -> None:
 
 ### Step 3: Verify
 
-- [ ] **Step 3a:** `py -3 -c "import bot"` — no error.
-- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` — 606 passed.
+- [ ] **Step 3a:** `py -3 -c "import bot"` - no error.
+- [ ] **Step 3b:** `py -3 -m pytest tests/ -x -q` - 606 passed.
 
 ### Step 4: Commit
 
@@ -1241,7 +1241,7 @@ async def main_loop() -> None:
 - Modify: `bot.py` (rewrite to ~200-line entrypoint)
 - Modify: `tests/test_notify_ctx.py` (load from new modules)
 
-After Tasks 1–11, bot.py still has:
+After Tasks 1-11, bot.py still has:
 - A large imports section with redundant names (now provided by the new modules)
 - The `brain_log` FileHandler setup
 - Any lingering `global` declarations
@@ -1254,7 +1254,7 @@ After Tasks 1–11, bot.py still has:
 
 ```python
 """
-bot.py — Entrypoint for the Kalshi 15-minute trading bot.
+bot.py - Entrypoint for the Kalshi 15-minute trading bot.
 
 Start via runner.py, not directly.
 """
@@ -1388,7 +1388,7 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-- [ ] **Step 1b:** Confirm `verify_kalshi_connection` is imported from `bot_preflight` (not `bot_kalshi`) — check the import block you wrote matches the function's home after Task 10.
+- [ ] **Step 1b:** Confirm `verify_kalshi_connection` is imported from `bot_preflight` (not `bot_kalshi`) - check the import block you wrote matches the function's home after Task 10.
 
   > **Note:** `verify_kalshi_connection` moved to `bot_preflight.py` in Task 10.
   > The import above should be `from bot_preflight import run_preflight_checks, verify_kalshi_connection`.
@@ -1459,7 +1459,7 @@ def test_phase_for_eth_non_eth_returns_none():
   ```
   py -3 -c "print(sum(1 for _ in open('bot.py')))"
   ```
-  Expected: ~200 (acceptable range 150–250).
+  Expected: ~200 (acceptable range 150-250).
 
 - [ ] **Step 3b:** Confirm no `global` declarations remain in any extracted module:
   ```
@@ -1467,9 +1467,9 @@ def test_phase_for_eth_non_eth_returns_none():
   ```
   Expected: no output.
 
-- [ ] **Step 3c:** `py -3 -c "import bot"` — no error.
+- [ ] **Step 3c:** `py -3 -c "import bot"` - no error.
 
-- [ ] **Step 3d:** `py -3 -m pytest tests/ -x -q` — 606 passed.
+- [ ] **Step 3d:** `py -3 -m pytest tests/ -x -q` - 606 passed.
 
 - [ ] **Step 3e:** Check the module count:
   ```

@@ -1,15 +1,15 @@
 """
-runner.py — Launches and monitors bot.py strategy instances.
+runner.py - Launches and monitors bot.py strategy instances.
 
 Server is handled by Railway (Procfile: web: python server.py).
 This runner manages bot worker processes and all background sidecars.
 
 Sidecars
 --------
-  paper mode  : price_validator.py     — continuous AMM price accuracy monitor
-  live mode   : validate_and_report.py — blocking GO/NO-GO gate before bots start
-  always      : collect_kalshi_ladder_history.py — refreshed every 24 h
-  always      : weekly_report.py       — refreshed every 7 days
+  paper mode  : price_validator.py     - continuous AMM price accuracy monitor
+  live mode   : validate_and_report.py - blocking GO/NO-GO gate before bots start
+  always      : collect_kalshi_ladder_history.py - refreshed every 24 h
+  always      : weekly_report.py       - refreshed every 7 days
 
 Usage:
     python runner.py
@@ -43,11 +43,11 @@ def _send_telegram_sync(text: str) -> None:
     notify.send_alert("INFO", text)
 
 
-# ── Process registry ──────────────────────────────────────────────────────────
+# Process registry
 _procs: list[dict] = []                          # bot strategy processes
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
+# Helpers
 
 def _load_strategies(path: str) -> list[dict]:
     try:
@@ -65,12 +65,12 @@ def _load_strategies(path: str) -> list[dict]:
     for i, s in enumerate(strategies):
         missing = required - s.keys()
         if missing:
-            log.warning(f"Strategy #{i} missing fields: {missing} — skipping")
+            log.warning(f"Strategy #{i} missing fields: {missing} - skipping")
             continue
         if s["enabled"]:
             valid.append(s)
         else:
-            log.info(f"Strategy '{s['name']}' disabled — skipping")
+            log.info(f"Strategy '{s['name']}' disabled - skipping")
     return valid
 
 
@@ -102,9 +102,9 @@ def _run_preflight_validation() -> bool:
     if not os.path.exists(_vr_path):
         # The pre-flight script was removed from the repo (commit 1ac7fab); without this
         # guard subprocess.run would exit non-zero and falsely halt live mode on startup.
-        log.warning("validate_and_report.py not present — skipping live pre-flight gate, proceeding.")
+        log.warning("validate_and_report.py not present - skipping live pre-flight gate, proceeding.")
         return True
-    log.info("Live mode — running validate_and_report.py pre-flight check ...")
+    log.info("Live mode - running validate_and_report.py pre-flight check ...")
     result = subprocess.run(
         [sys.executable, _vr_path],
         cwd=BASE_DIR,
@@ -112,13 +112,13 @@ def _run_preflight_validation() -> bool:
     if result.returncode != 0:
         log.error("validate_and_report.py returned NO-GO (exit 1). Halting.")
         _send_telegram_sync(
-            "<b>LIVE PRE-FLIGHT FAILED — NO-GO</b>\n"
+            "<b>LIVE PRE-FLIGHT FAILED - NO-GO</b>\n"
             "validate_and_report.py rejected the price model.\n"
             "Run price_validator.py in paper mode first to collect 200+ samples,\n"
             "then retry: <code>python runner.py</code>"
         )
         return False
-    log.info("Pre-flight validation passed (GO / MARGINAL) — starting bots.")
+    log.info("Pre-flight validation passed (GO / MARGINAL) - starting bots.")
     return True
 
 
@@ -132,7 +132,7 @@ def _shutdown(signum, frame):
     sys.exit(0)
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# Main
 
 def main():
     parser = argparse.ArgumentParser()
@@ -150,7 +150,7 @@ def main():
             cfg = json.load(fh)
         mode = cfg.get("mode", "paper")
     except Exception as exc:
-        log.warning(f"Could not read config.json: {exc} — defaulting to paper mode")
+        log.warning(f"Could not read config.json: {exc} - defaulting to paper mode")
         mode = "paper"
 
     log.info(f"Mode: {mode.upper()}")
@@ -175,13 +175,13 @@ def main():
 
     log.info(f"{len(strategies)} strategy instance(s) running. Ctrl+C to stop.")
 
-    # ── Main monitoring loop ──────────────────────────────────────────────────
+    # Main monitoring loop
     while True:
         try:
             time.sleep(POLL_INTERVAL)
             now = time.time()
 
-            # ── Bot strategy health checks ────────────────────────────────────
+            # Bot strategy health checks
             for entry in _procs:
                 if entry.get("halted"):
                     continue
@@ -198,7 +198,7 @@ def main():
                            f"Resolve pre-flight issues then restart manually.")
                     log.error(f"{msg}")
                     _send_telegram_sync(
-                        f"<b>PRE-FLIGHT FAILED — {entry['name']}</b>\n"
+                        f"<b>PRE-FLIGHT FAILED - {entry['name']}</b>\n"
                         f"Bot refused to start due to unresolved pre-flight checks.\n"
                         f"Resolve issues in config.json / price_validation_log.csv, "
                         f"then restart manually: <code>python runner.py</code>"
@@ -218,11 +218,11 @@ def main():
                     if len(recent) >= MAX_CRASHES_PER_HOUR:
                         msg = (
                             f"CRITICAL: '{entry['name']}' crashed {len(recent)}x "
-                            f"in the last hour — halting restarts."
+                            f"in the last hour - halting restarts."
                         )
                         log.error(f"{msg}")
                         _send_telegram_sync(
-                            f"<b>CRASH LOOP HALTED — {entry['name']}</b>\n"
+                            f"<b>CRASH LOOP HALTED - {entry['name']}</b>\n"
                             f"Crashed {len(recent)}x in the last hour.\n"
                             f"Manual restart required: python runner.py"
                         )
@@ -233,7 +233,7 @@ def main():
                         entry["last_crash"] = 0.0
                         log.info(f"'{entry['name']}' restarted (PID={new_proc.pid}, crashes_1h={len(recent)}).")
 
-            # ── Status line ───────────────────────────────────────────────────
+            # Status line
             running = [e["name"] for e in _procs if e["proc"].poll() is None and not e.get("halted")]
             halted  = [e["name"] for e in _procs if e.get("halted")]
             status = f"OK | bots: {running}"

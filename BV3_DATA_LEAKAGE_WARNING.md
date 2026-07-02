@@ -3,7 +3,7 @@
 ## What is BV3?
 
 Brain v3 (`_BV3_TABLE` in `bot.py`) is an empirical win-probability lookup table
-built from 4.5 million BTC 1-minute rows spanning **2017–2026**.
+built from 4.5 million BTC 1-minute rows spanning **2017-2026**.
 
 It maps `(abs_pct_distance_from_strike, minutes_remaining)` → `win_probability`.
 
@@ -28,7 +28,7 @@ This means the BV3 table has already "seen" the OOS period:
   data only and re-running the OOS evaluation.
 - Monte Carlo and walk-forward results on the **train partition** are unaffected
   by this specific leakage (the train split is also included in BV3 construction,
-  so the in-sample period is similarly contaminated — the comparison is consistent
+  so the in-sample period is similarly contaminated - the comparison is consistent
   but not predictive of live performance).
 
 ## What "no leakage" would require
@@ -41,7 +41,7 @@ This means the BV3 table has already "seen" the OOS period:
 Until this is done, **treat all reported OOS metrics as optimistic upper bounds**,
 not reliable performance forecasts.
 
-## Current status — RESOLVED (2026-04-18, Section 8)
+## Current status - RESOLVED (2026-04-18, Section 8)
 
 BV3 tables have been **regenerated with a clean train/test split**.
 
@@ -62,7 +62,7 @@ BV3 tables have been **regenerated with a clean train/test split**.
 | DOGE  | 0.7617             | 0.6872      | −0.075  |
 
 The leakage was **real and material**: SOL and DOGE near-strike probabilities
-were overstated by 7–11pp. The clean tables are now live in `bv3_tables/*_bv3_full.json`.
+were overstated by 7-11pp. The clean tables are now live in `bv3_tables/*_bv3_full.json`.
 
 All previously reported OOS metrics against 2024+ data should be treated as
 optimistic upper bounds. Re-run any OOS evaluation to get unbiased estimates.

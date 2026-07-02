@@ -4,7 +4,7 @@
 
 **Goal:** Build a complete backtesting and validation layer for the Kalshi 15-minute crypto binary strategy bot, integrating with existing `backtesting/walk_forward.py` and `backtesting/stress_test.py` without modifying them.
 
-**Architecture:** Event-driven single-threaded backtest engine + CPCV validation + calibration/overfitting/trading metrics + Jinja2 report generation + CLI entrypoint. Sequential only — no parallelism anywhere.
+**Architecture:** Event-driven single-threaded backtest engine + CPCV validation + calibration/overfitting/trading metrics + Jinja2 report generation + CLI entrypoint. Sequential only - no parallelism anywhere.
 
 **Tech Stack:** Python 3.11+, pandas, numpy, scipy, scikit-learn, statsmodels, pyyaml, pydantic, matplotlib, pytest, jinja2
 
@@ -12,13 +12,13 @@
 - DO NOT modify `strategies/` (read-only)
 - DO NOT modify existing `backtesting/walk_forward.py` or `backtesting/stress_test.py`
 - 3% Kalshi taker fee mandatory from first run
-- No look-ahead — programmatic check required
+- No look-ahead - programmatic check required
 - No data pooling across assets
 - Sequential execution only
 
 **Existing modules to wrap (not rewrite):**
-- `backtesting/walk_forward.py` — WFA engine that reads `data/split_config.json`, calls `backtest.py`
-- `backtesting/stress_test.py` — Monte Carlo noise stress test
+- `backtesting/walk_forward.py` - WFA engine that reads `data/split_config.json`, calls `backtest.py`
+- `backtesting/stress_test.py` - Monte Carlo noise stress test
 
 ---
 
@@ -164,14 +164,14 @@ import yaml
 for cfg in ["backtest", "per_asset/btc", "per_asset/eth", "per_asset/sol", "per_asset/xrp"]:
     with open(f"backtesting/configs/{cfg}.yaml") as f:
         d = yaml.safe_load(f)
-    print(f"{cfg}: OK — keys={list(d.keys())}")
+    print(f"{cfg}: OK - keys={list(d.keys())}")
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add backtesting/configs/ backtesting/data/__init__.py backtesting/training/__init__.py backtesting/validation/__init__.py backtesting/metrics/__init__.py backtesting/simulation/__init__.py backtesting/reports/__init__.py
-git commit -m "feat: backtesting scaffold — directories, __init__.py stubs, YAML configs"
+git commit -m "feat: backtesting scaffold - directories, __init__.py stubs, YAML configs"
 ```
 
 ---
@@ -513,7 +513,7 @@ WINDOW_MINUTES = 15
 
 def build_labels(
     bars: pd.DataFrame,
-    reference_source: str = "spot",  # "spot" or "perp" — from per-asset config
+    reference_source: str = "spot",  # "spot" or "perp" - from per-asset config
     window_minutes: int = WINDOW_MINUTES,
     drop_incomplete: bool = True,
 ) -> pd.DataFrame:
@@ -523,7 +523,7 @@ def build_labels(
     Args:
         bars: DataFrame with columns [timestamp, open, high, low, close, volume].
               Timestamp must be UTC-aware.
-        reference_source: "spot" or "perp" — informational only; caller ensures
+        reference_source: "spot" or "perp" - informational only; caller ensures
                           the correct bars were loaded.
         window_minutes: length of each binary window (default 15).
         drop_incomplete: if True, drop windows with any missing data.
@@ -750,7 +750,7 @@ def build_event_stream(
 
     Every DataFrame must have a UTC-aware 'timestamp' column.
     Returns events sorted by timestamp ascending.
-    No silent timezone drift — validates UTC for every input.
+    No silent timezone drift - validates UTC for every input.
     """
     events: list[Event] = []
 
@@ -914,7 +914,7 @@ Fits HAR-RS-J coefficients using OLS on a rolling training window.
 Writes results to a sidecar file: strategies/strategy_a/config/{asset}.fitted.yaml
 Does NOT modify the original config under strategies/.
 
-Reference: Patton & Sheppard (2015) — separate RV+/RV- coefficients for crypto
+Reference: Patton & Sheppard (2015) - separate RV+/RV- coefficients for crypto
 (RV+ predicts future variance more strongly than RV- in crypto, unlike equities).
 """
 from __future__ import annotations
@@ -1131,7 +1131,7 @@ def fit_and_save(
     Fit a calibrated classifier and save to disk.
 
     Returns:
-        (weights_path, calibrator_path) — paths to the saved artifacts.
+        (weights_path, calibrator_path) - paths to the saved artifacts.
 
     weights_path:    pickle of feature_names list
     calibrator_path: pickle of the fitted CalibratedClassifierCV object
@@ -1230,7 +1230,7 @@ def _build_feature_matrix(
     if labels_df.empty:
         raise ValueError(f"[{asset}] No labels built from bars.")
 
-    # Align feature rows to label timestamps (approximate — features lead labels by 1 window)
+    # Align feature rows to label timestamps (approximate - features lead labels by 1 window)
     n = min(len(feat_df), len(labels_df))
     feat_df = feat_df.iloc[-n:]
     labels_df = labels_df.iloc[-n:]
@@ -1274,7 +1274,7 @@ def run_training_pipeline(
         per_asset_cfg_path = os.path.join(per_asset_config_dir, f"{asset.lower()}.yaml")
         asset_config = _load_yaml(per_asset_cfg_path)
 
-        # Load bars — skip if no data
+        # Load bars - skip if no data
         try:
             from backtesting.data.loaders import load_bars
             data_cfg = global_config.get("data", {})
@@ -1389,8 +1389,8 @@ def check_no_lookahead(
     data strictly before the decision timestamp.
 
     Each decision dict must have:
-        "timestamp": pd.Timestamp — the decision time
-        "feature_timestamps": dict[str, pd.Timestamp] — feature name → source data timestamp
+        "timestamp": pd.Timestamp - the decision time
+        "feature_timestamps": dict[str, pd.Timestamp] - feature name → source data timestamp
 
     Returns a list of violations. Empty list means pass.
     """
@@ -1494,7 +1494,7 @@ def test_empty_decisions_passes():
 """
 Combinatorial Purged Cross-Validation (CPCV).
 
-Reference: Bailey & Lopez de Prado (2018) — "The Probability of Backtest Overfitting."
+Reference: Bailey & Lopez de Prado (2018) - "The Probability of Backtest Overfitting."
 
 Parameters:
     N: number of groups to split data into (default 6)
@@ -1639,7 +1639,7 @@ def run_cpcv(
         bs = brier_score(y_test, p_hat)
         ll = log_loss_score(y_test, p_hat)
 
-        # Simplified trading metrics — assume trade when |edge| > min_edge
+        # Simplified trading metrics - assume trade when |edge| > min_edge
         p_market = 0.5  # TODO: wire real Kalshi prices per window
         edges = p_hat - p_market
         trade_mask = np.abs(edges) > 0.055  # approximate min_edge
@@ -1968,7 +1968,7 @@ Politis-Romano stationary block bootstrap for confidence intervals.
 Used for confidence intervals on Sharpe, win rate, and expectancy.
 Default mean block length: 24 hours of 15-min trades = 96 periods.
 
-Reference: Politis & Romano (1994) — "The Stationary Bootstrap."
+Reference: Politis & Romano (1994) - "The Stationary Bootstrap."
 """
 from __future__ import annotations
 import numpy as np
@@ -2050,7 +2050,7 @@ git commit -m "feat: add WFA/MC adapters and stationary block bootstrap"
 
 ---
 
-### Task 9: Metrics — calibration, trading, overfitting, regime
+### Task 9: Metrics - calibration, trading, overfitting, regime
 
 **Files:**
 - Create: `backtesting/metrics/calibration.py`
@@ -2279,9 +2279,9 @@ def trading_summary(
 """
 Overfitting detection metrics.
 
-1. Deflated Sharpe Ratio (DSR) — Bailey & Lopez de Prado (2014)
-2. Probability of Backtest Overfitting (PBO) — Bailey et al. (2017)
-3. Probabilistic Sharpe Ratio (PSR) — Lopez de Prado & Bailey (2012)
+1. Deflated Sharpe Ratio (DSR) - Bailey & Lopez de Prado (2014)
+2. Probability of Backtest Overfitting (PBO) - Bailey et al. (2017)
+3. Probabilistic Sharpe Ratio (PSR) - Lopez de Prado & Bailey (2012)
 
 All three consume the CPCV Sharpe distribution.
 """
@@ -2678,7 +2678,7 @@ git commit -m "feat: add calibration, trading, overfitting, and regime metrics"
 
 ---
 
-### Task 10: Simulation — fill model and backtest engine
+### Task 10: Simulation - fill model and backtest engine
 
 **Files:**
 - Create: `backtesting/simulation/fill_model.py`
@@ -2704,7 +2704,7 @@ See spec: verify 3% fee applied, slippage crosses spread, latency respected, no 
 
 ---
 
-### Task 11: Reports — report builder, comparison, Jinja2 templates
+### Task 11: Reports - report builder, comparison, Jinja2 templates
 
 **Files:**
 - Create: `backtesting/reports/report_builder.py`

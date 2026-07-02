@@ -62,7 +62,6 @@ def test_write_state_called_on_locked_transition():
     After handle_ready_phase transitions to LOCKED, the state file must be
     written in the same function call — not deferred to the next loop tick.
     """
-    import ast
     src = (ROOT / "bot_loops.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
 
@@ -95,7 +94,6 @@ def test_portfolio_fallback_wired_in_handle_ready_phase():
     When fill_confirmed=False, handle_ready_phase must call _portfolio_has_position
     in live/demo mode before setting phase=DONE.
     """
-    import ast
     src = (ROOT / "bot_loops.py").read_text(encoding="utf-8")
     assert "_portfolio_has_position" in src, (
         "_portfolio_has_position must be imported in bot_loops.py"

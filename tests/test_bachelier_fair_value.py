@@ -129,8 +129,8 @@ def test_live_sigma_no_tod_double_count(monkeypatch):
 def test_s1_dicts_carry_model_raw_p_yes():
     import inspect
     src = inspect.getsource(s.strategy_brain_s1)
-    # all three S1 return dicts (trade, ev-gate skip, dislocation) expose model_raw_p_yes
-    assert src.count("model_raw_p_yes") >= 3, "S1 must emit model_raw_p_yes for the edge harness"
+    # both S1 return dicts that reach the model stage (trade, ev-gate skip) expose model_raw_p_yes
+    assert src.count("model_raw_p_yes") >= 2, "S1 must emit model_raw_p_yes for the edge harness"
 
 
 # ── settlement basis ────────────────────────────────────────────────────────

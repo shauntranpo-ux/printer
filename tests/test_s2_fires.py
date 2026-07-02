@@ -1,237 +1,156 @@
 """
-End-to-end tests: strategy_brain_s2 fires on realistic AMM market conditions.
+End-to-end tests: strategy_brain_s2 (spot_fv_disloc) fires and skips correctly.
 
-These tests prove the full signal pipeline — velocity accumulation, OBI handling,
-win rate lookup, EV gate — without mocking the brain logic itself.
+The new S2 prices a Bachelier digital on the CURRENT spot vs strike and trades only
+when the de-vigged market mid is stale-cheap relative to it (anchored-EV gate). No
+momentum, no contract velocity, no OBI. Direction comes from the model.
 """
-import time
-import collections
-import sys
-import os
+import sys, os, time, collections
+from unittest.mock import patch
+import contextlib
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 import bot_state
-from bot_strategy import strategy_brain_s2, _S2_ASSET_CONFIG
+import asset_manager
+from bot_strategy import strategy_brain_s2, _S2_FV_CONFIG
 
 
 @pytest.fixture(autouse=True)
-def _clean_state():
-    """Wipe velocity history and OBI state between tests."""
-    bot_state._contract_price_history.clear()
-    bot_state._ticker_obi.clear()
+def _restore_prices():
+    """Snapshot and restore the per-asset price deques mutated by these tests."""
+    saved = {a: asset_manager._prices.get(a) for a in ("BTC", "ETH", "SOL", "XRP", "DOGE")}
+    saved_btc = bot_state.btc_prices
     yield
-    bot_state._contract_price_history.clear()
-    bot_state._ticker_obi.clear()
+    for a, dq in saved.items():
+        if dq is not None:
+            asset_manager._prices[a] = dq
+    bot_state.btc_prices = saved_btc
 
 
-def _seed_velocity(ticker: str, asset: str, direction: str = "yes"):
+def _seed_spot(asset: str, last_price: float, strike_side_above: bool, strike: float):
     """
-    Seed contract price history with a strong velocity signal (3x minimum).
-    Conviction gate requires 1.5x min_vel_delta; 3x gives safety margin.
-    delta ~= 2*step, so step = 1.5*min_vel gives delta = 3*min_vel.
+    Seed the asset's price deque with ~78s of prints all on one side of the strike,
+    ending at last_price. Guarantees the spot-sign confirmation gate is satisfied.
     """
-    cfg = _S2_ASSET_CONFIG[asset]
-    lookback = cfg["vel_lookback"]
-    min_vel  = cfg["min_vel_delta"]
-    step = (min_vel * 3.0) / 2.0
-    base = 70.0
-    n = lookback + 1
-    history = collections.deque(maxlen=60)
-    if direction == "yes":
-        prices = [base + i * step for i in range(n)]
-    else:
-        prices = [base + (n - 1 - i) * step for i in range(n)]
     now = time.time()
-    for i, p in enumerate(prices):
-        history.append((now - (n - 1 - i) * 10, p))
-    bot_state._contract_price_history[ticker] = history
+    dq = collections.deque(maxlen=2000)
+    # Prints ramp toward last_price but stay on the correct side of the strike.
+    if strike_side_above:
+        start = max(last_price * 0.999, strike * 1.001)
+    else:
+        start = min(last_price * 1.001, strike * 0.999)
+    for i in range(40):
+        t = now - (39 - i) * 2.0
+        frac = i / 39.0
+        dq.append((t, start + (last_price - start) * frac))
+    asset_manager._prices[asset] = dq
+    if asset == "BTC":
+        bot_state.btc_prices = dq
+    return dq
 
 
-class TestS2FiresETH:
-    """S2 fires for ETH in the market-uncertainty zone (entry <= 50c)."""
-
-    def test_s2_fires_amm_obi_none(self):
-        """S2 fires when OBI=None (AMM market), velocity strong, entry <=50c."""
-        ticker = "KXETH-25MAY30-T2800"
-        _seed_velocity(ticker, "ETH", direction="yes")
-        result = strategy_brain_s2(
-            btc_price=2850.0,
-            strike=2800.0,
-            yes_ask=45.0,
-            no_ask=55.0,
-            elapsed_seconds=760.0,
-            secs_left=240.0,
-            ticker=ticker,
-            asset="ETH",
-        )
-        assert result["action"] == "trade", (
-            f"S2 should trade but got: {result['reasoning']}\n"
-            "Likely OBI gate still fails closed — check _s2_obi_gate None branch."
-        )
-        assert result["side"] == "yes"
-        # win_prob is now anchored to the de-vigged market mid and shrunk up by the
-        # bullish velocity signal — it must sit above the mid with a positive market edge.
-        assert result["signals"]["market_edge"] > 0, (
-            f"expected positive market edge, got {result['signals']['market_edge']:.3f}")
-        assert result["win_prob"] >= 0.50, f"win_prob {result['win_prob']:.3f} below 0.50"
-
-    def test_s2_fires_with_explicit_none_obi(self):
-        """S2 fires when _ticker_obi[ticker] is explicitly set to None (AMM fetch path)."""
-        ticker = "KXETH-25MAY30-T2800B"
-        _seed_velocity(ticker, "ETH", direction="yes")
-        bot_state._ticker_obi[ticker] = None
-        result = strategy_brain_s2(
-            btc_price=2850.0,
-            strike=2800.0,
-            yes_ask=45.0,
-            no_ask=55.0,
-            elapsed_seconds=760.0,
-            secs_left=240.0,
-            ticker=ticker,
-            asset="ETH",
-        )
-        assert result["action"] == "trade", (
-            f"S2 should trade with explicit None OBI: {result['reasoning']}"
+def _run_s2(asset, spot, strike, yes_ask, no_ask, secs_left=600.0, cfg_extra=None):
+    config = {"mode": "paper", "quiet_hours_enabled": False}
+    if cfg_extra:
+        config.update(cfg_extra)
+    above = spot >= strike
+    _seed_spot(asset, spot, above, strike)
+    ticker = f"KXMOCK-{asset}-T{int(strike) if strike >= 1 else strike}"
+    with patch("bot_strategy.read_config", return_value=config):
+        return strategy_brain_s2(
+            btc_price=spot, strike=strike,
+            yes_ask=yes_ask, no_ask=no_ask,
+            elapsed_seconds=900.0 - secs_left, secs_left=secs_left,
+            ticker=ticker, asset=asset,
         )
 
-    def test_s2_skips_when_velocity_below_threshold(self):
-        """S2 skips when velocity delta < min_vel_delta."""
-        ticker = "KXETH-25MAY30-T2800C"
-        history = collections.deque(maxlen=60)
-        now = time.time()
-        for i in range(6):
-            history.append((now - (5 - i) * 10, 70.0 + i * 0.05))
-        bot_state._contract_price_history[ticker] = history
-        result = strategy_brain_s2(
-            btc_price=2850.0,
-            strike=2800.0,
-            yes_ask=45.0,
-            no_ask=55.0,
-            elapsed_seconds=760.0,
-            secs_left=240.0,
-            ticker=ticker,
-            asset="ETH",
-        )
-        assert result["action"] == "skip"
-        assert "s2_vel_flat" in result["reasoning"] or "s2_no_velocity_data" in result["reasoning"]
 
-    def test_s2_skips_expensive_entry(self):
-        """S2 skips when entry > 50c cap — market already priced the move in."""
-        ticker = "KXETH-25MAY30-T2800E"
-        _seed_velocity(ticker, "ETH", direction="yes")
-        result = strategy_brain_s2(
-            btc_price=2850.0,
-            strike=2800.0,
-            yes_ask=75.0,
-            no_ask=25.0,
-            elapsed_seconds=150.0,
-            secs_left=600.0,
-            ticker=ticker,
-            asset="ETH",
-        )
-        assert result["action"] == "skip"
-        assert (
-            "s2_price_filter" in result["reasoning"]
-            or "s2_ev_gate" in result["reasoning"]
-            or "s2_vel_flat" in result["reasoning"]
-        )
+class TestS2FvFires:
+    """S2 fires when the spot is a real distance past strike and the ask is stale-cheap."""
 
-    def test_s2_skips_weak_velocity_below_conviction(self):
-        """S2 must skip when velocity is below the 1.2x min_vel_delta conviction gate."""
-        ticker = "KXETH-25MAY30-T2800F"
-        cfg = _S2_ASSET_CONFIG["ETH"]
-        # For lookback=4 the seeded vel_delta = 2.5*step, so step = 0.88*min_vel/2 gives
-        # ~1.1x min_vel — above 1.0x detection but below the 1.2x conviction gate.
-        lookback = cfg["vel_lookback"]
-        min_vel  = cfg["min_vel_delta"]
-        step = (min_vel * 0.88) / 2.0  # vel_delta ~= 1.1x min_vel
-        base = 70.0
-        history = collections.deque(maxlen=60)
-        now = time.time()
-        prices = [base + i * step for i in range(lookback + 1)]
-        for i, p in enumerate(prices):
-            history.append((now - (lookback - i) * 10, p))
-        bot_state._contract_price_history[ticker] = history
-
-        result = strategy_brain_s2(
-            btc_price=2850.0,
-            strike=2800.0,
-            yes_ask=45.0,
-            no_ask=55.0,
-            elapsed_seconds=760.0,
-            secs_left=480.0,
-            ticker=ticker,
-            asset="ETH",
-        )
-        assert result["action"] == "skip"
-        assert "s2_vel_weak" in result["reasoning"], \
-            f"Expected conviction skip, got: {result['reasoning']}"
-
-
-    def test_s2_skips_reversal_velocity_yes_but_price_below_strike(self):
-        """S2 must reject: velocity=YES but asset price < strike (reversal — no edge)."""
-        ticker = "KXETH-25MAY30-T2900G"
-        _seed_velocity(ticker, "ETH", direction="yes")
-        result = strategy_brain_s2(
-            btc_price=2850.0,   # price BELOW strike
-            strike=2900.0,
-            yes_ask=45.0,
-            no_ask=55.0,
-            elapsed_seconds=760.0,
-            secs_left=240.0,
-            ticker=ticker,
-            asset="ETH",
-        )
-        assert result["action"] == "skip", \
-            f"S2 should reject reversal but got: {result['reasoning']}"
-        assert "s2_reversal_gate" in result["reasoning"], \
-            f"Expected s2_reversal_gate, got: {result['reasoning']}"
-
-    def test_s2_skips_reversal_velocity_no_but_price_above_strike(self):
-        """S2 must reject: velocity=NO but asset price > strike (reversal — no edge)."""
-        ticker = "KXETH-25MAY30-T2700H"
-        _seed_velocity(ticker, "ETH", direction="no")
-        result = strategy_brain_s2(
-            btc_price=2850.0,   # price ABOVE strike
-            strike=2700.0,
-            yes_ask=70.0,
-            no_ask=30.0,
-            elapsed_seconds=760.0,
-            secs_left=240.0,
-            ticker=ticker,
-            asset="ETH",
-        )
-        assert result["action"] == "skip", \
-            f"S2 should reject reversal but got: {result['reasoning']}"
-        assert "s2_reversal_gate" in result["reasoning"], \
-            f"Expected s2_reversal_gate, got: {result['reasoning']}"
-
-
-class TestS2FiresMultiAsset:
-    """S2 fires for all enabled assets at uncertainty-zone entries."""
-
-    @pytest.mark.parametrize("asset,strike,price,yes_ask", [
-        ("ETH",  2800.0, 2850.0, 45.0),
-        ("SOL",  145.0,  148.0,  45.0),
-        ("XRP",  2.30,   2.35,   45.0),
+    @pytest.mark.parametrize("asset,strike,spot", [
+        ("BTC", 60000.0, 60350.0),
+        ("SOL", 150.0, 150.7),
+        ("XRP", 2.30, 2.313),
+        ("DOGE", 0.150, 0.1512),
     ])
-    def test_s2_fires_per_asset(self, asset, strike, price, yes_ask):
-        """Each enabled asset fires with strong velocity and <=50c entry."""
-        ticker = f"KXMOCK-{asset}-T{int(strike)}"
-        _seed_velocity(ticker, asset, direction="yes")
-        result = strategy_brain_s2(
-            btc_price=price,
-            strike=strike,
-            yes_ask=yes_ask,
-            no_ask=100 - yes_ask,
-            elapsed_seconds=760.0,
-            secs_left=240.0,
-            ticker=ticker,
-            asset=asset,
-        )
-        assert result["action"] == "trade", (
-            f"S2 failed to fire for {asset}: {result['reasoning']}"
-        )
+    def test_fires_yes_when_spot_above_and_ask_cheap(self, asset, strike, spot):
+        """Spot clearly above strike + a stale-cheap YES ask → trade YES."""
+        r = _run_s2(asset, spot, strike, yes_ask=40.0, no_ask=58.0)
+        assert r["action"] == "trade", f"{asset} should trade: {r['reasoning']}"
+        assert r["side"] == "yes"
+        assert r["signals"]["market_edge"] >= 0.035
+        # The RAW Bachelier fair value (always P(YES)) must favor YES when spot is above.
+        assert r["signals"]["model_raw_p_yes"] >= 0.50
+
+    def test_fires_no_when_spot_below_and_ask_cheap(self):
+        """Spot clearly below strike + a stale-cheap NO ask → trade NO."""
+        r = _run_s2("SOL", spot=149.3, strike=150.0, yes_ask=58.0, no_ask=40.0)
+        assert r["action"] == "trade", f"S2 should trade NO: {r['reasoning']}"
+        assert r["side"] == "no"
+        assert r["signals"]["market_edge"] >= 0.035
+
+
+class TestS2FvSkips:
+    """S2 must skip when the fair-value dislocation is absent or the book is bad."""
+
+    def test_skips_low_z(self):
+        """Spot barely past strike → |z| below the conviction gate → skip."""
+        r = _run_s2("SOL", spot=150.02, strike=150.0, yes_ask=40.0, no_ask=58.0)
+        assert r["action"] == "skip"
+        assert "s2_fv_lowz" in r["reasoning"]
+
+    def test_skips_when_mid_already_fair(self):
+        """Spot above strike but the mid already prices it in → no edge → EV-gate skip."""
+        # Fair ~0.72 but the ask sits near fair (yes_ask 70) → market not stale → skip.
+        r = _run_s2("SOL", spot=150.7, strike=150.0, yes_ask=70.0, no_ask=31.0)
+        assert r["action"] == "skip"
+        assert "s2_ev_gate" in r["reasoning"] or "s2_fv_wide_spread" in r["reasoning"]
+
+    def test_skips_wide_spread(self):
+        """A wide round-trip spread (high vig) must skip even with a real dislocation."""
+        r = _run_s2("SOL", spot=150.7, strike=150.0, yes_ask=40.0, no_ask=68.0)
+        assert r["action"] == "skip"
+        assert "s2_fv_wide_spread" in r["reasoning"]
+
+    def test_skips_spot_flicker(self):
+        """When the last prints straddle the strike, the sign-confirmation gate skips."""
+        now = time.time()
+        dq = collections.deque(maxlen=2000)
+        for i in range(40):
+            # Oscillate across the strike on the final prints.
+            p = 150.0 + (0.6 if i % 2 == 0 else -0.6)
+            dq.append((now - (39 - i) * 2.0, p))
+        asset_manager._prices["SOL"] = dq
+        with patch("bot_strategy.read_config", return_value={"mode": "paper", "quiet_hours_enabled": False}):
+            r = strategy_brain_s2(150.6, 150.0, 40.0, 58.0, 300.0, 600.0, "KXSOL-FLICK", asset="SOL")
+        assert r["action"] == "skip"
+        assert "s2_fv_flicker" in r["reasoning"] or "s2_fv_lowz" in r["reasoning"]
+
+    def test_eth_disabled_by_default(self):
+        """ETH is disabled in S2 by default."""
+        r = _run_s2("ETH", spot=3020.0, strike=3000.0, yes_ask=40.0, no_ask=58.0)
+        assert r["action"] == "skip"
+        assert "s2_fv_disabled" in r["reasoning"]
+
+    def test_eth_enabled_via_config(self):
+        """ETH can be re-enabled via s2_eth_enabled."""
+        r = _run_s2("ETH", spot=3020.0, strike=3000.0, yes_ask=40.0, no_ask=58.0,
+                    cfg_extra={"s2_eth_enabled": True})
+        assert r["reasoning"] != "s2_fv_disabled:ETH"
+
+    def test_time_gate_final_90s(self):
+        """S2 must skip in the final 90s (settlement-auction tail)."""
+        r = _run_s2("SOL", spot=150.7, strike=150.0, yes_ask=40.0, no_ask=58.0, secs_left=60.0)
+        assert r["action"] == "skip"
+        assert "s2_time_gate" in r["reasoning"]
+
+
+def test_s2_config_present_for_enabled_assets():
+    """The new S2 fair-value config must cover BTC/SOL/XRP/DOGE."""
+    for a in ("BTC", "SOL", "XRP", "DOGE"):
+        assert a in _S2_FV_CONFIG
+        assert _S2_FV_CONFIG[a]["min_z"] > 0

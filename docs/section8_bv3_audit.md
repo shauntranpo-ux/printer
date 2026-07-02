@@ -3,7 +3,7 @@
 ## Generator: `generate_bv3_table.py`
 
 ### Input
-- CSV files: `data/{ASSET}_1m.csv` — 1-minute OHLCV from Binance
+- CSV files: `data/{ASSET}_1m.csv` - 1-minute OHLCV from Binance
 - Column: `time` (Unix seconds) → normalised to `open_time` (datetime64 UTC)
 
 ### Algorithm (`build_table`)
@@ -24,8 +24,8 @@
 ```
 
 ### Existing outputs
-- `*_bv3_full.json`    — trained on ALL data (contaminated)
-- `*_bv3_pre2023.json` — trained on pre-2023 only (cutoff: 2023-01-01)
+- `*_bv3_full.json`    - trained on ALL data (contaminated)
+- `*_bv3_pre2023.json` - trained on pre-2023 only (cutoff: 2023-01-01)
 
 ---
 

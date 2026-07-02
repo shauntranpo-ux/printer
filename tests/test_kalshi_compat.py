@@ -224,34 +224,30 @@ async def test_place_order_demo_body_ioc_no_type_field():
         "obi": 0.0,
     }
 
-    captured_bodies = []
-
-    async def fake_post(url, **kwargs):
-        captured_bodies.append(kwargs.get("json", {}))
-        mock_r = AsyncMock()
-        mock_r.status = 200
-        order_payload = {
-            "order": {
-                "order_id": "demo-test-001",
-                "status": "executed",
-                "contracts_count_fp": "1.00",
-                "filled_count_fp": "1.00",
-                "remaining_count_fp": "0.00",
-                "yes_price_dollars": "0.4200",
-                "no_price_dollars": "0.5800",
-            }
-        }
-        mock_r.json = AsyncMock(return_value=order_payload)
-        return mock_r
-
     mock_session = MagicMock()
-    mock_session.post = MagicMock(return_value=AsyncMock(
-        __aenter__=AsyncMock(side_effect=lambda: _make_post_resp(captured_bodies)),
-        __aexit__=AsyncMock(return_value=False),
-    ))
 
-    # Use patch to avoid actual HTTP
-    with patch("bot_market.fetch_orderbook", new=AsyncMock(return_value=fake_ob)):
+    # GET poll response: order already executed, so the demo poll loop exits on the first
+    # check instead of sleeping through the full 30s timeout.
+    poll_payload = {
+        "order": {
+            "order_id": "demo-test-001",
+            "status": "executed",
+            "contracts_count_fp": "1.00",
+            "filled_count_fp": "1.00",
+            "remaining_count_fp": "0.00",
+            "yes_price_dollars": "0.4200",
+            "no_price_dollars": "0.5800",
+        }
+    }
+    poll_resp = AsyncMock()
+    poll_resp.__aenter__ = AsyncMock(return_value=poll_resp)
+    poll_resp.__aexit__ = AsyncMock(return_value=False)
+    poll_resp.status = 200
+    poll_resp.json = AsyncMock(return_value=poll_payload)
+    mock_session.get = MagicMock(return_value=poll_resp)
+
+    with patch("bot_market.fetch_orderbook", new=AsyncMock(return_value=fake_ob)), \
+         patch("asyncio.sleep", new=AsyncMock()):
         with patch.object(mock_session, "post") as mock_post_ctx:
             mock_resp = AsyncMock()
             mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)

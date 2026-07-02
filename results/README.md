@@ -1,4 +1,4 @@
-# DEAD ARTIFACT — results/
+# DEAD ARTIFACT - results/
 
 Archived backtest result files (`.parquet`, `.json`, `.log`).
 

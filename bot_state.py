@@ -1,8 +1,8 @@
 """
-bot_state.py — Shared mutable globals and constants for the kalshi bot.
+bot_state.py - Shared mutable globals and constants for the kalshi bot.
 
 Every other module does `import bot_state` and reads/writes attributes here.
-No classes, no dataclasses — plain module attributes for zero-overhead access.
+No classes, no dataclasses - plain module attributes for zero-overhead access.
 """
 __all__ = [
     # URL constants
@@ -21,7 +21,8 @@ __all__ = [
     "limit_triggered", "limit_reason", "pre_limit_mode", "daily_reset_date",
     "last_confidence_score", "last_confidence_breakdown", "last_action", "last_skip_reason",
     "_asset_eval", "_contract_price_history",
-    "_CAL_DEFAULTS", "_brain_cal_s1", "_brain_cal_s2",
+    "_CAL_DEFAULTS", "_brain_cal_s1", "_brain_cal_s2", "_basis_offsets",
+    "_live_betas", "_auto_blocked_sessions", "_auto_blocked_assets",
     "_last_good_config", "_consecutive_losses", "_s1_consecutive_losses", "_s2_consecutive_losses", "_consecutive_price_skips",
     "_s1_consec_losses_by_asset", "_s1_cooldown_until",
     "_S1_VERSION", "_S2_VERSION", "_S1_ASSET_VOL_RATIO",
@@ -30,7 +31,7 @@ __all__ = [
 import os
 from collections import deque
 
-# ── constants (never change at runtime) ──────────────────────────────────────
+# constants (never change at runtime)
 KALSHI_LIVE_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 KALSHI_DEMO_BASE_URL = "https://demo-api.kalshi.co/trade-api/v2"
 KALSHI_BASE_URL      = KALSHI_LIVE_BASE_URL  # overwritten once in load_credentials()
@@ -47,8 +48,8 @@ _CONFIG_FILE = os.environ.get("BOT_CONFIG_FILE", "config.json")
 _DB_FILE     = os.environ.get("BOT_DB_FILE",     "kalshi_bot.db")
 _STATE_FILE  = os.environ.get("BOT_STATE_FILE",  "bot_state.json")
 _DATA_DIR    = os.path.dirname(os.path.abspath(_DB_FILE))
-# ── mutable runtime state ────────────────────────────────────────────────────
-import asset_manager  # noqa: E402 — after os/path setup
+# mutable runtime state
+import asset_manager  # noqa: E402 - after os/path setup
 btc_prices: deque = asset_manager._prices["BTC"]
 
 _ticker_obi: dict = {}
@@ -62,8 +63,8 @@ current_position: dict | None = None
 recovery_unverified: bool = False
 _s2_attempted_tickers: set = set()
 _asset_states: dict = {}
-_s1_pending_trades: dict = {}  # ticker → {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
-_s1_asset_trade_times: dict = {}  # asset → list of float timestamps of S1 fills
+_s1_pending_trades: dict = {}  # ticker -> {trade_id, side, entry_price_cents, contracts, strike, asset, mode, entry_ts, market_close_time}
+_s1_asset_trade_times: dict = {}  # asset -> list of float timestamps of S1 fills
 
 _market_cache: dict | None = None
 _market_cache_ts: float = 0.0
@@ -82,7 +83,7 @@ last_skip_reason: str  = ""
 _asset_eval: dict             = {}
 _contract_price_history: dict = {}
 
-# Settlement-reference basis samples (measurement only — no correction applied yet):
+# Settlement-reference basis samples (measurement only - no correction applied yet):
 # our Coinbase spot-vs-strike implied side vs Kalshi's official YES/NO result.
 _settlement_basis: deque      = deque(maxlen=500)
 
@@ -99,16 +100,29 @@ _CAL_DEFAULTS: dict = {
 _brain_cal_s1: dict = {**_CAL_DEFAULTS}
 _brain_cal_s2: dict = {**_CAL_DEFAULTS}
 
+# Per-asset settlement level offset (fractional, e.g. 0.0003 = 3bp), fitted from the
+# settlement_basis table by the periodic recalibration job. 0/absent = no correction.
+_basis_offsets: dict = {}
+
+# Rolling BTC-lead betas fitted from the live price deques by the recalibration job;
+# preferred over data/betas.json when present. asset -> beta.
+_live_betas: dict = {}
+
+# Auto-gate blocks (GATE-1 per bucket): recomputed by the recalibration job from
+# settled decision_log picks. Sessions by ET label; assets as (strategy, asset) pairs.
+_auto_blocked_sessions: set = set()
+_auto_blocked_assets: set = set()
+
 _last_good_config: dict | None = None
 _consecutive_losses: int       = 0
 _s1_consecutive_losses: int   = 0
-_s1_consec_losses_by_asset: dict = {}  # asset → consecutive loss count since last win
-_s1_cooldown_until: dict = {}          # asset → epoch timestamp when cooldown expires
+_s1_consec_losses_by_asset: dict = {}  # asset -> consecutive loss count since last win
+_s1_cooldown_until: dict = {}          # asset -> epoch timestamp when cooldown expires
 _s2_consecutive_losses: int   = 0
 _consecutive_price_skips: int  = 0
 
-_S1_VERSION = "ema-momentum-2026-05-07"
-_S2_VERSION = "contract-velocity-obi-2026-05-07"
+_S1_VERSION = "ca-lead-cross-asset-2026-07-02"
+_S2_VERSION = "spot-fair-value-2026-07-02"
 
 kalshi_clock_skew_ms: int = 0       # corrected by _maybe_adjust_clock_skew at startup
 demo_fallback_alert: bool = False    # set when demo creds missing; Telegram fired async

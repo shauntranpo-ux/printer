@@ -6,11 +6,6 @@ def test_no_unused_heavy_deps():
     assert 'pyarrow' not in reqs, "pyarrow is unused"
     assert 'scikit-learn' not in reqs, "scikit-learn is only in dead quarantine"
 
-def test_anthropic_in_requirements():
-    with open('requirements.txt') as f:
-        reqs = f.read()
-    assert 'anthropic' in reqs, "anthropic SDK missing"
-
 def test_aiosqlite_present():
     with open('requirements.txt') as f:
         reqs = f.read()

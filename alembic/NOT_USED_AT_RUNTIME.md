@@ -1,4 +1,4 @@
-# QUARANTINED — Not Used at Runtime
+# QUARANTINED - Not Used at Runtime
 
 This directory contains Alembic migrations for the **abandoned rewrite** ("kalshi-botv3").
 

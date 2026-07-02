@@ -1,4 +1,4 @@
-# Section 11 — Paper Mode Safety Audit
+# Section 11 - Paper Mode Safety Audit
 
 Audited: 2026-04-18. Branch: `refactor/base-strategy`.
 
@@ -31,7 +31,7 @@ Passed directly into `place_order`. No bypass path exists.
 | 2766 | `GET /portfolio/positions` | Post-order portfolio check (inside live branch only) |
 | 3589 | `GET /markets/{ticker}` | Settlement result fetch |
 | 4130 | `GET /portfolio/balance` | Balance check (preflight) |
-| 4158–4209 | `GET /markets`, `/series` | Market discovery debug |
+| 4158-4209 | `GET /markets`, `/series` | Market discovery debug |
 
 All are GETs. None submit orders. All run regardless of mode (safe).
 

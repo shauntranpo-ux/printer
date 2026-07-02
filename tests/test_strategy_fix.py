@@ -21,30 +21,26 @@ def test_s2_min_dist_lowered():
         f"XRP S2 min_dist {_S2_ASSET_CONFIG['XRP']['min_dist']} too high"
 
 
-def test_s1_max_entry_price_capped_for_profitability():
-    """S1 max_entry_price default must be 50-60c — uncertainty zone at realistic WR."""
-    import re
-    with open('bot_strategy.py', encoding='utf-8') as f:
-        src = f.read()
-    s1_section = src[src.index('def strategy_brain_s1'):src.index('def strategy_brain_s2')]
-    defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', s1_section)
-    assert defaults, "max_entry_price_cents default not found in strategy_brain_s1"
-    for d in defaults:
-        assert 50.0 <= float(d) <= 60.0, \
-            f"S1 max_entry_price {d} outside 50-60c range"
+def test_fair_value_entry_band_is_wide():
+    """
+    The fair-value brains deliberately use a WIDE entry band (the anchored-EV gate does the
+    selectivity, so a stale-cheap 65c ask vs an 0.80 fair value is a valid trade). The old
+    50-60c cap was calibrated for the momentum strategy and does not apply here.
+    """
+    from bot_strategy import _FV_MIN_ENTRY_CENTS, _FV_MAX_ENTRY_CENTS
+    assert _FV_MIN_ENTRY_CENTS <= 15.0, f"fair-value min entry {_FV_MIN_ENTRY_CENTS} too high"
+    assert 80.0 <= _FV_MAX_ENTRY_CENTS <= 95.0, \
+        f"fair-value max entry {_FV_MAX_ENTRY_CENTS} outside expected wide band"
 
 
-def test_s2_max_entry_price_capped_for_profitability():
-    """S2 max_entry_price default must be 50-60c."""
-    import re
-    with open('bot_strategy.py', encoding='utf-8') as f:
-        src = f.read()
-    s2_section = src[src.index('def strategy_brain_s2'):]
-    defaults = re.findall(r'max_entry_price_cents",\s*([\d.]+)', s2_section)
-    assert defaults, "max_entry_price_cents default not found in strategy_brain_s2"
-    for d in defaults:
-        assert 50.0 <= float(d) <= 60.0, \
-            f"S2 max_entry_price {d} outside 50-60c range"
+def test_both_brains_use_per_asset_entry_config():
+    """Both brains must source the entry band via get_asset_config (per-asset override)."""
+    import inspect
+    import bot_strategy as bs
+    for fn in (bs.strategy_brain_s1, bs.strategy_brain_s2):
+        src = inspect.getsource(fn)
+        assert "get_asset_config" in src, f"{fn.__name__} must use get_asset_config for entry band"
+        assert "fv_max_entry_price_cents" in src, f"{fn.__name__} missing fv_max_entry_price_cents key"
 
 
 def test_s1_time_bounds_in_range():

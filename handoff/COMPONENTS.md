@@ -9,15 +9,15 @@ The HTML file is the layout and pixel source of truth. These notes explain the l
 ## Battle Bar
 
 **CSS:** `.mc-battle`, `.mc-battle-track`, `.mc-battle-marker`, `.mc-battle-foot`
-**Source lines:** 272–319 (CSS), 1035–1075 (render logic in `renderMarketStrip`)
+**Source lines:** 272-319 (CSS), 1035-1075 (render logic in `renderMarketStrip`)
 
 A horizontal tug-of-war bar showing the current YES vs NO balance on a Kalshi market.
 
 **Inputs from data:**
-- `yesAsk` — YES ask price in cents
-- `noAsk` — NO ask price in cents
-- `phase` — determines footer state
-- `timer` — displayed in footer when phase is WATCH/READY
+- `yesAsk` - YES ask price in cents
+- `noAsk` - NO ask price in cents
+- `phase` - determines footer state
+- `timer` - displayed in footer when phase is WATCH/READY
 
 **Position formula:**
 ```js
@@ -26,13 +26,13 @@ const yesPct = yesAsk / (yesAsk + noAsk) * 100;
 ```
 
 **Marker color interpolation** (applied at render; transitions smoothly on CSS update):
-- yesPct 0–35: interpolate from red (`rgb(214,57,73)`) → grey (`rgb(136,136,136)`)
-- yesPct 35–65: grey
-- yesPct 65–100: interpolate from grey → green (`rgb(27,158,85)`)
+- yesPct 0-35: interpolate from red (`rgb(214,57,73)`) → grey (`rgb(136,136,136)`)
+- yesPct 35-65: grey
+- yesPct 65-100: interpolate from grey → green (`rgb(27,158,85)`)
 
-**Marker animation:** CSS `transition: left 400ms cubic-bezier(.32,.72,.32,1), background-color 400ms ease-out` — slides on position update.
+**Marker animation:** CSS `transition: left 400ms cubic-bezier(.32,.72,.32,1), background-color 400ms ease-out` - slides on position update.
 
-**Track:** `background: linear-gradient(to right, red/0.20, red/0.06, grey/0.18, green/0.06, green/0.20)` — faint red left, faint green right, neutral center. Center tick mark via `::before`.
+**Track:** `background: linear-gradient(to right, red/0.20, red/0.06, grey/0.18, green/0.06, green/0.20)` - faint red left, faint green right, neutral center. Center tick mark via `::before`.
 
 **Footer right-side changes by phase:**
 
@@ -52,7 +52,7 @@ const yesPct = yesAsk / (yesAsk + noAsk) * 100;
 ## Market Card
 
 **CSS:** `.mc`, `.mc-head`, `.mc-body`, `.mc-logo`, `.mc-name`, `.mc-status`, `.mc-trend`
-**Source lines:** 232–330 (CSS), 1023–1100 (render in `renderMarketStrip`)
+**Source lines:** 232-330 (CSS), 1023-1100 (render in `renderMarketStrip`)
 
 One card per asset in the 5-column Overview market strip.
 
@@ -60,19 +60,19 @@ One card per asset in the 5-column Overview market strip.
 
 **Subcomponents:**
 - Asset logo (32px circle with inline SVG)
-- Phase badge (`.mc-status.<phase>`) — color per CSS phase map
+- Phase badge (`.mc-status.<phase>`) - color per CSS phase map
 - Win probability (large number + "WIN PROB" label)
-- Trend arrow (36px circle: up/down/flat, blue/red/grey) — driven by `ch24 > 0.15` / `< -0.15`
+- Trend arrow (36px circle: up/down/flat, blue/red/grey) - driven by `ch24 > 0.15` / `< -0.15`
 - Embedded Battle Bar
 
-**Hover glow:** `.mc-glow.<sym>` — radial gradient using per-asset color variable, `opacity:0` by default, `1` on hover.
+**Hover glow:** `.mc-glow.<sym>` - radial gradient using per-asset color variable, `opacity:0` by default, `1` on hover.
 
 ---
 
 ## Decision Pipeline Row
 
 **CSS:** `.ds-row`, `.ds-asset`, `.ds-votes`, `.ds-gate`, `.ds-ev`, `.ds-decision`, `.ds-detail`, `.ds-field`, `.ds-caret`
-**Source lines:** 532–593 (CSS), 1197–1259 (render in `renderSignals`)
+**Source lines:** 532-593 (CSS), 1197-1259 (render in `renderSignals`)
 
 One collapsible row per asset in the Decision Pipeline card on Overview.
 
@@ -84,7 +84,7 @@ One collapsible row per asset in the Decision Pipeline card on Overview.
 
 **Gate A chip:** `.ds-gate.pass` (green) or `.ds-gate.fail` (red). Pass when `!sig.gate_a_block`.
 
-**Gate B (implied by vote pips):** No separate chip — conveyed by pip fill count vs min_votes.
+**Gate B (implied by vote pips):** No separate chip - conveyed by pip fill count vs min_votes.
 
 **EV chip:** `.ds-gate.pass` when `sig.ev_pass`, `.ds-gate.fail` otherwise.
 
@@ -92,7 +92,7 @@ One collapsible row per asset in the Decision Pipeline card on Overview.
 
 **Decision pill:** `.ds-decision.trade` (green) or `.ds-decision.skip` (grey).
 
-**Expand on click:** `.ds-row.expanded` shows `.ds-detail` — 2-column grid of 8 `ds-field` rows:
+**Expand on click:** `.ds-row.expanded` shows `.ds-detail` - 2-column grid of 8 `ds-field` rows:
 - Raw P(YES), Model P(YES), Market P(YES), Supertrend, YES EV, NO EV, Velocity, Strategy
 - If `skip_reason` is set: a full-width row showing the human-readable reason in red.
 
@@ -103,7 +103,7 @@ One collapsible row per asset in the Decision Pipeline card on Overview.
 ## Equity Chart
 
 **CSS:** `.chart-wrap`, `.chart-line`, `.chart-fill`, `.chart-grid`, `.chart-axis`
-**Source lines:** 354–362 (CSS), 1102–1155 (render in `renderEquity`)
+**Source lines:** 354-362 (CSS), 1102-1155 (render in `renderEquity`)
 
 SVG line + area chart of cumulative P&L over time.
 
@@ -124,7 +124,7 @@ SVG line + area chart of cumulative P&L over time.
 ## Allocation Pie
 
 **CSS:** `.alloc-wrap`, `.alloc-list`, `.alloc-row`, `.alloc-bar`, `.alloc-sw`, `.alloc-pct`
-**Source lines:** 363–372 (CSS), 1157–1195 (render in `renderAllocation`)
+**Source lines:** 363-372 (CSS), 1157-1195 (render in `renderAllocation`)
 
 Filled pie (no center hole) + list with horizontal bars.
 
@@ -139,7 +139,7 @@ Filled pie (no center hole) + list with horizontal bars.
 ## Order Book Depth + Ladder
 
 **CSS:** `.depth-svg`, `.ladder`, `.ladder-row`, `.ladder-spread`
-**Source lines:** 479–477 (CSS), 1301–1337 (render in `renderMarketPanel`)
+**Source lines:** 479-477 (CSS), 1301-1337 (render in `renderMarketPanel`)
 
 Two-part component on per-asset tabs.
 
@@ -159,17 +159,17 @@ Two-part component on per-asset tabs.
 ## Confidence Gauge
 
 **CSS:** `.gauge-wrap`, `.gauge-svg`, `.gauge-val`, `.gauge-label`, `.q-bar`
-**Source lines:** 483–487 (CSS), 1339–1353 (render in `renderMarketPanel`)
+**Source lines:** 483-487 (CSS), 1339-1353 (render in `renderMarketPanel`)
 
-Semicircle arc gauge showing 0–100 confidence score.
+Semicircle arc gauge showing 0-100 confidence score.
 
-**Inputs:** `session.score` (0–100)
+**Inputs:** `session.score` (0-100)
 
 **Rendering:**
 - Background arc: full semicircle in `--line` color (grey)
 - Fill arc: from left to `score/100 * π` radians
 - Endpoint dot: circle at arc terminus
-- Color: score ≥ 70 → blue (`oklch 0.55 0.16 245`), 50–70 → amber (`oklch 0.82 0.16 75`), < 50 → red
+- Color: score ≥ 70 → blue (`oklch 0.55 0.16 245`), 50-70 → amber (`oklch 0.82 0.16 75`), < 50 → red
 
 **Q-bar:** 3-cell quality indicator below the gauge value. Cells 1/2/3 light up at score ≥ 33/66/85.
 
@@ -178,7 +178,7 @@ Semicircle arc gauge showing 0–100 confidence score.
 ## Win Heatmap
 
 **CSS:** `.heat-strip`
-**Source lines:** 528–529 (CSS), 1373–1381 (render in `renderMarketPanel`)
+**Source lines:** 528-529 (CSS), 1373-1381 (render in `renderMarketPanel`)
 
 60-cell horizontal strip showing the last 60 15m windows, colored by outcome.
 
@@ -196,7 +196,7 @@ Semicircle arc gauge showing 0–100 confidence score.
 ## Trades Table
 
 **CSS:** `table`, `thead th`, `tbody td`, `.td-sym`, `.td-dir`, `.td-fill`, `.td-pnl`
-**Source lines:** 384–409 (CSS), 1559–1580 (render in `renderTrades`)
+**Source lines:** 384-409 (CSS), 1559-1580 (render in `renderTrades`)
 
 Columns: Time (date + HH:MM stacked), Market (colored swatch + ticker), Dir (UP=blue/DOWN=red), Qty, Entry¢, Exit¢, EV%, Fill (dot indicator), Reason, P&L.
 
@@ -204,14 +204,14 @@ Columns: Time (date + HH:MM stacked), Market (colored swatch + ticker), Dir (UP=
 
 **Asset filter:** segmented control (All / BTC / ETH / SOL / XRP / DOGE). Filters in-page; no refetch needed if all trades are loaded upfront.
 
-**Export CSV:** `GET /api/export/trades` — triggers download.
+**Export CSV:** `GET /api/export/trades` - triggers download.
 
 ---
 
 ## Topbar
 
 **CSS:** `#topbar`, `.brand`, `.tabs`, `.tab`, `.topbar-right`, `.status-pill`, `.mode-seg`, `.clock`, `.icon-btn`, `.bot-toggle`
-**Source lines:** 52–148 (CSS), 608–647 (HTML), 1624–1664 (JS)
+**Source lines:** 52-148 (CSS), 608-647 (HTML), 1624-1664 (JS)
 
 Sticky, blurred. Contains:
 
@@ -232,7 +232,7 @@ Sticky, blurred. Contains:
 ## Hero (per-asset)
 
 **CSS:** `.market-hero`, `.hero-row`, `.hero-logo`, `.hero-info`, `.hero-name`, `.hero-px`, `.hero-sub`, `.hero-spark`, `.hero-stats`
-**Source lines:** 411–444 (CSS), 1388–1420 (render in `renderMarketPanel`)
+**Source lines:** 411-444 (CSS), 1388-1420 (render in `renderMarketPanel`)
 
 Full-width header panel at top of per-asset tab.
 
@@ -245,14 +245,14 @@ Full-width header panel at top of per-asset tab.
 **Session tabs** (BTC/ETH only):
 - Two `.session-tab` pills: "15-Minute · ACTIVE" + "Hourly · Idle"
 - Active pip pulses green
-- No JS switching in mock — wire to toggle which session's data is shown in the MKPI grid below
+- No JS switching in mock - wire to toggle which session's data is shown in the MKPI grid below
 
 ---
 
 ## KPI Strip (Overview)
 
 **CSS:** `.kpi-strip`, `.kpi-cell`, `.kpi-cell-l`, `.kpi-cell-v`, `.kpi-div`, `.kpi-trend`
-**Source lines:** 185–202 (CSS), 655–673 (HTML)
+**Source lines:** 185-202 (CSS), 655-673 (HTML)
 
 Single full-width panel with 3 KPI cells separated by 1px dividers: Net P&L (all-time), Win Rate (30d), Today's P&L.
 
@@ -261,7 +261,7 @@ Single full-width panel with 3 KPI cells separated by 1px dividers: Net P&L (all
 ## KPI Row (Trades tab)
 
 **CSS:** `.kpi-row`, `.kpi`, `.kpi-label`, `.kpi-value`, `.kpi-sub`
-**Source lines:** 204–226 (CSS), 761–787 (HTML)
+**Source lines:** 204-226 (CSS), 761-787 (HTML)
 
 5-column grid of cards: Total Trades, Win Rate, Avg P&L/trade, Best Streak, Worst DD.
 
@@ -269,7 +269,7 @@ Single full-width panel with 3 KPI cells separated by 1px dividers: Net P&L (all
 
 ## Crypto Logos
 
-**JS function:** `cryptoLogo(sym)` — Source lines: 825–834
+**JS function:** `cryptoLogo(sym)` - Source lines: 825-834
 
 Returns an inline SVG string for BTC, ETH, SOL, XRP, DOGE. Used in:
 - Tab dots (`.tab .dot[data-sym]`)

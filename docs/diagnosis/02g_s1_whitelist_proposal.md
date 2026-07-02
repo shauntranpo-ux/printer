@@ -1,7 +1,7 @@
 # Step 2G Diagnosis: S1 Cell Whitelist Proposal (NO IMPLEMENTATION)
 
 **Date:** 2026-05-07
-**Status:** PROPOSAL ONLY — awaiting explicit user approval before any code change
+**Status:** PROPOSAL ONLY - awaiting explicit user approval before any code change
 
 ---
 
@@ -38,7 +38,7 @@ SOL_r3_t13 (QUESTIONABLE), XRP_r4_t9 (QUESTIONABLE).
 6 of 8 surviving cells fail the vol gate. Adding a whitelist check before the vol gate
 (as described in the spec) with vol gate still at 1.80 = zero new live trades.
 
-**Three design options — user must choose:**
+**Three design options - user must choose:**
 
 ### Option A: Whitelist Bypasses Vol Gate (RECOMMENDED)
 
@@ -56,7 +56,7 @@ strategy_brain_s1():
 ```
 
 **Trade-off:** Whitelist cells bypass a risk filter. Risk is bounded by the EV gate (which can
-be set to 0%). The OOS data (n=102–233 per cell) provides statistical justification for bypass.
+be set to 0%). The OOS data (n=102-233 per cell) provides statistical justification for bypass.
 
 ### Option B: Per-Cell Vol Gate Override
 
@@ -129,7 +129,7 @@ def strategy_brain_s1(asset, btc_price, strike, mins_left, yes_bid, yes_ask,
     if whitelist_enabled and not in_whitelist:
         return {"action": "skip", "reason": "not_in_whitelist"}
 
-    # Vol gate — skip if whitelisted and bypass_vol_gate is set
+    # Vol gate - skip if whitelisted and bypass_vol_gate is set
     if not (bypass_vol and in_whitelist):
         vol_ratio = rv * math.sqrt(mins_left) / abs_pct if abs_pct > 0 else 0
         if vol_ratio < config.vol_gate_thresh_s1:
@@ -154,15 +154,15 @@ From OOS data (67 days, 2026-02-25 to 2026-05-03):
 | XRP   | 1 (r3t12) | 175 | 2.6 |
 | **Total** | **8** | **1473** | **22.0** |
 
-22 signal opportunities per day ≈ 2–3 per hour in a 15-minute market cycle.
-Not all will pass the EV gate even with vol gate bypassed. Expect 10–15 actual
+22 signal opportunities per day ≈ 2-3 per hour in a 15-minute market cycle.
+Not all will pass the EV gate even with vol gate bypassed. Expect 10-15 actual
 trades per day (assuming ~60% of opportunities have EV > min_ev_base_s1 after
 accounting for real Kalshi prices deviating from BV3 estimates).
 
 **Risk check vs current limits:**
 - `daily_loss_limit_dollars`: likely 500 (from daily_analysis risk_warnings)
-- At $10–$20 per trade × 10–15 trades/day → $100–$300 daily exposure if all lose
-- 10–15 trades/day is within `max_consecutive_losses=5` guard assuming mixed results
+- At $10-$20 per trade × 10-15 trades/day → $100-$300 daily exposure if all lose
+- 10-15 trades/day is within `max_consecutive_losses=5` guard assuming mixed results
 - **No risk limit changes needed.** Trade frequency fits within existing guards.
 
 ---
@@ -182,7 +182,7 @@ accounting for real Kalshi prices deviating from BV3 estimates).
 
 | Question | Options |
 |----------|---------|
-| Vol gate handling for whitelisted cells | A (bypass — recommended), B (per-cell override), C (dist-row override) |
+| Vol gate handling for whitelisted cells | A (bypass - recommended), B (per-cell override), C (dist-row override) |
 | Whitelist scope | 8 cells as proposed, or narrower (ETH-only, ROBUST-only) |
 | EV threshold for whitelisted cells | 0% (any positive EV trades), or keep existing min_ev_base_s1 |
 | Deploy timing | Next session once code reviewed, or needs more data first |

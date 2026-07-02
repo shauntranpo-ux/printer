@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-analyze_brain.py — Parse brain.log and print strategy analytics.
+analyze_brain.py - Parse brain.log and print strategy analytics.
 
 Usage:
     python scripts/analyze_brain.py [brain.log path]
@@ -53,7 +53,7 @@ def main() -> None:
             if "TRADE" not in line and "SETTLE" not in line and "DISLOC" not in line:
                 m = re.search(r"\b(s[12]_\w+)", line)
                 if m:
-                    # Strip trailing colon-prefixed detail (e.g: s1_time_gate:4.2min → s1_time_gate)
+                    # Strip trailing colon-prefixed detail (e.g: s1_time_gate:4.2min -> s1_time_gate)
                     reason_key = m.group(1).split(":")[0]
                     skip_reasons[reason_key] += 1
 
@@ -81,7 +81,7 @@ def main() -> None:
                         int(n_m.group(1)) if n_m else 0,
                     ))
 
-    # --- Skip Reason Distribution ---
+    # Skip Reason Distribution
     print("=" * 55)
     print("SKIP REASON DISTRIBUTION (top 20)")
     print("=" * 55)
@@ -92,7 +92,7 @@ def main() -> None:
     else:
         print("  (no skip reasons found)")
 
-    # --- EV Histogram ---
+    # EV Histogram
     print(f"\n{'=' * 55}")
     total_trades = len(ev_values)
     print(f"EV DISTRIBUTION (fired trades, n={total_trades})")
@@ -104,7 +104,7 @@ def main() -> None:
             count = sum(1 for e in ev_values if lo / 100 <= e < hi / 100)
             if count > 0:
                 bar = "█" * min(count * 2, 40)
-                print(f"  EV {lo/100:.2f}–{hi/100:.2f}  {count:>5}  {bar}")
+                print(f"  EV {lo/100:.2f}-{hi/100:.2f}  {count:>5}  {bar}")
         print(f"\n  Mean EV:    {sum(ev_values) / len(ev_values):.4f}")
         sorted_ev = sorted(ev_values)
         print(f"  Median EV:  {sorted_ev[len(sorted_ev) // 2]:.4f}")
@@ -114,9 +114,9 @@ def main() -> None:
 
     if wp_values:
         print(f"\n  Mean WP:    {sum(wp_values) / len(wp_values):.3f}")
-        print(f"  WP range:   {min(wp_values):.3f} – {max(wp_values):.3f}")
+        print(f"  WP range:   {min(wp_values):.3f} - {max(wp_values):.3f}")
 
-    # --- Realized WR ---
+    # Realized WR
     print(f"\n{'=' * 55}")
     print(f"REALIZED WIN RATE (from SETTLE lines, n={len(settle_outcomes)})")
     print("=" * 55)
@@ -131,9 +131,9 @@ def main() -> None:
     else:
         print("  (no SETTLE lines found)")
 
-    # --- Trades by Hour (ET approximate) ---
+    # Trades by Hour (ET approximate)
     print(f"\n{'=' * 55}")
-    print("TRADES BY HOUR (UTC — subtract 4 for ET)")
+    print("TRADES BY HOUR (UTC - subtract 4 for ET)")
     print("=" * 55)
     if hour_counts:
         max_count = max(hour_counts.values())

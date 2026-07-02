@@ -14,14 +14,14 @@ S2 data splits into two fundamentally different cohorts with different data qual
 | Phase 1 (real market) | 2026-03-31 | 12 | 0.0% | confidence_score present |
 | Phase 2 (settlement records) | 2026-04-01+ | 78 | 60.3% | confidence_score NULL |
 
-**Phase 1 verdict: CATASTROPHIC — 0% win rate on real market**
+**Phase 1 verdict: CATASTROPHIC - 0% win rate on real market**
 **Phase 2 verdict: BELOW_BREAKEVEN** (need 77.4% WR to break even at avg 72c entry)
 
 Meaningful calibration is not possible with 78/90 null confidence_score rows.
 
 ---
 
-## 2B.1 Phase 1 — Real Market Paper Trades (2026-03-31)
+## 2B.1 Phase 1 - Real Market Paper Trades (2026-03-31)
 
 These 12 trades have real time-series data: entry price, seconds remaining, stop-losses.
 
@@ -66,7 +66,7 @@ S2 was betting against a strong directional trend.
 
 ---
 
-## 2B.2 Phase 2 — Auto-Settlement Records (2026-04-01+)
+## 2B.2 Phase 2 - Auto-Settlement Records (2026-04-01+)
 
 These 78 records appear to be auto-generated settlement entries:
 - All have entry_price_cents = 72 and contracts = 1
@@ -74,7 +74,7 @@ These 78 records appear to be auto-generated settlement entries:
 - confidence_score = 0 or NULL (not from live model evaluation)
 - seconds_left_at_entry = 0 or NULL
 
-These are NOT real-time paper trades. They represent held positions that settled —
+These are NOT real-time paper trades. They represent held positions that settled -
 likely the S2 bot was running and placing orders that got filled, held to expiry,
 and settled automatically. The entry_price=72c with 1 contract each is suspicious
 and may indicate a paper trading simulation artifact.

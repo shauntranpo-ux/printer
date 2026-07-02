@@ -661,7 +661,7 @@ tbody tr:last-child td{border-bottom:none;}
 <!-- ═════════════════ OVERVIEW ═════════════════ -->
 <div class="panel active" id="panel-overview">
 
-  <!-- KPI STRIP — Strategy 2 (D3 Hybrid) -->
+  <!-- KPI STRIP - Strategy 2 (D3 Hybrid) -->
   <div class="kpi-strip" id="kpi-strip-s2">
     <div class="kpi-strip-label">S2 · Velocity + OBI</div>
     <div class="kpi-cell">
@@ -683,32 +683,32 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
-  <!-- KPI STRIP — Strategy 1 (Original) -->
+  <!-- KPI STRIP - Strategy 1 (Original) -->
   <div class="kpi-strip" id="kpi-strip-s1">
     <div class="kpi-strip-label s1">S1 · EMA Momentum</div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
-      <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">—</div>
-      <div id="kpi-s1-alltime-sub" class="kpi-cell-s">—</div>
+      <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
+      <div id="kpi-s1-alltime-sub" class="kpi-cell-s">-</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Win Rate · All-Time</div>
-      <div id="kpi-s1-wr-val" class="kpi-cell-v mono" style="color:var(--amber);">—<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
-      <div id="kpi-s1-wr-sub" class="kpi-cell-s">— trades</div>
+      <div id="kpi-s1-wr-val" class="kpi-cell-v mono" style="color:var(--amber);">-<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
+      <div id="kpi-s1-wr-sub" class="kpi-cell-s">- trades</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Today's P&amp;L<span class="badge mode-badge">PAPER</span></div>
-      <div id="kpi-s1-today-val" class="kpi-cell-v mono" style="color:var(--amber);">—</div>
-      <div id="kpi-s1-today-sub" class="kpi-cell-s">— trades</div>
+      <div id="kpi-s1-today-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
+      <div id="kpi-s1-today-sub" class="kpi-cell-s">- trades</div>
     </div>
   </div>
 
   <!-- MARKET STRIP -->
   <div class="market-strip" id="market-strip"></div>
 
-  <!-- EQUITY + ALLOCATION — Strategy 2 -->
+  <!-- EQUITY + ALLOCATION - Strategy 2 -->
   <div class="grid-2" style="margin-bottom:8px;">
     <div class="card">
       <div class="card-head">
@@ -734,7 +734,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
-  <!-- EQUITY + ALLOCATION — Strategy 1 -->
+  <!-- EQUITY + ALLOCATION - Strategy 1 -->
   <div class="grid-2">
     <div class="card">
       <div class="card-head">
@@ -872,7 +872,7 @@ tbody tr:last-child td{border-bottom:none;}
   <div style="display:flex;flex-direction:column;gap:14px;padding:8px 0;">
     <div class="card" id="edge-verdict-card">
       <div class="card-head"><div class="card-title"><span class="accent"></span>Do we have an edge? &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">GATE&nbsp;1 · decision_log</span></div></div>
-      <div id="edge-verdict" style="font-family:'Montserrat';font-weight:700;font-size:15px;padding:6px 2px;">—</div>
+      <div id="edge-verdict" style="font-family:'Montserrat';font-weight:700;font-size:15px;padding:6px 2px;">-</div>
       <div id="edge-counts" style="font-size:11px;color:var(--ink-3);margin-top:6px;">Collecting paper data…</div>
       <div class="meter-bar" style="margin-top:8px;"><div id="edge-progress" class="up" style="width:0%"></div></div>
     </div>
@@ -885,12 +885,33 @@ tbody tr:last-child td{border-bottom:none;}
       <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Net $/ct = realized P&amp;L per contract after fees on the gate's picks. Wilson LB &gt; 0 = statistically positive edge.</div>
     </div>
     <div class="card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Better market times &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">ET session · net edge on picks</span></div></div>
+      <div style="overflow-x:auto;"><table style="width:100%;"><thead><tr>
+        <th>Session (ET)</th><th>Picks</th><th>Win%</th><th>Net $/ct</th><th>Wilson LB</th><th></th>
+      </tr></thead><tbody id="edge-session"></tbody></table></div>
+      <div style="overflow-x:auto;margin-top:10px;"><table style="width:100%;"><thead><tr>
+        <th>Day type</th><th>Picks</th><th>Win%</th><th>Net $/ct</th><th>Wilson LB</th><th></th>
+      </tr></thead><tbody id="edge-daytype"></tbody></table></div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Which ET sessions / days actually pay. Sessions: us_open 9:30-11:30, us_midday-15:00, us_close-16:30, us_evening-22:00, overnight. To skip a losing one, set <code>blocked_sessions</code> (or <code>block_weekends</code>) in config. "insufficient" = too few settled picks to trust yet.</div>
+    </div>
+    <div class="card">
       <div class="card-head"><div class="card-title"><span class="accent"></span>Maker vs taker &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">maker_log · counterfactual</span></div></div>
-      <div id="edge-maker-verdict" style="font-family:'Montserrat';font-weight:700;font-size:13px;padding:4px 2px;">—</div>
+      <div id="edge-maker-verdict" style="font-family:'Montserrat';font-weight:700;font-size:13px;padding:4px 2px;">-</div>
       <div style="overflow-x:auto;margin-top:6px;"><table style="width:100%;"><thead><tr>
         <th>Strategy</th><th>n</th><th>Fill%</th><th>Taker $/ct</th><th>Maker $/ct</th><th>Δ $/ct</th><th>Δ SE</th>
       </tr></thead><tbody id="edge-maker"></tbody></table></div>
-      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Maker $/ct counts an unfilled order as $0 (no trade). Build resting-order execution only once Δ clears ~2·SE.</div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Maker $/ct counts an unfilled order as $0 (no trade). Once Δ clears ~2·SE with 200+ samples, set <code>maker_execution_enabled: true</code> (paper) to settle trades at maker pricing.</div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Model self-tuning &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">refit every 30 min from settled data</span></div></div>
+      <div style="overflow-x:auto;"><table style="width:100%;"><thead><tr>
+        <th>Knob</th><th>Value</th><th>Meaning</th>
+      </tr></thead><tbody id="edge-tuning"></tbody></table></div>
+      <div style="overflow-x:auto;margin-top:10px;"><table style="width:100%;"><thead><tr>
+        <th>Settlement basis (asset)</th><th>n</th><th>Agree%</th><th>Mean dist @ disagree</th>
+      </tr></thead><tbody id="edge-basis"></tbody></table></div>
+      <div id="edge-autoblock" style="font-size:11px;margin-top:8px;"></div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">prob_scale 1.0 = neutral (&lt;1 means the model was overconfident and is being shrunk). Live betas replace the static betas file. Auto-blocked buckets have 150+ settled picks with a non-positive Wilson-LB net-$.</div>
     </div>
   </div>
 </div>
@@ -903,7 +924,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div style="display:flex;flex-direction:column;gap:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S1 — EMA Momentum</div>
+            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S1 - EMA Momentum</div>
             <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">3-min vs N-min EMA crossover</div>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
@@ -914,7 +935,7 @@ tbody tr:last-child td{border-bottom:none;}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S2 — Velocity + OBI</div>
+            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S2 - Velocity + OBI</div>
             <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Contract velocity + orderbook imbalance</div>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
@@ -971,12 +992,12 @@ function cryptoLogo(sym){
 }
 
 // ════════════════════════════════════════════════════
-//  MOCK DATA  (representative — wire to real bot API)
+//  MOCK DATA  (representative - wire to real bot API)
 // ════════════════════════════════════════════════════
-// MARKETS — live state replaced by fetchMarketState() every 30s
+// MARKETS - live state replaced by fetchMarketState() every 30s
 let MARKETS = ['BTC','ETH','SOL','XRP','DOGE'].map(sym => ({
   sym, phase: 'OFFLINE', px: null, ch24: 0, dist: 0, strike: null,
-  ev: 0, wp: null, timer: '—', pnlToday: 0, side: '—',
+  ev: 0, wp: null, timer: '-', pnlToday: 0, side: '-',
   yesAsk: null, noAsk: null, vol: 0,
   sig: { final_decision: 'skip', vote_count: 0, ev_pass: false,
          skip_reason: null, decision_mode: 'd3_hybrid',
@@ -987,7 +1008,7 @@ let MARKETS = ['BTC','ETH','SOL','XRP','DOGE'].map(sym => ({
 // Phase explainers// Phase explainers
 const PHASE_TIP = {
   WATCH:   'Bot is monitoring this asset. Window not yet at the entry minute.',
-  READY:   'Signal qualified for trade — waiting for the entry minute (5 of 15).',
+  READY:   'Signal qualified for trade - waiting for the entry minute (5 of 15).',
   LOCKED:  'In an open position on this market.',
   DONE:    'Window resolved. Awaiting next 15-minute window.',
   OFFLINE: 'Asset disabled, or no live data feed.',
@@ -995,16 +1016,16 @@ const PHASE_TIP = {
 
 // Signal field glossary (matches the bot\u2019s entry_signals payload)
 const FIELD_TIP = {
-  raw_p_yes:    'Raw P(YES) — model probability before calibration.',
-  p_ev:         'Model P(YES) — calibrated probability used for EV calc.',
-  market_prob:  'Market P(YES) — market-implied probability from ask prices.',
-  yes_ev:       'YES EV — expected value if betting YES.',
-  no_ev:        'NO EV — expected value if betting NO.',
+  raw_p_yes:    'Raw P(YES) - model probability before calibration.',
+  p_ev:         'Model P(YES) - calibrated probability used for EV calc.',
+  market_prob:  'Market P(YES) - market-implied probability from ask prices.',
+  yes_ev:       'YES EV - expected value if betting YES.',
+  no_ev:        'NO EV - expected value if betting NO.',
   supertrend:   'Supertrend direction. +1 up / −1 down.',
-  velocity:     'Contract velocity — rising / falling / flat.',
-  vote_count:   'D3 votes — number of sub-signals agreeing (0–5).',
-  ev_pass:      'EV gate — did EV exceed minimum threshold?',
-  final_decision:'Final decision — trade or skip.',
+  velocity:     'Contract velocity - rising / falling / flat.',
+  vote_count:   'D3 votes - number of sub-signals agreeing (0-5).',
+  ev_pass:      'EV gate - did EV exceed minimum threshold?',
+  final_decision:'Final decision - trade or skip.',
   skip_reason:  'Why the trade was skipped (if any).',
   decision_mode:'Strategy mode (currently d3_hybrid).',
 };
@@ -1026,10 +1047,10 @@ function genEquity(seed, len, drift, vol){
   }
   return pts;
 }
-// EQ — populated by fetchEquity(), starts empty so chart shows no-data state
+// EQ - populated by fetchEquity(), starts empty so chart shows no-data state
 const EQ = { '1d': [], '1w': [], '1m': [], 'all': [] };
 
-// trades data — populated by fetchTrades()
+// trades data - populated by fetchTrades()
 let TRADES = [];
 
 // per-market data
@@ -1045,7 +1066,7 @@ const MARKET_DATA = {
       ['01:14','entry','Entered <b>YES @ 54¢</b> · qty 5 · est P&L +$2.30'],
       ['03:20','exit','Closed <b>+$2.30</b> · win @ resolution UP'],
       ['04:02','signal','15m strategy: holding, EV below floor'],
-      ['05:48','skip','EV 4.2% < floor 7.0% — sitting out'],
+      ['05:48','skip','EV 4.2% < floor 7.0% - sitting out'],
       ['07:11','signal','New 15m candle, vol expanding'],
     ],
     stats:{ wins:38, losses:21, wr:0.644, todayPnl:+24.40, avgEV:6.8, bestExit:'+$8.40', worstDD:-12.10 }
@@ -1088,7 +1109,7 @@ const MARKET_DATA = {
     ladder:{ asks:[[55,6],[54,11],[53,17],[52,22],[51,34]], bids:[[49,30],[48,18],[47,12],[46,8],[45,4]] },
     log:[
       ['01:48','signal','Mid-range, no strong bias'],
-      ['03:14','skip','EV 4.2% < floor — skipped'],
+      ['03:14','skip','EV 4.2% < floor - skipped'],
       ['05:02','signal','Vol gate blocked entry (0.92)'],
       ['06:38','signal','Range bound, watching for breakout'],
     ],
@@ -1201,10 +1222,10 @@ function renderMarketStrip(){
       footRight = `<span class="locked-tag">LOCKED</span>`;
     } else {
       const warn = (m.timer||'').match(/^[0-5]?[0-9]s$/) || (m.timer||'').match(/^0m/);
-      footRight = `<span class="timer ${warn?'warn':''}">⏱ ${m.timer||'—'}</span>`;
+      footRight = `<span class="timer ${warn?'warn':''}">⏱ ${m.timer||'-'}</span>`;
     }
-    const yesLabel = hasAsk ? `${m.yesAsk}¢` : '—';
-    const noLabel  = hasAsk ? `${m.noAsk}¢`  : '—';
+    const yesLabel = hasAsk ? `${m.yesAsk}¢` : '-';
+    const noLabel  = hasAsk ? `${m.noAsk}¢`  : '-';
     const battleHTML = `
       <div class="mc-battle" style="${offline?'opacity:0.5;':''}">
         <div class="mc-battle-track-wrap">
@@ -1230,7 +1251,7 @@ function renderMarketStrip(){
         <div class="mc-price">
           <span class="mc-price-label" style="color:${_evVal>0?'oklch(0.5 0.18 150)':_evVal<-0.01?'oklch(0.5 0.20 25)':'var(--ink-3)'}">EV</span>
           <span class="mc-price-val" style="color:${_evVal>0?'oklch(0.5 0.18 150)':_evVal<-0.01?'oklch(0.5 0.20 25)':'var(--ink-2)'}">
-            ${_evVal!=null&&Math.abs(_evVal)<=200?((_evVal>0?'+':'')+_evVal.toFixed(1)+'%'):_evVal!=null?'—*':'—'}
+            ${_evVal!=null&&Math.abs(_evVal)<=200?((_evVal>0?'+':'')+_evVal.toFixed(1)+'%'):_evVal!=null?'-*':'-'}
           </span>
           ${_skipLabel?`<span style="font-size:9px;color:var(--ink-3);font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;display:block">${_skipLabel}</span>`:''}
         </div>
@@ -1241,7 +1262,7 @@ function renderMarketStrip(){
   }).join('');
 
   el.querySelectorAll('.mc').forEach(card=>{
-    // non-interactive — informational only
+    // non-interactive - informational only
   });
 }
 
@@ -1257,7 +1278,7 @@ function buildStrategyEquity(sv, range) {
   return pts.length > 1 ? pts : [];
 }
 
-// equity chart — renders to containerId using provided pts array
+// equity chart - renders to containerId using provided pts array
 function renderEquity(range, containerId, pts){
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
@@ -1313,7 +1334,7 @@ function renderEquity(range, containerId, pts){
     </svg>`;
 }
 
-// allocation donut — renders one donut for a given strategy variant
+// allocation donut - renders one donut for a given strategy variant
 function renderAllocForStrategy(sv, donutId, listId) {
   const colors = {BTC:'oklch(0.72 0.16 60)', ETH:'oklch(0.55 0.12 270)', SOL:'oklch(0.42 0.22 300)', XRP:'oklch(0.6 0.012 250)', DOGE:'oklch(0.72 0.13 85)'};
   const pool = sv ? TRADES.filter(t => t.sv === sv) : TRADES;
@@ -1353,7 +1374,7 @@ function renderAllocation(){
   renderAllocForStrategy('strategy1', 'alloc-donut-s1', 'alloc-list-s1');
 }
 
-// signals — per-asset Decision Pipeline summary on Overview
+// signals - per-asset Decision Pipeline summary on Overview
 function renderSignals(){
   const caret = '<svg class="ds-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4 L10 8 L6 12"/></svg>';
   const html = MARKETS.map(m=>{
@@ -1365,7 +1386,7 @@ function renderSignals(){
     const evVal = m.side==='NO/DOWN' ? s.no_ev : s.yes_ev;
     const evCls = evVal > 0 ? 'up' : evVal < 0 ? 'down' : 'idle';
     const decisionTrade = s.final_decision === 'trade';
-    const sideLabel = m.side==='—' ? 'NO SIDE' : m.side;
+    const sideLabel = m.side==='-' ? 'NO SIDE' : m.side;
     const skipLabel = s.skip_reason ? (SKIP_REASON_LABEL[s.skip_reason] || s.skip_reason) : '';
 
     return `
@@ -1383,7 +1404,7 @@ function renderSignals(){
       </div>
       <div></div>
       <div class="ds-gate ${evState}" title="${FIELD_TIP.ev_pass}">EV ${s.ev_pass?'✓':'✕'}</div>
-      <div class="ds-ev ${evCls}" title="${FIELD_TIP.yes_ev}">${evVal!=null&&Math.abs(evVal)<=200?(evVal>=0?'+':'')+evVal.toFixed(1)+'%':evVal!=null?'—*':'—'}</div>
+      <div class="ds-ev ${evCls}" title="${FIELD_TIP.yes_ev}">${evVal!=null&&Math.abs(evVal)<=200?(evVal>=0?'+':'')+evVal.toFixed(1)+'%':evVal!=null?'-*':'-'}</div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="ds-decision ${decisionTrade?'trade':'skip'}" title="${FIELD_TIP.final_decision}">${decisionTrade?'TRADE':'SKIP'}</div>
         ${caret}
@@ -1502,7 +1523,7 @@ function renderMarketPanel(sym){
         <path d="M 10,80 A 70,70 0 0 1 ${gx.toFixed(1)},${gy.toFixed(1)}" fill="none" stroke="${gColor}" stroke-width="10" stroke-linecap="round"/>
         <circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="5" fill="${gColor}"/>
       </svg>
-      <div class="gauge-val" style="color:${gColor};">${session.score ?? '—'}</div>
+      <div class="gauge-val" style="color:${gColor};">${session.score ?? '-'}</div>
       <div class="gauge-label">Confidence</div>
     </div>`;
 
@@ -1514,17 +1535,17 @@ function renderMarketPanel(sym){
     return `<tr>
       <td>${time}</td>
       <td><span class="td-dir ${t.dir==='UP'?'up':'down'}">${t.dir}</span></td>
-      <td>${t.qty || '—'}</td>
-      <td>${t.entry != null ? t.entry+'¢' : '—'}</td>
-      <td>${t.exit  != null ? t.exit +'¢' : '—'}</td>
-      <td>${t.ev ? t.ev+'%' : '—'}</td>
+      <td>${t.qty || '-'}</td>
+      <td>${t.entry != null ? t.entry+'¢' : '-'}</td>
+      <td>${t.exit  != null ? t.exit +'¢' : '-'}</td>
+      <td>${t.ev ? t.ev+'%' : '-'}</td>
       <td><span class="td-fill ${t.fill==='filled'?'':t.fill}">${t.fill}</span></td>
-      <td>${t.reason || '—'}</td>
+      <td>${t.reason || '-'}</td>
       <td style="text-align:right;" class="td-pnl ${t.pnl>=0?'up':'down'}">${fmtMoney(t.pnl)}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--ink-3);padding:24px;">No trades yet for ${sym}</td></tr>`;
 
-  // hourly heatmap (last 60 buckets) — uses real outcomes when available
+  // hourly heatmap (last 60 buckets) - uses real outcomes when available
   const _outcomes = MARKET_DATA[sym]?.outcomes;
   const heat = (_outcomes && _outcomes.length > 0)
     ? [..._outcomes].reverse().map(o => {
@@ -1584,11 +1605,11 @@ function renderMarketPanel(sym){
 
     <div class="mkpi-grid">
       <div class="mkpi"><div class="mkpi-l">Strike</div><div class="mkpi-v">${fmtPx(sym,session.strike)}</div><div class="mkpi-sub">${session.expires}</div></div>
-      <div class="mkpi"><div class="mkpi-l">Distance</div><div class="mkpi-v ${(session.dist??0)>=0?'up':'down'}">${session.dist!=null?((session.dist>=0?'+':'')+session.dist.toFixed(2)+'%'):'—'}</div></div>
-      <div class="mkpi"><div class="mkpi-l">EV</div><div class="mkpi-v ${(session.ev??0)>=7?'up':(session.ev??0)>=5?'':'down'}">${session.ev!=null?session.ev.toFixed(1)+'%':'—'}</div><div class="mkpi-sub">floor 7.0%</div></div>
-      <div class="mkpi"><div class="mkpi-l">Win Prob</div><div class="mkpi-v">${session.wp != null ? (session.wp*100).toFixed(1)+'%' : '—'}</div></div>
-      <div class="mkpi"><div class="mkpi-l">Vol Gate</div><div class="mkpi-v ${(session.vol??0)>=1.8?'up':(session.vol??0)>=1.2?'':'down'}">${session.vol!=null?session.vol.toFixed(2):'—'}</div><div class="mkpi-sub">thresh 1.80</div></div>
-      <div class="mkpi"><div class="mkpi-l">Position</div><div class="mkpi-v">${session.qty>0?session.qty:'—'}</div><div class="mkpi-sub">${session.qty>0?'YES @ '+session.yesAsk+'¢':'flat'}</div></div>
+      <div class="mkpi"><div class="mkpi-l">Distance</div><div class="mkpi-v ${(session.dist??0)>=0?'up':'down'}">${session.dist!=null?((session.dist>=0?'+':'')+session.dist.toFixed(2)+'%'):'-'}</div></div>
+      <div class="mkpi"><div class="mkpi-l">EV</div><div class="mkpi-v ${(session.ev??0)>=7?'up':(session.ev??0)>=5?'':'down'}">${session.ev!=null?session.ev.toFixed(1)+'%':'-'}</div><div class="mkpi-sub">floor 7.0%</div></div>
+      <div class="mkpi"><div class="mkpi-l">Win Prob</div><div class="mkpi-v">${session.wp != null ? (session.wp*100).toFixed(1)+'%' : '-'}</div></div>
+      <div class="mkpi"><div class="mkpi-l">Vol Gate</div><div class="mkpi-v ${(session.vol??0)>=1.8?'up':(session.vol??0)>=1.2?'':'down'}">${session.vol!=null?session.vol.toFixed(2):'-'}</div><div class="mkpi-sub">thresh 1.80</div></div>
+      <div class="mkpi"><div class="mkpi-l">Position</div><div class="mkpi-v">${session.qty>0?session.qty:'-'}</div><div class="mkpi-sub">${session.qty>0?'YES @ '+session.yesAsk+'¢':'flat'}</div></div>
     </div>
 
     <div class="grid-2">
@@ -1679,11 +1700,11 @@ function renderMarketPanel(sym){
       <div class="card">
         <div class="card-head"><div class="card-title"><span class="accent"></span>Strategy Signals</div></div>
         <div>
-          <div class="sig-row"><div class="sig-dot ${(session.ev??0)>=7?'on':'off'}"></div><div class="sig-name">EV ≥ floor</div><div class="sig-val">${session.ev!=null?session.ev.toFixed(1)+'% / 7.0%':'— / 7.0%'}</div></div>
-          <div class="sig-row"><div class="sig-dot ${(session.vol??0)>=1.2?'on':'warn'}"></div><div class="sig-name">Vol gate</div><div class="sig-val">${session.vol!=null?session.vol.toFixed(2)+' / 1.80':'— / 1.80'}</div></div>
-          <div class="sig-row"><div class="sig-dot ${session.wp!=null&&session.wp>=0.55?'on':'off'}"></div><div class="sig-name">Win prob</div><div class="sig-val">${session.wp!=null?(session.wp*100).toFixed(1)+'%':'—'}</div></div>
-          <div class="sig-row"><div class="sig-dot ${(session.score??0)>=60?'on':'warn'}"></div><div class="sig-name">Confidence</div><div class="sig-val">${session.score??'—'}/100</div></div>
-          <div class="sig-row"><div class="sig-dot ${session.dist!=null&&Math.abs(session.dist)<0.5?'on':'warn'}"></div><div class="sig-name">Strike distance</div><div class="sig-val">${session.dist!=null?(session.dist>=0?'+':'')+session.dist.toFixed(2)+'%':'—'}</div></div>
+          <div class="sig-row"><div class="sig-dot ${(session.ev??0)>=7?'on':'off'}"></div><div class="sig-name">EV ≥ floor</div><div class="sig-val">${session.ev!=null?session.ev.toFixed(1)+'% / 7.0%':'- / 7.0%'}</div></div>
+          <div class="sig-row"><div class="sig-dot ${(session.vol??0)>=1.2?'on':'warn'}"></div><div class="sig-name">Vol gate</div><div class="sig-val">${session.vol!=null?session.vol.toFixed(2)+' / 1.80':'- / 1.80'}</div></div>
+          <div class="sig-row"><div class="sig-dot ${session.wp!=null&&session.wp>=0.55?'on':'off'}"></div><div class="sig-name">Win prob</div><div class="sig-val">${session.wp!=null?(session.wp*100).toFixed(1)+'%':'-'}</div></div>
+          <div class="sig-row"><div class="sig-dot ${(session.score??0)>=60?'on':'warn'}"></div><div class="sig-name">Confidence</div><div class="sig-val">${session.score??'-'}/100</div></div>
+          <div class="sig-row"><div class="sig-dot ${session.dist!=null&&Math.abs(session.dist)<0.5?'on':'warn'}"></div><div class="sig-name">Strike distance</div><div class="sig-val">${session.dist!=null?(session.dist>=0?'+':'')+session.dist.toFixed(2)+'%':'-'}</div></div>
           <div class="sig-row"><div class="sig-dot on"></div><div class="sig-name">Price validation</div><div class="sig-val">OK</div></div>
         </div>
       </div>
@@ -1725,12 +1746,12 @@ function renderTrades(filter='all'){
       <td><span class="td-sym"><span class="swatch" style="background:${colors[t.sym]};"></span>${t.sym}</span></td>
       <td><span class="badge" style="${(t.brain==='s1'||t.sv==='strategy1')?'background:var(--amber-soft);color:var(--amber);':'background:var(--accent-soft);color:var(--accent);'}border:none;font-size:9px;">${(t.brain==='s1'||t.sv==='strategy1')?'S1':'S2'}</span></td>
       <td><span class="td-dir ${t.dir==='UP'?'up':'down'}">${t.dir}</span></td>
-      <td>${t.qty || '—'}</td>
-      <td>${t.entry != null ? t.entry+'¢' : '—'}</td>
-      <td>${t.exit  != null ? t.exit +'¢' : '—'}</td>
-      <td>${t.ev ? t.ev+'%' : '—'}</td>
+      <td>${t.qty || '-'}</td>
+      <td>${t.entry != null ? t.entry+'¢' : '-'}</td>
+      <td>${t.exit  != null ? t.exit +'¢' : '-'}</td>
+      <td>${t.ev ? t.ev+'%' : '-'}</td>
       <td><span class="td-fill ${t.fill==='filled'?'':t.fill}">${t.fill}</span></td>
-      <td>${t.reason || '—'}</td>
+      <td>${t.reason || '-'}</td>
       <td style="text-align:right;" class="td-pnl ${t.pnl>=0?'up':'down'}">${fmtMoney(t.pnl)}</td>
     </tr>`;
   }).join('');
@@ -1775,7 +1796,7 @@ function switchTab(tab){
 
 // ── Edge panel (harness / GATE-1) ───────────────────────────────────────────
 function _edgeCell(v, nd, pct){
-  if(v==null) return '<span class="muted">—</span>';
+  if(v==null) return '<span class="muted">-</span>';
   const x = pct ? (v*100).toFixed(nd)+'%' : v.toFixed(nd);
   return x;
 }
@@ -1812,6 +1833,27 @@ function renderEdge(d){
   }
   document.getElementById('edge-decisions').innerHTML = rows.join('') ||
     '<tr><td colspan="8" class="muted">No settled picks yet.</td></tr>';
+  // per-time breakdowns - which ET sessions / days actually pay ("better market times")
+  const _timeRows = (obj, order) => {
+    const out=[]; const ks = order.filter(k=>obj[k]).concat(Object.keys(obj).filter(k=>!order.includes(k)));
+    for(const k of ks){
+      const g=obj[k]; if(!g) continue;
+      const netCls=g.net_pnl_per_contract>0?'up':g.net_pnl_per_contract<0?'down':'muted';
+      const lbCls=g.wilson_lb_pnl>0?'up':'down';
+      const note=g.insufficient?'<span class="muted">insufficient</span>':'';
+      out.push(`<tr><td>${k}</td><td>${g.n}</td><td>${_edgeCell(g.win_rate,1,true)}</td>
+        <td class="${netCls}">${_edgeCell(g.net_pnl_per_contract,4)}</td>
+        <td class="${lbCls}">${_edgeCell(g.wilson_lb_pnl,4)}</td><td>${note}</td></tr>`);
+    }
+    return out.join('');
+  };
+  const SESS_ORDER=['us_open','us_midday','us_close','us_evening','overnight'];
+  const _se=document.getElementById('edge-session');
+  if(_se) _se.innerHTML = _timeRows(dec.by_session||{}, SESS_ORDER) ||
+    '<tr><td colspan="6" class="muted">No settled picks yet.</td></tr>';
+  const _dt=document.getElementById('edge-daytype');
+  if(_dt) _dt.innerHTML = _timeRows(dec.by_daytype||{}, ['weekday','weekend']) ||
+    '<tr><td colspan="6" class="muted">No settled picks yet.</td></tr>';
   // maker
   const mvEl = document.getElementById('edge-maker-verdict');
   const mv = mk.verdict || 'insufficient data';
@@ -1830,6 +1872,45 @@ function renderEdge(d){
   }
   document.getElementById('edge-maker').innerHTML = mrows.join('') ||
     '<tr><td colspan="7" class="muted">No maker samples yet.</td></tr>';
+  // model self-tuning: fitted calibration knobs, basis stats, auto-blocked buckets
+  const cal = (d&&d.calibration)||{};
+  const trows = [];
+  const ps = cal.prob_scale||{};
+  for(const k of Object.keys(ps).sort()){
+    const lbl = k==='strategy1'?'S1':'S2';
+    const v = ps[k];
+    const cls = Math.abs(v-1.0)<0.001?'muted':(v<1?'amber':'up');
+    trows.push(`<tr><td>prob_scale ${lbl}</td><td class="${cls}">${v}</td><td>${Math.abs(v-1.0)<0.001?'neutral (no fit yet or well calibrated)':(v<1?'model was overconfident: shrunk':'model was underconfident: expanded')}</td></tr>`);
+  }
+  const lb = cal.live_beta||{};
+  for(const k of Object.keys(lb).sort()){
+    trows.push(`<tr><td>live beta ${k}</td><td>${lb[k]}</td><td>rolling BTC-lead fit (replaces static)</td></tr>`);
+  }
+  const bo = cal.basis_offset||{};
+  for(const k of Object.keys(bo).sort()){
+    if(bo[k]) trows.push(`<tr><td>basis offset ${k}</td><td>${bo[k]}</td><td>spot vs Kalshi settlement correction</td></tr>`);
+  }
+  document.getElementById('edge-tuning').innerHTML = trows.join('') ||
+    '<tr><td colspan="3" class="muted">No fits yet - needs 200+ settled decisions (collecting).</td></tr>';
+  const bs2 = (d&&d.basis)||{};
+  const brows = [];
+  for(const k of Object.keys(bs2).sort()){
+    const g = bs2[k];
+    const aCls = g.agree_rate>=0.97?'up':g.agree_rate>=0.9?'amber':'down';
+    brows.push(`<tr><td>${k}</td><td>${g.n}</td><td class="${aCls}">${_edgeCell(g.agree_rate,1,true)}</td><td>${g.mean_disagree_dist==null?'-':g.mean_disagree_dist}</td></tr>`);
+  }
+  document.getElementById('edge-basis').innerHTML = brows.join('') ||
+    '<tr><td colspan="4" class="muted">No official settles recorded yet.</td></tr>';
+  const ab = cal.auto_blocked||{};
+  const abParts = [];
+  for(const s of (ab.sessions||[])) abParts.push(`session:${s}`);
+  for(const sa of (ab.strategy_assets||[])) abParts.push(`${sa[0]==='strategy1'?'S1':'S2'}/${sa[1]}`);
+  const abEl = document.getElementById('edge-autoblock');
+  if(abParts.length){
+    abEl.innerHTML = `<span class="down"><b>Auto-blocked:</b></span> ${abParts.join(' · ')}`;
+  } else {
+    abEl.innerHTML = '<span class="muted">Auto-gate: nothing blocked (no bucket has 150+ picks with non-positive Wilson-LB).</span>';
+  }
 }
 async function fetchEdge(){
   try{
@@ -1939,7 +2020,7 @@ document.getElementById('mode-seg').querySelectorAll('button').forEach(b=>{
   });
 });
 
-// quick actions (pause / reset) — event delegation on the shared market panel
+// quick actions (pause / reset) - event delegation on the shared market panel
 document.getElementById('panel-market').addEventListener('click', e => {
   const btn = e.target.closest('[data-action]');
   if(!btn) return;
@@ -1968,7 +2049,7 @@ async function fetchRisk(){
     if(d.error) return;
     const el = document.getElementById('risk-meters');
     if(!el) return;
-    const fmt = v => v == null ? '—' : v.toFixed(2);
+    const fmt = v => v == null ? '-' : v.toFixed(2);
     const pct = (cur, max) => max > 0 ? Math.min(100, cur / max * 100).toFixed(0) : 0;
     const ll = d.daily_loss_limit,  pt = d.daily_profit_target;
     const vg = d.vol_gate,          ef = d.ev_floor,  st = d.streak;
@@ -1982,7 +2063,7 @@ async function fetchRisk(){
         <div class="meter-bar"><div class="up" style="width:${pct(pt.current,pt.max)}%"></div></div>
       </div>
       <div class="meter">
-        <div class="meter-head"><span class="meter-name">Vol Gate (${vg.asset||'BTC'})</span><span class="meter-val">${vg.current != null ? vg.current : '—'} / ${fmt(vg.threshold)}</span></div>
+        <div class="meter-head"><span class="meter-name">Vol Gate (${vg.asset||'BTC'})</span><span class="meter-val">${vg.current != null ? vg.current : '-'} / ${fmt(vg.threshold)}</span></div>
         <div class="meter-bar"><div class="${vg.current == null ? '' : vg.current >= vg.threshold * 0.9 ? 'amber' : 'up'}" style="width:${vg.current != null ? pct(vg.current,vg.threshold) : 0}%"></div></div>
       </div>
       <div class="meter">
@@ -2063,7 +2144,7 @@ function mapAssetState(sym, a) {
   const rawSecs = a.secs_left || 0;
   const secs = Math.floor(rawSecs);
   const mins = Math.floor(secs / 60), s = secs % 60;
-  const timer = secs > 0 ? `${mins}m ${s}s` : '—';
+  const timer = secs > 0 ? `${mins}m ${s}s` : '-';
   const ex  = MARKETS.find(m => m.sym === sym) || {};
   const dec = a.signals || a.decision || {};
   return {
@@ -2080,7 +2161,7 @@ function mapAssetState(sym, a) {
     yesAsk:   a.yes_ask != null ? Math.round(a.yes_ask) : (dec.yes_ask != null ? Math.round(dec.yes_ask) : (ex.yesAsk ?? null)),
     noAsk:    a.no_ask  != null ? Math.round(a.no_ask)  : (dec.no_ask  != null ? Math.round(dec.no_ask)  : (ex.noAsk  ?? null)),
     vol:      a.vol       ?? ex.vol       ?? 1.0,
-    side:     a.side ?? (a.direction?.toUpperCase() === 'UP' ? 'YES/UP' : a.direction?.toUpperCase() === 'DOWN' ? 'NO/DOWN' : ex.side ?? '—'),
+    side:     a.side ?? (a.direction?.toUpperCase() === 'UP' ? 'YES/UP' : a.direction?.toUpperCase() === 'DOWN' ? 'NO/DOWN' : ex.side ?? '-'),
     sig:      { ...(ex.sig || {}), ...dec },
     s1_dir:   a.s1_dir   ?? ex.s1_dir   ?? 'neutral',
     s2_dir:   a.s2_dir   ?? ex.s2_dir   ?? 'neutral',
@@ -2099,7 +2180,7 @@ async function fetchMarketState() {
         const a = data.assets[sym];
         if (!a) return MARKETS.find(m => m.sym === sym) || {
           sym, phase:'OFFLINE', px:null, ch24:0, dist:0, strike:null,
-          ev:0, wp:null, timer:'—', pnlToday:0, side:'—',
+          ev:0, wp:null, timer:'-', pnlToday:0, side:'-',
           yesAsk:null, noAsk:null, vol:0,
           sig:{ final_decision:'skip', vote_count:0, ev_pass:false,
                 skip_reason:null, decision_mode:'d3_hybrid',
@@ -2233,7 +2314,7 @@ async function fetchEventLog() {
   try {
     const d = await fetch('/api/market-pulse').then(r => r.json());
     const fmtT = ts => {
-      if (!ts) return '—';
+      if (!ts) return '-';
       const dt = new Date(ts);
       return dt.getHours().toString().padStart(2,'0') + ':' + dt.getMinutes().toString().padStart(2,'0');
     };
@@ -2256,7 +2337,7 @@ async function fetchMarketDetail(sym) {
     if (sym !== _activeMarketSym) return;  // user switched tabs during fetch
     if (data.error) return;
     const ex = MARKET_DATA[sym] || {};
-    // Merge API sessions over mock defaults — keep null mock fields when API returns null
+    // Merge API sessions over mock defaults - keep null mock fields when API returns null
     const mergedSessions = data.sessions?.length ? data.sessions.map((s, i) => {
       const base = (ex.sessions || [])[i] || {};
       const merged = { ...base };

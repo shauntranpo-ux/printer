@@ -1,4 +1,4 @@
-# Risk Guards Design — 2026-05-09
+# Risk Guards Design - 2026-05-09
 
 ## Summary
 
@@ -21,9 +21,9 @@ Four targeted execution/risk fixes for the dual-brain bot. Signal quality issues
 
 ## Fix 1: S2 OBI Fail-Closed
 
-**File:** `bot_strategy.py` — `_s2_obi_gate()`
+**File:** `bot_strategy.py` - `_s2_obi_gate()`
 
-**Problem:** When `_ticker_obi[ticker]` is absent (fetch failed, not yet populated), gate returns `True, None` — S2 enters on velocity signal alone with no OBI confirmation.
+**Problem:** When `_ticker_obi[ticker]` is absent (fetch failed, not yet populated), gate returns `True, None` - S2 enters on velocity signal alone with no OBI confirmation.
 
 **Fix:** Return `False, None` when `obi_val is None`. S2 skips the market until OBI data is available (next fetch cycle, ~10s).
 
@@ -41,19 +41,19 @@ def _s2_obi_gate(ticker: str, side: str, min_obi: float):
 
 **Skip reason logged:** `s2_obi_gate:obi=None` (already handled by existing skip logging in `strategy_brain_s2`).
 
-**Risk:** Permanent OBI fetch failure silences S2 entirely. Existing error logging in `fetch_orderbook` is the signal — no new handling needed here.
+**Risk:** Permanent OBI fetch failure silences S2 entirely. Existing error logging in `fetch_orderbook` is the signal - no new handling needed here.
 
 ---
 
 ## Fix 2: S1 Global + Per-Asset Position Cap
 
-**File:** `bot_strategy.py` — `strategy_brain_s1()`
+**File:** `bot_strategy.py` - `strategy_brain_s1()`
 
 **Problem:** `_s1_pending_trades` has no maximum. Multiple markets per asset can both fire S1. With `_S1_ASSET_VOL_RATIO["DOGE"]=2.6`, two stacked DOGE positions = 5.2× base contracts.
 
 **Config keys (add to `config.json` defaults):**
-- `max_s1_positions` — global cap on `len(_s1_pending_trades)`. Default: `3`
-- `max_s1_positions_per_asset` — per-asset cap. Default: `1`
+- `max_s1_positions` - global cap on `len(_s1_pending_trades)`. Default: `3`
+- `max_s1_positions_per_asset` - per-asset cap. Default: `1`
 
 **Logic added early in `strategy_brain_s1`, before any signal computation:**
 
@@ -84,7 +84,7 @@ Three sub-changes:
 
 ### 3a. Persist to state file
 
-**File:** `bot_risk.py` — `write_state_file()` state dict
+**File:** `bot_risk.py` - `write_state_file()` state dict
 
 Add alongside existing `consecutive_losses` key:
 ```python
@@ -93,7 +93,7 @@ Add alongside existing `consecutive_losses` key:
 
 ### 3b. Restore on startup
 
-**File:** `bot_loops.py` — startup recovery block (near line 963)
+**File:** `bot_loops.py` - startup recovery block (near line 963)
 
 Add after existing `_s2_consecutive_losses` restore:
 ```python
@@ -104,7 +104,7 @@ if isinstance(saved_cl_s1, int) and saved_cl_s1 > 0:
 
 ### 3c. Telegram alert on threshold
 
-**File:** `bot_risk.py` — `_settle_s1_trade()`, after incrementing `_s1_consecutive_losses`
+**File:** `bot_risk.py` - `_settle_s1_trade()`, after incrementing `_s1_consecutive_losses`
 
 ```python
 if outcome == "win":
@@ -118,13 +118,13 @@ else:
         )
 ```
 
-No pause/limit trigger — informational only, matching S2 behavior in `handle_locked_phase`.
+No pause/limit trigger - informational only, matching S2 behavior in `handle_locked_phase`.
 
 ---
 
 ## Fix 4: S1 Session Gate Configurable for Alts
 
-**File:** `bot_strategy.py` — `strategy_brain_s1()`
+**File:** `bot_strategy.py` - `strategy_brain_s1()`
 
 **Problem:** `session_gate` is hardcoded per-asset in `_S1_ASSET_CONFIG`. Only BTC has `session_gate=True`. No way to enable gating for alts without a code deploy.
 
@@ -161,13 +161,13 @@ Operator enables ETH gating with: `"asset_config": {"ETH": {"s1_session_gate": t
 
 New file: `tests/test_risk_guards.py`
 
-1. `test_s2_obi_gate_fails_closed_on_none` — `_s2_obi_gate(ticker, "yes", 0.20)` with `_ticker_obi` empty → returns `(False, None)`
-2. `test_s2_obi_gate_passes_with_data` — `_ticker_obi[ticker] = 0.40` → returns `(True, 0.40)` for `side="yes"`, `min_obi=0.20`
-3. `test_s1_cap_global_source_check` — `inspect.getsource(strategy_brain_s1)` contains `s1_cap_global`
-4. `test_s1_cap_asset_source_check` — source contains `s1_cap_asset`
-5. `test_s1_consecutive_loss_persisted` — `write_state_file` state dict includes `s1_consecutive_losses` key
-6. `test_s1_consecutive_loss_restored` — startup block reads `s1_consecutive_losses` from saved state
-7. `test_s1_session_gate_source_check` — `strategy_brain_s1` source contains `get_asset_config` and `s1_session_gate` and `_effective_gate`
+1. `test_s2_obi_gate_fails_closed_on_none` - `_s2_obi_gate(ticker, "yes", 0.20)` with `_ticker_obi` empty → returns `(False, None)`
+2. `test_s2_obi_gate_passes_with_data` - `_ticker_obi[ticker] = 0.40` → returns `(True, 0.40)` for `side="yes"`, `min_obi=0.20`
+3. `test_s1_cap_global_source_check` - `inspect.getsource(strategy_brain_s1)` contains `s1_cap_global`
+4. `test_s1_cap_asset_source_check` - source contains `s1_cap_asset`
+5. `test_s1_consecutive_loss_persisted` - `write_state_file` state dict includes `s1_consecutive_losses` key
+6. `test_s1_consecutive_loss_restored` - startup block reads `s1_consecutive_losses` from saved state
+7. `test_s1_session_gate_source_check` - `strategy_brain_s1` source contains `get_asset_config` and `s1_session_gate` and `_effective_gate`
 
 ---
 

@@ -220,10 +220,10 @@ git commit -m "feat: recover original strategy test files under tests/strategies
 
 ---
 
-## Task 3: Database — strategy_variant Column
+## Task 3: Database - strategy_variant Column
 
 **Files:**
-- Modify: `bot.py` — `init_db()` and `db_write_trade()`
+- Modify: `bot.py` - `init_db()` and `db_write_trade()`
 
 - [ ] **Step 1: Add `strategy_variant` to CREATE TABLE in `init_db()`**
 
@@ -390,7 +390,7 @@ git commit -m "feat: add strategy_variant column to trades + _db_settle_corollar
 
 ---
 
-## Task 4: Bot — Singleton Caches and Brain Functions
+## Task 4: Bot - Singleton Caches and Brain Functions
 
 **Files:**
 - Modify: `bot.py`
@@ -414,8 +414,8 @@ _S2_SINGLETONS: dict = {}  # keyed by asset name
 
 Replace with:
 ```python
-_S2_SINGLETONS: dict = {}  # keyed by asset name — current D3 hybrid (strategy2)
-_S1_SINGLETONS: dict = {}  # keyed by asset name — original per-asset (strategy1)
+_S2_SINGLETONS: dict = {}  # keyed by asset name - current D3 hybrid (strategy2)
+_S1_SINGLETONS: dict = {}  # keyed by asset name - original per-asset (strategy1)
 ```
 
 - [ ] **Step 3: Rename `strategy_brain()` → `strategy_brain_s2()`**
@@ -454,7 +454,7 @@ Also add `"strategy_variant": "strategy2"` to the brain dict return values insid
 
 Add `"strategy_variant": "strategy2",` after `"action": "skip",`.
 
-For the main path (successful feature build), the function returns `brain_dict`. Find where that dict is constructed and returned — look for the final return statement in `strategy_brain_s2` which returns a dict including `"action"` — add `"strategy_variant": "strategy2"` to it.
+For the main path (successful feature build), the function returns `brain_dict`. Find where that dict is constructed and returned - look for the final return statement in `strategy_brain_s2` which returns a dict including `"action"` - add `"strategy_variant": "strategy2"` to it.
 
 - [ ] **Step 4: Add `_get_or_make_strategy_s1()` function**
 
@@ -621,7 +621,7 @@ Replace with:
 
 Find:
 ```python
-    # ── Printer Brain – primary decision engine (always runs, no API needed) ──
+    # ── Printer Brain - primary decision engine (always runs, no API needed) ──
     brain = strategy_brain(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
                      min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
                      vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
@@ -634,7 +634,7 @@ Find:
 
 Replace with:
 ```python
-    # ── Strategy brains — S2 (D3 hybrid) and S1 (original per-asset) run independently ──
+    # ── Strategy brains - S2 (D3 hybrid) and S1 (original per-asset) run independently ──
     _brain_kwargs = dict(
         min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
         vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
@@ -673,7 +673,7 @@ git commit -m "feat: add _S1_SINGLETONS, strategy_brain_s1/s2, dual-brain call a
 
 ---
 
-## Task 5: Bot — S1 Shadow Execution and Settlement
+## Task 5: Bot - S1 Shadow Execution and Settlement
 
 **Files:**
 - Modify: `bot.py`
@@ -779,8 +779,8 @@ async def _execute_s1_shadow(
     _time_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
     _expiry_dt = datetime.now(timezone(timedelta(hours=-7))) + timedelta(seconds=secs_left)
     await send_telegram(
-        f"<b>{_sv_label} {_s1_ctx} {mode_icon} ORDER FILLED</b>  —  {_time_str}\n"
-        f"<b>{s1_side.upper()} — {'UP' if s1_side == 'yes' else 'DOWN'}</b>  {s1_contracts} contracts @ <b>{int(s1_entry)}c</b>\n"
+        f"<b>{_sv_label} {_s1_ctx} {mode_icon} ORDER FILLED</b>  -  {_time_str}\n"
+        f"<b>{s1_side.upper()} - {'UP' if s1_side == 'yes' else 'DOWN'}</b>  {s1_contracts} contracts @ <b>{int(s1_entry)}c</b>\n"
         f"Cost: ${_s1_cost:.2f}  |  Max payout: ${_s1_payout:.2f}\n"
         f"Win prob: {_s1_win_pct}%  |  EV: {_s1_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
@@ -794,14 +794,14 @@ async def _execute_s1_shadow(
 In `handle_ready_phase()`, immediately after the block that was changed in Task 4 Step 6 (the `_brain_kwargs` / `brain_s1` / `brain` lines), add:
 
 ```python
-    # S1 shadow evaluation — runs independently of S2's execution path
+    # S1 shadow evaluation - runs independently of S2's execution path
     asyncio.create_task(_execute_s1_shadow(
         brain_s1, btc_price, strike, yes_ask, no_ask,
         secs_left, ticker, ob, market, config, asset, mode,
     ))
 ```
 
-Note: `ob` is available after the orderbook fetch block that precedes line 2827. If `ob` is still None at this point (possible only in race conditions), `_execute_s1_shadow` accesses `ob.get(...)` which would raise — add a guard: `if ob is not None:` around the asyncio.create_task call.
+Note: `ob` is available after the orderbook fetch block that precedes line 2827. If `ob` is still None at this point (possible only in race conditions), `_execute_s1_shadow` accesses `ob.get(...)` which would raise - add a guard: `if ob is not None:` around the asyncio.create_task call.
 
 - [ ] **Step 4: Add `strategy_variant` to the S2 position dict**
 
@@ -898,13 +898,13 @@ In `handle_locked_phase()`, after the `await db_update_trade(pos["trade_id"], {.
 Find:
 ```python
     await send_telegram(
-        f"<b>{_fill_ctx} {mode_icon} {_strat_tag}</b>  —  {_time_str}\n"
+        f"<b>{_fill_ctx} {mode_icon} {_strat_tag}</b>  -  {_time_str}\n"
 ```
 
 Replace with:
 ```python
     await send_telegram(
-        f"<b>[S2 D3 Hybrid] {_fill_ctx} {mode_icon} {_strat_tag}</b>  —  {_time_str}\n"
+        f"<b>[S2 D3 Hybrid] {_fill_ctx} {mode_icon} {_strat_tag}</b>  -  {_time_str}\n"
 ```
 
 **Outcome notification (line ~3253 in `handle_locked_phase`):**
@@ -912,13 +912,13 @@ Replace with:
 Find:
 ```python
         await send_telegram(
-            f"<b>{_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"<b>{_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  -  {_time_str}\n"
 ```
 
 Replace with:
 ```python
         await send_telegram(
-            f"<b>[S2 D3 Hybrid] {_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"<b>[S2 D3 Hybrid] {_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  -  {_time_str}\n"
 ```
 
 - [ ] **Step 7: Run full test suite**
@@ -938,7 +938,7 @@ git commit -m "feat: S1 shadow executor, settlement, and strategy Telegram label
 
 ---
 
-## Task 6: Server — strategy Filter Parameters
+## Task 6: Server - strategy Filter Parameters
 
 **Files:**
 - Modify: `server.py`
@@ -1077,7 +1077,7 @@ Invoke-RestMethod "http://localhost:8000/api/pnl?strategy=2" | ConvertTo-Json -D
 Invoke-RestMethod "http://localhost:8000/api/pnl?strategy=1" | ConvertTo-Json -Depth 3 | Select-String "alltime"
 ```
 
-If server is not running, skip live test — the logic is straightforward and will be verified when running the bot.
+If server is not running, skip live test - the logic is straightforward and will be verified when running the bot.
 
 - [ ] **Step 4: Run tests**
 
@@ -1094,7 +1094,7 @@ git commit -m "feat: add ?strategy= filter to /api/trades and /api/pnl with by_s
 
 ---
 
-## Task 7: Dashboard — Dual P&L Strips
+## Task 7: Dashboard - Dual P&L Strips
 
 **Files:**
 - Modify: `handoff/Money Printer.html`
@@ -1112,8 +1112,8 @@ The existing KPI strip is at approximately line 655. Find:
 
 Replace with:
 ```html
-  <!-- KPI STRIP — Strategy 2: D3 Hybrid -->
-  <div style="font-size:11px;font-weight:600;color:var(--ink-3);letter-spacing:.06em;margin-bottom:4px;padding-left:2px;">STRATEGY 2 — D3 HYBRID</div>
+  <!-- KPI STRIP - Strategy 2: D3 Hybrid -->
+  <div style="font-size:11px;font-weight:600;color:var(--ink-3);letter-spacing:.06em;margin-bottom:4px;padding-left:2px;">STRATEGY 2 - D3 HYBRID</div>
   <div class="kpi-strip" id="kpi-strip-s2">
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
@@ -1135,25 +1135,25 @@ Replace with:
     </div>
   </div>
 
-  <!-- KPI STRIP — Strategy 1: Original (B3/E1/S1/X3/D3) -->
-  <div style="font-size:11px;font-weight:600;color:var(--amber);letter-spacing:.06em;margin-top:12px;margin-bottom:4px;padding-left:2px;">STRATEGY 1 — ORIGINAL (B3/E1/S1/X3/D3)</div>
+  <!-- KPI STRIP - Strategy 1: Original (B3/E1/S1/X3/D3) -->
+  <div style="font-size:11px;font-weight:600;color:var(--amber);letter-spacing:.06em;margin-top:12px;margin-bottom:4px;padding-left:2px;">STRATEGY 1 - ORIGINAL (B3/E1/S1/X3/D3)</div>
   <div class="kpi-strip" id="kpi-strip-s1" style="border-color:var(--amber);--accent:var(--amber);--accent-soft:var(--amber-soft);">
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
-      <div id="s1-kpi-alltime-val" class="kpi-cell-v mono">—</div>
-      <div id="s1-kpi-alltime-sub" class="kpi-cell-s">—</div>
+      <div id="s1-kpi-alltime-val" class="kpi-cell-v mono">-</div>
+      <div id="s1-kpi-alltime-sub" class="kpi-cell-s">-</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Win Rate · All-Time</div>
-      <div id="s1-kpi-wr-val" class="kpi-cell-v mono">—<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
-      <div id="s1-kpi-wr-sub" class="kpi-cell-s">— trades</div>
+      <div id="s1-kpi-wr-val" class="kpi-cell-v mono">-<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
+      <div id="s1-kpi-wr-sub" class="kpi-cell-s">- trades</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Today's P&amp;L<span class="badge mode-badge">PAPER</span></div>
-      <div id="s1-kpi-today-val" class="kpi-cell-v mono">—</div>
-      <div id="s1-kpi-today-sub" class="kpi-cell-s">— trades</div>
+      <div id="s1-kpi-today-val" class="kpi-cell-v mono">-</div>
+      <div id="s1-kpi-today-sub" class="kpi-cell-s">- trades</div>
     </div>
   </div>
 
@@ -1242,11 +1242,11 @@ setInterval(fetchPnlS1,       60_000);
 
 - [ ] **Step 5: Add Strategy column to the trades table**
 
-In the trades table header, find the header row (look for `<th>` elements in the trades table — search for "Direction" or "Entry" column headers). Add a `Strategy` column header.
+In the trades table header, find the header row (look for `<th>` elements in the trades table - search for "Direction" or "Entry" column headers). Add a `Strategy` column header.
 
 Search for the trades table header structure and add `<th>Strategy</th>` after the `Time` column header.
 
-In the trades table row rendering (in the JavaScript that builds trade rows — look for `TRADES.map` or the function that renders trade rows), add a cell that shows `S1` or `S2` as a pill badge based on `t.strategy_variant`:
+In the trades table row rendering (in the JavaScript that builds trade rows - look for `TRADES.map` or the function that renders trade rows), add a cell that shows `S1` or `S2` as a pill badge based on `t.strategy_variant`:
 
 ```javascript
 `<td><span class="badge" style="background:${t.strategy_variant==='strategy1'?'var(--amber-soft)':'var(--up-soft)};color:${t.strategy_variant==='strategy1'?'var(--amber)':'var(--up)'}">${t.strategy_variant==='strategy1'?'S1':'S2'}</span></td>`
@@ -1353,12 +1353,12 @@ All 8 verification steps from the spec should be confirmed.
 | `strategy_brain_s1()` function | Task 4 Step 5 |
 | `strategy_brain_s2()` rename | Task 4 Step 3 |
 | Both brains called at market tick | Task 4 Step 6 |
-| S1 trade logged with `strategy_variant='strategy1'` | Task 5 Steps 1–3 |
-| S1 outcome settled on market expiry | Task 5 Steps 4–5 |
+| S1 trade logged with `strategy_variant='strategy1'` | Task 5 Steps 1-3 |
+| S1 outcome settled on market expiry | Task 5 Steps 4-5 |
 | `[S1 Original]` / `[S2 D3 Hybrid]` Telegram labels | Task 5 Step 6 |
 | `/api/trades?strategy=` param | Task 6 Step 1 |
 | `/api/pnl?strategy=` + `by_strategy` key | Task 6 Step 2 |
 | Dashboard S2 strip renamed | Task 7 Step 1 |
 | Dashboard S1 strip added (amber) | Task 7 Step 2 |
-| `fetchPnlS1()` polls `/api/pnl?strategy=1` | Task 7 Steps 3–4 |
+| `fetchPnlS1()` polls `/api/pnl?strategy=1` | Task 7 Steps 3-4 |
 | Strategy column in trades table | Task 7 Step 5 |

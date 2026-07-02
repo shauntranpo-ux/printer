@@ -1,4 +1,4 @@
-"""kalshi_compat.py — Fixed-point <-> int conversion helpers for Kalshi API responses.
+"""kalshi_compat.py - Fixed-point <-> int conversion helpers for Kalshi API responses.
 
 Mar 12 2026: Kalshi removed integer count/price fields from all responses.
 New fields: count_fp, filled_count_fp, yes_price_dollars, no_price_dollars, fee_cost (dollars string).
@@ -21,7 +21,7 @@ __all__ = [
 def fp_to_int(fp_str_or_none) -> Optional[int]:
     """Convert fixed-point contract count string to whole-contract integer.
 
-    "10.00" -> 10, "10.50" -> 10 (truncates — bot only trades whole contracts).
+    "10.00" -> 10, "10.50" -> 10 (truncates - bot only trades whole contracts).
     None/"" -> None. Parse error -> None. Negative value -> ValueError.
     """
     if fp_str_or_none is None or fp_str_or_none == "":
@@ -58,7 +58,7 @@ def extract_order_counts(order_dict: dict) -> dict:
 
     Returns {"total": int|None, "filled": int|None, "remaining": int|None}.
     Prefers *_fp string fields; falls back to legacy int fields for transition safety.
-    Missing field -> None. Caller decides what to do with None — no defaults here.
+    Missing field -> None. Caller decides what to do with None - no defaults here.
     """
     def _get(fp_key: str, legacy_key: str) -> Optional[int]:
         fp_val = order_dict.get(fp_key)

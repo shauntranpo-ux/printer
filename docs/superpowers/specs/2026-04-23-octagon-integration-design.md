@@ -8,7 +8,7 @@
 
 ## Overview
 
-Octagon AI provides natural-language prediction-market research reports. We add it as the last gate in `BaseStrategy.decide()`: after entry price, EV, and momentum checks pass, Octagon confirms whether its model agrees with our intended trade direction. API failures and low-confidence responses fall through — they never block a trade.
+Octagon AI provides natural-language prediction-market research reports. We add it as the last gate in `BaseStrategy.decide()`: after entry price, EV, and momentum checks pass, Octagon confirms whether its model agrees with our intended trade direction. API failures and low-confidence responses fall through - they never block a trade.
 
 ---
 
@@ -39,8 +39,8 @@ _slug_cache:   dict[str, str]                 # series_ticker → event_slug (pe
 _report_cache: dict[str, tuple[dict, float]]  # event_ticker  → (parsed_table, fetched_at)
 ```
 
-- `_slug_cache` key: `series_ticker` (e.g. `"kxbtcd"`) — event slug never changes for a given series, so one Kalshi API lookup per series lifetime.
-- `_report_cache` key: `event_ticker` (e.g. `"KXBTCD-26APR2300"`) — all contracts in the same event window share one report.
+- `_slug_cache` key: `series_ticker` (e.g. `"kxbtcd"`) - event slug never changes for a given series, so one Kalshi API lookup per series lifetime.
+- `_report_cache` key: `event_ticker` (e.g. `"KXBTCD-26APR2300"`) - all contracts in the same event window share one report.
 - TTL: `900s` for 15m markets, `3300s` for hourly.
 
 ### URL Construction
@@ -49,7 +49,7 @@ Given ticker `KXBTCD-26APR2300-T100000`:
 
 1. `series = ticker.split("-")[0].lower()` → `"kxbtcd"`
 2. `event_ticker = "-".join(ticker.split("-")[:-1])` → `"KXBTCD-26APR2300"`
-3. `event_slug` — check `_slug_cache[series]`; on miss: `GET /trade-api/v2/events/{event_ticker}`, slugify `event["title"]` (lowercase, replace non-alphanumeric runs with `-`, strip leading/trailing `-`), cache permanently.
+3. `event_slug` - check `_slug_cache[series]`; on miss: `GET /trade-api/v2/events/{event_ticker}`, slugify `event["title"]` (lowercase, replace non-alphanumeric runs with `-`, strip leading/trailing `-`), cache permanently.
 4. Final URL: `https://kalshi.com/markets/{series}/{event_slug}/{event_ticker.lower()}`
 
 ### `query()` Signature
@@ -66,7 +66,7 @@ def query(
     """Returns (model_prob, direction_agrees, confidence, cache_hit)."""
 ```
 
-Returns `(None, None, None, False)` on any exception — gate is skipped, trade allowed.
+Returns `(None, None, None, False)` on any exception - gate is skipped, trade allowed.
 
 ### Octagon API Request
 
@@ -122,7 +122,7 @@ octagon_cache_hit:       bool           = False   # True if served from TTL cach
 
 ---
 
-## Gate in `base.py` — Step 6.8
+## Gate in `base.py` - Step 6.8
 
 Inserted after Step 6.75 (entry price cap), before Step 7 (trade decision):
 
@@ -179,7 +179,7 @@ All exceptions caught inside `query()`:
 
 ## Constraints
 
-- Paper mode only — gate is active in all modes but never blocks on error.
+- Paper mode only - gate is active in all modes but never blocks on error.
 - No changes to hourly strategy subclasses (gate lives in `BaseStrategy`).
 - `is_15m=False` strategies apply the stricter hourly gate automatically.
 - Event slug lookup re-uses the Kalshi auth headers already available in-process via `os.environ`.

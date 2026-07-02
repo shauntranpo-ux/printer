@@ -1,4 +1,4 @@
-# Backtest Validation System (5-Layer) — Implementation Plan
+# Backtest Validation System (5-Layer) - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -102,7 +102,7 @@ def test_evaluate_signal_pass_on_real_signal():
     assert len(result.ic_decay) == 4
 ```
 
-- [ ] **Step 2: Run — expect ImportError (module doesn't exist)**
+- [ ] **Step 2: Run - expect ImportError (module doesn't exist)**
 
 ```
 pytest tests/backtesting/research/test_ic_analysis.py -v
@@ -199,7 +199,7 @@ def evaluate_signal(
 
 Also create `tests/backtesting/research/__init__.py` (empty).
 
-- [ ] **Step 4: Run — expect all green**
+- [ ] **Step 4: Run - expect all green**
 
 ```
 pytest tests/backtesting/research/test_ic_analysis.py -v
@@ -265,7 +265,7 @@ def test_strike_spacing_defined():
     assert 'ETH' in STRIKE_SPACING
 ```
 
-- [ ] **Step 2: Run — expect ImportError**
+- [ ] **Step 2: Run - expect ImportError**
 
 ```
 pytest tests/backtesting/research/test_label_builder.py -v
@@ -325,7 +325,7 @@ def build_lagged_labels(
     return {lag: build_binary_labels(bars, strike, horizon_bars=lag) for lag in lags}
 ```
 
-- [ ] **Step 4: Run — expect all green**
+- [ ] **Step 4: Run - expect all green**
 
 ```
 pytest tests/backtesting/research/test_label_builder.py -v
@@ -396,7 +396,7 @@ def test_supertrend_bimodal():
     assert len(unique) <= 3
 ```
 
-- [ ] **Step 2: Run — expect ImportError**
+- [ ] **Step 2: Run - expect ImportError**
 
 ```
 pytest tests/backtesting/research/test_signal_extractor.py -v
@@ -495,7 +495,7 @@ def extract_all_signals(
     return results
 ```
 
-- [ ] **Step 4: Run — expect all green**
+- [ ] **Step 4: Run - expect all green**
 
 ```
 pytest tests/backtesting/research/test_signal_extractor.py -v
@@ -567,7 +567,7 @@ def test_layer1_verdict_aggregation():
     assert layer1_verdict(n_failing=3, n_total=8) == 'CONDITIONAL'
 ```
 
-- [ ] **Step 2: Run — expect ImportError**
+- [ ] **Step 2: Run - expect ImportError**
 
 ```
 pytest tests/backtesting/research/test_layer1.py -v
@@ -649,7 +649,7 @@ def run_layer1(bars: pd.DataFrame, strike: float, asset: str) -> Dict[str, Any]:
     }
 ```
 
-- [ ] **Step 4: Run — expect all green**
+- [ ] **Step 4: Run - expect all green**
 
 ```
 pytest tests/backtesting/research/test_layer1.py -v
@@ -666,13 +666,13 @@ git commit -m "feat: Layer 1 signal validation runner (IC/ICIR per sub-signal)"
 
 ---
 
-## Task 5: Layer 2 — Null Simulator
+## Task 5: Layer 2 - Null Simulator
 
 **Files:**
 - Create: `backtesting/research/layer2.py`
 - Create: `tests/backtesting/research/test_layer2.py`
 
-**Design:** "Flip side" null — take real entry timestamps and outcomes, randomly flip the trade side 1000 times, recompute Sharpe. This tests whether signal direction adds value beyond the entry filter selection.
+**Design:** "Flip side" null - take real entry timestamps and outcomes, randomly flip the trade side 1000 times, recompute Sharpe. This tests whether signal direction adds value beyond the entry filter selection.
 
 - [ ] **Step 1: Write failing tests**
 
@@ -729,7 +729,7 @@ def test_audit_lookahead_returns_list():
     assert isinstance(findings, list)
 ```
 
-- [ ] **Step 2: Run — expect ImportError**
+- [ ] **Step 2: Run - expect ImportError**
 
 ```
 pytest tests/backtesting/research/test_layer2.py -v
@@ -851,7 +851,7 @@ def run_layer2(trade_log: pd.DataFrame, asset: str, n_iter: int = 1000) -> dict:
     }
 ```
 
-- [ ] **Step 4: Run — expect all green**
+- [ ] **Step 4: Run - expect all green**
 
 ```
 pytest tests/backtesting/research/test_layer2.py -v
@@ -868,7 +868,7 @@ git commit -m "feat: Layer 2 null simulator (flip-side permutation + lookahead a
 
 ---
 
-## Task 6: Layer 3 — DSR, PBO, MinBTL
+## Task 6: Layer 3 - DSR, PBO, MinBTL
 
 **Files:**
 - Create: `backtesting/research/layer3.py`
@@ -928,7 +928,7 @@ def test_layer3_verdict():
     assert layer3_verdict(dsr=0.97, pbo=0.18, minbtl=4.0, data_years=3.0) == 'FAIL'
 ```
 
-- [ ] **Step 2: Run — expect ImportError**
+- [ ] **Step 2: Run - expect ImportError**
 
 ```
 pytest tests/backtesting/research/test_layer3.py -v
@@ -957,7 +957,7 @@ def _expected_max_sharpe(num_trials: int) -> float:
     """
     if num_trials < 2:
         return 0.0
-    gamma = 0.5772156649  # Euler–Mascheroni constant
+    gamma = 0.5772156649  # Euler-Mascheroni constant
     e = math.e
     z1 = (1 - gamma) * norm.ppf(1 - 1.0 / num_trials)
     z2 = gamma * norm.ppf(1 - 1.0 / (num_trials * e))
@@ -970,7 +970,7 @@ def deflated_sharpe_ratio(
     num_trials: int,
 ) -> float:
     """
-    Deflated Sharpe Ratio — adjusts observed SR for non-normality of returns
+    Deflated Sharpe Ratio - adjusts observed SR for non-normality of returns
     and for the number of independent configurations tested.
 
     sr_obs:     annualized Sharpe ratio of the strategy
@@ -1075,7 +1075,7 @@ def run_layer3(
     }
 ```
 
-- [ ] **Step 4: Run — expect all green**
+- [ ] **Step 4: Run - expect all green**
 
 ```
 pytest tests/backtesting/research/test_layer3.py -v
@@ -1092,7 +1092,7 @@ git commit -m "feat: Layer 3 WFA significance (DSR, PBO, MinBTL)"
 
 ---
 
-## Task 7: Layer 4 — Trade-Level Permutation Test
+## Task 7: Layer 4 - Trade-Level Permutation Test
 
 **Files:**
 - Create: `backtesting/research/layer4.py`
@@ -1150,7 +1150,7 @@ def test_run_layer4_structure():
     assert 'sufficient_data' in result
 ```
 
-- [ ] **Step 2: Run — expect ImportError**
+- [ ] **Step 2: Run - expect ImportError**
 
 ```
 pytest tests/backtesting/research/test_layer4.py -v
@@ -1268,7 +1268,7 @@ def run_layer4(trade_log: pd.DataFrame, n_iter: int = 10_000) -> Dict[str, Any]:
     }
 ```
 
-- [ ] **Step 4: Run — expect all green**
+- [ ] **Step 4: Run - expect all green**
 
 ```
 pytest tests/backtesting/research/test_layer4.py -v
@@ -1285,7 +1285,7 @@ git commit -m "feat: Layer 4 trade-level permutation test (full + block shuffle)
 
 ---
 
-## Task 8: Layer 5 — Regime Robustness
+## Task 8: Layer 5 - Regime Robustness
 
 **Files:**
 - Create: `backtesting/research/layer5.py`
@@ -1353,7 +1353,7 @@ def test_compute_regime_breakdown_structure():
     assert 'session_sharpes' in result
 ```
 
-- [ ] **Step 2: Run — expect ImportError**
+- [ ] **Step 2: Run - expect ImportError**
 
 ```
 pytest tests/backtesting/research/test_layer5.py -v
@@ -1374,9 +1374,9 @@ import pandas as pd
 from backtesting.metrics.trading import sharpe_ratio
 
 # UTC hour boundaries for session classification
-_ASIA_START, _ASIA_END     = 0,  8   # 00:00–08:00 UTC  ≈ 20:00–04:00 ET
-_LONDON_START, _LONDON_END = 8,  13  # 08:00–13:00 UTC  ≈ 04:00–09:00 ET
-# US: 13:00–00:00 UTC ≈ 09:00–20:00 ET
+_ASIA_START, _ASIA_END     = 0,  8   # 00:00-08:00 UTC  ≈ 20:00-04:00 ET
+_LONDON_START, _LONDON_END = 8,  13  # 08:00-13:00 UTC  ≈ 04:00-09:00 ET
+# US: 13:00-00:00 UTC ≈ 09:00-20:00 ET
 
 
 def variance_ratio(prices: np.ndarray, q: int = 4) -> float:
@@ -1514,7 +1514,7 @@ def run_layer5(
     return {**breakdown, 'verdict': verdict}
 ```
 
-- [ ] **Step 4: Run — expect all green**
+- [ ] **Step 4: Run - expect all green**
 
 ```
 pytest tests/backtesting/research/test_layer5.py -v
@@ -1587,7 +1587,7 @@ def test_overall_verdict_conditional_when_one_layer_fails(tmp_path):
     assert data['overall_verdict'] in ('CONDITIONAL', 'FAIL')
 ```
 
-- [ ] **Step 2: Run — expect ImportError**
+- [ ] **Step 2: Run - expect ImportError**
 
 ```
 pytest tests/backtesting/research/test_report_writer.py -v
@@ -1639,7 +1639,7 @@ def write_research_report(
 
     # ── Markdown ─────────────────────────────────────────────────────────────
     lines = [
-        f'# {asset} — Backtest Validation Report',
+        f'# {asset} - Backtest Validation Report',
         '',
         f'**Overall verdict: {overall}**',
         '',
@@ -1649,11 +1649,11 @@ def write_research_report(
         '|-------|---------|',
     ]
     layer_names = {
-        'layer1': 'Layer 1 — Signal IC',
-        'layer2': 'Layer 2 — Null Hypothesis',
-        'layer3': 'Layer 3 — WFA Significance',
-        'layer4': 'Layer 4 — Permutation Test',
-        'layer5': 'Layer 5 — Regime Robustness',
+        'layer1': 'Layer 1 - Signal IC',
+        'layer2': 'Layer 2 - Null Hypothesis',
+        'layer3': 'Layer 3 - WFA Significance',
+        'layer4': 'Layer 4 - Permutation Test',
+        'layer5': 'Layer 5 - Regime Robustness',
     }
     for key, name in layer_names.items():
         if key in results:
@@ -1666,7 +1666,7 @@ def write_research_report(
     if 'layer1' in results:
         r = results['layer1']
         lines += [
-            '## Layer 1 — Signal IC',
+            '## Layer 1 - Signal IC',
             f"Failing signals: {r.get('n_failing', '?')}/{r.get('n_signals', '?')}",
             '',
             '| Signal | IC | ICIR | t-stat | Verdict |',
@@ -1683,7 +1683,7 @@ def write_research_report(
     if 'layer2' in results:
         r = results['layer2']
         lines += [
-            '## Layer 2 — Null Hypothesis',
+            '## Layer 2 - Null Hypothesis',
             f"Real Sharpe: {r.get('real_sharpe', '?'):.3f}  "
             f"Null 95th%: {r.get('null_p95', '?'):.3f}  "
             f"p-value: {r.get('p_value', '?'):.4f}",
@@ -1698,7 +1698,7 @@ def write_research_report(
     if 'layer3' in results:
         r = results['layer3']
         lines += [
-            '## Layer 3 — WFA Significance',
+            '## Layer 3 - WFA Significance',
             f"DSR: {r.get('dsr', '?'):.3f}  PBO: {r.get('pbo', '?'):.3f}  "
             f"MinBTL: {r.get('minbtl', '?'):.1f}yr (have {r.get('data_years', '?'):.1f}yr)",
             '',
@@ -1708,18 +1708,18 @@ def write_research_report(
     if 'layer4' in results:
         r = results['layer4']
         lines += [
-            '## Layer 4 — Permutation Test',
+            '## Layer 4 - Permutation Test',
             f"Trades: {r.get('n_trades', '?')}  Win rate: {r.get('win_rate', 0)*100:.1f}%  "
             f"p-value (block): {r.get('p_value_block', '?'):.4f}",
             '' if r.get('sufficient_data', True) else
-            f"⚠ Insufficient data — need {r.get('min_trades', '?')} trades minimum.",
+            f"⚠ Insufficient data - need {r.get('min_trades', '?')} trades minimum.",
             '',
         ]
 
     # Layer 5 details
     if 'layer5' in results:
         r = results['layer5']
-        lines += ['## Layer 5 — Regime Robustness', '']
+        lines += ['## Layer 5 - Regime Robustness', '']
         rs = r.get('regime_sharpes', {})
         if rs:
             lines += ['| Regime | Sharpe |', '|--------|--------|']
@@ -1735,7 +1735,7 @@ def write_research_report(
     (output_dir / 'research_report.md').write_text('\n'.join(lines))
 ```
 
-- [ ] **Step 4: Run — expect all green**
+- [ ] **Step 4: Run - expect all green**
 
 ```
 pytest tests/backtesting/research/test_report_writer.py -v
@@ -1821,7 +1821,7 @@ def main():
     results = {}
 
     if 1 in layers:
-        print('[research] Running Layer 1 — Signal IC...')
+        print('[research] Running Layer 1 - Signal IC...')
         results['layer1'] = run_layer1(bars, strike=strike, asset=asset)
         print(f"  → {results['layer1']['verdict']} ({results['layer1']['n_failing']} failing signals)")
 
@@ -1829,7 +1829,7 @@ def main():
     trade_log: pd.DataFrame | None = None
 
     if 2 in layers:
-        print('[research] Running Layer 2 — Null Hypothesis...')
+        print('[research] Running Layer 2 - Null Hypothesis...')
         # For layer 2 null simulation, use a dummy trade log from existing WFA trades
         # if available; otherwise skip null (require real backtest run first)
         wfa_log_path = _ROOT / 'backtesting' / 'output' / f'{asset.lower()}_trades.csv'
@@ -1838,7 +1838,7 @@ def main():
             results['layer2'] = run_layer2(trade_log, asset=asset, n_iter=args.iters)
             print(f"  → {results['layer2']['verdict']} (p={results['layer2']['p_value']:.4f})")
         else:
-            print(f'  [SKIP] No trade log at {wfa_log_path} — run WFA first')
+            print(f'  [SKIP] No trade log at {wfa_log_path} - run WFA first')
             results['layer2'] = {'verdict': 'SKIPPED', 'reason': 'no_trade_log'}
 
     if trade_log is None:
@@ -1847,7 +1847,7 @@ def main():
             trade_log = pd.read_csv(wfa_log_path)
 
     if 3 in layers and trade_log is not None:
-        print('[research] Running Layer 3 — WFA Significance...')
+        print('[research] Running Layer 3 - WFA Significance...')
         import glob
         wfa_files = glob.glob(str(_ROOT / 'backtesting' / 'output' / f'ev_wfa_{asset.lower()}*.csv'))
         wfa_sharpes = []
@@ -1861,12 +1861,12 @@ def main():
         print(f"  → {results['layer3']['verdict']} (DSR={results['layer3']['dsr']:.3f})")
 
     if 4 in layers and trade_log is not None:
-        print('[research] Running Layer 4 — Permutation Test...')
+        print('[research] Running Layer 4 - Permutation Test...')
         results['layer4'] = run_layer4(trade_log, n_iter=args.iters)
         print(f"  → {results['layer4']['verdict']} (p_block={results['layer4']['p_value_block']:.4f})")
 
     if 5 in layers and trade_log is not None:
-        print('[research] Running Layer 5 — Regime Robustness...')
+        print('[research] Running Layer 5 - Regime Robustness...')
         results['layer5'] = run_layer5(trade_log, bars)
         print(f"  → {results['layer5']['verdict']}")
 
@@ -1881,7 +1881,7 @@ if __name__ == '__main__':
     main()
 ```
 
-- [ ] **Step 2: Smoke test — Layer 1 only (no trade log needed)**
+- [ ] **Step 2: Smoke test - Layer 1 only (no trade log needed)**
 
 ```
 python backtesting/research_cli.py --asset BTC --layers 1
@@ -1891,7 +1891,7 @@ Expected:
 ```
 [research] Loading bars for BTC...
 [research] Strike (ATM approx): <price>
-[research] Running Layer 1 — Signal IC...
+[research] Running Layer 1 - Signal IC...
   → PASS|CONDITIONAL|FAIL (<n> failing signals)
 [research] Report written to backtesting/output/research/BTC/research_report.md
 ```
@@ -1941,6 +1941,6 @@ git commit -m "feat: research CLI entry point (python backtesting/research_cli.p
 | CLI `--asset BTC [--layers ...]` | Task 10 |
 
 **Known limitations explicitly documented in code:**
-- Signals requiring live Kalshi data (exhaustion_fade, ratio_divergence, etc.) fall back to p=0.5 in signal_extractor.py — IC for these signals is uninformative and will always FAIL. This is expected and documented.
+- Signals requiring live Kalshi data (exhaustion_fade, ratio_divergence, etc.) fall back to p=0.5 in signal_extractor.py - IC for these signals is uninformative and will always FAIL. This is expected and documented.
 - Layer 2 null simulation requires a pre-existing WFA trade log. Run `python backtesting/cli.py all --asset BTC` first.
 - Layer 3 PBO uses a simplified rank computation (above/below median per fold) rather than the full Bailey-López de Prado multi-strategy CPCV rank. Full PBO requires running multiple EV threshold configs; a follow-up task can extend this.

@@ -1,4 +1,4 @@
-# Win-Rate Calibration Design — S1 + S2
+# Win-Rate Calibration Design - S1 + S2
 Date: 2026-05-07
 
 ## Goal
@@ -15,17 +15,17 @@ with empirical win-rate lookup tables derived from historical data.
 
 ## Script: `scripts/calibrate_winrates.py`
 
-Standalone — no bot imports. Reads `KALSHI_API_KEY` env var for S2 phase.
+Standalone - no bot imports. Reads `KALSHI_API_KEY` env var for S2 phase.
 Progress to stderr; dict output to stdout (clean for redirect/paste).
 
 ---
 
-## S1 — Binance Phase
+## S1 - Binance Phase
 
 ### Data fetch
 - Endpoint: `GET https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1m&limit=1000`
 - Symbols: `BTCUSDT ETHUSDT SOLUSDT XRPUSDT DOGEUSDT`
-- Range: last 90 days (~130 requests/asset, 650 total — within Binance rate limits)
+- Range: last 90 days (~130 requests/asset, 650 total - within Binance rate limits)
 - Store: list of `(timestamp_ms, close)`
 
 ### Simulation
@@ -53,15 +53,15 @@ Per asset, 4 × 3 = 12 buckets:
 
 | time idx | range |
 |---|---|
-| 0 | `3–6 min` |
-| 1 | `6–9 min` |
-| 2 | `9–12 min` |
+| 0 | `3-6 min` |
+| 1 | `6-9 min` |
+| 2 | `9-12 min` |
 
 Min samples threshold: **50 per bucket**. Buckets below → `None` → bot falls back to tanh.
 
 ---
 
-## S2 — Kalshi Phase
+## S2 - Kalshi Phase
 
 ### Data fetch
 - Series tickers: `KXBTCD KXETHD KXSOLD KXXRPD KXDOGED` *(verified on first run; abort with clear error if wrong)*
@@ -90,9 +90,9 @@ Per asset, 3 × 3 = 9 buckets:
 
 | time idx | range |
 |---|---|
-| 0 | `2–5 min` |
-| 1 | `5–8 min` |
-| 2 | `8–13 min` |
+| 0 | `2-5 min` |
+| 1 | `5-8 min` |
+| 2 | `8-13 min` |
 
 Min samples threshold: **50 per bucket**. Buckets below → `None` → bot falls back to tanh.
 
@@ -120,8 +120,8 @@ _S2_WIN_RATE = {
 ## bot_strategy.py Changes
 
 1. Add `_S1_WIN_RATE` and `_S2_WIN_RATE` dicts (populated by paste after calibration run)
-2. Add `_s1_lookup_win_rate(asset, abs_pct, mins_left) -> float` — returns empirical rate or tanh fallback
-3. Add `_s2_lookup_win_rate(asset, vel_delta, mins_left) -> float` — same pattern
+2. Add `_s1_lookup_win_rate(asset, abs_pct, mins_left) -> float` - returns empirical rate or tanh fallback
+3. Add `_s2_lookup_win_rate(asset, vel_delta, mins_left) -> float` - same pattern
 4. Replace tanh formula lines in `strategy_brain_s1` and `strategy_brain_s2` with lookup calls
 5. EMA-strength and session adjustments remain as additive boosts on top of base lookup rate
 
@@ -129,6 +129,6 @@ _S2_WIN_RATE = {
 
 ## Error Handling
 - Binance: retry on 429 with backoff; skip asset if 3 consecutive failures
-- Kalshi series ticker wrong: abort with `ERROR: no markets found for {series}` — do not silently produce empty table
+- Kalshi series ticker wrong: abort with `ERROR: no markets found for {series}` - do not silently produce empty table
 - Bucket with <50 samples: output `None`, log count to stderr
 - Market with missing result or history: skip silently, count and report total skipped at end

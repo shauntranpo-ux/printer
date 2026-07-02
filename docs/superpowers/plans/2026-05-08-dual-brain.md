@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Run S1 (EMA momentum) and S2 (velocity+OBI) as fully isolated competing strategies in paper mode — each tags DB rows with `brain='s1'`/`'s2'`, tracks separate P&L, and receives a nightly Telegram scorecard. Also fixes 3 S2 strategy bugs.
+**Goal:** Run S1 (EMA momentum) and S2 (velocity+OBI) as fully isolated competing strategies in paper mode - each tags DB rows with `brain='s1'`/`'s2'`, tracks separate P&L, and receives a nightly Telegram scorecard. Also fixes 3 S2 strategy bugs.
 
 **Architecture:** Add `brain TEXT` column to `trades` table; tag all S1/S2 DB writes at insert time; rename shared `_order_attempted_tickers` → `_s2_attempted_tickers`; make S1 callable in S2's LOCKED phase for BTC and alt assets; add async scorecard query + midnight Telegram send.
 
@@ -93,7 +93,7 @@ def test_db_write_trade_stores_brain():
 py -m pytest tests/test_dual_brain.py::test_brain_column_exists_after_init_db tests/test_dual_brain.py::test_db_write_trade_stores_brain -v
 ```
 
-Expected: FAIL — `brain` column missing / `brain` not stored.
+Expected: FAIL - `brain` column missing / `brain` not stored.
 
 - [ ] **Step 3: Add `brain` column to `init_db` migration**
 
@@ -223,7 +223,7 @@ _s2_attempted_tickers: set = set()
 
 - [ ] **Step 4: Rename callsites in bot_loops.py**
 
-Three replacements — make each one individually:
+Three replacements - make each one individually:
 
 Line ~355 (inside trade placement):
 ```python
@@ -291,7 +291,7 @@ git commit -m "refactor: rename _order_attempted_tickers to _s2_attempted_ticker
 Add to `tests/test_dual_brain.py`:
 ```python
 def test_s2_winprob_no_inflation():
-    """win_prob must equal base_p — no vel_adj or obi_adj added."""
+    """win_prob must equal base_p - no vel_adj or obi_adj added."""
     import bot_strategy as bs
     # Inject a known calibrated value and verify it's returned unchanged.
     original = bs._S2_WIN_RATE.get("BTC")
@@ -309,7 +309,7 @@ def test_s2_fee_reads_from_config():
     """S2 EV gate must use config fee, not hardcoded 0.07."""
     import bot_strategy as bs
     from unittest.mock import patch
-    # Use a config with fee=0 — if hardcoded 0.07, EV will differ
+    # Use a config with fee=0 - if hardcoded 0.07, EV will differ
     fake_cfg = {"kalshi_fee_per_contract_cents": 0, "min_entry_price_cents": 20,
                 "max_entry_price_cents": 80}
     with patch.object(bs, "read_config", return_value=fake_cfg), \
@@ -371,7 +371,7 @@ Find the import from `bot_infra` near the top of `bot_strategy.py`. Add `get_ass
 from bot_infra import read_config, get_asset_config
 ```
 
-- [ ] **Step 4: Fix Bug 1 — remove win_prob inflation**
+- [ ] **Step 4: Fix Bug 1 - remove win_prob inflation**
 
 In `strategy_brain_s2`, find:
 ```python
@@ -385,7 +385,7 @@ Replace with:
 win_prob = min(0.99, base_p)
 ```
 
-- [ ] **Step 5: Fix Bug 2 — fee from config**
+- [ ] **Step 5: Fix Bug 2 - fee from config**
 
 In `strategy_brain_s2`, find:
 ```python
@@ -398,7 +398,7 @@ _fee_cents = config.get("kalshi_fee_per_contract_cents", 7)
 fee = (_fee_cents / 100) * _ep_s2 * (1.0 - _ep_s2)
 ```
 
-- [ ] **Step 6: Fix Bug 3 — per-asset max entry price**
+- [ ] **Step 6: Fix Bug 3 - per-asset max entry price**
 
 In `strategy_brain_s2`, find (Gate 3 entry price range):
 ```python
@@ -572,7 +572,7 @@ if bot_state.current_phase == "LOCKED":
         )
     except Exception as exc:
         log.error(f"LOCKED phase error: {exc}", exc_info=True)
-    # S1 runs independently — try entry even when S2 is LOCKED
+    # S1 runs independently - try entry even when S2 is LOCKED
     if secs_left > 30:
         try:
             ob_s1 = await fetch_orderbook(session, ticker, market)
@@ -615,7 +615,7 @@ if st["phase"] == "LOCKED":
         await handle_locked_phase(session, price, secs_left, config, asset=asset, state=st)
     except Exception as exc:
         log.error(f"[{asset}] LOCKED phase error: {exc}", exc_info=True)
-    # S1 runs independently — try entry even when S2 is LOCKED
+    # S1 runs independently - try entry even when S2 is LOCKED
     if secs_left > 30:
         try:
             ob_s1 = await fetch_orderbook(session, ticker, market)
@@ -714,7 +714,7 @@ def test_scorecard_returns_per_brain_per_asset():
 py -m pytest tests/test_dual_brain.py::test_scorecard_returns_per_brain_per_asset -v
 ```
 
-Expected: FAIL — `db_brain_scorecard` not found.
+Expected: FAIL - `db_brain_scorecard` not found.
 
 - [ ] **Step 3: Implement db_brain_scorecard in bot_infra.py**
 
@@ -884,7 +884,7 @@ def _format_scorecard_message(data: dict) -> str:
                 sign = "+" if pnl >= 0 else ""
                 lines.append(f"  {asset:<5} {sign}${pnl:.2f}  {row['wins']}W/{row['losses']}L")
             else:
-                lines.append(f"  {asset:<5} —")
+                lines.append(f"  {asset:<5} -")
         if any_trade:
             sign = "+" if total_pnl >= 0 else ""
             lines.append(f"  <b>Total: {sign}${total_pnl:.2f}  {total_wins}W/{total_losses}L</b>")

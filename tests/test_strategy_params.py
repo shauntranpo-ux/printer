@@ -85,22 +85,32 @@ def test_s2_lookup_conservative_baseline():
     assert 0.52 <= wp <= 0.65, f"ETH S2 tanh WR={wp:.3f} outside realistic 52-65% range"
 
 
-def test_s2_vel_flat_skips_below_threshold():
-    """S2 must skip when velocity delta < min_vel_delta."""
+def test_s2_skips_low_z_no_dislocation():
+    """New S2 must skip when the spot sits too close to the strike (|z| below conviction)."""
     from collections import deque
-    import bot_state
+    import time as _t
+    import asset_manager
+    from unittest.mock import patch
     from bot_strategy import strategy_brain_s2
 
-    bot_state._contract_price_history["TEST-ETH"] = deque(
-        [(0, 50.0), (1, 50.05), (2, 50.1), (3, 50.1), (4, 50.1)], maxlen=60
-    )
-    bot_state._ticker_obi["TEST-ETH"] = 0.5
-    result = strategy_brain_s2(
-        btc_price=2000, strike=2010, yes_ask=50, no_ask=51,
-        elapsed_seconds=300, secs_left=600, ticker="TEST-ETH", asset="ETH",
-    )
+    now = _t.time()
+    saved = asset_manager._prices.get("SOL")
+    try:
+        # SOL essentially AT the strike → low z, no fair-value dislocation.
+        asset_manager._prices["SOL"] = deque(
+            [(now - (40 - i) * 2, 150.001) for i in range(40)], maxlen=2000
+        )
+        with patch("bot_strategy.read_config",
+                   return_value={"mode": "paper", "quiet_hours_enabled": False}):
+            result = strategy_brain_s2(
+                btc_price=150.001, strike=150.0, yes_ask=50, no_ask=51,
+                elapsed_seconds=300, secs_left=600, ticker="KXSOL-LOWZ", asset="SOL",
+            )
+    finally:
+        if saved is not None:
+            asset_manager._prices["SOL"] = saved
     assert result["action"] == "skip", f"Expected skip, got: {result['reasoning']}"
-    assert "s2_vel" in result["reasoning"], f"Expected vel skip: {result['reasoning']}"
+    assert "s2_fv_lowz" in result["reasoning"], f"Expected low-z skip: {result['reasoning']}"
 
 
 

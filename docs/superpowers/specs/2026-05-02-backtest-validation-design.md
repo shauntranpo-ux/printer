@@ -1,6 +1,6 @@
-# Backtest Validation System — Design Spec
+# Backtest Validation System - Design Spec
 **Date:** 2026-05-02  
-**Status:** Approved — pending implementation plan  
+**Status:** Approved - pending implementation plan  
 **Goal:** Determine with statistical rigor whether the D3-hybrid strategy has real edge or is overfitted to historical data.
 
 ---
@@ -13,7 +13,7 @@ The bot has WFA, CPCV, Monte Carlo, and bootstrap infrastructure already built. 
 
 ## Architecture
 
-Five sequential layers. Each emits a `PASS / CONDITIONAL / FAIL` verdict. A fail does not block later layers — it flags a root cause to investigate.
+Five sequential layers. Each emits a `PASS / CONDITIONAL / FAIL` verdict. A fail does not block later layers - it flags a root cause to investigate.
 
 ```
 Historical 1m bars + Kalshi snapshots
@@ -65,14 +65,14 @@ Historical 1m bars + Kalshi snapshots
 **Entry point:** `python backtesting/research.py --asset BTC [--layers 1,2,3,4,5]`
 
 **Output files:**
-- `backtesting/output/research/{asset}/research_report.md` — human-readable verdict
-- `backtesting/output/research/{asset}/research.json` — machine-readable per-layer results
-- `backtesting/output/research/{asset}/ic_curves.png` — Layer 1 IC decay plots
-- `backtesting/output/research/{asset}/regime_heatmap.png` — Layer 5 Sharpe grid
+- `backtesting/output/research/{asset}/research_report.md` - human-readable verdict
+- `backtesting/output/research/{asset}/research.json` - machine-readable per-layer results
+- `backtesting/output/research/{asset}/ic_curves.png` - Layer 1 IC decay plots
+- `backtesting/output/research/{asset}/regime_heatmap.png` - Layer 5 Sharpe grid
 
 ---
 
-## Layer 1 — Signal Validation (IC / ICIR)
+## Layer 1 - Signal Validation (IC / ICIR)
 
 ### Purpose
 Test each D3 sub-signal in isolation before trusting the ensemble. Identifies dead-weight components that add noise without predictive value.
@@ -135,7 +135,7 @@ volume_spike        0.009   0.08    0.5     FAIL
 
 ---
 
-## Layer 2 — Strategy Simulation + Null Hypothesis Test
+## Layer 2 - Strategy Simulation + Null Hypothesis Test
 
 ### Purpose
 Replay the actual `decide()` pipeline on historical data. Prove the edge comes from the signal, not from the EV gate, position sizing, or lucky market timing.
@@ -143,16 +143,16 @@ Replay the actual `decide()` pipeline on historical data. Prove the edge comes f
 ### Lookahead audit (prerequisite)
 Before running either simulation, audit these known lookahead risks:
 
-1. **AssetCalibrator** — does it refit on training folds only, or on the full dataset? Must use training-fold-only calibration within WFA windows.
-2. **realized_vol_1min** — does the rolling vol window use any future bars? Must be strictly backward-looking at decision time T.
-3. **Kalshi AMM simulator** — are prices at time T+ε used for the T decision? Must use only prices available at T.
+1. **AssetCalibrator** - does it refit on training folds only, or on the full dataset? Must use training-fold-only calibration within WFA windows.
+2. **realized_vol_1min** - does the rolling vol window use any future bars? Must be strictly backward-looking at decision time T.
+3. **Kalshi AMM simulator** - are prices at time T+ε used for the T decision? Must use only prices available at T.
 
 Any lookahead found must be fixed before continuing. A corrupted engine invalidates all downstream layers.
 
-### Run A — Real strategy replay
+### Run A - Real strategy replay
 Feed each 15-min window through `BaseStrategy.decide()` with the existing fill model (slippage + latency from `fill_model.py`). Record every trade: timestamp, side, entry_cents, exit_cents, P&L.
 
-### Run B — Shuffled-signal null (1000 iterations)
+### Run B - Shuffled-signal null (1000 iterations)
 Keep all filters (EV gate, vol gate, entry range, fill model) identical. Randomize only `st_side` (draw from {yes, no} at 50/50) and `signal_raw_p_yes` (sample from the empirical distribution of real p_yes values). Measures: "does the directional signal add value beyond what the gates alone produce?"
 
 ### Gate criterion
@@ -176,23 +176,23 @@ SOL  Real Sharpe: 0.88
 
 ---
 
-## Layer 3 — WFA Significance (DSR + PBO + MinBTL)
+## Layer 3 - WFA Significance (DSR + PBO + MinBTL)
 
 ### Purpose
 Ask whether the WFA Sharpe is real after accounting for the number of parameter configurations tested to produce it.
 
-### 3a — Deflated Sharpe Ratio (DSR)
+### 3a - Deflated Sharpe Ratio (DSR)
 
 Standard Sharpe is optimistically biased when many configs are tested and the best is kept. DSR deflates for:
 - Non-normality of trade returns (skew, kurtosis)
 - Length of backtest (fewer observations = less reliable)  
 - Number of independent trials tested (every EV sweep config counts)
 
-**Implementation:** Follow AFML Chapter 14 exactly (Bailey & López de Prado 2014). Use `scipy.stats` for the normal CDF. Estimate `num_trials` from the EV sweep CSVs in `backtesting/output/` — acknowledge this is an approximation since configs are not fully independent.
+**Implementation:** Follow AFML Chapter 14 exactly (Bailey & López de Prado 2014). Use `scipy.stats` for the normal CDF. Estimate `num_trials` from the EV sweep CSVs in `backtesting/output/` - acknowledge this is an approximation since configs are not fully independent.
 
 **Pass threshold:** DSR > 0.95 (95% confident true Sharpe > 0 after adjusting for multiple testing)
 
-### 3b — Probability of Backtest Overfitting (PBO)
+### 3b - Probability of Backtest Overfitting (PBO)
 
 Requires running multiple strategy variants (minimum 5 EV threshold configs) through CPCV. For each CPCV fold combination:
 - Identify which config ranked best in-sample
@@ -201,7 +201,7 @@ Requires running multiple strategy variants (minimum 5 EV threshold configs) thr
 
 **Pass threshold:** PBO < 0.25
 
-### 3c — Minimum Backtest Length (MinBTL)
+### 3c - Minimum Backtest Length (MinBTL)
 
 How many years of data are needed to reject H0 (SR = 0) at α = 0.05?
 
@@ -226,7 +226,7 @@ SOL      0.89   0.61   0.44   3.4yr    1.8yr        FAIL
 
 ---
 
-## Layer 4 — Permutation Test (Trade-Level)
+## Layer 4 - Permutation Test (Trade-Level)
 
 ### Purpose
 Layer 2 shuffles the signal. Layer 4 shuffles the outcomes. These are complementary:
@@ -278,24 +278,24 @@ DOGE Trades: 23    Win rate: 57%   Min needed: ~300   ✗
 
 ---
 
-## Layer 5 — Regime Robustness
+## Layer 5 - Regime Robustness
 
 ### Purpose
 Determine whether the edge holds across different market conditions or is concentrated in one specific regime.
 
-### Regime Axis 1 — Volatility (BTC reference)
+### Regime Axis 1 - Volatility (BTC reference)
 ```
 Low vol   → bottom tercile of 30-day BTC realized vol
 Mid vol   → middle tercile
 High vol  → top tercile
 ```
 
-### Regime Axis 2 — Trend vs. Mean-Reversion (Variance Ratio Test)
+### Regime Axis 2 - Trend vs. Mean-Reversion (Variance Ratio Test)
 Uses Lo-MacKinlay (1988) variance ratio test on a 60-bar rolling window. Chosen over Hurst exponent because it is reliable at short window lengths (30-60 bars) whereas Hurst requires 100+ observations for stability.
 
 ```
 VR < 0.90  → mean-reverting (price oscillates around strike)
-0.90–1.10  → random walk
+0.90-1.10  → random walk
 VR > 1.10  → trending (price moves persistently)
 ```
 
@@ -305,15 +305,15 @@ Minimum 30 trades per cell for Sharpe to be reported. Cells below 30 trades repo
 ### Session slice
 Crypto markets run 24/7. Split by session:
 ```
-Asia session:    20:00–04:00 ET
-London session:  04:00–09:00 ET
-US session:      09:00–20:00 ET
+Asia session:    20:00-04:00 ET
+London session:  04:00-09:00 ET
+US session:      09:00-20:00 ET
 ```
 
 ### Gate criterion
 ```
 PASS        → Sharpe > 0 in ≥ 6/9 cells, no cell < −1.0
-CONDITIONAL → Sharpe > 0 in 4–5 cells; report which regimes to avoid
+CONDITIONAL → Sharpe > 0 in 4-5 cells; report which regimes to avoid
 FAIL        → Sharpe positive in ≤ 3 cells (regime-dependent, fragile)
 ```
 
@@ -341,13 +341,13 @@ Finding: Edge concentrated in low/mid-vol trending regimes.
 ## Final Report Structure
 
 `research_report.md` sections:
-1. **Verdict summary** — overall PASS / CONDITIONAL / FAIL with one-line reason per layer
-2. **Layer 1** — IC table + decay curves
-3. **Layer 2** — null distribution plot + lookahead audit findings
-4. **Layer 3** — DSR / PBO / MinBTL table
-5. **Layer 4** — permutation p-values + trade count check
-6. **Layer 5** — regime heatmap + session breakdown
-7. **Recommendations** — which configs/regimes to enable or disable based on findings
+1. **Verdict summary** - overall PASS / CONDITIONAL / FAIL with one-line reason per layer
+2. **Layer 1** - IC table + decay curves
+3. **Layer 2** - null distribution plot + lookahead audit findings
+4. **Layer 3** - DSR / PBO / MinBTL table
+5. **Layer 4** - permutation p-values + trade count check
+6. **Layer 5** - regime heatmap + session breakdown
+7. **Recommendations** - which configs/regimes to enable or disable based on findings
 
 ---
 

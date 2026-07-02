@@ -9,7 +9,7 @@
 
 S1 (`strategy_brain_s1` / PRINTER_BRAIN v3) has zero trades in the DB.
 
-**Root cause: EV gate at 8% cannot be cleared because BV3 win_probs at 12–14 minutes
+**Root cause: EV gate at 8% cannot be cleared because BV3 win_probs at 12-14 minutes
 do not exceed AMM pricing plus the 7% Kalshi fee.**
 
 Median S1 EV (corrected for S1's continuation direction) is **-4.2%**.
@@ -37,8 +37,8 @@ then derive S1's actual continuation price (flip when directions differ).
 
 | Gate | Simulated | Reason |
 |------|-----------|--------|
-| Vol gate (`vol_ratio ≥ 1.80`) | **NO** | Requires price deque — not stored in market_log |
-| Price filter (5–75c) | YES | Derived S1 continuation price |
+| Vol gate (`vol_ratio ≥ 1.80`) | **NO** | Requires price deque - not stored in market_log |
+| Price filter (5-75c) | YES | Derived S1 continuation price |
 | EV gate (`ev ≥ min_ev_base_s1`) | YES (approx) | BV3 embedded table; no momentum/velocity/OBI |
 
 ---
@@ -47,7 +47,7 @@ then derive S1's actual continuation price (flip when directions differ).
 
 | Gate | Pass | Fail | Rate |
 |------|------|------|------|
-| Vol gate | UNKNOWN | UNKNOWN | — |
+| Vol gate | UNKNOWN | UNKNOWN | - |
 | Price filter [5,75]c | 1367 | 1281 | 51.6% |
 | EV gate ≥8% (of price-pass rows) | 113 | 1254 | 8.3% |
 
@@ -103,7 +103,7 @@ EV gate is the dominant blocker. Even ignoring vol gate, only 113 rows pass.
 | row8  1.00-1.25% | 1 | 0.0% |
 | row9  1.25%+ | 0 | 0.0% |
 
-**45% near-ATM (< 0.1%).** Near-ATM continuation YES contracts price at ~55–60c.
+**45% near-ATM (< 0.1%).** Near-ATM continuation YES contracts price at ~55-60c.
 BV3 win_prob at 13min = 0.578. EV = 0.578 − 0.58 − 0.07 = **−7.2%**.
 
 ---
@@ -131,9 +131,9 @@ BV3 win_prob at 13min = 0.578. EV = 0.578 − 0.58 − 0.07 = **−7.2%**.
 
 ### Why BV3 Can't Beat AMM Pricing
 
-The Kalshi AMM prices contracts accurately at 12–14 minutes. The embedded BV3 table
+The Kalshi AMM prices contracts accurately at 12-14 minutes. The embedded BV3 table
 shows win rates calibrated on biased backtest data (see `stress_test_results`: 97.5%
-trade rate, 79.6% WR — clear lookahead). At realistic time horizons:
+trade rate, 79.6% WR - clear lookahead). At realistic time horizons:
 
 | Scenario | BV3 win_prob | AMM price | EV |
 |----------|-------------|-----------|-----|
@@ -144,20 +144,20 @@ trade rate, 79.6% WR — clear lookahead). At realistic time horizons:
 
 **The AMM is correctly pricing the continuation probability.** The BV3 table win_probs
 closely match AMM prices, leaving essentially zero edge after the 7% fee.
-S1 is correct to skip — every trade would lose money on average.
+S1 is correct to skip - every trade would lose money on average.
 
 ### Why the Embedded BV3 Shows High Win Rates
 
 The `_S1_BV3_TABLE` was built by `backtesting/training/generate_bv3_table.py` which
 the summary notes has "lookahead bias" and "different bucket edges" than the live code.
-This explains why the table shows 85–99.9% win rates at close distance — these are not
+This explains why the table shows 85-99.9% win rates at close distance - these are not
 achievable live because the entry price used at training time saw the outcome.
 
 ### The Vol Gate Is a Secondary Factor
 
 Even if the vol gate never fired (letting all 2648 rows through to EV evaluation),
 only 113 rows would pass. The vol gate is possibly over-triggering too, but
-it's not the binding constraint — the EV gap is.
+it's not the binding constraint - the EV gap is.
 
 ---
 
@@ -170,7 +170,7 @@ it's not the binding constraint — the EV gap is.
 | Bias source | Lookahead (generate_bv3_table.py) | N/A |
 | BV3 table | Embedded (lookahead-biased) | Same embedded table |
 
-The backtest 97.5% trade rate is impossible live — it implies S1 traded on nearly
+The backtest 97.5% trade rate is impossible live - it implies S1 traded on nearly
 every 10-second tick. The 79.6% WR reflects lookahead contamination, not live edge.
 
 ---
@@ -180,12 +180,12 @@ every 10-second tick. The 79.6% WR reflects lookahead contamination, not live ed
 **Verdict: `VOL_GATE_DOMINANT`**
 
 EV gate (ignoring vol gate) would allow ~113 trades (8.3% of price-pass rows).
-These 113 rows are concentrated at **1–6 minutes remaining** where BV3 win_probs are highest.
+These 113 rows are concentrated at **1-6 minutes remaining** where BV3 win_probs are highest.
 Actual trades = 0 → the **vol gate fires on all 113 EV-passing windows**.
 
 The vol gate (`_vol_ratio = rv × √mins_left / abs_pct ≥ 1.80`) fires aggressively for
 near-ATM BTC markets: typical BTC vol of 0.18%/min at abs_pct ≈ 0.1% gives
-`vol_ratio = 0.0018 × √13 / 0.001 = 6.5` — far above 1.80 threshold.
+`vol_ratio = 0.0018 × √13 / 0.001 = 6.5` - far above 1.80 threshold.
 
 **Fix sequence:**
 
@@ -197,8 +197,8 @@ near-ATM BTC markets: typical BTC vol of 0.18%/min at abs_pct ≈ 0.1% gives
 
 3. **Run `bv3_calibrator.py`** to replace embedded BV3 table with real calibration.
    Embedded table has lookahead bias (79.6% WR in stress_test vs ~58% real).
-   Real sidecar win_probs may be lower — confirming or disconfirming S1 edge.
+   Real sidecar win_probs may be lower - confirming or disconfirming S1 edge.
 
 4. **Do not lower `min_ev_base_s1` below 4%** without completing step 3.
-   Current EV distribution has p50 = -4.2% — lowering gate
+   Current EV distribution has p50 = -4.2% - lowering gate
    without better win_prob data risks systematic losses.

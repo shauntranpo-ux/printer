@@ -19,7 +19,7 @@ Add a terminal stats script for on-demand inspection.
 | Action  | Path                      | Responsibility                              |
 |---------|---------------------------|---------------------------------------------|
 | Create  | `bot_stats.py`            | DB queries + format (Telegram + terminal)   |
-| Create  | `scripts/stats_report.py` | CLI wrapper — prints stats to stdout        |
+| Create  | `scripts/stats_report.py` | CLI wrapper - prints stats to stdout        |
 | Modify  | `bot_loops.py`            | Midnight trigger + import bot_stats         |
 | Modify  | `bot_market.py`           | Remove 3 per-trade send_telegram calls      |
 | Modify  | `bot_loops.py`            | Remove 2 per-trade send_telegram calls      |
@@ -88,7 +88,7 @@ Strategy sections with zero trades today are hidden.
 "No trades today" shown in the body if today_trades == 0.
 
 ```
-📊 Daily Summary — 2026-05-07
+📊 Daily Summary - 2026-05-07
 ───────────────────────────
 Trades: 12  |  WR: 8/12 (66.7%)
 P&L today: +$47.20  |  All-time: +$105.93
@@ -105,7 +105,7 @@ Consecutive losses: 0
 Mode: PAPER
 ```
 
-"Last trade: N min ago" — computed from `last_trade_ts` vs current time.
+"Last trade: N min ago" - computed from `last_trade_ts` vs current time.
 If last_trade_ts is None: "Last trade: never".
 If > 24h: show hours.
 
@@ -129,7 +129,7 @@ Passes `consecutive_losses=0` (not available outside running bot).
 
 ---
 
-## bot_loops.py — Midnight Trigger
+## bot_loops.py - Midnight Trigger
 
 Module-level variable:
 ```python
@@ -147,7 +147,7 @@ if _today != _last_stats_date:
     asyncio.create_task(send_telegram(bot_stats.format_telegram(_stats)))
 ```
 
-Only fires once per UTC day. Bot does not need to be running at exactly midnight —
+Only fires once per UTC day. Bot does not need to be running at exactly midnight -
 fires on the first tick after date changes.
 
 ---
@@ -155,25 +155,25 @@ fires on the first tick after date changes.
 ## Telegram Removals
 
 ### bot_market.py (3 removals)
-- `send_telegram("...MARKET ORDER PLACED...")` — line ~974
-- `send_telegram("...MARKET ORDER FAILED...")` — line ~1049
-- `send_telegram("...MARKET ORDER NOT FILLED...")` — line ~1175
+- `send_telegram("...MARKET ORDER PLACED...")` - line ~974
+- `send_telegram("...MARKET ORDER FAILED...")` - line ~1049
+- `send_telegram("...MARKET ORDER NOT FILLED...")` - line ~1175
 
 ### bot_loops.py (2 removals)
-- `send_telegram("...S2 D3 Hybrid...ORDER FILLED...")` — line ~529
-- `send_telegram("...S2 D3 Hybrid...outcome...")` — line ~680
+- `send_telegram("...S2 D3 Hybrid...ORDER FILLED...")` - line ~529
+- `send_telegram("...S2 D3 Hybrid...outcome...")` - line ~680
 
 ### bot_risk.py (2 removals)
-- `send_telegram("...S1 Original...ORDER FILLED...")` — line ~454
-- `send_telegram("...S1 Original...outcome...")` — line ~511
+- `send_telegram("...S1 Original...ORDER FILLED...")` - line ~454
+- `send_telegram("...S1 Original...outcome...")` - line ~511
 
 ### Kept (critical alerts only)
-- `bot.py:114` — startup message
-- `bot_infra.py:462` — fill verification warning
-- `bot_loops.py:663` — consecutive losses warning
-- `bot_risk.py:98,107` — daily loss limit triggered
-- `bot_risk.py:785` — preflight failed
-- `runner.py:134,272,297` — crash loop / preflight failures
+- `bot.py:114` - startup message
+- `bot_infra.py:462` - fill verification warning
+- `bot_loops.py:663` - consecutive losses warning
+- `bot_risk.py:98,107` - daily loss limit triggered
+- `bot_risk.py:785` - preflight failed
+- `runner.py:134,272,297` - crash loop / preflight failures
 
 ---
 

@@ -1,4 +1,4 @@
-# Hourly Dashboard, Notifications Retrofit, and Limit-Order Audit — Design
+# Hourly Dashboard, Notifications Retrofit, and Limit-Order Audit - Design
 
 **Date:** 2026-04-23
 **Status:** Approved (sections 1 in detail, 2-5 presented together)
@@ -40,7 +40,7 @@
 
 For BTC hourly: `strategy_name = "BTCHourly V3"`, no `phase` field (BTC V3 doesn't use phase gates). `signals` already carries `session` (`asian`/`other`), `vwap_z`, `rsi`, `bollinger`, `momentum_reversal`, `vwap_adj`, `rsi_adj`, `bb_adj`, `mom_adj`, `total_adj_before_taper`, `final_p_yes`, `baseline_p_above`.
 
-For 15m assets: `session_type = "15m"`, no `strategy_name`/`strike`/`phase` fields — dashboard falls through to existing 15m rendering.
+For 15m assets: `session_type = "15m"`, no `strategy_name`/`strike`/`phase` fields - dashboard falls through to existing 15m rendering.
 
 **Classification rule:** `market_duration_min > 25.0` ⇒ `"hourly"`. This matches the existing strategy router at `bot.py:1835`.
 
@@ -62,14 +62,14 @@ Keep existing `_buildHourlyViewHtml(a)` (Phase / Elapsed / ETH crossings / BTC c
 ### 4.3 BTC hourly body (NEW)
 
 ```
-Session:    Active              (or "Asian — SKIPPED" in red)
+Session:    Active              (or "Asian - SKIPPED" in red)
 VWAP z:     +1.42
 RSI:        28
 Bollinger:  below
 Momentum:   fade_down
 Total adj:  −0.08
 p_yes:      0.47  (baseline 0.55)
-Entry:      YES 42¢             (or "—" if no entry)
+Entry:      YES 42¢             (or "-" if no entry)
 ```
 
 Branch inside `_buildHourlyViewHtml(a)` on `a.strategy_name`:
@@ -90,7 +90,7 @@ The dashboard reads `session_type` and `strategy_name` from the per-asset state 
    - Retry loop does not refresh ask and overwrite target.
 
 2. **Per-strategy `entry_cents` side-consistency:**
-   - `mid_window_strategy.py:170` — `entry_cents = yes_ask if eth_itm else no_ask`. Must match `side`: YES-side trades use `yes_ask`, NO-side use `no_ask`.
+   - `mid_window_strategy.py:170` - `entry_cents = yes_ask if eth_itm else no_ask`. Must match `side`: YES-side trades use `yes_ask`, NO-side use `no_ask`.
    - Same check in `dwell_window_strategy.py`, `late_window_strategy.py`, `btc_hourly_strategy.py`.
    - Verify `early_window_strategy.py` live status.
 
@@ -105,22 +105,22 @@ Audit date: 2026-04-23. Test file: `tests/strategies/test_hourly_entry_price.py`
 **No bugs found.** The invariant `decision.side == "yes" → entry_cents == features.yes_ask`
 (and analogous for NO) holds for every trade path exercised:
 
-- `src/strategies/mid_window_strategy.py:170` — `entry_cents = features.yes_ask if eth_itm else features.no_ask`. Verified via MidWindow NO path (`test_mid_window_no_side_uses_no_ask`). See note (a) below for YES path.
-- `src/strategies/dwell_window_strategy.py:170-175` — explicit side/ask branches. Verified via Dwell YES and NO paths.
-- `src/strategies/late_window_strategy.py:92-99` — explicit side/ask branches. Verified via Late YES and NO paths.
-- `src/strategies/btc_hourly_strategy.py` — routes through `BaseStrategy.decide` (see note (b)).
+- `src/strategies/mid_window_strategy.py:170` - `entry_cents = features.yes_ask if eth_itm else features.no_ask`. Verified via MidWindow NO path (`test_mid_window_no_side_uses_no_ask`). See note (a) below for YES path.
+- `src/strategies/dwell_window_strategy.py:170-175` - explicit side/ask branches. Verified via Dwell YES and NO paths.
+- `src/strategies/late_window_strategy.py:92-99` - explicit side/ask branches. Verified via Late YES and NO paths.
+- `src/strategies/btc_hourly_strategy.py` - routes through `BaseStrategy.decide` (see note (b)).
 
 Two audit observations (neither is a bug):
 
-(a) **MidWindowStrategy YES path is structurally unreachable under synthetic flat-start BTC fixtures.** `_btc_window_prices_and_strike` derives the BTC strike from the *first* sample in the in-window deque and `_cross_count` uses strict `>` comparison, so `btc_cross == 0 AND btc_itm == True` is mathematically impossible for any series starting at the strike value. In live data the strategy still fires when real BTC hovers fractionally on one side before diverging; the test treats the YES path as best-effort (invariant is still checked if it happens to trade). This does not indicate a production bug — it's a property of the strike-derivation approach.
+(a) **MidWindowStrategy YES path is structurally unreachable under synthetic flat-start BTC fixtures.** `_btc_window_prices_and_strike` derives the BTC strike from the *first* sample in the in-window deque and `_cross_count` uses strict `>` comparison, so `btc_cross == 0 AND btc_itm == True` is mathematically impossible for any series starting at the strike value. In live data the strategy still fires when real BTC hovers fractionally on one side before diverging; the test treats the YES path as best-effort (invariant is still checked if it happens to trade). This does not indicate a production bug - it's a property of the strike-derivation approach.
 
-(b) **Coverage gap (not a bug): `BTCHourlyStrategy` does not emit `entry_cents` in `contributing_signals`.** It uses the default `BaseStrategy.decide` pipeline (EV-driven) which never populates `entry_cents`. When the dashboard renders a BTC signal panel (Task 9), the Entry row will show `—`. If future work needs a BTC fill-verification notification (Task 5) to quote target vs market ask, a follow-up would add `entry_cents = features.yes_ask if ev.best_side == "yes" else features.no_ask` into `BaseStrategy.decide`'s trade branch at `src/strategies/base.py:208-215`.
+(b) **Coverage gap (not a bug): `BTCHourlyStrategy` does not emit `entry_cents` in `contributing_signals`.** It uses the default `BaseStrategy.decide` pipeline (EV-driven) which never populates `entry_cents`. When the dashboard renders a BTC signal panel (Task 9), the Entry row will show `-`. If future work needs a BTC fill-verification notification (Task 5) to quote target vs market ask, a follow-up would add `entry_cents = features.yes_ask if ev.best_side == "yes" else features.no_ask` into `BaseStrategy.decide`'s trade branch at `src/strategies/base.py:208-215`.
 
 No strategy files were modified in this audit.
 
 ### 5.3 Fix policy
 
-Bugs are fixed inline in the same branch. Each fix gets one short comment stating the restored invariant. No scope creep — only fixes directly attributable to audit findings.
+Bugs are fixed inline in the same branch. Each fix gets one short comment stating the restored invariant. No scope creep - only fixes directly attributable to audit findings.
 
 ## 6. Notifications
 
@@ -147,7 +147,7 @@ Added to `bot.py` near `send_telegram` at line ~639.
 | Line | Event | New prefix |
 |------|-------|------------|
 | 2652 | Limit placed | `📋 [ASSET \| session \| ticker \| phase?] LIMIT ORDER PLACED` |
-| 2907 | Order failed (non-retryable) | `[ASSET \| session \| ticker \| phase?] ORDER FAILED — …` |
+| 2907 | Order failed (non-retryable) | `[ASSET \| session \| ticker \| phase?] ORDER FAILED - …` |
 | 3035 | Order not filled (no liquidity) | `⚠️ [ASSET \| session \| ticker \| phase?] ORDER NOT FILLED` |
 | 3131 | Demo daily loss limit | unchanged (no market context) |
 | 3792 | Limit filled / reversal | `[ASSET \| session \| ticker \| phase?] LIMIT ORDER FILLED` |
@@ -173,16 +173,16 @@ Emit a yellow warning `⚠️` if `|slippage_vs_target| > 3¢`.
 
 **Data sources:**
 - `target` = `entry_price_cents` (strategy's chosen price).
-- `market_ask_at_post` = `best_yes_ask` (or `best_no_ask` for NO-side) captured at post time — NEW local variable, must be captured before order post.
+- `market_ask_at_post` = `best_yes_ask` (or `best_no_ask` for NO-side) captured at post time - NEW local variable, must be captured before order post.
 - `posted` = `price_this_attempt`.
 - `filled` = `_fill_yes_price` (existing).
 
 ## 7. Files modified
 
-- `bot.py` — extend `write_state_file`, add `_notify_ctx`, retrofit 7 `send_telegram` calls, add fill-verification notification, fix any audit findings.
-- `dashboard.html` — update `_buildHourlyViewHtml` with strategy branch, add BTC V3 panel, update card header with ticker+strike+strategy.
-- `src/strategies/btc_hourly_strategy.py` — only if audit reveals a bug; otherwise untouched.
-- `src/strategies/mid_window_strategy.py`, `dwell_window_strategy.py`, `late_window_strategy.py` — only if audit reveals side/ask mismatch.
+- `bot.py` - extend `write_state_file`, add `_notify_ctx`, retrofit 7 `send_telegram` calls, add fill-verification notification, fix any audit findings.
+- `dashboard.html` - update `_buildHourlyViewHtml` with strategy branch, add BTC V3 panel, update card header with ticker+strike+strategy.
+- `src/strategies/btc_hourly_strategy.py` - only if audit reveals a bug; otherwise untouched.
+- `src/strategies/mid_window_strategy.py`, `dwell_window_strategy.py`, `late_window_strategy.py` - only if audit reveals side/ask mismatch.
 
 ## 8. Testing
 
@@ -221,6 +221,6 @@ For each hourly strategy, unit-test with canned `MarketFeatures`:
 ## 10. Risks
 
 - **Mis-parsing strike from ticker.** Ticker format varies by series; unit-test parse against known BTC + ETH ticker samples. Fallback to `market.get("strike_price")`.
-- **Dashboard desync if write_state_file writes before strategy runs.** Mitigation: `write_state_file` already writes per-cycle after strategy decide — same ordering preserved.
+- **Dashboard desync if write_state_file writes before strategy runs.** Mitigation: `write_state_file` already writes per-cycle after strategy decide - same ordering preserved.
 - **Notification spam on every cycle.** Fill-verification fires only once per fill (already gated by `fill_confirmed`). No new per-cycle messages.
 - **Retrofitting a notification breaks an existing string pattern a user is parsing.** User is the only Telegram consumer; no downstream parser. Safe.

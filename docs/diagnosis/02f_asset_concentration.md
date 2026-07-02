@@ -17,7 +17,7 @@
 
 ## 2F.2 Edge Distribution
 
-Edge is **generic across assets** — 4/4 assets have ≥1 qualifying cell.
+Edge is **generic across assets** - 4/4 assets have ≥1 qualifying cell.
 
 Asset breakdown:
 
@@ -26,8 +26,8 @@ Asset breakdown:
 - **SOL**: 1 qualifying cells, dist bucket 0.3-0.5%
 - **XRP**: 2 qualifying cells, dist bucket 0.3-0.5%
 
-Concentration pattern: qualifying cells cluster at **dist_row 3–4 (0.3–0.5%)**
-and **t_min 9–13** for all assets. No asset has cells at row 0-2 or t_min < 9.
+Concentration pattern: qualifying cells cluster at **dist_row 3-4 (0.3-0.5%)**
+and **t_min 9-13** for all assets. No asset has cells at row 0-2 or t_min < 9.
 Edge is regime-generic (all assets) but cell-concentrated (specific dist+time bucket).
 
 ---
@@ -58,9 +58,9 @@ performance, not S1. S1 has never fired a live trade. Comparison is indirect.
 
 | Asset | S1 OOS avg EV | S2 live grade | S2 live PnL | Agreement |
 |-------|-------------|--------------|------------|-----------|
-| BTC | +1.40% | D | $-18.5 | DISAGREE (OOS edge, but S2 live negative) — likely S1 vs S2 difference |
+| BTC | +1.40% | D | $-18.5 | DISAGREE (OOS edge, but S2 live negative) - likely S1 vs S2 difference |
 | ETH | +2.28% | B | $+12.3 | AGREE (both positive) |
-| SOL | +1.10% | C | $-3.2 | DISAGREE (OOS edge, but S2 live negative) — likely S1 vs S2 difference |
+| SOL | +1.10% | C | $-3.2 | DISAGREE (OOS edge, but S2 live negative) - likely S1 vs S2 difference |
 | XRP | +1.20% | B | $+8.9 | AGREE (both positive) |
 
 **Interpretations:**
@@ -97,7 +97,7 @@ Expected vol_ratio for qualifying cells (using typical realized vol per asset):
 
 **Result:** All 8 surviving cells fall BELOW the 1.80 vol gate threshold.
 Adding a whitelist before the vol gate (as an additional filter) would have
-no practical effect — vol gate would still block all whitelisted cells.
+no practical effect - vol gate would still block all whitelisted cells.
 
 The 2G proposal must address this. Options:
 1. Whitelist bypasses the vol gate (cells in whitelist skip vol gate check)

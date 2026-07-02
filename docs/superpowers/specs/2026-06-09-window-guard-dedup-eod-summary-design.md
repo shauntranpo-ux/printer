@@ -1,4 +1,4 @@
-# Window Guard, S1+S2 Dedup, End-of-Session Summary — Design
+# Window Guard, S1+S2 Dedup, End-of-Session Summary - Design
 
 ## Goal
 
@@ -12,7 +12,7 @@ All changes are in existing files. No new modules. No new abstractions.
 
 ## Fix 1: Cross-asset S1 window guard
 
-**Problem:** `_non_btc_asset_loop` processes ETH → SOL → XRP sequentially. When all three have pending markets, all three can fire S1 within seconds of each other. These assets are ~0.9 correlated — one macro move hits all three simultaneously. 9 of 155 trades in the dataset were near-simultaneous multi-asset fires.
+**Problem:** `_non_btc_asset_loop` processes ETH → SOL → XRP sequentially. When all three have pending markets, all three can fire S1 within seconds of each other. These assets are ~0.9 correlated - one macro move hits all three simultaneously. 9 of 155 trades in the dataset were near-simultaneous multi-asset fires.
 
 **Solution:** Add `_s1_window_fired: float = 0.0` to `bot_state.py`. After any non-BTC S1 fill confirms in `_execute_s1_trade` (bot_risk.py), set `bot_state._s1_window_fired = time.time()`. In `strategy_brain_s1` (bot_strategy.py), after the per-asset cap gate, add: if `asset != "BTC"` and `time.time() - bot_state._s1_window_fired < 300`, return skip with reason `s1_window_gate`.
 
@@ -46,11 +46,11 @@ if do_trade and ticker in bot_state._s1_pending_trades:
 
 **Solution:** Track `_prev_quiet: bool` across loop iterations. On each tick, compute `_now_quiet = _is_quiet_hours(config)`. When `_now_quiet and not _prev_quiet` (False→True transition), immediately call `await _check_daily_stats(today)`. Update `_prev_quiet = _now_quiet`.
 
-**Where to add:** Both `main_loop` (BTC loop, inner `while True`) and `_non_btc_asset_loop`. Since `_check_daily_stats` is idempotent per date (guarded by `_last_stats_date`), both loops detecting the transition is safe — only the first detection fires, the second is a no-op.
+**Where to add:** Both `main_loop` (BTC loop, inner `while True`) and `_non_btc_asset_loop`. Since `_check_daily_stats` is idempotent per date (guarded by `_last_stats_date`), both loops detecting the transition is safe - only the first detection fires, the second is a no-op.
 
 **2 PM checkpoint unchanged:** The existing `if _now_lv.hour == 14` check stays. Users get a mid-session checkpoint at 2 PM and a final summary when trading stops.
 
-**Content:** Uses existing `bot_stats.format_telegram(_stats)` — full format including P&L, WR, trade count, consecutive losses, mode.
+**Content:** Uses existing `bot_stats.format_telegram(_stats)` - full format including P&L, WR, trade count, consecutive losses, mode.
 
 ---
 

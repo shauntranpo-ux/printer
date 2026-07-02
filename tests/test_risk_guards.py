@@ -12,29 +12,6 @@ import bot_risk
 import bot_loops
 
 
-def test_s2_obi_gate_passes_on_none_amm():
-    """OBI gate must pass when no OBI data — AMM markets always return None OBI."""
-    original = dict(bot_state._ticker_obi)
-    bot_state._ticker_obi.clear()
-    try:
-        confirmed, val = bot_strategy._s2_obi_gate("TEST-TICK", "yes", 0.20)
-        assert confirmed, "OBI gate should pass (fail-open) for AMM markets with no OBI data"
-        assert val is None
-    finally:
-        bot_state._ticker_obi.update(original)
-
-
-def test_s2_obi_gate_passes_with_data():
-    """OBI gate must pass when obi_val exceeds min_obi threshold."""
-    bot_state._ticker_obi["TEST-TICK"] = 0.40
-    try:
-        confirmed, val = bot_strategy._s2_obi_gate("TEST-TICK", "yes", 0.20)
-        assert confirmed, f"OBI gate should pass when obi=0.40 > min=0.20; got confirmed={confirmed}"
-        assert abs(val - 0.40) < 0.001
-    finally:
-        bot_state._ticker_obi.pop("TEST-TICK", None)
-
-
 def test_s1_cap_global_source_check():
     """strategy_brain_s1 must have s1_cap_global skip reason."""
     src = inspect.getsource(bot_strategy.strategy_brain_s1)
@@ -82,21 +59,23 @@ def test_s1_momentum_signal_source_check():
 
 def test_s1_rate_limit_skips_after_max_per_hour():
     """S1 must skip when >= max_s1_per_asset_per_hour recent fills for asset."""
-    import bot_state
+    from unittest.mock import patch
     from bot_strategy import strategy_brain_s1
 
-    # Seed 2 recent trade times for ETH (within last 60 min)
+    # SOL is an enabled S1 asset (ETH short-circuits on the disabled gate). Seed 2 recent
+    # SOL fills within the last hour to trip the per-asset rate limit.
     now = time.time()
-    bot_state._s1_asset_trade_times["ETH"] = [now - 100, now - 200]
+    with patch("bot_strategy.read_config",
+               return_value={"mode": "paper", "quiet_hours_enabled": False}), \
+         patch.object(bot_state, "_s1_pending_trades", {}), \
+         patch.object(bot_state, "_s1_cooldown_until", {}), \
+         patch.object(bot_state, "_s1_asset_trade_times", {"SOL": [now - 100, now - 200]}):
+        result = strategy_brain_s1(
+            btc_price=150.0, strike=149.0, yes_ask=45.0, no_ask=55.0,
+            elapsed_seconds=660.0, secs_left=240.0,
+            ticker="KXSOL-RATELIMIT-TEST", asset="SOL",
+        )
 
-    result = strategy_brain_s1(
-        btc_price=2850.0, strike=2800.0, yes_ask=45.0, no_ask=55.0,
-        elapsed_seconds=760.0, secs_left=240.0,
-        ticker="KXETH-RATELIMIT-TEST", asset="ETH",
-    )
-    # Clean up
-    bot_state._s1_asset_trade_times["ETH"] = []
-
-    # May be blocked by rate limit OR quiet hours (depending on time of day)
     assert result["action"] == "skip"
-    assert "s1_rate_limit" in result["reasoning"] or "s1_quiet_hours" in result["reasoning"],         f"Expected rate_limit or quiet_hours skip, got: {result['reasoning']}"
+    assert "s1_rate_limit" in result["reasoning"], \
+        f"Expected rate_limit skip, got: {result['reasoning']}"

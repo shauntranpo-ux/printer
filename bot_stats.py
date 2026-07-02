@@ -64,7 +64,7 @@ def _run_queries(conn: sqlite3.Connection, today: str, base: dict) -> dict:
     for row in rows:
         sv = row["strategy_variant"]
         if sv not in _STRATEGY_LABELS:
-            log.warning("Unknown strategy_variant in DB: %r — row excluded from stats", sv)
+            log.warning("Unknown strategy_variant in DB: %r - row excluded from stats", sv)
             continue
         key = (sv, row["asset"])
         if key not in by_sa:
@@ -147,9 +147,9 @@ def _strategy_rows(by_sa: dict, strategy_key: str, html: bool) -> list[str]:
                 lines.append(f"  {asset:<5} {wl:<7}  {pnl_str}")
         else:
             if html:
-                lines.append(f"  <code>{asset:<5} —</code>")
+                lines.append(f"  <code>{asset:<5} -</code>")
             else:
-                lines.append(f"  {asset:<5} —")
+                lines.append(f"  {asset:<5} -")
     return lines
 
 
