@@ -25,7 +25,7 @@ Module-level dict, updated every 5 completed trades by `calibrate_from_history()
 - **Input:** price deque (defaults to global `btc_prices`; printer_brain passes `asset_manager._prices.get(asset, btc_prices)`)
 - **Window:** 180 seconds from `time.time()`
 - **Logic:** finds oldest price within cutoff, computes `(current - oldest) / oldest`
-- **Threshold:** `> 0.005` → bullish, `< -0.005` → bearish, else neutral
+- **Threshold:** `> 0.005` -> bullish, `< -0.005` -> bearish, else neutral
 - **Returns:** `(pct_change: float, label: str)`
 
 ---
@@ -47,17 +47,17 @@ Module-level dict, updated every 5 completed trades by `calibrate_from_history()
 **Output:** dict with keys: action, side, confidence, reasoning, key_signals, win_prob, mom_label, mom_pct, vel_signal, mins_left, abs_pct, above, _rv, _vol_ratio, price_filter_skip
 
 ### Step 0 - Realized vol gate
-Uses `btc_realized_vol()` (std of 1-min returns over 10 min). If `vol * sqrt(mins_left) / abs_pct >= vol_gate_thresh` (default 1.80) → `_vol_skip = True`. Applied after EV gate order in final skip logic.
+Uses `btc_realized_vol()` (std of 1-min returns over 10 min). If `vol * sqrt(mins_left) / abs_pct >= vol_gate_thresh` (default 1.80) -> `_vol_skip = True`. Applied after EV gate order in final skip logic.
 
 ### Step 1 - BV3 raw win probability
 `win_prob_raw = _win_prob_for_asset(asset, abs_pct, mins_left)`. BTC routes to `_empirical_win_prob()` which interpolates `_BV3_TABLE` by distance bucket and time, blending with live correction data (up to 40% weight at 50+ samples).
 
-### Step 2 - Momentum adjustment (flat ±5%)
+### Step 2 - Momentum adjustment (flat +/-5%)
 If bullish: `+0.05` when above strike, `-0.05` when below.  
 If bearish: `+0.05` when below strike, `-0.05` when above.  
 Neutral: 0. No strength multiplier.
 
-### Step 3 - Contract velocity adjustment (±1%)
+### Step 3 - Contract velocity adjustment (+/-1%)
 `+0.01` if favorable, `-0.01` if unfavorable, `0` if neutral.
 
 ### Step 4 - Calibration scale

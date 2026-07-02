@@ -559,11 +559,11 @@ def test_run_layer1_result_structure():
     assert len(sig['ic_decay']) == 4
 
 def test_layer1_verdict_aggregation():
-    # All FAIL → FAIL
+    # All FAIL -> FAIL
     assert layer1_verdict(n_failing=8, n_total=8) == 'FAIL'
-    # Most pass → PASS
+    # Most pass -> PASS
     assert layer1_verdict(n_failing=1, n_total=8) == 'PASS'
-    # Borderline → CONDITIONAL
+    # Borderline -> CONDITIONAL
     assert layer1_verdict(n_failing=3, n_total=8) == 'CONDITIONAL'
 ```
 
@@ -707,13 +707,13 @@ def test_null_result_structure():
     assert 0.0 <= result.p_value <= 1.0
 
 def test_null_worse_than_real_on_good_signal():
-    # Good signal: 60% win rate → real Sharpe > median null
+    # Good signal: 60% win rate -> real Sharpe > median null
     log = _trade_log(n=300, win_rate=0.60)
     result = run_null_simulation(log['pnl'].values, n_iter=500, seed=1)
     assert result.real_sharpe > np.median(result.null_sharpes)
 
 def test_null_indistinguishable_on_noise():
-    # Noise signal: 50% win rate → real Sharpe ≈ null distribution
+    # Noise signal: 50% win rate -> real Sharpe ~ null distribution
     rng = np.random.default_rng(7)
     pnls = np.where(rng.integers(0, 2, 200), 0.08, -0.08)
     result = run_null_simulation(pnls, n_iter=500, seed=2)
@@ -886,13 +886,13 @@ from backtesting.research.layer3 import (
 )
 
 def test_dsr_high_for_good_strategy():
-    # SR=1.5, 5000 obs, symmetric returns, 10 trials → DSR near 1
+    # SR=1.5, 5000 obs, symmetric returns, 10 trials -> DSR near 1
     pnls = np.random.default_rng(0).normal(0.003, 0.06, 5000)
     dsr = deflated_sharpe_ratio(sr_obs=1.5, pnls=pnls, num_trials=10)
     assert dsr > 0.80
 
 def test_dsr_low_when_many_trials():
-    # Same SR but 500 trials → heavily penalised
+    # Same SR but 500 trials -> heavily penalised
     pnls = np.random.default_rng(0).normal(0.003, 0.06, 5000)
     dsr = deflated_sharpe_ratio(sr_obs=1.5, pnls=pnls, num_trials=500)
     assert dsr < 0.90
@@ -903,7 +903,7 @@ def test_dsr_between_zero_and_one():
     assert 0.0 <= dsr <= 1.0
 
 def test_min_backtest_length_formula():
-    # SR=1.0, alpha=0.05 → ~2.7 years
+    # SR=1.0, alpha=0.05 -> ~2.7 years
     years = min_backtest_length(sr=1.0, alpha=0.05)
     assert 2.0 < years < 3.5
 
@@ -913,12 +913,12 @@ def test_min_backtest_length_higher_sr_needs_less():
     assert y2 < y1
 
 def test_pbo_all_is_best_is_oos_best():
-    # IS-best always also OOS-best → PBO = 0
+    # IS-best always also OOS-best -> PBO = 0
     folds = [{'is_rank': 0, 'oos_rank': 0} for _ in range(10)]
     assert probability_of_backtest_overfitting(folds) == pytest.approx(0.0)
 
 def test_pbo_is_best_never_oos_best():
-    # IS-best always OOS-worst → PBO = 1
+    # IS-best always OOS-worst -> PBO = 1
     folds = [{'is_rank': 0, 'oos_rank': 4} for _ in range(10)]
     assert probability_of_backtest_overfitting(folds) == pytest.approx(1.0)
 
@@ -998,7 +998,7 @@ def deflated_sharpe_ratio(
 def min_backtest_length(sr: float, alpha: float = 0.05) -> float:
     """
     Minimum years of data needed to reject H0 (SR=0) at significance level alpha.
-    Approximation: MinBTL ≈ (Z_alpha / SR)^2 years.
+    Approximation: MinBTL ~ (Z_alpha / SR)^2 years.
     """
     if sr <= 0:
         return float('inf')
@@ -1309,20 +1309,20 @@ def _price_series(n=200, drift=0.0, vol=0.01, seed=0):
     return np.exp(np.cumsum(log_rets)) * 100_000
 
 def test_variance_ratio_trending():
-    # Strong uptrend → VR > 1.1
+    # Strong uptrend -> VR > 1.1
     prices = _price_series(n=200, drift=0.003, vol=0.001)
     vr = variance_ratio(prices, q=4)
     assert vr > 1.0  # trending process has VR > 1
 
 def test_variance_ratio_mean_reverting():
-    # Alternating up/down → VR < 0.9
+    # Alternating up/down -> VR < 0.9
     n = 200
     prices = np.cumprod(1 + np.tile([-0.005, 0.005], n // 2)) * 100_000
     vr = variance_ratio(prices[:n], q=4)
     assert vr < 1.0
 
 def test_variance_ratio_random_walk():
-    # Pure random walk → VR ≈ 1.0 (within noise)
+    # Pure random walk -> VR ~ 1.0 (within noise)
     rng = np.random.default_rng(42)
     log_rets = rng.normal(0, 0.01, 500)
     prices = np.exp(np.cumsum(log_rets)) * 100_000
@@ -1374,15 +1374,15 @@ import pandas as pd
 from backtesting.metrics.trading import sharpe_ratio
 
 # UTC hour boundaries for session classification
-_ASIA_START, _ASIA_END     = 0,  8   # 00:00-08:00 UTC  ≈ 20:00-04:00 ET
-_LONDON_START, _LONDON_END = 8,  13  # 08:00-13:00 UTC  ≈ 04:00-09:00 ET
-# US: 13:00-00:00 UTC ≈ 09:00-20:00 ET
+_ASIA_START, _ASIA_END     = 0,  8   # 00:00-08:00 UTC  ~ 20:00-04:00 ET
+_LONDON_START, _LONDON_END = 8,  13  # 08:00-13:00 UTC  ~ 04:00-09:00 ET
+# US: 13:00-00:00 UTC ~ 09:00-20:00 ET
 
 
 def variance_ratio(prices: np.ndarray, q: int = 4) -> float:
     """
     Lo-MacKinlay (1988) variance ratio at aggregation lag q.
-    VR > 1.1 → trending, VR < 0.9 → mean-reverting, ≈1 → random walk.
+    VR > 1.1 -> trending, VR < 0.9 -> mean-reverting, ~1 -> random walk.
     """
     n = len(prices)
     if n < q + 5:
@@ -1405,7 +1405,7 @@ def variance_ratio(prices: np.ndarray, q: int = 4) -> float:
 def classify_vol_tercile(bars: pd.DataFrame, window_bars: int = 43_200) -> pd.Series:
     """
     Label each bar as 'low', 'mid', or 'high' vol based on rolling realized vol
-    (window_bars = 30 days × 24h × 60min = 43200 for 1-min bars).
+    (window_bars = 30 days x 24h x 60min = 43200 for 1-min bars).
     """
     log_ret = np.log(bars['close'] / bars['close'].shift(1))
     rolling_vol = log_ret.rolling(window_bars).std()
@@ -1615,7 +1615,7 @@ def _overall_verdict(results: Dict[str, Any]) -> str:
 
 
 def _verdict_emoji(v: str) -> str:
-    return {'PASS': '✓', 'CONDITIONAL': '~', 'FAIL': '✗'}.get(v, '?')
+    return {'PASS': '', 'CONDITIONAL': '~', 'FAIL': ''}.get(v, '?')
 
 
 def write_research_report(
@@ -1631,13 +1631,13 @@ def write_research_report(
     output_dir.mkdir(parents=True, exist_ok=True)
     overall = _overall_verdict(results)
 
-    # ── JSON ────────────────────────────────────────────────────────────────
+    # JSON
     json_out = {'asset': asset, 'overall_verdict': overall, 'layers': results}
     (output_dir / 'research.json').write_text(
         json.dumps(json_out, indent=2, default=str)
     )
 
-    # ── Markdown ─────────────────────────────────────────────────────────────
+    # Markdown
     lines = [
         f'# {asset} - Backtest Validation Report',
         '',
@@ -1712,7 +1712,7 @@ def write_research_report(
             f"Trades: {r.get('n_trades', '?')}  Win rate: {r.get('win_rate', 0)*100:.1f}%  "
             f"p-value (block): {r.get('p_value_block', '?'):.4f}",
             '' if r.get('sufficient_data', True) else
-            f"⚠ Insufficient data - need {r.get('min_trades', '?')} trades minimum.",
+            f" Insufficient data - need {r.get('min_trades', '?')} trades minimum.",
             '',
         ]
 
@@ -1823,7 +1823,7 @@ def main():
     if 1 in layers:
         print('[research] Running Layer 1 - Signal IC...')
         results['layer1'] = run_layer1(bars, strike=strike, asset=asset)
-        print(f"  → {results['layer1']['verdict']} ({results['layer1']['n_failing']} failing signals)")
+        print(f"  -> {results['layer1']['verdict']} ({results['layer1']['n_failing']} failing signals)")
 
     # Build synthetic trade log for layers 2-4 if not already present from layer 2
     trade_log: pd.DataFrame | None = None
@@ -1836,7 +1836,7 @@ def main():
         if wfa_log_path.exists():
             trade_log = pd.read_csv(wfa_log_path)
             results['layer2'] = run_layer2(trade_log, asset=asset, n_iter=args.iters)
-            print(f"  → {results['layer2']['verdict']} (p={results['layer2']['p_value']:.4f})")
+            print(f"  -> {results['layer2']['verdict']} (p={results['layer2']['p_value']:.4f})")
         else:
             print(f'  [SKIP] No trade log at {wfa_log_path} - run WFA first')
             results['layer2'] = {'verdict': 'SKIPPED', 'reason': 'no_trade_log'}
@@ -1858,17 +1858,17 @@ def main():
         data_years = max((bars.index[-1] - bars.index[0]).days / 365.25, 0.1)
         results['layer3'] = run_layer3(trade_log, wfa_sharpes=wfa_sharpes,
                                        data_years=data_years, num_trials=_count_trials(asset))
-        print(f"  → {results['layer3']['verdict']} (DSR={results['layer3']['dsr']:.3f})")
+        print(f"  -> {results['layer3']['verdict']} (DSR={results['layer3']['dsr']:.3f})")
 
     if 4 in layers and trade_log is not None:
         print('[research] Running Layer 4 - Permutation Test...')
         results['layer4'] = run_layer4(trade_log, n_iter=args.iters)
-        print(f"  → {results['layer4']['verdict']} (p_block={results['layer4']['p_value_block']:.4f})")
+        print(f"  -> {results['layer4']['verdict']} (p_block={results['layer4']['p_value_block']:.4f})")
 
     if 5 in layers and trade_log is not None:
         print('[research] Running Layer 5 - Regime Robustness...')
         results['layer5'] = run_layer5(trade_log, bars)
-        print(f"  → {results['layer5']['verdict']}")
+        print(f"  -> {results['layer5']['verdict']}")
 
     write_research_report(asset, results, output_dir=output_dir)
     print(f'[research] Report written to {output_dir}/research_report.md')
@@ -1892,7 +1892,7 @@ Expected:
 [research] Loading bars for BTC...
 [research] Strike (ATM approx): <price>
 [research] Running Layer 1 - Signal IC...
-  → PASS|CONDITIONAL|FAIL (<n> failing signals)
+  -> PASS|CONDITIONAL|FAIL (<n> failing signals)
 [research] Report written to backtesting/output/research/BTC/research_report.md
 ```
 

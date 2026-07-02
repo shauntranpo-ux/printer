@@ -2,7 +2,7 @@
 
 
 def test_s1_min_dist_in_profitable_range():
-    """S1 min_dist must be 0.002-0.010 — avoids coin-flip zone while still firing."""
+    """S1 min_dist must be 0.002-0.010 - avoids coin-flip zone while still firing."""
     from bot_strategy import _S1_ASSET_CONFIG
     for asset in ["BTC", "ETH", "XRP"]:
         d = _S1_ASSET_CONFIG[asset]["min_dist"]

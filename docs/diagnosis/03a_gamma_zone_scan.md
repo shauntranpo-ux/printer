@@ -16,7 +16,7 @@ that a 1%+ price gap from strike will NOT reverse in the final 1-3 minutes.
 
 ## Fee Structure (confirmed from src/strategies/fees.py)
 
-Taker fee = `ceil(0.07 × contracts × price × (1 - price))`
+Taker fee = `ceil(0.07 x contracts x price x (1 - price))`
 
 | Entry price | Fee per contract | Net profit if WIN | Breakeven WR |
 |-------------|-----------------|-------------------|-------------|
@@ -26,9 +26,9 @@ Taker fee = `ceil(0.07 × contracts × price × (1 - price))`
 | 0.97 (97c) | $0.01 | $0.020 | 97.0% |
 | 0.99 (99c) | $0.01 | $0.000 | 99.0% |
 
-**Critical constraint:** At ≥97c entry, fee alone consumes all profit.
+**Critical constraint:** At >=97c entry, fee alone consumes all profit.
 Net profit-if-win becomes zero or negative even at 100% win rate.
-Viable gamma zone trades require entry price ≤ 95c.
+Viable gamma zone trades require entry price <= 95c.
 
 ---
 
@@ -47,10 +47,10 @@ All cells with avg_entry > 95c are flagged FILL_RISK.
 
 ---
 
-## Full Cell Table (n ≥ 100)
+## Full Cell Table (n >= 100)
 
 Entry price proxy: BV3 prediction (conservative, assumes market efficiency).
-EV formula: empirical_WR × net_win + (1-empirical_WR) × net_loss.
+EV formula: empirical_WR x net_win + (1-empirical_WR) x net_loss.
 
 | Asset | Dist | T | n | Win% | Avg entry | Fee | EV | Sharpe | Gap | Fill Risk |
 |-------|------|---|---|------|----------|-----|-----|--------|-----|-----------|

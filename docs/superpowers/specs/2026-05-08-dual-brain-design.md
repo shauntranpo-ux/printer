@@ -14,7 +14,7 @@
 ```python
 _s1_attempted_tickers: set = set()   # replaces shared _order_attempted_tickers for S1
 _s2_attempted_tickers: set = set()   # replaces shared _order_attempted_tickers for S2
-_s2_positions: dict = {}             # ticker → {side, entry_cents, contracts, dollars, open_time, brain}
+_s2_positions: dict = {}             # ticker -> {side, entry_cents, contracts, dollars, open_time, brain}
 ```
 
 `_s1_pending_trades` already tracks open S1 trades - no new S1 state needed.
@@ -141,7 +141,7 @@ All-time (no date filter, same columns).
 
 **Message format:**
 ```
-📊 Daily Brain Scorecard
+ Daily Brain Scorecard
 
 S1 (EMA momentum)
   BTC  +$2.10  3W/1L
@@ -160,7 +160,7 @@ S2 (velocity+OBI)
   Total: +$0.90  5W/6L
 
 All-time │ S1: +$31.50 52W/21L │ S2: +$8.40 38W/29L
-Winner today: S1 🏆
+Winner today: S1 
 ```
 
 Assets with no trades show `-`. If both brains have zero trades today, no scorecard is sent. If P&L is tied, no winner declared.

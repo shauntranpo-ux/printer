@@ -21,14 +21,14 @@ Two-strategy architecture for Kalshi 15-minute crypto binary markets (BTC, ETH, 
 Five feature modules (HAR-RS-J volatility, order flow, time-of-day regimes, cross-asset
 BTC signals, funding/OI z-scores) are concatenated and passed to a calibrated logistic
 regression that outputs P_model(up at 15-min expiry). A trade is placed when
-|P_model − P_market| exceeds a fee-adjusted, regime-aware edge threshold.
+|P_model - P_market| exceeds a fee-adjusted, regime-aware edge threshold.
 
 **Strategy B** - Contract dislocation detector.
 Detects when the Kalshi YES price moves more or less than the underlying spot price
 implies (via a Brownian-with-drift implied probability translation). Fades the residual
 back toward fair value with a confidence-scaled signal.
 
-Eight model instances: 4 assets × 2 strategies. Same architecture per strategy;
+Eight model instances: 4 assets x 2 strategies. Same architecture per strategy;
 separately fitted parameters per asset. No pooling of training data across assets.
 
 ## Data Assumptions
@@ -80,13 +80,13 @@ def detect_dislocation(contract_stream, underlying_stream) -> Optional[Dislocati
 ```
 
 **p_market convention**: always pass as a fraction in [0, 1], not cents.
-A Kalshi YES ask of 70c → p_market = 0.70.
+A Kalshi YES ask of 70c -> p_market = 0.70.
 
 ## Fee Notes
 
 `shared/fees.yaml` stores a conservative flat-rate approximation (3%) used only for
 pre-trade edge threshold checks. The actual Kalshi taker fee is
-`ceil(0.07 × C × p × (1−p))` per contract (peaks at ~3.5% at p=0.50).
+`ceil(0.07 x C x p x (1-p))` per contract (peaks at ~3.5% at p=0.50).
 The execution layer in `src/strategies/fees.py` uses the exact formula for EV
 computation - do not bypass it.
 

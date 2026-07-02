@@ -4,7 +4,7 @@ asset:
 
 dislocation:
   lookback_seconds: 30
-  residual_threshold: null     # tuned per asset; null → 2.0 runtime default
+  residual_threshold: null     # tuned per asset; null -> 2.0 runtime default
   signal_staleness_seconds: 60
 
 implied_move:

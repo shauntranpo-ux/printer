@@ -16,7 +16,7 @@ In paper mode returns the simulated bid price immediately without
 touching the Kalshi `/portfolio/orders` POST endpoint.
 The live HTTP POST (line 2830) is unreachable in paper mode.
 
-### Call site: `run_window` → `place_order` (bot.py:3428)
+### Call site: `run_window` -> `place_order` (bot.py:3428)
 `mode` is read from `config["mode"]` (set to `"paper"` in `config.json`).
 Passed directly into `place_order`. No bypass path exists.
 

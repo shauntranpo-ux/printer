@@ -52,22 +52,22 @@ def test_s2_vel_delta_matches_calibration():
 
 
 def test_s1_win_rate_tables_all_none():
-    """All S1 WR table entries must be None — forces realistic tanh fallback."""
+    """All S1 WR table entries must be None - forces realistic tanh fallback."""
     from bot_strategy import _S1_WIN_RATE
     for asset, buckets in _S1_WIN_RATE.items():
         for key, val in buckets.items():
             assert val is None, (
-                f"S1 WR {asset} bucket {key}={val} — must be None to use realistic tanh formula"
+                f"S1 WR {asset} bucket {key}={val} - must be None to use realistic tanh formula"
             )
 
 
 def test_s2_win_rate_tables_all_none():
-    """All S2 WR table entries must be None — forces realistic tanh fallback."""
+    """All S2 WR table entries must be None - forces realistic tanh fallback."""
     from bot_strategy import _S2_WIN_RATE
     for asset, buckets in _S2_WIN_RATE.items():
         for key, val in buckets.items():
             assert val is None, (
-                f"S2 WR {asset} bucket {key}={val} — must be None to use realistic tanh formula"
+                f"S2 WR {asset} bucket {key}={val} - must be None to use realistic tanh formula"
             )
 
 
@@ -79,7 +79,7 @@ def test_s1_lookup_conservative_baseline():
 
 
 def test_s2_lookup_conservative_baseline():
-    """S2 tanh fallback must return 55-65% — realistic for velocity signal."""
+    """S2 tanh fallback must return 55-65% - realistic for velocity signal."""
     from bot_strategy import _s2_lookup_win_rate
     wp = _s2_lookup_win_rate("ETH", 0.26, 4.0)
     assert 0.52 <= wp <= 0.65, f"ETH S2 tanh WR={wp:.3f} outside realistic 52-65% range"
@@ -96,7 +96,7 @@ def test_s2_skips_low_z_no_dislocation():
     now = _t.time()
     saved = asset_manager._prices.get("SOL")
     try:
-        # SOL essentially AT the strike → low z, no fair-value dislocation.
+        # SOL essentially AT the strike -> low z, no fair-value dislocation.
         asset_manager._prices["SOL"] = deque(
             [(now - (40 - i) * 2, 150.001) for i in range(40)], maxlen=2000
         )
@@ -134,7 +134,7 @@ def test_s1_certainty_win_prob_increases_with_less_time():
 
 
 def test_s1_certainty_win_prob_range():
-    """WR must stay in 0.50-0.85 range — no fantasy numbers."""
+    """WR must stay in 0.50-0.85 range - no fantasy numbers."""
     from bot_strategy import _s1_certainty_win_prob
     for dist in [0.001, 0.005, 0.010, 0.030]:
         for t in [60.0, 300.0, 600.0, 840.0]:
@@ -153,9 +153,9 @@ def test_certainty_win_prob_range_with_vol_multiplier():
 
 
 def test_s1_min_ev_at_least_010():
-    """S1 min_ev must be >= 0.10 — low-EV entries perform worse in trending regimes."""
+    """S1 min_ev must be >= 0.10 - low-EV entries perform worse in trending regimes."""
     for asset, cfg in _S1_ASSET_CONFIG.items():
         assert cfg["min_ev"] >= 0.10, (
-            f"{asset}: min_ev={cfg['min_ev']} < 0.10 — raises marginal trades "
+            f"{asset}: min_ev={cfg['min_ev']} < 0.10 - raises marginal trades "
             f"that evaporate in adverse regimes"
         )

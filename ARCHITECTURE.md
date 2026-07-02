@@ -15,7 +15,7 @@ Deployed on Railway. Trades real money via Kalshi's REST API. All production log
 | `bot.py` | Async entry point. Bootstraps config, DB, price feeds, then delegates to `main_loop()` |
 | `runner.py` | Process manager. Spawns `bot.py` worker instances, monitors crash rate, restarts sidecars |
 | `server.py` | Flask dashboard (`GET/POST /api/*`). Reads DB and `bot_state.json`; never writes to DB |
-| `bot_loops.py` | Main async market loop. Phase handler: watching → ready → trading → cooldown |
+| `bot_loops.py` | Main async market loop. Phase handler: watching -> ready -> trading -> cooldown |
 | `bot_market.py` | Kalshi REST API client. Order placement, OBI calculation, fill polling |
 | `bot_risk.py` | Preflight checks, trade execution, PnL tracking, S1 orphan settlement |
 | `bot_strategy.py` | S1 (CA-LEAD-SLOW: BTC-lead cross-asset dislocation) and S2 (spot_fv_disloc: spot-anchored Bachelier fair-value dislocation) strategy brains |
@@ -36,18 +36,18 @@ Deployed on Railway. Trades real money via Kalshi's REST API. All production log
 
 Both brains compute a **Bachelier fair value** for P(YES) (`_bachelier_p_above`) and trade only
 when the de-vigged market mid is stale-cheap relative to it, gated by `_anchored_ev` (shrink the
-model toward the mid, cap the deviation at `max_model_edge`, require `ev ≥ min_ev_anchored` **and**
-`market_edge ≥ min_market_edge`). Direction comes from the model, not from momentum. Vol for the
+model toward the mid, cap the deviation at `max_model_edge`, require `ev >= min_ev_anchored` **and**
+`market_edge >= min_market_edge`). Direction comes from the model, not from momentum. Vol for the
 digital is `_sigma_eff` - a blend of live realized vol (`_live_sigma_15m`, quadratic-variation) and
 the static per-asset vol, so a co-moving jump does not over-inflate σ right when we act.
 
 - **S1 - CA-LEAD-SLOW (SOL / XRP / DOGE).** BTC leads the alts intraday. Over a ~60s lookback it
-  computes `residual = beta·btc_ret − alt_ret` (beta from `data/betas.json` via the mtime-cached
-  `_load_betas`), predicts the alt's catch-up spot `alt_now·exp(residual)`, and prices the digital
+  computes `residual = beta*btc_ret - alt_ret` (beta from `data/betas.json` via the mtime-cached
+  `_load_betas`), predicts the alt's catch-up spot `alt_now*exp(residual)`, and prices the digital
   on that. BTC/ETH are disabled by default (`s1_ca_btc_enabled` / `s1_ca_eth_enabled`). Keeps the
   existing S1 caps / rate-limit / cooldown / cross-asset window guard.
 - **S2 - spot_fv_disloc (BTC / SOL / XRP / DOGE).** Prices the digital on the current spot vs strike
-  and trades the stale-cheap side. Gates: `|z| ≥ min_z`, spot-sign confirmation over the last N
+  and trades the stale-cheap side. Gates: `|z| >= min_z`, spot-sign confirmation over the last N
   prints (no flicker across the strike), and a round-trip spread cap. ETH disabled by default
   (`s2_eth_enabled`).
 
@@ -63,7 +63,7 @@ website, and the `decision_log` harness are unchanged.
 
 File: `requirements.txt`
 
-Key runtime deps: `flask`, `gunicorn`, `aiohttp`, `websockets`, `aiosqlite`. Standard library `sqlite3` for schema creation and dashboard queries.
+Key runtime deps: `flask`, `gunicorn`, `aiohttp` (REST + the websocket price feed), `aiosqlite`. Standard library `sqlite3` for schema creation and dashboard queries.
 
 **Not used at runtime:** `pyproject.toml` lists `fastapi`, `sqlalchemy`, `uvicorn`, `alembic`, `apscheduler`. Those are dependencies of the abandoned rewrite. See [Quarantined / Experimental](#quarantined--experimental).
 
@@ -79,7 +79,7 @@ Procfile          web: bash start.sh            (start.sh:last line)
 
 runner.py
   └── subprocess  python bot.py   (one instance per enabled strategy)  (runner.py:~103)
-        └── bot.py → bot_loops.main_loop()
+        └── bot.py -> bot_loops.main_loop()
 ```
 
 - `runner.py` also spawns sidecars: `price_validator.py`, `collect_kalshi_ladder_history.py`, `weekly_report.py`.
@@ -101,7 +101,8 @@ Raw sqlite3. **No ORM. No Alembic migrations.**
     expiry. Logs ALL evaluated decisions (not just taken trades) so signal edge is measured
     free of survivorship bias. Written by `bot_loops._log_decision`; scored by
     `scripts/edge_report.py` and `GET /api/edge`.
-  - **`maker_log`** - the maker-vs-taker counterfactual (measurement only, no execution).
+  - **`maker_log`** - the maker-vs-taker counterfactual. Also feeds the paper maker
+    execution model when `maker_execution_enabled` is on.
     Per settled trade: whether a passive maker order would have filled and its P&L vs the
     realized taker fill. Written by `bot_loops._record_maker_counterfactual`; summarized by
     `scripts/maker_report.py` and `GET /api/edge`.
@@ -124,9 +125,9 @@ Written to disk at startup if missing (`bot_infra.py:~131`). Edited via dashboar
 Key fields: `bot_enabled`, `mode` (paper|demo|live), `trade_amount_dollars`, `daily_loss_limit_dollars`, `enabled_assets`.
 
 Config normalization in `_init_config()` enforces (current behavior):
-- **`trade_amount_dollars`** is hard-clamped to **≤ $25** (per-trade clip cap).
+- **`trade_amount_dollars`** is hard-clamped to **<= $25** (per-trade clip cap).
 - **`daily_loss_limit_dollars`** defaults to **0 = no daily loss cap** (the bot does not halt
-  itself for the day). A positive value re-enables the cap (clamped ≤150); `check_daily_limits`
+  itself for the day). A positive value re-enables the cap (clamped <=150); `check_daily_limits`
   and the `bot_loops` kill-switch both treat a non-positive limit as disabled.
 - **`measurement_enabled`** (default **true**) gates all edge-measurement instrumentation
   (`decision_log` / `maker_log` writes, held-book tracking, periodic settlement backfill).
@@ -154,8 +155,8 @@ Config normalization in `_init_config()` enforces (current behavior):
   `blocked_sessions` (list of ET session labels from `sessions.py` - `us_open`, `us_midday`,
   `us_close`, `us_evening`, `overnight`; default `[]`) and `block_weekends` (bool, default
   `false`) let the operator skip time windows the Edge panel shows losing. Default = no behavior
-  change; a blocked window yields an `s{1,2}_session_gate:<label>` skip. `session_filter_enabled`
-  (default `false`) is reserved for a future data-driven auto-gate (not yet wired).
+  change; a blocked window yields an `s{1,2}_session_gate:<label>` skip. The data-driven variant
+  is the auto-gate above (`auto_gate_enabled`).
 - EV-gate tuning: `max_model_edge`, `min_market_edge`, `min_ev_anchored` (the market-anchored
   gate, `bot_strategy._anchored_ev`) are read per-asset from `s1_config`/`s2_config[asset]` and
   fall back to a top-level config value, then to conservative defaults (0.08 / 0.035 / 0.025).

@@ -80,23 +80,23 @@ Returns:
 ### `format_telegram(stats: dict) -> str`
 
 Returns HTML string using `<b>` and `<code>` tags. Strategy label map:
-- `"strategy1"` → `"S1 · EMA Momentum"`
-- `"strategy2"` → `"S2 · Contract Velocity"`
+- `"strategy1"` -> `"S1 * EMA Momentum"`
+- `"strategy2"` -> `"S2 * Contract Velocity"`
 
 Asset rows with zero trades today are hidden.
 Strategy sections with zero trades today are hidden.
 "No trades today" shown in the body if today_trades == 0.
 
 ```
-📊 Daily Summary - 2026-05-07
+ Daily Summary - 2026-05-07
 ───────────────────────────
 Trades: 12  |  WR: 8/12 (66.7%)
 P&L today: +$47.20  |  All-time: +$105.93
 ───────────────────────────
-S1 · EMA Momentum
+S1 * EMA Momentum
   BTC   3W/1L   +$12.50
   ETH   1W/0L   +$8.70
-S2 · Contract Velocity
+S2 * Contract Velocity
   BTC   4W/2L   +$26.00
   SOL   0W/1L   -$3.70
 ───────────────────────────
@@ -187,4 +187,4 @@ fires on the first tick after date changes.
 ## Testing
 - Unit tests for `query_stats` with an in-memory SQLite DB
 - Unit tests for `format_telegram` output shape (strategy sections hidden when zero trades)
-- Unit test for midnight trigger: date changes → stats sent exactly once
+- Unit test for midnight trigger: date changes -> stats sent exactly once

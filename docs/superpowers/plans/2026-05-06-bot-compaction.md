@@ -40,7 +40,7 @@ No classes, no dataclasses - plain module attributes for zero-overhead access.
 import os
 from collections import deque
 
-# ── constants (never change at runtime) ──────────────────────────────────────
+# constants (never change at runtime)
 KALSHI_LIVE_BASE_URL = "https://api.elections.kalshi.com/trade-api/v2"
 KALSHI_DEMO_BASE_URL = "https://demo-api.kalshi.co/trade-api/v2"
 KALSHI_BASE_URL      = KALSHI_LIVE_BASE_URL  # overwritten once in load_credentials()
@@ -59,7 +59,7 @@ _STATE_FILE  = os.environ.get("BOT_STATE_FILE",  "bot_state.json")
 _DATA_DIR    = os.path.dirname(os.path.abspath(_DB_FILE))
 _PRICE_VAL_CSV = os.path.join(_DATA_DIR, "price_validation_log.csv")
 
-# ── mutable runtime state ────────────────────────────────────────────────────
+# mutable runtime state
 import asset_manager  # noqa: E402 - after os/path setup
 btc_prices: deque = asset_manager._prices["BTC"]
 
@@ -193,7 +193,7 @@ for line in lines:
             continue  # drop the whole line
         line = line.replace(stripped, "global " + ", ".join(remaining))
 
-    # Rewrite bare identifiers → bot_state.IDENTIFIER
+    # Rewrite bare identifiers -> bot_state.IDENTIFIER
     # Only when not already prefixed with "bot_state." and not in strings/comments
     # Use word-boundary replacement for each global name
     for g in GLOBALS:

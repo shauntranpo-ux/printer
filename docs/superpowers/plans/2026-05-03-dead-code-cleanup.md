@@ -287,7 +287,7 @@ def test_output_length_matches_bars():
 
 
 def test_v2_inverted_downtrend_produces_high_prob():
-    # Strong downtrend → MTF momentum negative → V2 inverted → 0.65 (YES)
+    # Strong downtrend -> MTF momentum negative -> V2 inverted -> 0.65 (YES)
     result = extract_all_signals(_bars(n=200, trend=-500.0), strike=200_000.0, asset='BTC')
     v2 = result['v2_mtf_momentum']
     late = v2[50:]
@@ -295,7 +295,7 @@ def test_v2_inverted_downtrend_produces_high_prob():
 
 
 def test_v3_inverted_downtrend_produces_high_prob():
-    # Strong downtrend → RSI oversold → V3 inverted → 0.65 (YES)
+    # Strong downtrend -> RSI oversold -> V3 inverted -> 0.65 (YES)
     result = extract_all_signals(_bars(n=200, trend=-500.0), strike=200_000.0, asset='BTC')
     v3 = result['v3_rsi']
     late = v3[30:]
@@ -381,7 +381,7 @@ _RSI_DEFAULT     = 8.0
 _BOLL_DEFAULT    = 0.50
 
 
-# ── helpers copied verbatim from fifteen_min_signal.py ─────────────────────────
+# helpers copied verbatim from fifteen_min_signal.py
 
 def _rsi(prices: List[float], period: int = 14) -> Optional[float]:
     if len(prices) < period + 2:
@@ -423,7 +423,7 @@ def _multi_tf_mom(prices: List[float]) -> Optional[float]:
     return (r5 + r15 + r30) / 3.0
 
 
-# ── per-voter extractors ───────────────────────────────────────────────────────
+# per-voter extractors
 
 def _v1_predictions(bars: pd.DataFrame, strike: float, seconds_left: float = 900.0) -> np.ndarray:
     """V1: BS p_yes directly (continuous)."""
@@ -447,7 +447,7 @@ def _v1_predictions(bars: pd.DataFrame, strike: float, seconds_left: float = 900
 
 
 def _v2_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V2: MTF momentum inverted - negative momentum → 0.65 (YES)."""
+    """V2: MTF momentum inverted - negative momentum -> 0.65 (YES)."""
     T = _MTF_THRESHOLDS.get(asset.upper(), _MTF_DEFAULT)
     prices = bars['close'].tolist()
     n = len(prices)
@@ -464,7 +464,7 @@ def _v2_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
 
 
 def _v3_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V3: RSI deviation inverted - oversold (rsi_dev < -T) → 0.65 (YES)."""
+    """V3: RSI deviation inverted - oversold (rsi_dev < -T) -> 0.65 (YES)."""
     T = _RSI_THRESHOLDS.get(asset.upper(), _RSI_DEFAULT)
     prices = bars['close'].tolist()
     n = len(prices)
@@ -482,7 +482,7 @@ def _v3_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
 
 
 def _v4_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V4: Bollinger z-score inverted - below lower band (z < -T) → 0.65 (YES)."""
+    """V4: Bollinger z-score inverted - below lower band (z < -T) -> 0.65 (YES)."""
     T = _BOLL_THRESHOLDS.get(asset.upper(), _BOLL_DEFAULT)
     prices = bars['close'].tolist()
     n = len(prices)
@@ -569,7 +569,7 @@ git commit -m "feat: rewrite signal_extractor with V1-V5 voters from compute_15m
 python backtesting/research_cli.py --asset BTC --layers 1 --iters 1000
 ```
 
-This will take a few minutes (4.5M bars × 5 signals, but the rolling IC is vectorized so it should be fast).
+This will take a few minutes (4.5M bars x 5 signals, but the rolling IC is vectorized so it should be fast).
 
 Expected output: Layer 1 verdict printed with IC results for `v1_bs_prob`, `v2_mtf_momentum`, `v3_rsi`, `v4_bollinger`, `v5_mtf_magnitude`.
 

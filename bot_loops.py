@@ -27,8 +27,6 @@ from bot_market import (
 from bot_strategy import (
     strategy_brain_s1, strategy_brain_s2,
     track_contract_price,
-    _s1_multitf_momentum, _S1_ASSET_CONFIG,
-    _s2_contract_direction, _S2_ASSET_CONFIG,
     _is_quiet_hours, _market_implied_p_yes,
 )
 from bot_risk import (
@@ -605,18 +603,22 @@ async def handle_ready_phase(
     brain_ev  = brain.get("win_prob", 0.5) - _entry_p - _fee
     brain_win_prob = brain.get("win_prob", 0.5)
 
-    # S1/S2 direction - computed directly from price/velocity data, not brain skip reason,
-    # so arrows show even when dist/rv/time gates block before EMA is reached.
-    _s1_raw = asset_manager._prices.get(asset) if asset != "BTC" else None
-    _s1_px_list = list(bot_state.btc_prices) if asset == "BTC" else (list(_s1_raw) if _s1_raw else [])
-    _s1_cfg_d = _S1_ASSET_CONFIG.get(asset, _S1_ASSET_CONFIG["BTC"])
-    _mom_dir, _ = _s1_multitf_momentum(_s1_px_list, min_momentum=_s1_cfg_d["min_momentum"])
-    _s1_dir = "UP" if _mom_dir == "yes" else ("DOWN" if _mom_dir == "no" else "neutral")
-    _s2_cfg_d = _S2_ASSET_CONFIG.get(asset, _S2_ASSET_CONFIG["BTC"])
-    _vel_dir, _ = _s2_contract_direction(ticker, _s2_cfg_d["min_vel_delta"], _s2_cfg_d["vel_lookback"])
-    _s2_dir = "UP" if _vel_dir == "yes" else ("DOWN" if _vel_dir == "no" else "neutral")
-    _S1_GATE_ORD = ["s1_time_gate", "s1_dist_gate", "s1_no_momentum_data", "s1_momentum_flat", "s1_reversal_gate", "s1_price_filter", "s1_ev_gate"]
-    _S2_GATE_ORD = ["s2_time_gate", "s2_dist_gate", "s2_no_velocity_data", "s2_reversal_gate", "s2_obi_gate", "s2_ev_gate"]
+    # S1/S2 direction arrows come from the side each brain actually leans (its fair-value
+    # model), shown only once the evaluation reached the model stage; earlier gate skips
+    # have no meaningful direction.
+    def _brain_dir(b: dict) -> str:
+        if b.get("signals", {}).get("model_raw_p_yes") is None:
+            return "neutral"
+        return "UP" if b.get("side") == "yes" else ("DOWN" if b.get("side") == "no" else "neutral")
+    _s1_dir = _brain_dir(brain_s1)
+    _s2_dir = _brain_dir(brain)
+    # Gate funnels in the order the current brains check them (substring match below).
+    _S1_GATE_ORD = ["s1_ca_disabled", "s1_quiet_hours", "s1_session_gate", "s1_cooldown",
+                    "s1_cap", "s1_rate_limit", "s1_window_guard", "s1_time_gate", "s1_ca_",
+                    "s1_price_filter", "s1_ev_gate", "s1_auto_gate"]
+    _S2_GATE_ORD = ["s2_fv_disabled", "s2_quiet_hours", "s2_session_gate", "s2_time_gate",
+                    "s2_fv_bad_price", "s2_fv_degenerate", "s2_fv_lowz", "s2_fv_flicker",
+                    "s2_fv_wide_spread", "s2_price_filter", "s2_ev_gate", "s2_auto_gate"]
     def _cnt_gates(gates, reason, traded):
         if traded: return len(gates)
         for i, g in enumerate(gates):
@@ -1026,11 +1028,11 @@ async def handle_locked_phase(
         f"| price=${btc_price:,.4g} | strike=${pos['strike']:,.4g} | {secs_left:.0f}s left"
     )
 
-    # Maker counterfactual instrumentation: record the held-book path (yes/no ask) so we can
-    # compute at settlement whether a passive maker order posted at entry would have filled.
-    # Measurement only - no execution change. See _record_maker_counterfactual.
-    # Gated by config + throttled to ~once per 25s/ticker so it can't load the trading loop.
-    if config.get("measurement_enabled", True):
+    # Maker instrumentation: record the held-book path (yes/no ask) so settlement can
+    # decide whether a passive maker order posted at entry would have filled. Feeds both
+    # the maker_log counterfactual and the paper maker execution model, so it must run
+    # whenever either is on. Throttled to ~once per 25s/ticker.
+    if config.get("measurement_enabled", True) or config.get("maker_execution_enabled", False):
         _now_mt = time.time()
         if _now_mt - _maker_track_last_fetch.get(ticker, 0.0) >= _MAKER_TRACK_MIN_INTERVAL:
             _maker_track_last_fetch[ticker] = _now_mt
@@ -1149,6 +1151,7 @@ async def _process_asset(
             st["prev_ticker"] = None
         return
 
+    _prev_market = st.get("market")
     st["market"] = market
     ticker = market.get("ticker", "")
     secs_left = seconds_remaining(market)
@@ -1183,7 +1186,8 @@ async def _process_asset(
         if st["phase"] == "LOCKED":
             log.info(f"[{asset}] Market rolled to {ticker} but position still open on {prev_ticker} - staying LOCKED.")
             ticker = prev_ticker
-            market = st.get("market") or market
+            market = _prev_market or market
+            st["market"] = market
         else:
             log.info(f"[{asset}] New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
             if prev_ticker in bot_state._s1_pending_trades:

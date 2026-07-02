@@ -175,7 +175,7 @@ git show ce9ec3f:tests/strategies/test_doge_strategy.py | Out-File -Encoding utf
 
 - [ ] **Step 3: Update imports in test files**
 
-Replace `from strategies.btc_strategy` → `from strategies.original.btc_strategy`, etc.:
+Replace `from strategies.btc_strategy` -> `from strategies.original.btc_strategy`, etc.:
 
 ```powershell
 $map = @{
@@ -395,9 +395,9 @@ git commit -m "feat: add strategy_variant column to trades + _db_settle_corollar
 **Files:**
 - Modify: `bot.py`
 
-- [ ] **Step 1: Rename `_STRATEGY_SINGLETONS` → `_S2_SINGLETONS` everywhere**
+- [ ] **Step 1: Rename `_STRATEGY_SINGLETONS` -> `_S2_SINGLETONS` everywhere**
 
-In bot.py, do a global replace of `_STRATEGY_SINGLETONS` → `_S2_SINGLETONS`:
+In bot.py, do a global replace of `_STRATEGY_SINGLETONS` -> `_S2_SINGLETONS`:
 
 ```powershell
 $content = Get-Content bot.py -Raw
@@ -418,7 +418,7 @@ _S2_SINGLETONS: dict = {}  # keyed by asset name - current D3 hybrid (strategy2)
 _S1_SINGLETONS: dict = {}  # keyed by asset name - original per-asset (strategy1)
 ```
 
-- [ ] **Step 3: Rename `strategy_brain()` → `strategy_brain_s2()`**
+- [ ] **Step 3: Rename `strategy_brain()` -> `strategy_brain_s2()`**
 
 Find:
 ```python
@@ -621,7 +621,7 @@ Replace with:
 
 Find:
 ```python
-    # ── Printer Brain - primary decision engine (always runs, no API needed) ──
+    # Printer Brain - primary decision engine (always runs, no API needed)
     brain = strategy_brain(btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker,
                      min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
                      vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
@@ -634,7 +634,7 @@ Find:
 
 Replace with:
 ```python
-    # ── Strategy brains - S2 (D3 hybrid) and S1 (original per-asset) run independently ──
+    # Strategy brains - S2 (D3 hybrid) and S1 (original per-asset) run independently
     _brain_kwargs = dict(
         min_ev_base=get_asset_config(config, asset, "min_ev_base", 3.0),
         vol_gate_thresh=get_asset_config(config, asset, "vol_gate_thresh", 1.80),
@@ -683,7 +683,7 @@ git commit -m "feat: add _S1_SINGLETONS, strategy_brain_s1/s2, dual-brain call a
 Find the `_S1_SINGLETONS` declaration line. Add after it:
 
 ```python
-_s1_pending_trades: dict = {}  # ticker → {"trade_id": int, "side": str, "contracts": int, "entry_price_cents": int, "mode": str, "asset": str}
+_s1_pending_trades: dict = {}  # ticker -> {"trade_id": int, "side": str, "contracts": int, "entry_price_cents": int, "mode": str, "asset": str}
 ```
 
 - [ ] **Step 2: Add `_execute_s1_shadow()` async function**
@@ -1107,7 +1107,7 @@ The existing KPI strip is at approximately line 655. Find:
   <!-- KPI STRIP -->
   <div class="kpi-strip">
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
 ```
 
 Replace with:
@@ -1116,7 +1116,7 @@ Replace with:
   <div style="font-size:11px;font-weight:600;color:var(--ink-3);letter-spacing:.06em;margin-bottom:4px;padding-left:2px;">STRATEGY 2 - D3 HYBRID</div>
   <div class="kpi-strip" id="kpi-strip-s2">
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
 ```
 
 - [ ] **Step 2: Add the closing `</div>` for the renamed strip and insert S1 strip below**
@@ -1139,13 +1139,13 @@ Replace with:
   <div style="font-size:11px;font-weight:600;color:var(--amber);letter-spacing:.06em;margin-top:12px;margin-bottom:4px;padding-left:2px;">STRATEGY 1 - ORIGINAL (B3/E1/S1/X3/D3)</div>
   <div class="kpi-strip" id="kpi-strip-s1" style="border-color:var(--amber);--accent:var(--amber);--accent-soft:var(--amber-soft);">
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="s1-kpi-alltime-val" class="kpi-cell-v mono">-</div>
       <div id="s1-kpi-alltime-sub" class="kpi-cell-s">-</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Win Rate · All-Time</div>
+      <div class="kpi-cell-l">Win Rate * All-Time</div>
       <div id="s1-kpi-wr-val" class="kpi-cell-v mono">-<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
       <div id="s1-kpi-wr-sub" class="kpi-cell-s">- trades</div>
     </div>
@@ -1210,7 +1210,7 @@ async function fetchPnlS1() {
     const tdSub = document.getElementById('s1-kpi-today-sub');
     if (tdSub) {
       const w = today.wins ?? 0, cnt = today.trades ?? 0, l = cnt - w;
-      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> · ${w}W / ${l}L`;
+      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> * ${w}W / ${l}L`;
     }
   } catch(e) {}
 }
@@ -1343,7 +1343,7 @@ All 8 verification steps from the spec should be confirmed.
 | Spec Requirement | Plan Task |
 |-----------------|-----------|
 | Files in `src/strategies/original/` | Task 1 |
-| Import path fix `strategies.signals.*` → `strategies.original.signals.*` | Task 1 Step 5 |
+| Import path fix `strategies.signals.*` -> `strategies.original.signals.*` | Task 1 Step 5 |
 | Test files recovered from ce9ec3f | Task 2 |
 | `strategy_variant` column in DB | Task 3 |
 | `init_db()` migration | Task 3 Step 2 |

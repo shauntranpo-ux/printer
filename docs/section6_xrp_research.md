@@ -8,9 +8,9 @@ a BTC-follower loses money.
 
 ## Research Findings
 
-**Ozaydin 2021 - VAR Granger causality on BTC → alts**
+**Ozaydin 2021 - VAR Granger causality on BTC -> alts**
 Tested whether BTC daily returns Granger-cause ETH, ADA, BNB, and XRP.
-Found significant BTC → alt relationships for three of those assets. XRP
+Found significant BTC -> alt relationships for three of those assets. XRP
 was the exception - no significant Granger causality from BTC to XRP at
 daily level. XRP's price dynamics are not driven by BTC momentum.
 

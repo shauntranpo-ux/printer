@@ -89,7 +89,7 @@ def _run_s2_fv(asset, spot, strike, secs_left=600.0):
 def test_s2_raw_prob_increases_with_distance_from_strike():
     """
     The new S2 raw model prob (Bachelier fair value) must increase as the spot moves
-    farther above the strike — direction/conviction come from the spot dislocation,
+    farther above the strike - direction/conviction come from the spot dislocation,
     NOT contract velocity.
     """
     near = _run_s2_fv("SOL", spot=150.4, strike=150.0)

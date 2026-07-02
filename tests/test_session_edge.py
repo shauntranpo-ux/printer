@@ -53,7 +53,7 @@ def test_session_allowed_block_weekends(monkeypatch):
 
 
 def test_session_allowed_fail_open(monkeypatch):
-    # A helper that raises must not propagate — fail open (allow).
+    # A helper that raises must not propagate - fail open (allow).
     monkeypatch.setattr(bs.sessions, "session_for_dt", lambda dt: (_ for _ in ()).throw(ValueError()))
     ok, _ = bs._session_allowed({"blocked_sessions": ["us_open"]})
     assert ok is True

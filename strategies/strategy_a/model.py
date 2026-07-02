@@ -8,8 +8,8 @@ Label definition (canonical):
   Reference price source (spot vs perp) is specified per-asset in config.
 
 Fee threshold derivation (see should_trade docstring):
-  The Kalshi taker fee formula is ceil(0.07·C·p·(1-p)) per contract.
-  At p=0.50 and C≈50 contracts on $25 stake ≈ $0.875 fee ≈ 3.5%.
+  The Kalshi taker fee formula is ceil(0.07*C*p*(1-p)) per contract.
+  At p=0.50 and C~50 contracts on $25 stake ~ $0.875 fee ~ 3.5%.
   fees.yaml stores a conservative flat-rate approximation (0.03) for threshold
   computation. The actual order-placement layer uses the exact formula in
   src/strategies/fees.py. Do not change this approximation without also updating
@@ -33,7 +33,7 @@ class StrategyAModel:
         self._feature_names: Optional[list[str]] = None
         self._fitted = False
 
-    # ── interface contract (locked — backtester and executor depend on these) ─
+    # ── interface contract (locked - backtester and executor depend on these) ─
 
     def predict_proba(self, features: dict) -> float:
         """Calibrated P(up at 15-min expiry) in [0, 1]. Returns 0.5 if unfitted."""
@@ -44,9 +44,9 @@ class StrategyAModel:
 
     def get_edge(self, p_model: float, p_market: float) -> float:
         """
-        Signed edge: p_model − p_market (both in [0, 1]).
-        Positive → YES has edge. Negative → NO has edge.
-        p_market = Kalshi YES price / 100 (i.e. 70c → 0.70).
+        Signed edge: p_model - p_market (both in [0, 1]).
+        Positive -> YES has edge. Negative -> NO has edge.
+        p_market = Kalshi YES price / 100 (i.e. 70c -> 0.70).
         """
         return p_model - p_market
 
@@ -65,7 +65,7 @@ class StrategyAModel:
           taker_fee_approx  = fees_config["kalshi"]["taker_fee_rate"]  (0.03 flat)
           safety_margin     = fees_config["safety_margin"]              (0.005)
           regime_extra      = config["thresholds"]["edge_above_fee"][regime]
-                              (null → 0.02 default when untuned)
+                              (null -> 0.02 default when untuned)
           min_edge = taker_fee_approx + safety_margin + regime_extra
           If btc_degraded: min_edge += config["thresholds"]["btc_degraded_penalty"]
         """
@@ -80,7 +80,7 @@ class StrategyAModel:
             min_edge += penalty
         return abs(self.get_edge(p_model, p_market)) > min_edge
 
-    # ── training ──────────────────────────────────────────────────────────────
+    # training
 
     def fit(self, X: np.ndarray, y: np.ndarray, feature_names: list[str]) -> None:
         """
@@ -127,7 +127,7 @@ class StrategyAModel:
         from sklearn.linear_model import LogisticRegression
         return LogisticRegression(max_iter=1000, C=1.0)
 
-    # ── helpers ───────────────────────────────────────────────────────────────
+    # helpers
 
     def _to_vec(self, features: dict) -> np.ndarray:
         if self._feature_names is None:

@@ -1,6 +1,6 @@
 # Money Printer - Kalshi Trading Bot
 
-Automated trading bot for Kalshi's 15-minute crypto up/down prediction markets. Trades BTC, ETH, SOL, XRP, and DOGE using two signal strategies (EMA momentum and contract velocity/OBI). Deployed on Railway.
+Automated trading bot for Kalshi's 15-minute crypto up/down prediction markets. Trades BTC, ETH, SOL, XRP, and DOGE with two fair-value strategies: S1 prices the alts off BTC's lead (cross-asset dislocation) and S2 prices each contract off the current spot (Bachelier fair value vs the market mid). Deployed on Railway.
 
 **Status: actively deployed. No rewrite in progress.**
 

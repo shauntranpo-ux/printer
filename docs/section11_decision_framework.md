@@ -29,7 +29,7 @@ An asset qualifies for live trading at $1/contract stake if ALL are true:
      refactor is to fix calibration. If the gap is still > 15pp, the
      calibration layer needs more data before going live.
 
-5. **No catastrophic single trade** (loss > 2× stake)
+5. **No catastrophic single trade** (loss > 2x stake)
    - Rationale: the EV calculator should never allow this. If it
      happens, there's a bug.
 
@@ -48,7 +48,7 @@ and do not proceed to go-live if:
 
 - Total 14-day paper PnL < -$100 on $5/trade sizing
 - Any single 24-hour period shows > $30 loss
-- Bot crashes/restarts more than 3× in 14 days
+- Bot crashes/restarts more than 3x in 14 days
 - Any evidence that paper mode accidentally placed a live order
   (check Kalshi account for unexpected orders daily)
 

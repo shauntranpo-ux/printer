@@ -16,7 +16,7 @@ def _reset_limit_state():
 
 
 async def test_zero_limit_never_triggers_even_on_big_loss(monkeypatch):
-    """daily_loss_limit_dollars=0 must NOT halt — a 0 cap would otherwise make
+    """daily_loss_limit_dollars=0 must NOT halt - a 0 cap would otherwise make
     abs(pnl) >= 0 always true and stop on the first cent of loss."""
     _reset_limit_state()
 

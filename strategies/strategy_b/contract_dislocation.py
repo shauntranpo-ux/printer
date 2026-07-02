@@ -8,7 +8,7 @@ Mechanism:
      delta-P(up) via probability_utils.drift_vol_to_prob, then convert to cents.
   2. Compute actual_move = contract_mid_now - contract_mid_N_seconds_ago.
   3. residual = actual_move - implied_move.
-  4. If |residual| > threshold → output a DislocationSignal to fade the move.
+  4. If |residual| > threshold -> output a DislocationSignal to fade the move.
 
 This module is completely independent from Strategy A: separate data, separate
 classes, no shared state. Strategy A's HAR-RS-J sigma-hat can be injected via
@@ -106,7 +106,7 @@ class ContractDislocationDetector:
         return t.tz_localize("UTC") if t.tzinfo is None else t.tz_convert("UTC")
 
     def _implied_dp(self, log_return: float, time_to_expiry_sec: float) -> float:
-        """ΔP(up) implied by the underlying log-return over the remaining horizon.
+        """deltaP(up) implied by the underlying log-return over the remaining horizon.
 
         Annualizes log_return over the lookback window (not TTE), then projects
         the forward probability using the remaining time-to-expiry.

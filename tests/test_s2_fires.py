@@ -78,7 +78,7 @@ class TestS2FvFires:
         ("DOGE", 0.150, 0.1512),
     ])
     def test_fires_yes_when_spot_above_and_ask_cheap(self, asset, strike, spot):
-        """Spot clearly above strike + a stale-cheap YES ask → trade YES."""
+        """Spot clearly above strike + a stale-cheap YES ask -> trade YES."""
         r = _run_s2(asset, spot, strike, yes_ask=40.0, no_ask=58.0)
         assert r["action"] == "trade", f"{asset} should trade: {r['reasoning']}"
         assert r["side"] == "yes"
@@ -87,7 +87,7 @@ class TestS2FvFires:
         assert r["signals"]["model_raw_p_yes"] >= 0.50
 
     def test_fires_no_when_spot_below_and_ask_cheap(self):
-        """Spot clearly below strike + a stale-cheap NO ask → trade NO."""
+        """Spot clearly below strike + a stale-cheap NO ask -> trade NO."""
         r = _run_s2("SOL", spot=149.3, strike=150.0, yes_ask=58.0, no_ask=40.0)
         assert r["action"] == "trade", f"S2 should trade NO: {r['reasoning']}"
         assert r["side"] == "no"
@@ -98,14 +98,14 @@ class TestS2FvSkips:
     """S2 must skip when the fair-value dislocation is absent or the book is bad."""
 
     def test_skips_low_z(self):
-        """Spot barely past strike → |z| below the conviction gate → skip."""
+        """Spot barely past strike -> |z| below the conviction gate -> skip."""
         r = _run_s2("SOL", spot=150.02, strike=150.0, yes_ask=40.0, no_ask=58.0)
         assert r["action"] == "skip"
         assert "s2_fv_lowz" in r["reasoning"]
 
     def test_skips_when_mid_already_fair(self):
-        """Spot above strike but the mid already prices it in → no edge → EV-gate skip."""
-        # Fair ~0.72 but the ask sits near fair (yes_ask 70) → market not stale → skip.
+        """Spot above strike but the mid already prices it in -> no edge -> EV-gate skip."""
+        # Fair ~0.72 but the ask sits near fair (yes_ask 70) -> market not stale -> skip.
         r = _run_s2("SOL", spot=150.7, strike=150.0, yes_ask=70.0, no_ask=31.0)
         assert r["action"] == "skip"
         assert "s2_ev_gate" in r["reasoning"] or "s2_fv_wide_spread" in r["reasoning"]

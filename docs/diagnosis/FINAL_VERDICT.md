@@ -12,10 +12,10 @@
 
 S1 (PRINTER_BRAIN) has produced zero live trades. Root cause: two gates in series.
 
-- **Vol gate** (`vol_ratio = rv × √mins_left / abs_pct ≥ 1.80`) fires first. For near-ATM markets
-  (dist_row 0, abs_pct < 0.1%) BTC vol_ratio is 6-7×, well above threshold. Gate passes - but
+- **Vol gate** (`vol_ratio = rv x sqrtmins_left / abs_pct >= 1.80`) fires first. For near-ATM markets
+  (dist_row 0, abs_pct < 0.1%) BTC vol_ratio is 6-7x, well above threshold. Gate passes - but
   those cells have median EV of -4.2% (negative after fee).
-- **EV gate** (`ev = bv3_win_prob - entry/100 - 0.07 ≥ min_ev_base_s1`) blocks the remainder.
+- **EV gate** (`ev = bv3_win_prob - entry/100 - 0.07 >= min_ev_base_s1`) blocks the remainder.
 
 Median S1 EV across all windows: **-4.2%**. Only 4.3% of windows clear the 8% EV gate.
 Correct conclusion: the gate is working as designed. S1 is silent because it has nothing to trade.
@@ -108,17 +108,17 @@ market with a liquid underlying, simple feature-set strategies (price distance +
 
 ### Step 3A - Gamma Zone Scan (NO EDGE - STRUCTURAL)
 
-Hypothesis: the deep ITM/OTM late-window zone (T=1-3 min, dist ≥ 1.0% from strike) might
+Hypothesis: the deep ITM/OTM late-window zone (T=1-3 min, dist >= 1.0% from strike) might
 show edge by selling residual volatility at expiry - betting a 1%+ gap won't reverse.
 
-Results across 35 cells with n ≥ 100 (BTC/ETH/SOL/XRP, 2024-01-01 to 2026-04-09):
+Results across 35 cells with n >= 100 (BTC/ETH/SOL/XRP, 2024-01-01 to 2026-04-09):
 
 - **Empirical win rates: 99.7-100%**. The continuation signal is near-certain in this zone.
 - **Entry price proxy (BV3): caps at 99c** - BV3 predicts 1.000 for all extreme cells.
 - **EV: exactly $0.00 or negative for every cell.** The structural constraint:
-  - At 99c entry: profit-if-win = $0.01. Kalshi taker fee = `ceil(0.07 × 0.99 × 0.01)` = **$0.01**.
+  - At 99c entry: profit-if-win = $0.01. Kalshi taker fee = `ceil(0.07 x 0.99 x 0.01)` = **$0.01**.
   - Net profit-if-win = **$0.00**. EV = $0.00 at 100% win rate; negative below.
-- **Zero preliminary survivors** (n ≥ 100, gap ≤ 10pp, EV > 0, Sharpe > 0).
+- **Zero preliminary survivors** (n >= 100, gap <= 10pp, EV > 0, Sharpe > 0).
 - **Fill risk:** Hourly Kalshi ladder data shows `yes_ask = 1.00` for deep-ITM strikes. No
   15-minute orderbook depth data exists; all gamma zone cells flagged FILL_RISK.
 
@@ -135,7 +135,7 @@ the $0.01 maximum profit at 99c entry. No amount of additional data changes this
 | Zone tested | T range | Dist range | Result |
 |-------------|---------|------------|--------|
 | Directional (Steps 2D-2H) | 9-13 min | 0.3-0.5% | Regime-luck artifact only |
-| Gamma (Step 3A) | 1-3 min | ≥1.0% | Fee structure prevents profit |
+| Gamma (Step 3A) | 1-3 min | >=1.0% | Fee structure prevents profit |
 | Near-ATM (Step 2A) | all | <0.1% | Median EV -4.2% |
 
 The project formally moves to `docs/diagnosis/NEXT_DIRECTIONS.md`.

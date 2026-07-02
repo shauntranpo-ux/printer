@@ -4,7 +4,7 @@
 
 **Goal:** Implement Strategy A (calibrated probability model) and Strategy B (contract mean-reversion detector) for Kalshi 15-minute crypto binary markets across BTC, ETH, SOL, XRP.
 
-**Architecture:** Eight model instances (4 assets × 2 strategies) with shared typed infrastructure. Strategy A concatenates five feature modules (HAR-RS-J vol, order flow, time-of-day regimes, cross-asset BTC signals, funding/OI) into a calibrated logistic regression. Strategy B detects Kalshi contract dislocations from spot-implied fair value and fades them.
+**Architecture:** Eight model instances (4 assets x 2 strategies) with shared typed infrastructure. Strategy A concatenates five feature modules (HAR-RS-J vol, order flow, time-of-day regimes, cross-asset BTC signals, funding/OI) into a calibrated logistic regression. Strategy B detects Kalshi contract dislocations from spot-implied fair value and fades them.
 
 **Tech Stack:** Python 3.11, pandas, numpy, scikit-learn, scipy, pyyaml, pydantic-style dataclasses, xgboost/lightgbm (swap-in), pytest.
 
@@ -22,8 +22,8 @@ strategies/
       __init__.py
       har_rv.py                     # HARRSJForecaster: online + batch, sigma_forecast
       order_flow.py                 # OrderFlowFeatures: OFI, VAMP, VPIN, spread, flows
-      time_of_day.py                # compute(ts) → session/dow/cyclic/proximity features
-      cross_asset.py                # compute(dict) → BTC-derived features, graceful degrade
+      time_of_day.py                # compute(ts) -> session/dow/cyclic/proximity features
+      cross_asset.py                # compute(dict) -> BTC-derived features, graceful degrade
       funding.py                    # FundingFeatures: funding/OI z-scores + crowded flags
     config/
       btc.yaml
@@ -41,7 +41,7 @@ strategies/
   shared/
     __init__.py
     types.py                        # FeatureVector, Signal, DislocationSignal, JumpFlag
-    probability_utils.py            # drift_vol_to_prob, prob_to_contract_price, dp→dc
+    probability_utils.py            # drift_vol_to_prob, prob_to_contract_price, dp->dc
     regime_filters.py               # get_current_regime, get_regime_threshold, get_fee_adjusted_threshold
     fees.yaml
 tests/
@@ -114,7 +114,7 @@ class Signal:
     asset: str
     p_model: float        # calibrated P(up at 15-min expiry) in [0, 1]
     p_market: float       # Kalshi YES price in [0, 1] (not cents)
-    edge: float           # p_model - p_market; positive → buy YES
+    edge: float           # p_model - p_market; positive -> buy YES
     regime: str
     side: str             # "YES" or "NO"
     strategy: str = "strategy_a"
@@ -222,7 +222,7 @@ def drift_vol_to_prob(mu: float, sigma: float, dt: float) -> float:
         sigma: annualized log-volatility
         dt:    horizon in years (e.g. 15/(365*24*60) for 15 minutes)
 
-    Returns Φ((mu · dt) / (sigma · √dt)) per Black-Scholes probability.
+    Returns Φ((mu * dt) / (sigma * sqrtdt)) per Black-Scholes probability.
     Returns 0.5 when sigma or dt is non-positive (degenerate input guard).
     """
     if sigma <= 0.0 or dt <= 0.0:
@@ -242,7 +242,7 @@ def prob_to_contract_price(p: float) -> float:
 def contract_price_change_from_prob_change(dp: float) -> float:
     """
     Convert a change in probability (dimensionless) to a contract price change (cents).
-    The mapping is 1:1: dp=0.05 → 5 cents. Named for clarity at call sites.
+    The mapping is 1:1: dp=0.05 -> 5 cents. Named for clarity at call sites.
     """
     return dp * 100.0
 ```
@@ -305,11 +305,11 @@ def get_fee_adjusted_threshold(
     Derivation:
       taker_fee    = fees_config["kalshi"]["taker_fee_rate"]     (flat approx)
       safety_margin = fees_config["safety_margin"]
-      regime_extra  = per-regime edge from config (null → 0.02)
+      regime_extra  = per-regime edge from config (null -> 0.02)
       min_edge = taker_fee + safety_margin + regime_extra
 
     Note: fees.yaml stores a conservative flat-rate approximation (0.03).
-    The actual Kalshi taker fee is 0.07·C·p·(1-p), which peaks at ~3.5% at p=0.5.
+    The actual Kalshi taker fee is 0.07*C*p*(1-p), which peaks at ~3.5% at p=0.5.
     The execution layer uses the exact formula; this threshold uses the flat approx.
     """
     taker_fee = float(fees_config["kalshi"]["taker_fee_rate"])
@@ -444,17 +444,17 @@ from __future__ import annotations
 """
 HAR-RS-J volatility forecaster (Patton & Sheppard 2015) adapted for 15-minute horizons.
 
-Model: σ̂² = const
-         + β_rv+_15m·RV+_15m + β_rv-_15m·RV-_15m
-         + β_rv+_1h·RV+_1h   + β_rv-_1h·RV-_1h
-         + β_rv+_4h·RV+_4h   + β_rv-_4h·RV-_4h
-         + β_J·J_15m
+Model: σ² = const
+         + β_rv+_15m*RV+_15m + β_rv-_15m*RV-_15m
+         + β_rv+_1h*RV+_1h   + β_rv-_1h*RV-_1h
+         + β_rv+_4h*RV+_4h   + β_rv-_4h*RV-_4h
+         + β_J*J_15m
 
 Crypto asymmetry: RV+ and RV- have *separate* coefficients. In crypto, positive
 semivariance is a stronger predictor of future variance than negative semivariance
 (opposite of equities). The model never constrains β_rv+_15m == β_rv-_15m.
 
-Output: σ̂ (not σ̂²) in log-return space, suitable as a 15-minute vol forecast.
+Output: σ (not σ²) in log-return space, suitable as a 15-minute vol forecast.
 """
 import numpy as np
 from collections import deque
@@ -470,7 +470,7 @@ class HARRSJForecaster:
         self._buf: deque[float] = deque(maxlen=max_bars)
         self._coef: dict = config["har_rs_j"]["coefficients"]
 
-    # ── public interface ──────────────────────────────────────────────────────
+    # public interface
 
     def update(self, new_bar: dict) -> None:
         """Append one bar. Expects {'log_return': float}."""
@@ -485,7 +485,7 @@ class HARRSJForecaster:
 
     def compute(self, data_window=None) -> dict[str, float]:
         """
-        Compute all HAR-RS-J features plus σ̂ forecast.
+        Compute all HAR-RS-J features plus σ forecast.
         data_window: optional sequence of log-returns (float or dict with 'log_return')
                      appended before computation.
         """
@@ -508,7 +508,7 @@ class HARRSJForecaster:
         out["sigma_forecast"] = self._forecast(out)
         return out
 
-    # ── internals ─────────────────────────────────────────────────────────────
+    # internals
 
     @staticmethod
     def _rv_components(r: np.ndarray) -> dict[str, float]:
@@ -518,7 +518,7 @@ class HARRSJForecaster:
         rv      = float(sq.sum())
         rv_pos  = float(sq[r > 0].sum())
         rv_neg  = float(sq[r < 0].sum())
-        # BV = (π/2) · Σ|r_t|·|r_{t-1}| - scaled to match RV units
+        # BV = (π/2) * Σ|r_t|*|r_{t-1}| - scaled to match RV units
         bv = float((np.pi / 2) * (np.abs(r[1:]) * np.abs(r[:-1])).sum()) if r.size > 1 else rv
         jump         = max(rv - bv, 0.0)
         signed_jump  = rv_pos - rv_neg
@@ -528,7 +528,7 @@ class HARRSJForecaster:
     def _forecast(self, feats: dict[str, float]) -> float:
         c = self._coef
         if any(v is None for v in c.values()):
-            # Untrained model: proxy σ̂ ≈ √RV_15m (no-drift realized vol)
+            # Untrained model: proxy σ ~ sqrtRV_15m (no-drift realized vol)
             return float(np.sqrt(max(feats.get("15m_rv", 0.0), 0.0)))
         sigma_sq = (
             c["const"]
@@ -629,7 +629,7 @@ def test_signed_flow_direction():
     of = OrderFlowFeatures(_CFG)
     trade = {**_trade("buy"), "size": 10.0}
     result = of.compute({"book": _book(), "trades": [trade]})
-    # All-buy trades → positive signed flow
+    # All-buy trades -> positive signed flow
     assert result["signed_flow_1m"] > 0.0
     assert result["signed_flow_5m"] > 0.0
 
@@ -1302,8 +1302,8 @@ Label definition (canonical):
   Reference price source (spot vs perp) is specified per-asset in config.
 
 Fee threshold derivation (see should_trade docstring):
-  The Kalshi taker fee formula is ceil(0.07·C·p·(1-p)) per contract.
-  At p=0.50 and C≈50 contracts on $25 stake ≈ $0.875 fee ≈ 3.5%.
+  The Kalshi taker fee formula is ceil(0.07*C*p*(1-p)) per contract.
+  At p=0.50 and C~50 contracts on $25 stake ~ $0.875 fee ~ 3.5%.
   fees.yaml stores a conservative flat-rate approximation (0.03) for threshold
   computation. The actual order-placement layer uses the exact formula in
   src/strategies/fees.py. Do not change this approximation without also updating
@@ -1338,9 +1338,9 @@ class StrategyAModel:
 
     def get_edge(self, p_model: float, p_market: float) -> float:
         """
-        Signed edge: p_model − p_market (both in [0, 1]).
-        Positive → YES has edge. Negative → NO has edge.
-        p_market = Kalshi YES price / 100 (i.e. 70c → 0.70).
+        Signed edge: p_model - p_market (both in [0, 1]).
+        Positive -> YES has edge. Negative -> NO has edge.
+        p_market = Kalshi YES price / 100 (i.e. 70c -> 0.70).
         """
         return p_model - p_market
 
@@ -1359,7 +1359,7 @@ class StrategyAModel:
           taker_fee_approx  = fees_config["kalshi"]["taker_fee_rate"]  (0.03 flat)
           safety_margin     = fees_config["safety_margin"]              (0.005)
           regime_extra      = config["thresholds"]["edge_above_fee"][regime]
-                              (null → 0.02 default when untuned)
+                              (null -> 0.02 default when untuned)
           min_edge = taker_fee_approx + safety_margin + regime_extra
           If btc_degraded: min_edge += config["thresholds"]["btc_degraded_penalty"]
         """
@@ -1374,7 +1374,7 @@ class StrategyAModel:
             min_edge += penalty
         return abs(self.get_edge(p_model, p_market)) > min_edge
 
-    # ── training ──────────────────────────────────────────────────────────────
+    # training
 
     def fit(self, X: np.ndarray, y: np.ndarray, feature_names: list[str]) -> None:
         """
@@ -1404,7 +1404,7 @@ class StrategyAModel:
         from sklearn.linear_model import LogisticRegression
         return LogisticRegression(max_iter=1000, C=1.0)
 
-    # ── helpers ───────────────────────────────────────────────────────────────
+    # helpers
 
     def _to_vec(self, features: dict) -> np.ndarray:
         if self._feature_names is None:
@@ -1759,7 +1759,7 @@ def test_signal_on_large_residual():
     ticks  = [_tick(old, 60, 62), _tick(now, 65, 67)]
     prices = [_price(old, 50000), _price(now, 50010)]
     result = d.detect_dislocation(ticks, prices)
-    # actual_move=5, implied_move≈small → residual > threshold(2)
+    # actual_move=5, implied_move~small -> residual > threshold(2)
     assert result is not None
 
 
@@ -1794,7 +1794,7 @@ def test_fade_up_yields_no_side():
     d.update_vol(0.80)
     now = pd.Timestamp.utcnow()
     old = now - pd.Timedelta(seconds=40)
-    # Contract moved UP more than implied → fade by buying NO
+    # Contract moved UP more than implied -> fade by buying NO
     ticks  = [_tick(old, 60, 62), _tick(now, 65, 67)]
     prices = [_price(old, 50000), _price(now, 50010)]
     sig = d.detect_dislocation(ticks, prices)
@@ -1808,7 +1808,7 @@ def test_fade_down_yields_yes_side():
     d.update_vol(0.80)
     now = pd.Timestamp.utcnow()
     old = now - pd.Timedelta(seconds=40)
-    # Contract dropped more than implied → buy YES (it will revert up)
+    # Contract dropped more than implied -> buy YES (it will revert up)
     ticks  = [_tick(old, 60, 62), _tick(now, 55, 57)]
     prices = [_price(old, 50000), _price(now, 49990)]
     sig = d.detect_dislocation(ticks, prices)
@@ -1829,12 +1829,12 @@ Mechanism:
   1. Compute implied_move = f(underlying_return, time_to_expiry, current_price)
      using Brownian-with-drift: translate the underlying log-return into a
      ΔP(up) via probability_utils.drift_vol_to_prob, then convert to cents.
-  2. Compute actual_move = contract_mid_now − contract_mid_N_seconds_ago.
-  3. residual = actual_move − implied_move.
-  4. If |residual| > threshold → output a DislocationSignal to fade the move.
+  2. Compute actual_move = contract_mid_now - contract_mid_N_seconds_ago.
+  3. residual = actual_move - implied_move.
+  4. If |residual| > threshold -> output a DislocationSignal to fade the move.
 
 This module is completely independent from Strategy A: separate data, separate
-classes, no shared state. Strategy A's HAR-RS-J σ̂ can be injected via
+classes, no shared state. Strategy A's HAR-RS-J σ can be injected via
 update_vol() as a vol estimate, but the dislocation logic does not depend on it
 (falls back to self._recent_sigma if not injected).
 """
@@ -1861,11 +1861,11 @@ class ContractDislocationDetector:
         self._recent_sigma: float = 0.001  # annualized vol; overridden by update_vol()
 
     def update_vol(self, sigma_forecast: float) -> None:
-        """Inject annualized σ̂ from Strategy A's HAR-RS-J module."""
+        """Inject annualized σ from Strategy A's HAR-RS-J module."""
         if sigma_forecast > 0:
             self._recent_sigma = sigma_forecast
 
-    # ── interface contract ─────────────────────────────────────────────────────
+    # interface contract
 
     def detect_dislocation(
         self,
@@ -1913,7 +1913,7 @@ class ContractDislocationDetector:
             staleness_timestamp=now_ts + pd.Timedelta(seconds=self._staleness_sec),
         )
 
-    # ── internals ─────────────────────────────────────────────────────────────
+    # internals
 
     @staticmethod
     def _mid(tick: dict) -> float:
@@ -1962,7 +1962,7 @@ asset:
 
 dislocation:
   lookback_seconds: 30
-  residual_threshold: null     # tuned per asset; null → 2.0 runtime default
+  residual_threshold: null     # tuned per asset; null -> 2.0 runtime default
   signal_staleness_seconds: 60
 
 implied_move:
@@ -2045,14 +2045,14 @@ Two-strategy architecture for Kalshi 15-minute crypto binary markets (BTC, ETH, 
 Five feature modules (HAR-RS-J volatility, order flow, time-of-day regimes, cross-asset
 BTC signals, funding/OI z-scores) are concatenated and passed to a calibrated logistic
 regression that outputs P_model(up at 15-min expiry). A trade is placed when
-|P_model − P_market| exceeds a fee-adjusted, regime-aware edge threshold.
+|P_model - P_market| exceeds a fee-adjusted, regime-aware edge threshold.
 
 **Strategy B** - Contract dislocation detector.
 Detects when the Kalshi YES price moves more or less than the underlying spot price
 implies (via a Brownian-with-drift implied probability translation). Fades the residual
 back toward fair value with a confidence-scaled signal.
 
-Eight model instances: 4 assets × 2 strategies. Same architecture per strategy;
+Eight model instances: 4 assets x 2 strategies. Same architecture per strategy;
 separately fitted parameters per asset. No pooling of training data across assets.
 
 ## Data Assumptions
@@ -2104,13 +2104,13 @@ def detect_dislocation(contract_stream, underlying_stream) -> Optional[Dislocati
 ```
 
 **p_market convention**: always pass as a fraction in [0, 1], not cents.
-A Kalshi YES ask of 70c → p_market = 0.70.
+A Kalshi YES ask of 70c -> p_market = 0.70.
 
 ## Fee Notes
 
 `shared/fees.yaml` stores a conservative flat-rate approximation (3%) used only for
 pre-trade edge threshold checks. The actual Kalshi taker fee is
-`ceil(0.07 × C × p × (1−p))` per contract (peaks at ~3.5% at p=0.50).
+`ceil(0.07 x C x p x (1-p))` per contract (peaks at ~3.5% at p=0.50).
 The execution layer in `src/strategies/fees.py` uses the exact formula for EV
 computation - do not bypass it.
 
@@ -2144,18 +2144,18 @@ git commit -m "feat: add strategies/README with architecture, data assumptions, 
 
 | Spec requirement | Task |
 |---|---|
-| HAR-RS-J with RV+/RV− separate coefficients, 3 timescales | Task 3 |
+| HAR-RS-J with RV+/RV- separate coefficients, 3 timescales | Task 3 |
 | Online `update()` + batch `fit()` | Task 3 |
 | OFI at depths 1/3/5/10, VAMP, signed flow 1/5/15m, VPIN, spread, depth | Task 4 |
 | Time-of-day: 6 sessions, weekend, DOW, cyclical, proximity, monday_asia_open | Task 5 |
 | Cross-asset BTC features, graceful degradation sentinel | Task 6 |
 | Funding z-scores, crowded long/short flags | Task 7 |
 | `predict_proba`, `get_edge`, `should_trade` with fee-aware threshold | Task 8 |
-| Strategy A configs × 4 assets with cross_asset.enabled=false for BTC | Task 9 |
+| Strategy A configs x 4 assets with cross_asset.enabled=false for BTC | Task 9 |
 | `detect_dislocation` returning `DislocationSignal` | Task 10 |
-| Strategy B configs × 4 assets | Task 11 |
+| Strategy B configs x 4 assets | Task 11 |
 | `shared/types.py`: FeatureVector, Signal, DislocationSignal, JumpFlag | Task 1 |
-| `shared/probability_utils.py`: drift_vol_to_prob, prob_to_contract_price, dp→dc | Task 2 |
+| `shared/probability_utils.py`: drift_vol_to_prob, prob_to_contract_price, dp->dc | Task 2 |
 | `shared/regime_filters.py`: 3 functions | Task 2 |
 | `shared/fees.yaml` | Task 2 |
 | Tests: smoke + type-and-range + shape per module | Tasks 3-10 |
@@ -2167,7 +2167,7 @@ git commit -m "feat: add strategies/README with architecture, data assumptions, 
 **Placeholder scan:** No TBD, TODO, or "implement later" patterns. All `null` values in configs are documented placeholders for training output.
 
 **Type consistency:**
-- `DislocationSignal` defined in Task 1, imported in Task 10 tests - ✓
-- `_SENTINEL` keys in `cross_asset.py` match test assertions - ✓
-- `should_trade` signature in model.py matches test calls - ✓
-- `compute(data_window) -> dict[str, float]` present on all feature modules - ✓
+- `DislocationSignal` defined in Task 1, imported in Task 10 tests - 
+- `_SENTINEL` keys in `cross_asset.py` match test assertions - 
+- `should_trade` signature in model.py matches test calls - 
+- `compute(data_window) -> dict[str, float]` present on all feature modules - 

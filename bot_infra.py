@@ -120,14 +120,13 @@ def _init_config() -> None:
         "min_ev_base": 8,
         "kalshi_fee_per_contract_cents": 7,
         "preflight_override": False,
+        "quiet_hours_enabled": True,
         # Edge-measurement instrumentation (decision_log / maker_log / settlement basis).
         # Default on; set false to disable all measurement if it ever pressures rate limits.
         "measurement_enabled": True,
         # Manual time-of-day / day-of-week filter (bot_strategy._session_allowed). Default off
         # = no behavior change. Turn specific ET sessions off once the Edge dashboard shows they
         # lose. Valid sessions: us_open, us_midday, us_close, us_evening, overnight (see sessions.py).
-        # session_filter_enabled is reserved for a future data-driven auto-gate (not yet wired).
-        "session_filter_enabled": False,
         "blocked_sessions": [],
         "block_weekends": False,
         # Model self-calibration (scripts/calibration.py, fitted from decision_log every

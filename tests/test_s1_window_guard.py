@@ -57,7 +57,7 @@ def test_window_guard_allows_sol_when_eth_fired_long_ago():
     eth_fired_400s_ago = time.time() - 400
     result = _run_s1_for_asset("SOL", 60.0, {"ETH": [eth_fired_400s_ago]})
     assert "s1_window_guard" not in result.get("reasoning", ""), (
-        f"ETH fired 400s ago — SOL must not be blocked: {result.get('reasoning')}"
+        f"ETH fired 400s ago - SOL must not be blocked: {result.get('reasoning')}"
     )
 
 
@@ -97,7 +97,7 @@ def test_window_guard_allows_when_no_recent_trades():
 
 
 def test_window_guard_btc_fill_does_not_block_sol():
-    """BTC filling S1 must not block SOL — BTC is excluded as both blocker and blocked."""
+    """BTC filling S1 must not block SOL - BTC is excluded as both blocker and blocked."""
     btc_fired_30s_ago = time.time() - 30
     result = _run_s1_for_asset("SOL", 60.0, {"BTC": [btc_fired_30s_ago]})
     assert "s1_window_guard" not in result.get("reasoning", ""), (

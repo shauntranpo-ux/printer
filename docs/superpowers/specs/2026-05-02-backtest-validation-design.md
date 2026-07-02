@@ -45,7 +45,7 @@ Historical 1m bars + Kalshi snapshots
                ▼
 ┌─────────────────────────────────────┐
 │ Layer 4: Permutation Test           │
-│   Shuffle trade outcomes 10,000×    │
+│   Shuffle trade outcomes 10,000x    │
 │   Full shuffle + 10-trade block     │
 │   p-value against null              │
 └──────────────┬──────────────────────┘
@@ -53,7 +53,7 @@ Historical 1m bars + Kalshi snapshots
                ▼
 ┌─────────────────────────────────────┐
 │ Layer 5: Regime Robustness          │
-│   3 vol terciles × 3 VR regimes     │
+│   3 vol terciles x 3 VR regimes     │
 │   Session slice (Asia/London/US)    │
 │   Minimum 30 trades per cell        │
 └──────────────┬──────────────────────┘
@@ -101,11 +101,11 @@ Labels built from historical 1m bars. Strike extracted from Kalshi ticker.
 |--------|---------|----------------|
 | IC | Spearman(predicted_p_yes, outcome) | > 0.03 |
 | ICIR | mean(IC) / std(IC) over 30-bar rolling windows | > 0.30 |
-| IC t-stat | IC × √N | > 2.0 |
+| IC t-stat | IC x sqrtN | > 2.0 |
 
 **Note on binary IC ranges:** Because Kalshi outcomes are binary (not continuous returns), IC values are naturally smaller than in equity factor research. IC = 0.03 is meaningful here. Do not apply the continuous-market standard of 0.05.
 
-**IC decay curve:** Compute IC at lags +1, +2, +4, +8 candles (15, 30, 60, 120 min ahead). A genuine predictive signal decays slowly. A noise signal hits IC ≈ 0 at lag +2.
+**IC decay curve:** Compute IC at lags +1, +2, +4, +8 candles (15, 30, 60, 120 min ahead). A genuine predictive signal decays slowly. A noise signal hits IC ~ 0 at lag +2.
 
 ### Implementation
 New file: `backtesting/research/signal_extractor.py`
@@ -115,7 +115,7 @@ New file: `backtesting/research/signal_extractor.py`
 ### Gate criterion
 - **PASS:** IC t-stat > 2.0 AND ICIR > 0.30
 - **CONDITIONAL:** t-stat > 1.5 OR ICIR > 0.20
-- **FAIL:** t-stat ≤ 1.5
+- **FAIL:** t-stat <= 1.5
 
 If 3+ sub-signals fail: flag ensemble as unreliable. Later layers should be interpreted with caution.
 
@@ -157,21 +157,21 @@ Keep all filters (EV gate, vol gate, entry range, fill model) identical. Randomi
 
 ### Gate criterion
 ```
-p-value = fraction of null iterations where null_sharpe ≥ real_sharpe
+p-value = fraction of null iterations where null_sharpe >= real_sharpe
 
-p < 0.05  → PASS
-p < 0.10  → CONDITIONAL
-p ≥ 0.10  → FAIL
+p < 0.05  -> PASS
+p < 0.10  -> CONDITIONAL
+p >= 0.10  -> FAIL
 ```
 
 ### Example output
 ```
 BTC  Real Sharpe: 1.43
-     Null 95th%:  0.61    p-value: 0.009   → PASS
+     Null 95th%:  0.61    p-value: 0.009   -> PASS
 ETH  Real Sharpe: 1.21
-     Null 95th%:  1.09    p-value: 0.042   → PASS (marginal)
+     Null 95th%:  1.09    p-value: 0.042   -> PASS (marginal)
 SOL  Real Sharpe: 0.88
-     Null 95th%:  0.84    p-value: 0.12    → FAIL
+     Null 95th%:  0.84    p-value: 0.12    -> FAIL
 ```
 
 ---
@@ -206,14 +206,14 @@ Requires running multiple strategy variants (minimum 5 EV threshold configs) thr
 How many years of data are needed to reject H0 (SR = 0) at α = 0.05?
 
 ```
-MinBTL ≈ (Z_α / SR)² years    where Z_0.05 = 1.645
+MinBTL ~ (Z_α / SR)² years    where Z_0.05 = 1.645
 
-SR = 1.0  →  MinBTL ≈ 2.7 years
-SR = 1.5  →  MinBTL ≈ 1.2 years
-SR = 2.0  →  MinBTL ≈ 0.7 years
+SR = 1.0  ->  MinBTL ~ 2.7 years
+SR = 1.5  ->  MinBTL ~ 1.2 years
+SR = 2.0  ->  MinBTL ~ 0.7 years
 ```
 
-**Pass threshold:** MinBTL ≤ years of data used in backtest
+**Pass threshold:** MinBTL <= years of data used in backtest
 
 ### Example output
 ```
@@ -249,31 +249,31 @@ Block shuffle is more conservative. Use block shuffle p-value as the primary res
 Significance at p < 0.05 requires sufficient trades. Minimum depends on win rate:
 
 ```
-Win rate 55% → ~500 trades minimum
-Win rate 60% → ~100 trades
-Win rate 65% → ~50 trades
+Win rate 55% -> ~500 trades minimum
+Win rate 60% -> ~100 trades
+Win rate 65% -> ~50 trades
 ```
 
 If trade count is below the minimum for the observed win rate, report `INSUFFICIENT_DATA` rather than FAIL.
 
 ### Gate criterion
 ```
-p < 0.05  → PASS
-p < 0.10  → CONDITIONAL
-p ≥ 0.10  → FAIL or INSUFFICIENT_DATA
+p < 0.05  -> PASS
+p < 0.10  -> CONDITIONAL
+p >= 0.10  -> FAIL or INSUFFICIENT_DATA
 ```
 
 One-tailed test (we only care if Sharpe > null).
 
 ### Example output
 ```
-BTC  Trades: 312   Win rate: 59%   Min needed: ~120   ✓
+BTC  Trades: 312   Win rate: 59%   Min needed: ~120   
      Real Sharpe: 1.43
      Null median: 0.03   Null 95th%: 0.48
-     p-value (block): 0.004   → PASS
+     p-value (block): 0.004   -> PASS
 
-DOGE Trades: 23    Win rate: 57%   Min needed: ~300   ✗
-     → INSUFFICIENT_DATA (need ~277 more trades)
+DOGE Trades: 23    Win rate: 57%   Min needed: ~300   
+     -> INSUFFICIENT_DATA (need ~277 more trades)
 ```
 
 ---
@@ -285,21 +285,21 @@ Determine whether the edge holds across different market conditions or is concen
 
 ### Regime Axis 1 - Volatility (BTC reference)
 ```
-Low vol   → bottom tercile of 30-day BTC realized vol
-Mid vol   → middle tercile
-High vol  → top tercile
+Low vol   -> bottom tercile of 30-day BTC realized vol
+Mid vol   -> middle tercile
+High vol  -> top tercile
 ```
 
 ### Regime Axis 2 - Trend vs. Mean-Reversion (Variance Ratio Test)
 Uses Lo-MacKinlay (1988) variance ratio test on a 60-bar rolling window. Chosen over Hurst exponent because it is reliable at short window lengths (30-60 bars) whereas Hurst requires 100+ observations for stability.
 
 ```
-VR < 0.90  → mean-reverting (price oscillates around strike)
-0.90-1.10  → random walk
-VR > 1.10  → trending (price moves persistently)
+VR < 0.90  -> mean-reverting (price oscillates around strike)
+0.90-1.10  -> random walk
+VR > 1.10  -> trending (price moves persistently)
 ```
 
-### Crossed grid: 3 vol × 3 VR = 9 cells per asset
+### Crossed grid: 3 vol x 3 VR = 9 cells per asset
 Minimum 30 trades per cell for Sharpe to be reported. Cells below 30 trades reported as `LOW_DATA`.
 
 ### Session slice
@@ -312,9 +312,9 @@ US session:      09:00-20:00 ET
 
 ### Gate criterion
 ```
-PASS        → Sharpe > 0 in ≥ 6/9 cells, no cell < −1.0
-CONDITIONAL → Sharpe > 0 in 4-5 cells; report which regimes to avoid
-FAIL        → Sharpe positive in ≤ 3 cells (regime-dependent, fragile)
+PASS        -> Sharpe > 0 in >= 6/9 cells, no cell < -1.0
+CONDITIONAL -> Sharpe > 0 in 4-5 cells; report which regimes to avoid
+FAIL        -> Sharpe positive in <= 3 cells (regime-dependent, fragile)
 ```
 
 ### Example output

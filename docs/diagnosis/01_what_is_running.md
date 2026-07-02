@@ -17,20 +17,20 @@
 
 ```
 runner.py
-  └── _start_bot() → subprocess: python bot.py  (one instance, config "btc15m")
+  └── _start_bot() -> subprocess: python bot.py  (one instance, config "btc15m")
         └── bot.py:main()  [bot.py:48]
               └── await main_loop()  [bot.py:139, imported from bot_loops.py:33]
                     └── bot_loops.py:main_loop()  [bot_loops.py:860]
-                          └── per-asset loop → evaluate_market_and_maybe_trade()  [bot_loops.py:~185]
+                          └── per-asset loop -> evaluate_market_and_maybe_trade()  [bot_loops.py:~185]
                                 ├── strategy_brain_s2(...)  called at bot_loops.py:209
                                 │     labeled "Printer Brain - primary decision engine"
-                                │     → dispatches to FifteenMinStrategy (src/strategies/)
-                                │     → writes strategy_variant = "strategy2"
+                                │     -> dispatches to FifteenMinStrategy (src/strategies/)
+                                │     -> writes strategy_variant = "strategy2"
                                 │
                                 └── strategy_brain_s1(...)  called at bot_loops.py:217
                                       labeled "printer_brain v3" in docstring
-                                      → BV3 empirical table + momentum + velocity + market anchor
-                                      → writes strategy_variant = "strategy1"
+                                      -> BV3 empirical table + momentum + velocity + market anchor
+                                      -> writes strategy_variant = "strategy1"
 ```
 
 **Exact call sites:**
@@ -80,7 +80,7 @@ do_trade = brain["action"] == "trade"      # S2 result drives the main execution
 | STRATEGY_B (contract dislocation) | `ContractDislocationDetector` | N/A - not wired | BACKTESTING ONLY |
 
 **S1 is silent.** DB query confirms: all 90 trades have `strategy_variant = 'strategy2'`.  
-S1's EV gate (`min_ev_base_s1` per asset: BTC=8%, ETH=12%, SOL=5%, XRP=8%) combined with the vol gate (`vol_ratio >= 1.80`) is suppressing every trade. Either the BV3 table rarely generates `ev ≥ min_ev_base_s1` in current market conditions, or vol gate fires first.
+S1's EV gate (`min_ev_base_s1` per asset: BTC=8%, ETH=12%, SOL=5%, XRP=8%) combined with the vol gate (`vol_ratio >= 1.80`) is suppressing every trade. Either the BV3 table rarely generates `ev >= min_ev_base_s1` in current market conditions, or vol gate fires first.
 
 ---
 

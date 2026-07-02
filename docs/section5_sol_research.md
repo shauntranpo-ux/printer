@@ -31,7 +31,7 @@ top-10 assets.
 
 **Implementation:** A small always-on continuation nudge (`MOMENTUM_BIAS =
 0.02`) stacked on top of the variance-ratio regime detector. If above
-strike → +2pp; if below strike → -2pp. This is independent of BV3 tables
+strike -> +2pp; if below strike -> -2pp. This is independent of BV3 tables
 and derived purely from published microstructure research.
 
 ---
@@ -65,7 +65,7 @@ often partially reverse as market makers absorb residual directional flow.
 
 **Implementation:** `exhaustion_fade_adjustment()` activates only when
 `seconds_left < 120` AND `|1-min return| / realized_vol > 2`. Magnitude is
-small (±3pp), direction is opposite to the extreme move.
+small (+/-3pp), direction is opposite to the extreme move.
 
 ---
 

@@ -48,13 +48,13 @@ def _spawn_price_feed(feed_assets: list) -> None:
     swallow an unhandled exception and let the feed die silently; the done
     callback logs it and respawns, bounded to _FEED_RESTART_MAX per minute.
     """
-    task = asyncio.get_event_loop().create_task(coinbase_price_task(feed_assets))
+    task = asyncio.get_running_loop().create_task(coinbase_price_task(feed_assets))
 
     def _on_done(t):
         if t.cancelled():
             return
         exc = t.exception()
-        now = asyncio.get_event_loop().time()
+        now = asyncio.get_running_loop().time()
         _feed_restart_times[:] = [x for x in _feed_restart_times if now - x < _FEED_RESTART_WINDOW]
         if len(_feed_restart_times) >= _FEED_RESTART_MAX:
             log.critical("Price feed crashed (%s) and restart budget exhausted; feed is DOWN", exc)

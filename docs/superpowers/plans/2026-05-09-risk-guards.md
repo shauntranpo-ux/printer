@@ -280,7 +280,7 @@ Replace with:
         max_cl = config.get("max_consecutive_losses", 5)
         if bot_state._s1_consecutive_losses >= max_cl:
             await send_telegram(
-                f"<b>🔵 [S1] {bot_state._s1_consecutive_losses} consecutive losses</b>"
+                f"<b> [S1] {bot_state._s1_consecutive_losses} consecutive losses</b>"
             )
 ```
 

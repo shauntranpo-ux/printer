@@ -4,7 +4,7 @@
 
 **Goal:** Run S1 (EMA momentum) and S2 (velocity+OBI) as fully isolated competing strategies in paper mode - each tags DB rows with `brain='s1'`/`'s2'`, tracks separate P&L, and receives a nightly Telegram scorecard. Also fixes 3 S2 strategy bugs.
 
-**Architecture:** Add `brain TEXT` column to `trades` table; tag all S1/S2 DB writes at insert time; rename shared `_order_attempted_tickers` → `_s2_attempted_tickers`; make S1 callable in S2's LOCKED phase for BTC and alt assets; add async scorecard query + midnight Telegram send.
+**Architecture:** Add `brain TEXT` column to `trades` table; tag all S1/S2 DB writes at insert time; rename shared `_order_attempted_tickers` -> `_s2_attempted_tickers`; make S1 callable in S2's LOCKED phase for BTC and alt assets; add async scorecard query + midnight Telegram send.
 
 **Tech Stack:** Python asyncio, aiosqlite, Telegram Bot API, existing bot_state / bot_loops / bot_risk / bot_infra modules.
 
@@ -16,7 +16,7 @@
 |---|---|
 | `bot_infra.py` | `init_db` migration adds `brain` column; `db_write_trade` includes `brain`; add `db_brain_scorecard()` |
 | `bot_state.py` | Add `_s2_attempted_tickers: set`; remove `_order_attempted_tickers`; update `__all__` |
-| `bot_loops.py` | Rename `_order_attempted_tickers` → `_s2_attempted_tickers` (3 sites); add `"brain": "s2"` to S2 trade_data; add S1 LOCKED-phase entry for BTC + alt; add `_send_brain_scorecard()` |
+| `bot_loops.py` | Rename `_order_attempted_tickers` -> `_s2_attempted_tickers` (3 sites); add `"brain": "s2"` to S2 trade_data; add S1 LOCKED-phase entry for BTC + alt; add `_send_brain_scorecard()` |
 | `bot_strategy.py` | Fix 3 S2 bugs: remove win_prob inflation, fix hardcoded fee, fix per-asset price cap; add `get_asset_config` import |
 | `bot_risk.py` | Add `"brain": "s1"` to S1 trade_data in `_execute_s1_trade` |
 | `tests/test_dual_brain.py` | 7 new tests |
@@ -241,7 +241,7 @@ bot_state._order_attempted_tickers.discard(prev_ticker)
 bot_state._s2_attempted_tickers.discard(prev_ticker)
 ```
 
-Line ~1055 (BTC DONE→READY re-entry check):
+Line ~1055 (BTC DONE->READY re-entry check):
 ```python
 # Before
 if secs_left > 3 * 60 and ticker not in bot_state._order_attempted_tickers:
@@ -297,7 +297,7 @@ def test_s2_winprob_no_inflation():
     original = bs._S2_WIN_RATE.get("BTC")
     bs._S2_WIN_RATE["BTC"] = {(0, 0): 0.8000}
     try:
-        # vel_delta ratio < 2.0 → vel_idx=0; mins_left < 5.0 → time_idx=0
+        # vel_delta ratio < 2.0 -> vel_idx=0; mins_left < 5.0 -> time_idx=0
         result = bs._s2_lookup_win_rate("BTC", vel_delta=0.85, mins_left=3.0)
         assert abs(result - 0.8000) < 1e-9, \
             f"Expected 0.8000 (no inflation), got {result}"
@@ -324,7 +324,7 @@ def test_s2_fee_reads_from_config():
             asset="BTC",
         )
     # With fee=0 and win_prob=0.80 and entry=0.60, ev = 0.80 - 0.60 = 0.20 > 0
-    # If fee were hardcoded 0.07: ev = 0.80 - 0.60 - 0.07*0.6*0.4 ≈ 0.183
+    # If fee were hardcoded 0.07: ev = 0.80 - 0.60 - 0.07*0.6*0.4 ~ 0.183
     # Both would still pass min_ev, but what matters is the trade fires.
     assert result.get("action") == "trade", \
         f"Expected trade with zero fee, got: {result.get('reasoning')}"
@@ -549,7 +549,7 @@ git commit -m "feat: tag all S1/S2 DB trade rows with brain column"
 
 Find the BTC LOCKED block (around line 1036):
 ```python
-# ── LOCKED ─────────────────────────────────────────────────────────────────
+# LOCKED
 if bot_state.current_phase == "LOCKED":
     try:
         await handle_locked_phase(
@@ -564,7 +564,7 @@ if bot_state.current_phase == "LOCKED":
 Add S1 entry attempt after `handle_locked_phase` and before `await write_state_file(...)`:
 
 ```python
-# ── LOCKED ─────────────────────────────────────────────────────────────────
+# LOCKED
 if bot_state.current_phase == "LOCKED":
     try:
         await handle_locked_phase(
@@ -864,7 +864,7 @@ _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 
 def _format_scorecard_message(data: dict) -> str:
     """Format brain scorecard dict into a Telegram-ready string."""
-    lines = ["📊 <b>Brain Scorecard</b>"]
+    lines = [" <b>Brain Scorecard</b>"]
 
     for brain_key, label in (("s1", "S1 (EMA momentum)"), ("s2", "S2 (vel+OBI)")):
         lines.append(f"\n<b>{label}</b>")
@@ -906,9 +906,9 @@ def _format_scorecard_message(data: dict) -> str:
     s1_daily = sum(r["pnl"] for r in data["daily"].get("s1", {}).values())
     s2_daily = sum(r["pnl"] for r in data["daily"].get("s2", {}).values())
     if s1_daily > s2_daily:
-        lines.append("Today's winner: <b>S1 🏆</b>")
+        lines.append("Today's winner: <b>S1 </b>")
     elif s2_daily > s1_daily:
-        lines.append("Today's winner: <b>S2 🏆</b>")
+        lines.append("Today's winner: <b>S2 </b>")
 
     return "\n".join(lines)
 

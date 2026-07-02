@@ -1,4 +1,4 @@
-# Printr · Trading Desk - Handoff Brief
+# Printr * Trading Desk - Handoff Brief
 
 ## What this is
 
@@ -25,12 +25,12 @@ Full per-asset breakdown. Clicking an asset tab renders:
 2. **Session tabs** - BTC and ETH have two strategies (15-Minute + Hourly). SOL/XRP/DOGE have only 15-Minute.
 3. **6-stat grid** - Strike (with expiry time), Distance from strike (%), EV (vs floor), Win Prob, Vol Gate (vs threshold), Position (qty + entry price).
 4. **Order Book Depth + Ladder** - cumulative bid/ask area chart. Ladder shows top 5 bids and asks with size bars.
-5. **Confidence Gauge** - semicircle 0-100 score. Color: red < 50, amber 50-70, blue ≥ 70. Q-bar tier indicator below.
+5. **Confidence Gauge** - semicircle 0-100 score. Color: red < 50, amber 50-70, blue >= 70. Q-bar tier indicator below.
 6. **Win Heatmap** - 60-cell strip of last 60 15m windows, colored by outcome.
 7. **Recent Trades** - last 8 trades for this asset (Time, Dir, Qty, Entry, Exit, EV, Fill, Reason, P&L).
 8. **Activity Log** - per-asset event feed (entries, exits, signals, skips).
 9. **Performance meters** - Win Rate, Avg EV, Best Win, Worst DD.
-10. **Strategy Signals** - 6 rows: EV ≥ floor, Vol gate, Win prob, Confidence, Strike distance, Price validation.
+10. **Strategy Signals** - 6 rows: EV >= floor, Vol gate, Win prob, Confidence, Strike distance, Price validation.
 11. **Quick Actions** - View full backtest / Pause {sym} only / Reset {sym} P&L.
 
 ### Trades
@@ -52,7 +52,7 @@ Every asset is in one of five phases at any given moment:
 | `DONE` | Window resolved. Awaiting the next 15-minute window. |
 | `OFFLINE` | Asset disabled, or no live data feed. |
 
-The phase drives the **Battle Bar** footer (timer vs LOCKED tag vs ✓/✗ vs offline), the asset card border glow (LOCKED = amber), and the phase badge color.
+The phase drives the **Battle Bar** footer (timer vs LOCKED tag vs / vs offline), the asset card border glow (LOCKED = amber), and the phase badge color.
 
 ---
 
@@ -75,5 +75,5 @@ The mode badge (`DEMO` / `LIVE` / `PAPER`) appears in the KPI strip and topbar. 
 | Bot on/off | Server-side (persist via `POST /api/bot/toggle`) |
 | Mode (PAPER/DEMO/LIVE) | Server-side (`POST /api/mode`) |
 | Active tab | Recommend `localStorage` - not in mock yet |
-| Equity range (1D/1W…) | Recommend `localStorage` - not in mock yet |
+| Equity range (1D/1W...) | Recommend `localStorage` - not in mock yet |
 | Tweaks panel (if built) | `localStorage` in mock; move server-side |

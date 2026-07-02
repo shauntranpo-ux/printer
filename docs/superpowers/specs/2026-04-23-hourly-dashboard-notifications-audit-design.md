@@ -67,14 +67,14 @@ VWAP z:     +1.42
 RSI:        28
 Bollinger:  below
 Momentum:   fade_down
-Total adj:  −0.08
+Total adj:  -0.08
 p_yes:      0.47  (baseline 0.55)
 Entry:      YES 42¢             (or "-" if no entry)
 ```
 
 Branch inside `_buildHourlyViewHtml(a)` on `a.strategy_name`:
-- `"ETHHourlyCombined"` → existing ETH rows.
-- `"BTCHourly V3"` → new BTC rows.
+- `"ETHHourlyCombined"` -> existing ETH rows.
+- `"BTCHourly V3"` -> new BTC rows.
 
 ### 4.4 Sync guarantee
 
@@ -95,14 +95,14 @@ The dashboard reads `session_type` and `strategy_name` from the per-asset state 
    - Verify `early_window_strategy.py` live status.
 
 3. **Orderbook ingestion (`bot.py:1128+`):**
-   - `best_yes_ask` / `best_no_ask` fallback chain (L1 book → L2 scan → `yes_ask_dollars` → derived).
+   - `best_yes_ask` / `best_no_ask` fallback chain (L1 book -> L2 scan -> `yes_ask_dollars` -> derived).
    - Check hourly markets aren't hitting a stale/degenerate path.
 
 ### 5.2 Findings
 
 Audit date: 2026-04-23. Test file: `tests/strategies/test_hourly_entry_price.py` (7 tests, all PASS).
 
-**No bugs found.** The invariant `decision.side == "yes" → entry_cents == features.yes_ask`
+**No bugs found.** The invariant `decision.side == "yes" -> entry_cents == features.yes_ask`
 (and analogous for NO) holds for every trade path exercised:
 
 - `src/strategies/mid_window_strategy.py:170` - `entry_cents = features.yes_ask if eth_itm else features.no_ask`. Verified via MidWindow NO path (`test_mid_window_no_side_uses_no_ask`). See note (a) below for YES path.
@@ -146,13 +146,13 @@ Added to `bot.py` near `send_telegram` at line ~639.
 
 | Line | Event | New prefix |
 |------|-------|------------|
-| 2652 | Limit placed | `📋 [ASSET \| session \| ticker \| phase?] LIMIT ORDER PLACED` |
-| 2907 | Order failed (non-retryable) | `[ASSET \| session \| ticker \| phase?] ORDER FAILED - …` |
-| 3035 | Order not filled (no liquidity) | `⚠️ [ASSET \| session \| ticker \| phase?] ORDER NOT FILLED` |
+| 2652 | Limit placed | ` [ASSET \| session \| ticker \| phase?] LIMIT ORDER PLACED` |
+| 2907 | Order failed (non-retryable) | `[ASSET \| session \| ticker \| phase?] ORDER FAILED - ...` |
+| 3035 | Order not filled (no liquidity) | ` [ASSET \| session \| ticker \| phase?] ORDER NOT FILLED` |
 | 3131 | Demo daily loss limit | unchanged (no market context) |
 | 3792 | Limit filled / reversal | `[ASSET \| session \| ticker \| phase?] LIMIT ORDER FILLED` |
-| 3915 | Consecutive-loss pause | `⚠️ [ASSET \| session \| last-ticker] N consecutive losses` |
-| 3927 | Win / loss close | `[ASSET \| session \| ticker \| phase?] WIN/LOSS …` |
+| 3915 | Consecutive-loss pause | ` [ASSET \| session \| last-ticker] N consecutive losses` |
+| 3927 | Win / loss close | `[ASSET \| session \| ticker \| phase?] WIN/LOSS ...` |
 | 4583 | Pre-flight block | unchanged (pre-trading) |
 | 4678 | Startup | unchanged (pre-trading) |
 
@@ -161,15 +161,15 @@ Added to `bot.py` near `send_telegram` at line ~639.
 Fires inside `place_order` immediately after a fill confirms, only when `market_duration_min > 25.0`.
 
 ```
-🎯 [ETH | hourly | KXETHD-26APR23-17:00-T3500 | Dwell] FILL VERIFICATION
+ [ETH | hourly | KXETHD-26APR23-17:00-T3500 | Dwell] FILL VERIFICATION
 Target:     82¢
 Market ask: 85¢
 Posted:     82¢
 Filled:     84¢
-Slippage:   +2¢ vs target   |   −1¢ vs market
+Slippage:   +2¢ vs target   |   -1¢ vs market
 ```
 
-Emit a yellow warning `⚠️` if `|slippage_vs_target| > 3¢`.
+Emit a yellow warning `` if `|slippage_vs_target| > 3¢`.
 
 **Data sources:**
 - `target` = `entry_price_cents` (strategy's chosen price).
@@ -196,7 +196,7 @@ Emit a yellow warning `⚠️` if `|slippage_vs_target| > 3¢`.
 
 ### 8.2 Integration (paper mode, live market)
 
-Run bot in paper mode against a live hourly ETH market for one window (≥60 min). Confirm:
+Run bot in paper mode against a live hourly ETH market for one window (>=60 min). Confirm:
 - `bot_state.json` carries `session_type`, `strategy_name`, `strike`, `phase`.
 - Dashboard displays the currently active contract.
 - When an entry fires:

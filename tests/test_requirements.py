@@ -9,4 +9,4 @@ def test_no_unused_heavy_deps():
 def test_aiosqlite_present():
     with open('requirements.txt') as f:
         reqs = f.read()
-    assert 'aiosqlite' in reqs, "aiosqlite must stay — used by bot_infra.py"
+    assert 'aiosqlite' in reqs, "aiosqlite must stay - used by bot_infra.py"

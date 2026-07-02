@@ -140,8 +140,8 @@ import sqlite3
 from collections import defaultdict
 
 _STRATEGY_LABELS = {
-    "strategy1": "S1 · EMA Momentum",
-    "strategy2": "S2 · Contract Velocity",
+    "strategy1": "S1 * EMA Momentum",
+    "strategy2": "S2 * Contract Velocity",
 }
 _SEP = "─" * 27
 
@@ -374,7 +374,7 @@ def format_telegram(stats: dict) -> str:
         return f"+${v:.2f}" if v >= 0 else f"-${abs(v):.2f}"
 
     lines = [
-        f"📊 <b>Daily Summary - {stats['date']}</b>",
+        f" <b>Daily Summary - {stats['date']}</b>",
         _SEP,
         f"Trades: {t}  |  WR: {wr}",
         f"P&L today: {_pstr(stats['today_pnl'])}  |  All-time: {_pstr(stats['alltime_pnl'])}",
@@ -713,7 +713,7 @@ Find and delete this block (the `_fill_ctx` setup lines and the `send_telegram` 
         _phase_for_eth(asset, elapsed),
     )
     await send_telegram(
-        f"<b>🔵 [S2 D3 Hybrid] {_fill_ctx} {mode_icon} {_strat_tag}</b>  -  {_time_str}\n"
+        f"<b> [S2 D3 Hybrid] {_fill_ctx} {mode_icon} {_strat_tag}</b>  -  {_time_str}\n"
         f"<b>{side.upper()} - {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
@@ -749,7 +749,7 @@ Find and delete this block:
             _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
         )
         await send_telegram(
-            f"<b>🔵 [S2 D3 Hybrid] {_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  -  {_time_str}\n"
+            f"<b> [S2 D3 Hybrid] {_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  -  {_time_str}\n"
             f"{pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
             f"Entry: {pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
             f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}"
@@ -817,17 +817,17 @@ git commit -m "refactor: remove per-trade Telegram pings from bot_loops and bot_
 ## Self-Review
 
 **Spec coverage:**
-- ✅ `bot_stats.py` with `query_stats`, `format_telegram`, `format_terminal` - Tasks 1-2
-- ✅ `scripts/stats_report.py` CLI - Task 3
-- ✅ Midnight trigger `_check_daily_stats` in `main_loop` - Task 4
-- ✅ `bot_market.py` 3 removals - Task 5
-- ✅ `bot_loops.py` 2 removals - Task 6
-- ✅ `bot_risk.py` 2 removals - Task 6
-- ✅ Kept: consecutive-losses warning (bot_loops 663), fill verification (bot_infra 462), loss limit (bot_risk 98/107), preflight (bot_risk 785), runner crash alerts
-- ✅ DB unavailable → no crash (try/except in query_stats)
-- ✅ No trades today → "No trades today" shown
-- ✅ `last_trade_ts=None` → "never"
-- ✅ Strategy sections hidden when zero today trades
+-  `bot_stats.py` with `query_stats`, `format_telegram`, `format_terminal` - Tasks 1-2
+-  `scripts/stats_report.py` CLI - Task 3
+-  Midnight trigger `_check_daily_stats` in `main_loop` - Task 4
+-  `bot_market.py` 3 removals - Task 5
+-  `bot_loops.py` 2 removals - Task 6
+-  `bot_risk.py` 2 removals - Task 6
+-  Kept: consecutive-losses warning (bot_loops 663), fill verification (bot_infra 462), loss limit (bot_risk 98/107), preflight (bot_risk 785), runner crash alerts
+-  DB unavailable -> no crash (try/except in query_stats)
+-  No trades today -> "No trades today" shown
+-  `last_trade_ts=None` -> "never"
+-  Strategy sections hidden when zero today trades
 
 **Placeholder scan:** None found.
 

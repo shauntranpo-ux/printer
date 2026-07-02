@@ -173,7 +173,7 @@ Observed grid gaps and paddings (all in px):
 | Panel fade-up | `350ms ease` | `.panel.active` opacity + translateY(6px) |
 | Allocation bar fill | `800ms cubic-bezier(.6,0,.2,1)` | `.alloc-bar > div` width |
 | Meter bar fill | `800ms cubic-bezier(.6,0,.2,1)` | `.meter-bar > div` width |
-| Status pulse ring | `1.6s ease-out infinite` | `.pulse-dot::after` scale 0.6→2, opacity 1→0 |
-| LOCKED live dot | `1.4s ease-in-out infinite` | `.locked-tag::before` opacity 0.4→1→0.4 |
-| Equity last-point pulse | SVG `<animate>` r 3→9, opacity 0.4→0, `1.4s infinite` | Equity chart terminal dot |
+| Status pulse ring | `1.6s ease-out infinite` | `.pulse-dot::after` scale 0.6->2, opacity 1->0 |
+| LOCKED live dot | `1.4s ease-in-out infinite` | `.locked-tag::before` opacity 0.4->1->0.4 |
+| Equity last-point pulse | SVG `<animate>` r 3->9, opacity 0.4->0, `1.4s infinite` | Equity chart terminal dot |
 | Topbar blur | `backdrop-filter: blur(16px)` | `#topbar` on scroll |

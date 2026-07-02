@@ -26,9 +26,9 @@ const yesPct = yesAsk / (yesAsk + noAsk) * 100;
 ```
 
 **Marker color interpolation** (applied at render; transitions smoothly on CSS update):
-- yesPct 0-35: interpolate from red (`rgb(214,57,73)`) → grey (`rgb(136,136,136)`)
+- yesPct 0-35: interpolate from red (`rgb(214,57,73)`) -> grey (`rgb(136,136,136)`)
 - yesPct 35-65: grey
-- yesPct 65-100: interpolate from grey → green (`rgb(27,158,85)`)
+- yesPct 65-100: interpolate from grey -> green (`rgb(27,158,85)`)
 
 **Marker animation:** CSS `transition: left 400ms cubic-bezier(.32,.72,.32,1), background-color 400ms ease-out` - slides on position update.
 
@@ -40,7 +40,7 @@ const yesPct = yesAsk / (yesAsk + noAsk) * 100;
 |---|---|
 | WATCH / READY | `⏱ {timer}` (orange if < 1 minute) |
 | LOCKED | `● LOCKED` (animated pulse dot) |
-| DONE | `✓ YES` or `✗ NO` in green/red |
+| DONE | ` YES` or ` NO` in green/red |
 | OFFLINE | `offline` in dim ink |
 
 **Whole bar dimmed to 50% opacity when phase = OFFLINE.**
@@ -113,7 +113,7 @@ SVG line + area chart of cumulative P&L over time.
 - 5 horizontal grid lines with Y-axis labels
 - X-axis labels at 5 equal intervals
 - Area fill below line (gradient from line color at 18% opacity to 0%)
-- Line color: `--up` (blue) when last value ≥ 0, `--down` (red) when negative
+- Line color: `--up` (blue) when last value >= 0, `--down` (red) when negative
 - Animated pulse circle on last point (SVG `<animate>`)
 - Re-renders on window resize and range button click
 
@@ -169,9 +169,9 @@ Semicircle arc gauge showing 0-100 confidence score.
 - Background arc: full semicircle in `--line` color (grey)
 - Fill arc: from left to `score/100 * π` radians
 - Endpoint dot: circle at arc terminus
-- Color: score ≥ 70 → blue (`oklch 0.55 0.16 245`), 50-70 → amber (`oklch 0.82 0.16 75`), < 50 → red
+- Color: score >= 70 -> blue (`oklch 0.55 0.16 245`), 50-70 -> amber (`oklch 0.82 0.16 75`), < 50 -> red
 
-**Q-bar:** 3-cell quality indicator below the gauge value. Cells 1/2/3 light up at score ≥ 33/66/85.
+**Q-bar:** 3-cell quality indicator below the gauge value. Cells 1/2/3 light up at score >= 33/66/85.
 
 ---
 
@@ -187,7 +187,7 @@ Semicircle arc gauge showing 0-100 confidence score.
 - > 0.50: light green (win)
 - > 0.40: neutral grey (near)
 - > 0.30: light red (loss)
-- ≤ 0.30: red (strong loss)
+- <= 0.30: red (strong loss)
 
 **Wire to:** last 60 `outcome` values from `/api/trades?asset=<sym>&limit=60`.
 
@@ -217,9 +217,9 @@ Sticky, blurred. Contains:
 
 | Element | Behavior |
 |---|---|
-| Brand | "printr" + "15m · KALSHI" sub-label |
+| Brand | "printr" + "15m * KALSHI" sub-label |
 | Tab strip | Overview + 5 asset tabs (with coin logos) + Trades |
-| Bot toggle | Checkbox → toggles status pill text "Running"/"Stopped" and `.off` class |
+| Bot toggle | Checkbox -> toggles status pill text "Running"/"Stopped" and `.off` class |
 | Status pill | Green pulse dot + "Running". Red when bot off. |
 | Mode segment | PAPER / DEMO / LIVE buttons. Active state color-coded. Updates `<body data-mode>` and all `.mode-badge` text. |
 | Clock | Live HH:MM:SS UTC clock. |
@@ -243,7 +243,7 @@ Full-width header panel at top of per-asset tab.
 - Today's P&L + Win Rate on right
 
 **Session tabs** (BTC/ETH only):
-- Two `.session-tab` pills: "15-Minute · ACTIVE" + "Hourly · Idle"
+- Two `.session-tab` pills: "15-Minute * ACTIVE" + "Hourly * Idle"
 - Active pip pulses green
 - No JS switching in mock - wire to toggle which session's data is shown in the MKPI grid below
 

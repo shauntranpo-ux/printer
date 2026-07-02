@@ -1,4 +1,4 @@
-"""tests/test_observability.py — Observability layer: JSON logging, brain log rotation,
+"""tests/test_observability.py - Observability layer: JSON logging, brain log rotation,
 /metrics, and /healthz."""
 
 import json
@@ -10,7 +10,7 @@ import time
 import pytest
 
 
-# ── Fixture: restore root logger after obs.setup_logging calls ───────────────
+# Fixture: restore root logger after obs.setup_logging calls
 
 @pytest.fixture(autouse=True)
 def _restore_root_logger():
@@ -23,7 +23,7 @@ def _restore_root_logger():
     root.level = old_level
 
 
-# ── 1. obs.py ─────────────────────────────────────────────────────────────────
+# 1. obs.py
 
 def test_json_formatter_valid_json():
     """_JsonFormatter produces one valid JSON object per record."""
@@ -131,20 +131,20 @@ def test_get_last_error_after_error_logged():
     assert "something broke badly" in err["msg"]
 
 
-# ── 2. RotatingFileHandler in bot_strategy.py ────────────────────────────────
+# 2. RotatingFileHandler in bot_strategy.py
 
 def test_brain_log_uses_rotating_file_handler():
     """brain logger is wired to a RotatingFileHandler with correct params."""
     from logging.handlers import RotatingFileHandler
-    import bot_strategy  # noqa: F401 — registers handlers as side effect
+    import bot_strategy  # noqa: F401 - registers handlers as side effect
     brain = logging.getLogger("brain")
     rfh = [h for h in brain.handlers if isinstance(h, RotatingFileHandler)]
-    assert rfh, "brain logger missing RotatingFileHandler — still using FileHandler?"
+    assert rfh, "brain logger missing RotatingFileHandler - still using FileHandler?"
     assert rfh[0].maxBytes == 5_000_000
     assert rfh[0].backupCount == 3
 
 
-# ── 3 & 4. Flask /metrics and /healthz ───────────────────────────────────────
+# 3 & 4. Flask /metrics and /healthz
 
 @pytest.fixture()
 def _db_with_trade(tmp_path):
@@ -214,7 +214,7 @@ def test_metrics_no_db_returns_200(tmp_path, monkeypatch):
 
 
 def test_healthz_ok_when_state_fresh(_fresh_state, tmp_path, monkeypatch):
-    """/healthz → 200 when bot_state.json mtime is recent."""
+    """/healthz -> 200 when bot_state.json mtime is recent."""
     monkeypatch.setenv("BOT_STATE_FILE", _fresh_state)
     monkeypatch.setenv("BOT_DB_FILE",    str(tmp_path / "nodb.db"))
     import server
@@ -226,7 +226,7 @@ def test_healthz_ok_when_state_fresh(_fresh_state, tmp_path, monkeypatch):
 
 
 def test_healthz_503_when_state_stale(tmp_path, monkeypatch):
-    """/healthz → 503 with age field when bot_state.json is > 120s old."""
+    """/healthz -> 503 with age field when bot_state.json is > 120s old."""
     state = tmp_path / "bot_state.json"
     state.write_text(json.dumps({"phase": "watching"}))
     old_ts = time.time() - 200
@@ -245,7 +245,7 @@ def test_healthz_503_when_state_stale(tmp_path, monkeypatch):
 
 
 def test_healthz_503_when_state_missing(tmp_path, monkeypatch):
-    """/healthz → 503 when bot_state.json does not exist."""
+    """/healthz -> 503 when bot_state.json does not exist."""
     monkeypatch.setenv("BOT_STATE_FILE", str(tmp_path / "missing.json"))
     monkeypatch.setenv("BOT_DB_FILE",    str(tmp_path / "nodb.db"))
     import server

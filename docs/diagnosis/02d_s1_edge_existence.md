@@ -20,8 +20,8 @@ Recommends narrowing S1 to those cells only.
 | Settlement period | 2026-02-25 to 2026-05-03 |
 | OOS status | All data is OOS (BV3 trained on pre-2024 data) |
 | Assets analyzed | BTC, ETH, SOL, XRP |
-| Total (dist_row × time_col) cells | 519 |
-| Cells with n ≥ 100 | 318 |
+| Total (dist_row x time_col) cells | 519 |
+| Cells with n >= 100 | 318 |
 | Qualifying cells | 12 |
 
 **Entry price proxy:** BV3 predicted win prob used as implied entry price.
@@ -30,7 +30,7 @@ empirical win rate exceeded BV3 prediction by more than the 7% fee.
 
 ---
 
-## 2D.2 EV Distribution (n ≥ 100 cells)
+## 2D.2 EV Distribution (n >= 100 cells)
 
 Top 20 cells by EV, among those with sufficient data:
 
@@ -61,7 +61,7 @@ Top 20 cells by EV, among those with sufficient data:
 
 ## 2D.3 Calibration Analysis
 
-Largest calibration gaps (BV3 over-prediction), n ≥ 100:
+Largest calibration gaps (BV3 over-prediction), n >= 100:
 
 | Asset | Dist bucket | T (min) | n | BV3 pred | Empirical WR | Gap |
 |-------|-------------|---------|---|---------|-------------|-----|
@@ -80,7 +80,7 @@ Largest calibration gaps (BV3 over-prediction), n ≥ 100:
 
 ## 2D.4 Qualifying Cells
 
-Cells meeting all criteria (n≥100, |gap|≤10pp, EV>0, Sharpe>0):
+Cells meeting all criteria (n>=100, |gap|<=10pp, EV>0, Sharpe>0):
 
 | Asset | Dist bucket | T (min) | n | Empirical WR | BV3 pred | Gap | EV | Sharpe |
 |-------|-------------|---------|---|-------------|---------|-----|-----|--------|
@@ -104,9 +104,9 @@ Set `min_ev_base_s1 = 0` and add cell whitelist filter.
 
 ## 2D.5 Summary Statistics
 
-### Per-asset EV statistics (n ≥ 100 cells)
+### Per-asset EV statistics (n >= 100 cells)
 
-| Asset | Cells (n≥100) | Median EV | Max EV | Cells with EV>0 |
+| Asset | Cells (n>=100) | Median EV | Max EV | Cells with EV>0 |
 |-------|--------------|-----------|--------|-----------------|
 | BTC | 69 | -3.3% | +6.0% | 7 |
 | ETH | 86 | -5.8% | +3.0% | 5 |

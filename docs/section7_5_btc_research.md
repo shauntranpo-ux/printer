@@ -32,7 +32,7 @@ momentum-biased prior is justified as a structural default for BTC.
 Order-flow imbalance is predictive at short horizons in both equity and
 crypto markets. Kalshi contract velocity is a proxy for this: informed flow
 shows up as directional pressure in contract prices before the underlying
-settles. This signal is included at the same magnitude as ETH/SOL (±2pp).
+settles. This signal is included at the same magnitude as ETH/SOL (+/-2pp).
 
 ## Why Brownian-Bridge + VR Regime + BV3-as-Secondary Beats Pure BV3
 
@@ -54,8 +54,8 @@ on its own.
 
 The BTC_continuation_only flag is the escape hatch:
 
-- `"BTC_continuation_only": false` (default) → new evidence-based strategy
-- `"BTC_continuation_only": true` → reverts to legacy BV3 + momentum + velocity path
+- `"BTC_continuation_only": false` (default) -> new evidence-based strategy
+- `"BTC_continuation_only": true` -> reverts to legacy BV3 + momentum + velocity path
 
 The legacy path is preserved verbatim in `_decide_legacy_fallback()`. The
 A/B harness (scripts/section2_ab_harness.py) continues to validate parity.

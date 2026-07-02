@@ -91,7 +91,7 @@ Used by: Overview market strip, Decision Pipeline.
 | `sig.market_prob` | float | Market-implied P(YES) from ask prices: yesAsk/(yesAsk+noAsk) |
 | `sig.yes_ev` | float | Expected value if betting YES (%) |
 | `sig.no_ev` | float | Expected value if betting NO (%) |
-| `sig.supertrend` | int | D3 Supertrend direction: +1 (up) or −1 (down) |
+| `sig.supertrend` | int | D3 Supertrend direction: +1 (up) or -1 (down) |
 | `sig.velocity` | string | Kalshi contract price velocity: "rising" \| "falling" \| "flat" |
 | `sig.vote_count` | int | Number of D3 sub-signals agreeing on direction (0-5) |
 | `sig.min_votes` | int | Minimum votes required to qualify (4 early window, 5 mid/late) |
@@ -107,7 +107,7 @@ Used by: Overview market strip, Decision Pipeline.
 |---|---|
 | `votes_below_threshold` | Votes < threshold |
 | `ev_below_threshold` | EV below floor |
-| `gate_a_velocity_block` | Gate A · velocity opposed |
+| `gate_a_velocity_block` | Gate A * velocity opposed |
 | `no_strategy_signal` | No signal |
 | `daily_loss_limit` | Daily loss limit |
 
@@ -198,9 +198,9 @@ Used by: Overview recent activity log (10 rows).
 ```json
 {
   "events": [
-    { "time": "07:42", "type": "entry", "msg": "SOL → <b>YES @ 58¢</b> · qty 7 · EV 9.4%" },
+    { "time": "07:42", "type": "entry", "msg": "SOL -> <b>YES @ 58¢</b> * qty 7 * EV 9.4%" },
     { "time": "07:38", "type": "signal", "msg": "SOL: 15m strong UP, vol 1.74" },
-    { "time": "07:21", "type": "exit",   "msg": "BTC <b>+$2.30</b> · win @ resolution UP" }
+    { "time": "07:21", "type": "exit",   "msg": "BTC <b>+$2.30</b> * win @ resolution UP" }
   ]
 }
 ```
@@ -278,7 +278,7 @@ Example: `GET /api/market/BTC`
   },
   "log": [
     ["00:42", "signal", "15m strategy: <b>UP signal</b>, EV 7.6%, vol 1.42"],
-    ["01:14", "entry",  "Entered <b>YES @ 54¢</b> · qty 5 · est P&L +$2.30"]
+    ["01:14", "entry",  "Entered <b>YES @ 54¢</b> * qty 5 * est P&L +$2.30"]
   ],
   "stats": {
     "wins": 38,
@@ -295,7 +295,7 @@ Example: `GET /api/market/BTC`
 **Notes on sessions:**
 - BTC and ETH have two sessions (`15m` + `h1`). SOL, XRP, DOGE have only one (`15m`).
 - `sessions[i].score` is the confidence score 0-100 used by the gauge.
-- `ladder.asks` and `ladder.bids` are arrays of `[price_cents, size]` pairs. Asks sorted high→low, bids sorted high→low.
+- `ladder.asks` and `ladder.bids` are arrays of `[price_cents, size]` pairs. Asks sorted high->low, bids sorted high->low.
 - `log` entries: `[time_str, type, html_message]`. Max 8 rows.
 
 ---

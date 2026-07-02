@@ -25,7 +25,7 @@ period. Treat ROBUST/LIKELY_ROBUST as 'internally consistent' not 'multi-regime'
 
 ## Per-Cell Robustness Table
 
-EV = empirical_win_rate − BV3_pred − 0.07 (using BV3 as entry price proxy)
+EV = empirical_win_rate - BV3_pred - 0.07 (using BV3 as entry price proxy)
 
 | Cell | n_total | Slice1 EV | Slice2 EV | Slice3 EV | Slice4 EV | Pos slices | Robustness | Decision |
 |------|---------|-----------|-----------|-----------|-----------|------------|------------|---------|

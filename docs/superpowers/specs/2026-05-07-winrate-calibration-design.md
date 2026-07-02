@@ -8,7 +8,7 @@ with empirical win-rate lookup tables derived from historical data.
 ## Scope
 - **S1**: Binance 1-minute close prices (90 days, 5 assets)
 - **S2**: Kalshi historical market yes_ask series (60 days, 5 assets)
-- **Output**: Two Python dicts printed to stdout → manual paste into `bot_strategy.py`
+- **Output**: Two Python dicts printed to stdout -> manual paste into `bot_strategy.py`
 - **OBI**: Not calibrated (no historical OBI data available); OBI gate remains a live-only filter
 
 ---
@@ -31,7 +31,7 @@ Progress to stderr; dict output to stdout (clean for redirect/paste).
 ### Simulation
 - Slide 15-min windows aligned to `:00 :15 :30 :45` of each hour
 - Strike = close at window open
-- Outcome = `close_at_expiry > strike` → YES wins; `≤ strike` → NO wins
+- Outcome = `close_at_expiry > strike` -> YES wins; `<= strike` -> NO wins
 - Entry offsets: 3, 5, 7, 10, 12 min remaining
 - EMA params: per-asset from `_S1_ASSET_CONFIG` (same as live strategy)
 - **Continuation filter**: skip record if EMA direction disagrees with price side of strike
@@ -39,10 +39,10 @@ Progress to stderr; dict output to stdout (clean for redirect/paste).
   - EMA bearish (NO) requires `current_price < strike`
 - Record: `(abs_pct, mins_left, outcome)`
 
-Expected volume: ~8,640 windows/asset × 5 entry points ≈ **43,000 records/asset** pre-filter.
+Expected volume: ~8,640 windows/asset x 5 entry points ~ **43,000 records/asset** pre-filter.
 
 ### Bucketing
-Per asset, 4 × 3 = 12 buckets:
+Per asset, 4 x 3 = 12 buckets:
 
 | dist idx | range |
 |---|---|
@@ -57,7 +57,7 @@ Per asset, 4 × 3 = 12 buckets:
 | 1 | `6-9 min` |
 | 2 | `9-12 min` |
 
-Min samples threshold: **50 per bucket**. Buckets below → `None` → bot falls back to tanh.
+Min samples threshold: **50 per bucket**. Buckets below -> `None` -> bot falls back to tanh.
 
 ---
 
@@ -66,8 +66,8 @@ Min samples threshold: **50 per bucket**. Buckets below → `None` → bot falls
 ### Data fetch
 - Series tickers: `KXBTCD KXETHD KXSOLD KXXRPD KXDOGED` *(verified on first run; abort with clear error if wrong)*
 - List markets: `GET /markets?series_ticker={series}&limit=200` (paginated)
-- Per market: `GET /markets/{ticker}/history` → yes_ask series
-- Outcome: `GET /markets/{ticker}` → `result` field (`yes` / `no`)
+- Per market: `GET /markets/{ticker}/history` -> yes_ask series
+- Outcome: `GET /markets/{ticker}` -> `result` field (`yes` / `no`)
 - Range: last 60 days
 - Auth: `KALSHI_API_KEY` env var
 
@@ -77,16 +77,16 @@ Min samples threshold: **50 per bucket**. Buckets below → `None` → bot falls
 - **Continuation filter**: skip record if velocity direction disagrees with price side of strike
 - Record: `(vel_delta, mins_left, outcome)`
 
-Expected volume: ~5,760 markets/asset × 6 entry points ≈ **34,000 records/asset** pre-filter.
+Expected volume: ~5,760 markets/asset x 6 entry points ~ **34,000 records/asset** pre-filter.
 
 ### Bucketing
-Per asset, 3 × 3 = 9 buckets:
+Per asset, 3 x 3 = 9 buckets:
 
 | vel idx | range |
 |---|---|
-| 0 | `[min_vel_delta, 2× min_vel_delta)` |
-| 1 | `[2×, 4× min_vel_delta)` |
-| 2 | `[4×+)` |
+| 0 | `[min_vel_delta, 2x min_vel_delta)` |
+| 1 | `[2x, 4x min_vel_delta)` |
+| 2 | `[4x+)` |
 
 | time idx | range |
 |---|---|
@@ -94,14 +94,14 @@ Per asset, 3 × 3 = 9 buckets:
 | 1 | `5-8 min` |
 | 2 | `8-13 min` |
 
-Min samples threshold: **50 per bucket**. Buckets below → `None` → bot falls back to tanh.
+Min samples threshold: **50 per bucket**. Buckets below -> `None` -> bot falls back to tanh.
 
 ---
 
 ## Output Format
 
 ```python
-# ── PASTE INTO bot_strategy.py ──────────────────────────────────────
+# PASTE INTO bot_strategy.py
 _S1_WIN_RATE = {
     "BTC": {(0,0): 0.631, (0,1): 0.604, (0,2): 0.588, (1,0): 0.658, ...},
     "ETH": {...},

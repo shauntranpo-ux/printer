@@ -16,7 +16,7 @@
 |------|-------|
 | `bot_market.py` | Fix 1: extract dict comprehension from f-string (line 411) |
 | `bot.py` | Fix 5: wrap startup DB connection in try/finally (lines 56-67) |
-| `bot_infra.py` | Fix 2: add trade data to db_write_trade error log (line 343); Fix 3: LIKE→DATE() in db_get_today_pnl (line 447); Fix 4: close file handle with context manager (line 137); Fix 6b: add _VALID_TRADE_COLS guard in db_update_trade (before line 347) |
+| `bot_infra.py` | Fix 2: add trade data to db_write_trade error log (line 343); Fix 3: LIKE->DATE() in db_get_today_pnl (line 447); Fix 4: close file handle with context manager (line 137); Fix 6b: add _VALID_TRADE_COLS guard in db_update_trade (before line 347) |
 | `bot_stats.py` | Fix 6a: log warning for unknown strategy_variant in _run_queries (line 62) |
 | `tests/test_infra_hardening.py` | New - 4 tests covering Fixes 1, 3, 6a, 6b |
 

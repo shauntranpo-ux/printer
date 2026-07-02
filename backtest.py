@@ -760,7 +760,7 @@ def run_backtest(
         mu  = sum(pnls) / len(pnls)
         var = sum((p - mu) ** 2 for p in pnls) / (len(pnls) - 1)
         sd  = math.sqrt(var)
-        # Per-trade Sharpe: no annualization multiplier -- honest baseline
+        # Per-trade Sharpe: no annualization multiplier
         sharpe_per_trade = (mu / sd) if sd > 0 else 0.0
         # Annualised Sharpe: inflated by sqrt35040 (each 15-min slot/year).
         # WARNING: this number is misleading -- use sharpe_per_trade for realistic assessment.
@@ -914,7 +914,7 @@ def print_report(r: dict) -> None:
     _asset_r = r.get("asset", "BTC")
     _pre23_path = os.path.join(_BV3_DIR, f"{_asset_r}_bv3_pre2023.json")
     if os.path.exists(_pre23_path):
-        print(f"  [OK] BV3 table: pre-2023 data only -- honest out-of-sample baseline.")
+        print(f"  [OK] BV3 table: pre-2023 data only (out-of-sample baseline).")
     else:
         print(f"  [!!] WARNING: BV3 table built on 2017-2026 data -- OOS period NOT clean.")
         print(f"     Run: python generate_bv3_table.py --asset {_asset_r}")
@@ -933,7 +933,7 @@ def print_report(r: dict) -> None:
     print(f"  Max drawdown      : {r['max_drawdown_percent']:>9.1f}%")
     spt = r.get("sharpe_per_trade", 0.0)
     print(f"  Sharpe (annlzd)   : {r['sharpe_ratio']:>10.3f}  <- inflated by sqrt35040")
-    print(f"  Sharpe (per-trade): {spt:>10.4f}  <- use this for honest assessment")
+    print(f"  Sharpe (per-trade): {spt:>10.4f}")
     print(f"  NOTE: Per-slot annualized Sharpe is inflated by sqrt35040 multiplier.")
     print(f"        Use per-trade or daily Sharpe for realistic assessment.")
     if spt > 3.0:
@@ -1025,7 +1025,7 @@ def print_reality_check(r: dict) -> None:
     _asset_rc = r.get("asset", "BTC")
     _pre23_path_rc = os.path.join(_BV3_DIR, f"{_asset_rc}_bv3_pre2023.json")
     if os.path.exists(_pre23_path_rc):
-        print(f"BV3 data leakage:             NO  -- pre-2023 table used (honest baseline)")
+        print(f"BV3 data leakage:             NO  -- pre-2023 table used")
     else:
         print(f"BV3 data leakage:             YES -- OOS metrics unreliable (generate pre-2023 table)")
     if price_validated:
@@ -1741,5 +1741,5 @@ if __name__ == "__main__":
             _cwr = combined_wins / combined_trades * 100 if combined_trades else 0
             print(f"  {'TOTAL':<8}  {combined_trades:>7,}  {_cwr:>5.1f}%  ${combined_pnl:>9,.2f}")
             print()
-            print("NOTE: Uses pre-2023 BV3 tables for all assets -- honest out-of-sample baseline.")
+            print("Uses pre-2023 BV3 tables for all assets (out-of-sample baseline).")
             print(f"{'='*70}")

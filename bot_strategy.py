@@ -231,7 +231,7 @@ def _make_skip(side: str, reason: str, abs_pct: float, mins_left: float,
 
 # Older EMA-momentum config and helpers. Not on the trading decision path anymore
 # (S1/S2 are now the fair-value brains), but still used to compute the dashboard
-# direction arrows and by the tests, so they stay for now.
+# tests and the offline backtest script, so they stay for now.
 
 _S1_ASSET_CONFIG: dict = {
     #           min_dist  max_rv  min_momentum  min_ev  t_min  t_max
@@ -280,7 +280,6 @@ def _session_allowed(config: dict) -> tuple:
     which times lose. Returns (allowed, session_label). Blocks when the current ET session
     is in config['blocked_sessions'] or when config['block_weekends'] is set and it is a
     weekend in ET. Fail-open: any clock/config error -> allowed (never block on a fault).
-    Reserved key config['session_filter_enabled'] is for a future data-driven auto-gate.
     """
     try:
         now_et = datetime.datetime.now(ZoneInfo("America/New_York"))
@@ -295,36 +294,6 @@ def _session_allowed(config: dict) -> tuple:
         return True, session
     except Exception:
         return True, ""
-
-
-def _trend_direction(prices: list, window_seconds: float = 600.0) -> int:
-    """
-    Linear regression slope over the last window_seconds of price history.
-    Returns +1 (uptrend), -1 (downtrend), or 0 (insufficient data).
-    Used to block contra-trend S1/S2 signals.
-    """
-    if not prices or len(prices) < 5:
-        return 0
-    now_ts = prices[-1][0]
-    recent = [(float(ts), float(p)) for ts, p in prices if float(ts) >= now_ts - window_seconds]
-    if len(recent) < 5:
-        return 0
-    n = len(recent)
-    t0 = recent[0][0]
-    xs = [ts - t0 for ts, _ in recent]
-    ys = [p for _, p in recent]
-    mean_x = sum(xs) / n
-    mean_y = sum(ys) / n
-    num = sum((xs[i] - mean_x) * (ys[i] - mean_y) for i in range(n))
-    den = sum((xs[i] - mean_x) ** 2 for i in range(n))
-    if den == 0:
-        return 0
-    slope = num / den
-    if slope > 0:
-        return 1
-    if slope < 0:
-        return -1
-    return 0
 
 
 def _s1_multitf_momentum(prices: list, min_momentum: float = 0.003) -> tuple:
@@ -871,7 +840,7 @@ def strategy_brain_s1(
 
 
 # Older contract-velocity config and helpers. Not on the trading decision path anymore
-# (S2 is now the fair-value brain); kept for the dashboard arrows and the tests.
+# (S2 is now the fair-value brain); kept for the tests and offline analysis scripts.
 
 _S2_ASSET_CONFIG: dict = {
     #           min_dist  min_obi  min_vel_delta  vel_lookback  min_ev  t_min  t_max

@@ -35,8 +35,8 @@ class FundingFeatures:
     def compute(self, data_window: dict) -> dict[str, float]:
         """
         data_window keys:
-          funding_rate: float   — latest funding rate (dimensionless; Binance ~0.0001)
-          open_interest: float  — latest OI in base currency units
+          funding_rate: float   - latest funding rate (dimensionless; Binance ~0.0001)
+          open_interest: float  - latest OI in base currency units
           timestamp: (optional; not consumed, kept for interface uniformity)
         """
         fr = float(data_window.get("funding_rate", 0.0) or 0.0)

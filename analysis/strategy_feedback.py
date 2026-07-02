@@ -1,5 +1,5 @@
 """
-Strategy feedback report — win rate vs model prediction per strategy + version.
+Strategy feedback report - win rate vs model prediction per strategy + version.
 
 Usage:
     py -3 analysis/strategy_feedback.py [--db path/to/trades.db] [--min-trades 5]
@@ -172,7 +172,7 @@ def run(db_path: str, min_trades: int) -> None:
         avg_p   = g["p_sum"] / g["p_n"]  if g["p_n"]   else None
         gap     = (wr - avg_p)            if avg_p is not None else None
         avg_ev  = g["ev_sum"] / g["ev_n"] if g["ev_n"]  else None
-        ts_rng  = f"{g['first_ts'][:10]} → {g['last_ts'][:10]}" if g["first_ts"] else ""
+        ts_rng  = f"{g['first_ts'][:10]} -> {g['last_ts'][:10]}" if g["first_ts"] else ""
 
         parts = [
             f"    {asset:<4} {side:<3}  {g['total']:>4} trades",
@@ -187,9 +187,9 @@ def run(db_path: str, min_trades: int) -> None:
     print(f"\n{'='*70}")
     print("  LEGEND")
     print("    gap = actual_WR - avg_model_prob")
-    print("    gap < -15%  → model overconfident (reduce prob_scale or raise EV threshold)")
-    print("    gap > +15%  → model underconfident (room to be more aggressive)")
-    print("    gap in ±15% → calibrated")
+    print("    gap < -15%  -> model overconfident (reduce prob_scale or raise EV threshold)")
+    print("    gap > +15%  -> model underconfident (room to be more aggressive)")
+    print("    gap in +/-15% -> calibrated")
     print(f"{'='*70}\n")
 
 

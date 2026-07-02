@@ -57,11 +57,11 @@ _FULL_CONFIG_DEFAULT = {
     "mode": "paper",
     "trade_amount_dollars": 25,
     "confidence_threshold": 0,
-    "daily_loss_limit_dollars": 50,
+    "daily_loss_limit_dollars": 0,
     "daily_profit_target_dollars": 200,
     "quiet_hours_enabled": True,
     "quiet_start_et": 22,
-    "quiet_end_et": 7,
+    "quiet_end_et": 9,
     "enabled_assets": ["ETH", "SOL", "XRP"],
 }
 if not os.path.exists("config.json"):
@@ -115,7 +115,7 @@ def _telegram_notify(text: str) -> None:
 
 
 _CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 25, "confidence_threshold": 0,
-                   "daily_loss_limit_dollars": 50,
+                   "daily_loss_limit_dollars": 0,
                    "daily_profit_target_dollars": 200}
 _STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
                    "today_demo_pnl": 0.0, "phase": "waiting", "mode": "paper"}
@@ -982,9 +982,9 @@ def api_risk():
         cfg = read_config()
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-        loss_limit  = cfg.get("daily_loss_limit_dollars", 50.0)
+        loss_limit  = cfg.get("daily_loss_limit_dollars", 0.0)
         profit_target = cfg.get("daily_profit_target_dollars", 200.0)
-        ev_floor    = cfg.get("min_ev_base", 7.0)
+        ev_floor    = cfg.get("min_ev_base", 8)
         vol_thresh  = cfg.get("vol_gate_thresh", 1.80)
 
         today_pnl   = 0.0

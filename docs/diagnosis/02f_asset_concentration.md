@@ -17,7 +17,7 @@
 
 ## 2F.2 Edge Distribution
 
-Edge is **generic across assets** - 4/4 assets have ≥1 qualifying cell.
+Edge is **generic across assets** - 4/4 assets have >=1 qualifying cell.
 
 Asset breakdown:
 
@@ -68,11 +68,11 @@ performance, not S1. S1 has never fired a live trade. Comparison is indirect.
 - ETH: S1 has 5 qualifying OOS cells (highest count), S2 also grades B. Agrees.
 - XRP: S1 has 2 qualifying cells, S2 grades B. Broadly agrees.
 - BTC: S1 has 4 qualifying cells (avg EV +1.4%), S2 grades D. DISAGREES.
-  → Likely explanation: S1 and S2 use opposite direction logic on BTC.
-  → S1 is continuation-only; S2 is often contrarian. One can be profitable
+  -> Likely explanation: S1 and S2 use opposite direction logic on BTC.
+  -> S1 is continuation-only; S2 is often contrarian. One can be profitable
     while the other loses on the same underlying markets.
 - SOL: S1 has 1 qualifying cell (SOL dropped in 2E holdout). S2 grades C.
-  → Borderline agreement: neither strategy shows strong edge on SOL.
+  -> Borderline agreement: neither strategy shows strong edge on SOL.
 
 ---
 
@@ -80,7 +80,7 @@ performance, not S1. S1 has never fired a live trade. Comparison is indirect.
 
 **All qualifying cells will be blocked by the vol gate even with the whitelist.**
 
-The vol gate threshold is 1.80: `vol_ratio = rv × √t_min / abs_pct ≥ 1.80`
+The vol gate threshold is 1.80: `vol_ratio = rv x sqrtt_min / abs_pct >= 1.80`
 
 Expected vol_ratio for qualifying cells (using typical realized vol per asset):
 

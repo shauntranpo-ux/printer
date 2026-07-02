@@ -1,5 +1,5 @@
 """
-Strategy C1 combiner — per-strike probability mispricing engine.
+Strategy C1 combiner - per-strike probability mispricing engine.
 
 StrategyC1Model wraps the probability surface evaluator with:
   - per-moneyness-bucket calibration loading
@@ -7,7 +7,7 @@ StrategyC1Model wraps the probability surface evaluator with:
   - candidate ranking for hand-off to the event selector
 
 Calibrators are trained separately (see training prompt).  Until artifact_paths
-are filled in config, raw N(d₂) values pass through uncalibrated.
+are filled in config, raw N(d2) values pass through uncalibrated.
 """
 from __future__ import annotations
 import logging
@@ -53,7 +53,7 @@ class StrategyC1Model:
         calibrators = self._load_calibrators(config)
         self._surface = ProbabilitySurface(calibrators=calibrators)
 
-    # ── public interface ──────────────────────────────────────────────────────
+    # public interface
 
     def predict_surface(
         self,
@@ -150,19 +150,19 @@ class StrategyC1Model:
         Threshold math:
             base_threshold   = taker_fee_rate + safety_margin + base_regime_extra[regime]
                                (null regime entries default to 0.02)
-            min_edge         = base_threshold × moneyness_multiplier[moneyness_bucket]
+            min_edge         = base_threshold x moneyness_multiplier[moneyness_bucket]
                                (null multiplier entries default to 1.0)
             If moneyness_bucket == "deep_otm" AND edge > 0 (buying longshot YES):
-                min_edge    += longshot_buy_penalty  (null → 0.02)
+                min_edge    += longshot_buy_penalty  (null -> 0.02)
 
         Args:
-            edge:             p_model − p_market; positive → buy YES, negative → buy NO
+            edge:             p_model - p_market; positive -> buy YES, negative -> buy NO
             moneyness_bucket: one of deep_itm | itm | atm | otm | deep_otm
             regime:           session regime string
             config:           asset config dict
 
         Returns:
-            bool — True means the strike clears all thresholds.
+            bool - True means the strike clears all thresholds.
         """
         taker = float(self._fees.get("kalshi", {}).get("taker_fee_rate", 0.03))
         margin = float(self._fees.get("safety_margin", 0.005))
@@ -185,7 +185,7 @@ class StrategyC1Model:
 
         return abs(edge) > min_edge
 
-    # ── internals ─────────────────────────────────────────────────────────────
+    # internals
 
     def _get_integrated_variance(
         self,
@@ -198,7 +198,7 @@ class StrategyC1Model:
         Build integrated_variance for the full [now, expiry] window.
 
         Uses vol_term_structure.integrate_forecasted_variance with the HAR
-        forecaster's current σ̂ as a flat-vol per-sub-interval estimate.
+        forecaster's current sigma as a flat-vol per-sub-interval estimate.
         """
         import pandas as pd
         from strategy_c.features.vol_term_structure import integrate_forecasted_variance

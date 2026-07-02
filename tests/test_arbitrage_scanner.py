@@ -42,7 +42,7 @@ def _make_ladder(strikes, probs):
 
 class TestLadderArbitrageScannerMonotone:
     def test_valid_monotone_ladder_no_signals(self):
-        # Strictly decreasing probs → no violations
+        # Strictly decreasing probs -> no violations
         strikes = [100.0, 200.0, 300.0, 400.0, 500.0]
         probs = [0.80, 0.60, 0.40, 0.20, 0.10]
         df = _make_ladder(strikes, probs)
@@ -54,7 +54,7 @@ class TestLadderArbitrageScannerMonotone:
     def test_monotonicity_violation_emits_signal(self):
         # p(K=200) > p(K=100) with large gap (should exceed hurdle)
         strikes = [100.0, 200.0, 300.0]
-        probs = [0.30, 0.80, 0.10]   # p(200) > p(100) by 0.50 — clear violation
+        probs = [0.30, 0.80, 0.10]   # p(200) > p(100) by 0.50 - clear violation
         df = _make_ladder(strikes, probs)
         scanner = LadderArbitrageScanner()
         signals = scanner.scan(df, _CONFIG)
@@ -91,7 +91,7 @@ class TestLadderArbitrageScannerConvexity:
     def test_valid_convex_ladder_no_signals(self):
         # CDF should be convex: p(K1) - 2*p(K2) + p(K3) should be near 0 or positive
         strikes = [100.0, 200.0, 300.0]
-        probs = [0.70, 0.50, 0.30]   # perfectly linear → butterfly = 0
+        probs = [0.70, 0.50, 0.30]   # perfectly linear -> butterfly = 0
         df = _make_ladder(strikes, probs)
         scanner = LadderArbitrageScanner()
         signals = [s for s in scanner.scan(df, _CONFIG) if s.violation_type == "convexity"]

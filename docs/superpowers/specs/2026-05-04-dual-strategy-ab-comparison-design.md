@@ -20,7 +20,7 @@ Five separate asset-specific strategies, each with its own bespoke signal:
 | Asset | Label | Signal |
 |-------|-------|--------|
 | BTC   | B3    | Time-of-day-conditioned order-book imbalance; skips 18-21 UTC trough + funding-reset windows |
-| ETH   | E1    | Vol-gated ETH/BTC ratio mean-revert at ±1.2σ |
+| ETH   | E1    | Vol-gated ETH/BTC ratio mean-revert at +/-1.2σ |
 | SOL   | S1    | Cross-venue funding-rate dispersion (Binance vs Hyperliquid) |
 | XRP   | X3    | APAC decoupling + event continuation |
 | DOGE  | D3    | Retail weekend-FOMO regime (looser EV + half stake on Fri-Sun) |
@@ -46,12 +46,12 @@ One Railway service. One bot loop. Every market tick both strategy brains evalua
 
 ```
 market tick
-  ├── strategy_brain_s1(asset, ...) → original per-asset strategy → Decision
-  │     └── if trade → db_write_trade(..., strategy_variant='strategy1')
-  │                  → send_telegram("[S1 Original] ...")
-  └── strategy_brain_s2(asset, ...) → D3 hybrid → Decision
-        └── if trade → db_write_trade(..., strategy_variant='strategy2')
-                     → send_telegram("[S2 D3 Hybrid] ...")
+  ├── strategy_brain_s1(asset, ...) -> original per-asset strategy -> Decision
+  │     └── if trade -> db_write_trade(..., strategy_variant='strategy1')
+  │                  -> send_telegram("[S1 Original] ...")
+  └── strategy_brain_s2(asset, ...) -> D3 hybrid -> Decision
+        └── if trade -> db_write_trade(..., strategy_variant='strategy2')
+                     -> send_telegram("[S2 D3 Hybrid] ...")
 ```
 
 Neither brain blocks the other. If S1 trades and S2 skips, only one trade is logged. If both trade on the same market, two independent trade rows are written with different `strategy_variant` values.
@@ -127,11 +127,11 @@ _S1_SINGLETONS: dict = {}   # original per-asset strategies
 
 **`_get_or_make_strategy_s1(asset, config)`**
 Returns the correct original strategy instance for the asset:
-- BTC  → `BTCStrategy` from `strategies.original.btc_strategy`
-- ETH  → `ETHStrategy` from `strategies.original.eth_strategy`
-- SOL  → `SOLStrategy` from `strategies.original.sol_strategy`
-- XRP  → `XRPStrategy` from `strategies.original.xrp_strategy`
-- DOGE → `DOGEStrategy` from `strategies.original.doge_strategy`
+- BTC  -> `BTCStrategy` from `strategies.original.btc_strategy`
+- ETH  -> `ETHStrategy` from `strategies.original.eth_strategy`
+- SOL  -> `SOLStrategy` from `strategies.original.sol_strategy`
+- XRP  -> `XRPStrategy` from `strategies.original.xrp_strategy`
+- DOGE -> `DOGEStrategy` from `strategies.original.doge_strategy`
 
 Uses `_S1_SINGLETONS` as cache. Config params (min_ev_base, stake, skip_config) are read from `config.json` identically to S2.
 
@@ -161,13 +161,13 @@ Both the entry notification and the outcome notification prepend the strategy la
 
 Outcome notifications:
 ```
-[S1 Original] ✅ BTC YES WON  +$8.40
-[S2 D3 Hybrid] ❌ BTC YES LOST  -$6.20
+[S1 Original]  BTC YES WON  +$8.40
+[S2 D3 Hybrid]  BTC YES LOST  -$6.20
 ```
 
 The label is derived from `brain["strategy_variant"]` and formatted as:
-- `strategy1` → `S1 Original`
-- `strategy2` → `S2 D3 Hybrid`
+- `strategy1` -> `S1 Original`
+- `strategy2` -> `S2 D3 Hybrid`
 
 ---
 
@@ -203,7 +203,7 @@ Existing callers that don't pass `?strategy=` are unaffected - they see the same
 ## Part 5 - Dashboard (handoff/Money Printer.html)
 
 ### Renamed existing strip
-The current P&L strip (NET P&L · ALL-TIME | WIN RATE · 30D | TODAY'S P&L) is relabelled:
+The current P&L strip (NET P&L * ALL-TIME | WIN RATE * 30D | TODAY'S P&L) is relabelled:
 
 > **Strategy 2 - D3 Hybrid**
 

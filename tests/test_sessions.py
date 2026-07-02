@@ -36,9 +36,9 @@ def test_session_order_covers_all_labels():
 
 
 def test_iso_parsing_and_dst():
-    # 14:00 UTC in July = 10:00 EDT (DST) → us_open
+    # 14:00 UTC in July = 10:00 EDT (DST) -> us_open
     assert s.session_for_iso("2026-07-01T14:00:00+00:00") == "us_open"
-    # 14:00 UTC in January = 09:00 EST → overnight (before 09:30)
+    # 14:00 UTC in January = 09:00 EST -> overnight (before 09:30)
     assert s.session_for_iso("2026-01-01T14:00:00+00:00") == "overnight"
     # Z suffix accepted
     assert s.session_for_iso("2026-07-01T14:00:00Z") == "us_open"
@@ -48,18 +48,18 @@ def test_weekend_detection():
     assert s.is_weekend_et(_et(2026, 7, 4, 12, 0)) is True     # Saturday
     assert s.is_weekend_et(_et(2026, 7, 5, 12, 0)) is True     # Sunday
     assert s.is_weekend_et(_et(2026, 7, 1, 12, 0)) is False    # Wednesday
-    # Sat 02:00 UTC = Fri 22:00 ET — must read ET, so still Friday (weekday)
+    # Sat 02:00 UTC = Fri 22:00 ET - must read ET, so still Friday (weekday)
     assert s.is_weekend_et("2026-07-04T02:00:00+00:00") is False
     assert s.day_type_for_iso("2026-07-01T14:00:00+00:00") == "weekday"
     assert s.day_type_for_iso("2026-07-04T16:00:00+00:00") == "weekend"
 
 
 def test_et_anchoring_across_utc_midnight():
-    # Sun 03:00 UTC = Sat 23:00 ET → still weekend
+    # Sun 03:00 UTC = Sat 23:00 ET -> still weekend
     assert s.is_weekend_et("2026-07-05T03:00:00+00:00") is True
-    # Mon 03:00 UTC = Sun 23:00 ET → still weekend (Sunday in ET)
+    # Mon 03:00 UTC = Sun 23:00 ET -> still weekend (Sunday in ET)
     assert s.is_weekend_et("2026-07-06T03:00:00+00:00") is True
-    # Mon 14:00 UTC = Mon 10:00 ET → weekday
+    # Mon 14:00 UTC = Mon 10:00 ET -> weekday
     assert s.is_weekend_et("2026-07-06T14:00:00+00:00") is False
 
 

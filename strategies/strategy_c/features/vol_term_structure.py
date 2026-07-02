@@ -37,7 +37,7 @@ def integrate_forecasted_variance(
         config:            asset config dict
 
     Returns:
-        Total integrated variance ≥ 0.  Returns 0.0 when timestamp_now ≥ timestamp_expiry.
+        Total integrated variance >= 0.  Returns 0.0 when timestamp_now >= timestamp_expiry.
     """
     if timestamp_now >= timestamp_expiry:
         return 0.0

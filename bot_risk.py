@@ -115,7 +115,7 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
                 )
         return True, bot_state.limit_reason
 
-    _dpt = float(config.get("daily_profit_target_dollars", 0))
+    _dpt = float(config.get("daily_profit_target_dollars", 200))
     if _dpt > 0 and pnl > 0 and pnl >= _dpt:
         if not bot_state.limit_triggered:
             bot_state.limit_triggered = True
@@ -204,7 +204,7 @@ async def write_state_file(
         "today_paper_pnl": await db_get_today_pnl("paper"),
         "today_demo_pnl": await db_get_today_pnl("demo"),
         "config": {**config,
-                   "min_ev_pct": round(config.get("min_ev_base", 3.0)),
+                   "min_ev_pct": round(config.get("min_ev_base", 8)),
                    "vol_gate_thresh": config.get("vol_gate_thresh", 1.80)},
         "bot_state.limit_triggered": bot_state.limit_triggered,
         "bot_state.limit_reason": bot_state.limit_reason,

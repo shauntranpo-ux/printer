@@ -109,7 +109,7 @@ class TestIntegrateForcastedVariance:
         assert r == pytest.approx(var_per_sub, rel=1e-6)
 
     def test_partial_last_interval(self):
-        # 22.5 minutes window with 15-minute sub-intervals → 1.0 + 0.5 = 1.5 sub-intervals
+        # 22.5 minutes window with 15-minute sub-intervals -> 1.0 + 0.5 = 1.5 sub-intervals
         ts_now = pd.Timestamp("2024-01-01 12:00:00", tz="UTC")
         ts_exp = pd.Timestamp("2024-01-01 12:22:30", tz="UTC")
         var_per_sub = 0.001

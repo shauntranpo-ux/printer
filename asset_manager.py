@@ -28,27 +28,22 @@ log = logging.getLogger("bot")
 # Asset registry
 ASSET_CONFIG = {
     "BTC": {
-        "binance_symbol":   "btcusdt",
         "strike_increment": 1000.0,
         "kalshi_series":    ("KXBTC15M", "KXBTCD", "BTCD-B"),
     },
     "ETH": {
-        "binance_symbol":   "ethusdt",
         "strike_increment": 25.0,
         "kalshi_series":    ("KXETH15M", "KXETHD", "ETHD-B"),
     },
     "SOL": {
-        "binance_symbol":   "solusdt",
         "strike_increment": 1.0,
         "kalshi_series":    ("KXSOLD", "SOLD-B", "KXSOL15M", "KXSOL15", "KXSOL", "SOL"),
     },
     "XRP": {
-        "binance_symbol":   "xrpusdt",
         "strike_increment": 0.01,
         "kalshi_series":    ("KXXRPD", "XRPD-B", "KXXRP15M", "KXXRP15", "KXXRP", "XRP"),
     },
     "DOGE": {
-        "binance_symbol":   "dogeusdt",
         "strike_increment": 0.001,
         "kalshi_series":    ("KXDOGE15M", "KXDOGED", "DOGED-B", "KXDOGE", "DOGE"),
     },

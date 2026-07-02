@@ -8,7 +8,7 @@ set NUMEXPR_NUM_THREADS=1
 cd /d %~dp0
 
 :: ============================================================
-:: HOURLY STRATEGY C — BTC + ETH ONLY
+:: HOURLY STRATEGY C - BTC + ETH ONLY
 :: Requires: data/kalshi/hourly/BTC/ and data/kalshi/hourly/ETH/
 ::           populated with Kalshi ladder parquet files.
 :: ============================================================

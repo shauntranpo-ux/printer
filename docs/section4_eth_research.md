@@ -18,7 +18,7 @@ not lagged.
 **Implementation:** Compute BTC's 3-minute log return from the running
 `bot.btc_prices` deque. Scale by ETH/BTC beta (default 1.10, refit weekly
 from historical parquets). Normalize by expected remaining move = `vol * sqrt(t)`.
-Max contribution: ±10 percentage points on p_yes.
+Max contribution: +/-10 percentage points on p_yes.
 
 **Beta source:** OLS regression of aligned ETH vs BTC 1-min log returns over
 full 2026 history. Persisted to `data/betas.json`, stale after 14 days.
@@ -34,9 +34,9 @@ regime-dependent. VR(5) on 1-min returns over 60-minute windows distinguishes.
 
 **Implementation:** Compute `VR(5) = Var(5-min return) / (5 * Var(1-min return))`
 over the last 60 minutes of ETH 1-min returns.
-- VR > 1.1 → momentum → continuation nudge (±3pp)
-- VR < 0.9 → reversion → contrarian nudge (∓3pp)
-- Otherwise → neutral
+- VR > 1.1 -> momentum -> continuation nudge (+/-3pp)
+- VR < 0.9 -> reversion -> contrarian nudge (∓3pp)
+- Otherwise -> neutral
 
 ---
 
@@ -46,8 +46,8 @@ over the last 60 minutes of ETH 1-min returns.
 from rolling mean without news, it tends to revert (pairs trading literature).
 
 **Implementation:** Compute z-score of current ETH/BTC ratio vs 4-hour rolling
-mean/std from aligned price deques. z > 1: ETH overpriced → p_yes down.
-z < -1: ETH underpriced → p_yes up. Max contribution: ±3pp (clipped at |z|=3).
+mean/std from aligned price deques. z > 1: ETH overpriced -> p_yes down.
+z < -1: ETH underpriced -> p_yes up. Max contribution: +/-3pp (clipped at |z|=3).
 
 ---
 
@@ -57,7 +57,7 @@ z < -1: ETH underpriced → p_yes up. Max contribution: ±3pp (clipped at |z|=3)
 when they have new information. Rapid YES price increases signal informed buying.
 
 **Implementation:** 30-sample lookback on `kalshi_price_history`. Threshold 2%.
-Rising → +2pp on p_yes. Falling → -2pp.
+Rising -> +2pp on p_yes. Falling -> -2pp.
 
 ---
 

@@ -112,5 +112,5 @@ All subsequent calibration and EV analysis uses **Phase 1 only** (12 real trades
 | 2026-03-31 | 12 | 0 | 5 | 7 |
 
 12 trades (5 settled) is insufficient for calibration. Meaningful S2 analysis
-requires ≥ 100 resolved trades with `confidence_score` populated.
+requires >= 100 resolved trades with `confidence_score` populated.
 The immediate priority is accumulating real paper trade data, not calibrating on 5 trades.

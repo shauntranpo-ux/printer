@@ -613,7 +613,7 @@ from backtesting.data.label_builder import build_labels
 
 
 def _make_bars(n_windows=50, bars_per_window=90, start_price=50000.0, seed=42):
-    """90 bars per 15-min window (10s × 90 = 900s = 15min)."""
+    """90 bars per 15-min window (10s x 90 = 900s = 15min)."""
     rng = np.random.default_rng(seed)
     total = n_windows * bars_per_window
     ts = pd.date_range("2025-01-01 00:00:00", periods=total, freq="10s", tz="UTC")
@@ -652,7 +652,7 @@ def test_label_matches_price_comparison():
 def test_log_return_sign_matches_label():
     bars = _make_bars()
     out = build_labels(bars)
-    # label=1 → log_return > 0; label=0 → log_return <= 0
+    # label=1 -> log_return > 0; label=0 -> log_return <= 0
     assert (out.loc[out["label"] == 1, "log_return"] > 0).all()
     assert (out.loc[out["label"] == 0, "log_return"] <= 0).all()
 
@@ -930,7 +930,7 @@ TIMESCALES_MINUTES = [15, 60, 240]
 
 
 def _bipower_variation(log_returns: np.ndarray) -> float:
-    """BV = (π/2) · Σ|r[1:]||r[:-1]|"""
+    """BV = (π/2) * Σ|r[1:]||r[:-1]|"""
     if len(log_returns) < 2:
         return 0.0
     return float((np.pi / 2.0) * np.sum(np.abs(log_returns[1:]) * np.abs(log_returns[:-1])))
@@ -1390,7 +1390,7 @@ def check_no_lookahead(
 
     Each decision dict must have:
         "timestamp": pd.Timestamp - the decision time
-        "feature_timestamps": dict[str, pd.Timestamp] - feature name → source data timestamp
+        "feature_timestamps": dict[str, pd.Timestamp] - feature name -> source data timestamp
 
     Returns a list of violations. Empty list means pass.
     """
@@ -1499,8 +1499,8 @@ Reference: Bailey & Lopez de Prado (2018) - "The Probability of Backtest Overfit
 Parameters:
     N: number of groups to split data into (default 6)
     k: number of groups used as test in each combination (default 2)
-    → produces C(N, k) = C(6, 2) = 15 splits
-    → produces (k · C(N,k)) / N = (2 · 15) / 6 = 5 distinct backtest paths
+    -> produces C(N, k) = C(6, 2) = 15 splits
+    -> produces (k * C(N,k)) / N = (2 * 15) / 6 = 5 distinct backtest paths
 
 Purging:
     Remove any training observation whose label window overlaps the test window.
@@ -1508,7 +1508,7 @@ Purging:
 
 Embargo:
     Drop a configurable number of minutes of observations after each test fold
-    before training resumes (default 30 min, must be ≥ label horizon 15 min).
+    before training resumes (default 30 min, must be >= label horizon 15 min).
 """
 from __future__ import annotations
 import math
@@ -1526,7 +1526,7 @@ def _n_combinations(n: int, k: int) -> int:
 
 
 def _n_paths(n: int, k: int) -> int:
-    """Number of distinct backtest paths = (k · C(N,k)) / N."""
+    """Number of distinct backtest paths = (k * C(N,k)) / N."""
     return (k * math.comb(n, k)) // n
 
 
@@ -1697,7 +1697,7 @@ def test_split_count():
 
 
 def test_path_count_formula():
-    """(k · C(N,k)) / N = (2 · 15) / 6 = 5."""
+    """(k * C(N,k)) / N = (2 * 15) / 6 = 5."""
     assert _n_paths(6, 2) == 5
 
 
@@ -2094,7 +2094,7 @@ def expected_calibration_error(
     """
     Expected Calibration Error (ECE).
 
-    ECE = Σ_b (|B_b| / n) · |acc(B_b) - conf(B_b)|
+    ECE = Σ_b (|B_b| / n) * |acc(B_b) - conf(B_b)|
     where B_b is the set of predictions in bin b.
     """
     bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
@@ -2172,7 +2172,7 @@ def sharpe_ratio(pnls: np.ndarray, periods_per_year: float = 252 * 96.0) -> floa
     """
     Annualized Sharpe ratio from per-trade P&L series.
 
-    periods_per_year default: 252 trading days × 96 15-min periods/day.
+    periods_per_year default: 252 trading days x 96 15-min periods/day.
     """
     if len(pnls) < 2:
         return float("nan")
@@ -2378,7 +2378,7 @@ def probability_of_backtest_overfitting(
         return float("nan")
 
     n = len(oos_sharpes)
-    # IS best → index of split with highest IS Sharpe
+    # IS best -> index of split with highest IS Sharpe
     is_best_idx = int(np.argmax(is_sharpes))
     # OOS performance of the IS-best split
     oos_best = oos_sharpes[is_best_idx]
@@ -2555,14 +2555,14 @@ def test_brier_perfect():
 
 
 def test_brier_constant_half_balanced():
-    """Constant p=0.5 on balanced labels → Brier = 0.25."""
+    """Constant p=0.5 on balanced labels -> Brier = 0.25."""
     y = np.array([1, 0, 1, 0, 1, 0])
     p = np.full(6, 0.5)
     assert brier_score(y, p) == pytest.approx(0.25)
 
 
 def test_brier_worst_case():
-    """Completely wrong predictions → Brier = 1.0."""
+    """Completely wrong predictions -> Brier = 1.0."""
     y = np.array([1, 1, 0, 0])
     p = np.array([0.0, 0.0, 1.0, 1.0])
     assert brier_score(y, p) == pytest.approx(1.0)
@@ -2575,7 +2575,7 @@ def test_log_loss_perfect():
 
 
 def test_ece_perfect_calibration():
-    """Perfectly calibrated predictions → ECE near zero."""
+    """Perfectly calibrated predictions -> ECE near zero."""
     rng = np.random.default_rng(42)
     p = rng.uniform(0, 1, 1000)
     y = (rng.random(1000) < p).astype(int)
@@ -2584,11 +2584,11 @@ def test_ece_perfect_calibration():
 
 
 def test_ece_constant_predictions():
-    """Constant p=0.5 on balanced labels → ECE ≈ 0."""
+    """Constant p=0.5 on balanced labels -> ECE ~ 0."""
     y = np.array([1, 0] * 500)
     p = np.full(1000, 0.5)
     ece = expected_calibration_error(y, p, n_bins=10)
-    assert ece < 0.01  # all predictions in one bin, acc ≈ conf ≈ 0.5
+    assert ece < 0.01  # all predictions in one bin, acc ~ conf ~ 0.5
 
 
 def test_reliability_diagram_shape():
@@ -2612,7 +2612,7 @@ from backtesting.metrics.overfitting import (
 
 
 def test_dsr_constant_series():
-    """DSR of a constant Sharpe series with 1 trial → determined by the formula."""
+    """DSR of a constant Sharpe series with 1 trial -> determined by the formula."""
     dsr, pvalue = deflated_sharpe_ratio(sharpe_obs=0.0, n_trials=1, n_obs=100)
     assert 0.0 <= dsr <= 1.0
     assert 0.0 <= pvalue <= 1.0
@@ -2625,13 +2625,13 @@ def test_dsr_high_sharpe_many_trials():
 
 
 def test_dsr_negative_sharpe():
-    """Negative Sharpe → DSR near 0."""
+    """Negative Sharpe -> DSR near 0."""
     dsr, pvalue = deflated_sharpe_ratio(sharpe_obs=-2.0, n_trials=10, n_obs=200)
     assert dsr < 0.5
 
 
 def test_psr_high_negative_sharpe():
-    """PSR of a very negative Sharpe series → near zero."""
+    """PSR of a very negative Sharpe series -> near zero."""
     psr = probabilistic_sharpe_ratio(
         sharpe_obs=-3.0, sharpe_benchmark=0.0, n_obs=252
     )
@@ -2639,7 +2639,7 @@ def test_psr_high_negative_sharpe():
 
 
 def test_psr_high_positive_sharpe():
-    """PSR of a large positive Sharpe → near 1."""
+    """PSR of a large positive Sharpe -> near 1."""
     psr = probabilistic_sharpe_ratio(
         sharpe_obs=3.0, sharpe_benchmark=0.0, n_obs=252
     )

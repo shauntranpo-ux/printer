@@ -2,14 +2,14 @@
 Model-free ladder no-arbitrage scanner for Strategy C2.
 
 Detects three violation classes on Kalshi strike-ladder snapshots:
-  1. Monotonicity  — P(S > K_low) < P(S > K_high) violates CDF ordering
-  2. Convexity     — positive butterfly value indicates K2 is underpriced
-  3. Bounds        — p outside [0,1] indicates degenerate book conditions
+  1. Monotonicity  - P(S > K_low) < P(S > K_high) violates CDF ordering
+  2. Convexity     - positive butterfly value indicates K2 is underpriced
+  3. Bounds        - p outside [0,1] indicates degenerate book conditions
 
 All three violation types emit ArbitrageSignal objects.
 Bounds violations are logged but never traded (no recommended_legs).
 A signal is only emitted when theoretical_profit_per_contract exceeds the
-2-leg fee hurdle: 2 × taker_fee_rate × avg_leg_price + safety_margin.
+2-leg fee hurdle: 2 x taker_fee_rate x avg_leg_price + safety_margin.
 """
 from __future__ import annotations
 import logging
@@ -49,7 +49,7 @@ class LadderArbitrageScanner:
         Scan ladder_df for arbitrage violations.
 
         Args:
-            ladder_df: output of parse_ladder() — must have 'strike' and
+            ladder_df: output of parse_ladder() - must have 'strike' and
                        'implied_probability' columns, sorted by strike ascending
             config:    asset config dict; uses keys:
                          c2_scanner.monotonicity_tolerance
@@ -82,11 +82,11 @@ class LadderArbitrageScanner:
         for i, (k, p) in enumerate(zip(strikes, probs)):
             if p > 1.0 - bounds_eps:
                 logger.warning(
-                    "Bounds violation (near-1) at strike=%.2f, p=%.4f; degenerate — skip.", k, p
+                    "Bounds violation (near-1) at strike=%.2f, p=%.4f; degenerate - skip.", k, p
                 )
             elif p < bounds_eps:
                 logger.warning(
-                    "Bounds violation (near-0) at strike=%.2f, p=%.4f; degenerate — skip.", k, p
+                    "Bounds violation (near-0) at strike=%.2f, p=%.4f; degenerate - skip.", k, p
                 )
 
         # 2. Monotonicity violations
@@ -135,7 +135,7 @@ class LadderArbitrageScanner:
                         strikes_involved=[k1, k2, k3],
                         recommended_legs=[
                             (k1, "no", 1),   # sell K1 YES (outer, overpriced)
-                            (k2, "yes", 2),  # buy K2 YES × 2 (middle, underpriced)
+                            (k2, "yes", 2),  # buy K2 YES x 2 (middle, underpriced)
                             (k3, "no", 1),   # sell K3 YES (outer, overpriced)
                         ],
                         theoretical_profit_per_contract=gross_profit - fee_hurdle,

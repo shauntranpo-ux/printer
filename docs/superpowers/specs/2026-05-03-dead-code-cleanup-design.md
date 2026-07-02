@@ -17,15 +17,15 @@ The codebase contains two separate problems:
 
 ## What the Live Strategy Actually Uses
 
-`FifteenMinStrategy` → `BaseStrategy.decide()` → `compute_15m_signal()`:
+`FifteenMinStrategy` -> `BaseStrategy.decide()` -> `compute_15m_signal()`:
 
 | Voter | Signal | Direction |
 |-------|--------|-----------|
 | V1 | `compute_bs_p_yes` | +1 if BS p_yes > 0.5 |
-| V2 | MTF momentum (5/15/30-bar avg return) | **inverted** - negative momentum → YES |
-| V3 | RSI deviation from 50 | **inverted** - oversold → YES |
-| V4 | Bollinger z-score | **inverted** - below lower band → YES |
-| V5 | MTF magnitude soft confirmation | **inverted** - large negative move → YES |
+| V2 | MTF momentum (5/15/30-bar avg return) | **inverted** - negative momentum -> YES |
+| V3 | RSI deviation from 50 | **inverted** - oversold -> YES |
+| V4 | Bollinger z-score | **inverted** - below lower band -> YES |
+| V5 | MTF magnitude soft confirmation | **inverted** - large negative move -> YES |
 
 Requires 3-of-5 agreement. All math is self-contained in `fifteen_min_signal.py`.
 

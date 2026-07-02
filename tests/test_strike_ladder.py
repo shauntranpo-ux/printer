@@ -72,7 +72,7 @@ class TestParseLadderValid:
 
 class TestParseLadderValidation:
     def test_non_monotone_raises(self):
-        # Same strike twice = duplicate → should raise
+        # Same strike twice = duplicate -> should raise
         snapshot = {
             "event_id": "t",
             "event_close_time": None,

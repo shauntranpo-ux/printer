@@ -24,7 +24,7 @@ def _restore_prices():
     asset_manager._prices.update(saved)
 
 
-# ── _bachelier_p_above ──────────────────────────────────────────────────────
+# _bachelier_p_above
 def test_pricer_at_strike_is_half():
     assert abs(s._bachelier_p_above(100, 100, 300, 0.008) - 0.5) < 1e-12
 
@@ -33,7 +33,7 @@ def test_pricer_monotone_and_symmetric():
     above = s._bachelier_p_above(101, 100, 300, 0.008)
     below = s._bachelier_p_above(99, 100, 300, 0.008)
     assert above > 0.5 > below
-    # log-symmetry: p(K*r) + p(K/r) ≈ 1 for the mirrored moneyness
+    # log-symmetry: p(K*r) + p(K/r) ~ 1 for the mirrored moneyness
     r = 1.01
     assert abs(s._bachelier_p_above(100 * r, 100, 300, 0.008)
                + s._bachelier_p_above(100 / r, 100, 300, 0.008) - 1.0) < 1e-9
@@ -52,7 +52,7 @@ def test_pricer_guards():
 
 
 def test_pricer_matches_linear_form_for_small_moves():
-    # exact log digital ≈ the shipped linearized z=dist/period_sigma for sub-1.5% moves
+    # exact log digital ~ the shipped linearized z=dist/period_sigma for sub-1.5% moves
     spot, strike, secs, sig = 100.6, 100.0, 300.0, 0.008
     period = sig * math.sqrt(secs / 900.0)
     z_lin = (spot - strike) / strike / period
@@ -60,7 +60,7 @@ def test_pricer_matches_linear_form_for_small_moves():
     assert abs(s._bachelier_p_above(spot, strike, secs, sig) - p_lin) < 1e-3
 
 
-# ── _live_sigma_15m ─────────────────────────────────────────────────────────
+# _live_sigma_15m
 def _seed(asset, pairs):
     dq = collections.deque(maxlen=2000)
     for ts, p in pairs:
@@ -75,7 +75,7 @@ def test_live_sigma_thin_data_falls_back_to_static():
 
 
 def test_live_sigma_recovers_known_value_from_60s_bars():
-    # |r|=0.002 per 60s bar -> 15m sigma = 0.002*sqrt(900/60) = 0.002*sqrt(15) ≈ 0.007746
+    # |r|=0.002 per 60s bar -> 15m sigma = 0.002*sqrt(900/60) = 0.002*sqrt(15) ~ 0.007746
     now = time.time()
     price, pairs = 2000.0, []
     for i in range(40):
@@ -119,13 +119,13 @@ def test_live_sigma_no_tod_double_count(monkeypatch):
         price *= math.exp(0.002 * ((-1) ** i))
         pairs.append((now - (40 - i) * 60, price))
     _seed("ETH", pairs)
-    # live estimate ≈ 0.007746 regardless of ToD=2.0 (no double count); clamp ceiling is 2x base
+    # live estimate ~ 0.007746 regardless of ToD=2.0 (no double count); clamp ceiling is 2x base
     sig = s._live_sigma_15m("ETH")
     assert sig <= s._CEIL_MULT * s._ASSET_VOL_15M["ETH"] + 1e-9
     assert abs(sig - 0.002 * math.sqrt(15)) < 1e-3
 
 
-# ── S1 harness visibility ───────────────────────────────────────────────────
+# S1 harness visibility
 def test_s1_dicts_carry_model_raw_p_yes():
     import inspect
     src = inspect.getsource(s.strategy_brain_s1)
@@ -133,7 +133,7 @@ def test_s1_dicts_carry_model_raw_p_yes():
     assert src.count("model_raw_p_yes") >= 2, "S1 must emit model_raw_p_yes for the edge harness"
 
 
-# ── settlement basis ────────────────────────────────────────────────────────
+# settlement basis
 def test_record_settlement_basis():
     import bot_loops
     bot_state._settlement_basis.clear()

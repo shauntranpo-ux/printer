@@ -6,7 +6,7 @@ Punchlist for wiring `Money Printer.html` to the live bot. Every item has a stat
 
 ## Wiring checklist
 
-### 1. Market strip + Decision Pipeline → `/api/market-state` ✅ ENDPOINT EXISTS
+### 1. Market strip + Decision Pipeline -> `/api/market-state`  ENDPOINT EXISTS
 
 **Mock location:** `const MARKETS = [...]` (line 839)
 
@@ -25,7 +25,7 @@ fetchMarketState();
 
 ---
 
-### 2. Trades table → `/api/trades` ✅ ENDPOINT EXISTS
+### 2. Trades table -> `/api/trades`  ENDPOINT EXISTS
 
 **Mock location:** `const TRADES = (()=>{...})()` (line 906)
 
@@ -33,7 +33,7 @@ fetchMarketState();
 
 ---
 
-### 3. KPI strip → `/api/pnl` ✅ ENDPOINT EXISTS
+### 3. KPI strip -> `/api/pnl`  ENDPOINT EXISTS
 
 **Mock location:** Hardcoded in HTML (lines 657-673)
 
@@ -41,15 +41,15 @@ fetchMarketState();
 
 ---
 
-### 4. Bot status + toggle → `/api/status` + `POST /api/bot/toggle` ⚠️ PARTIAL
+### 4. Bot status + toggle -> `/api/status` + `POST /api/bot/toggle`  PARTIAL
 
 `/api/status` exists (`server.py:184`). The toggle post endpoint needs to be built.
 
-**Wire:** On load, fetch `/api/status` → set toggle checked state. On toggle change, `POST /api/bot/toggle` with `{ running: bool }`.
+**Wire:** On load, fetch `/api/status` -> set toggle checked state. On toggle change, `POST /api/bot/toggle` with `{ running: bool }`.
 
 ---
 
-### 5. Event log → `/api/market-pulse` ✅ ENDPOINT EXISTS
+### 5. Event log -> `/api/market-pulse`  ENDPOINT EXISTS
 
 **Mock location:** Hardcoded in `renderEventLog()` (lines 1264-1275)
 
@@ -57,7 +57,7 @@ fetchMarketState();
 
 ---
 
-### 6. Equity chart → `/api/equity` ❌ BUILD THIS
+### 6. Equity chart -> `/api/equity`  BUILD THIS
 
 **Mock location:** `const EQ = { '1d': [...], '1w': [...], '1m': [...], 'all': [...] }` (line 898)
 
@@ -72,7 +72,7 @@ Wire to equity range buttons: on segment click, fetch the new range and call `re
 
 ---
 
-### 7. Per-asset hero pages → `/api/market/<sym>` ❌ BUILD THIS
+### 7. Per-asset hero pages -> `/api/market/<sym>`  BUILD THIS
 
 **Mock location:** `const MARKET_DATA = { BTC: {...}, ETH: {...}, ... }` (line 928)
 
@@ -88,7 +88,7 @@ Wire: call `renderMarketPanel(sym)` after fetching. Poll every 5s when that tab 
 
 ---
 
-### 8. Risk Status → `/api/risk` ❌ BUILD THIS
+### 8. Risk Status -> `/api/risk`  BUILD THIS
 
 **Mock location:** Hardcoded meters in HTML (lines 728-749)
 
@@ -107,7 +107,7 @@ Wire meter bars to `current/max * 100` percent widths.
 
 ---
 
-### 9. Mode segment → `POST /api/mode` ❌ BUILD THIS
+### 9. Mode segment -> `POST /api/mode`  BUILD THIS
 
 **Mock location:** JS listener (lines 1635-1643) - currently only updates UI, no server call.
 
@@ -115,7 +115,7 @@ Wire meter bars to `current/max * 100` percent widths.
 
 ---
 
-### 10. Per-asset pause → `POST /api/asset/<sym>/pause` ❌ BUILD THIS
+### 10. Per-asset pause -> `POST /api/asset/<sym>/pause`  BUILD THIS
 
 **Mock location:** Quick Actions "Pause {sym} only" button (lines 1537-1541) - currently a no-op.
 
@@ -123,7 +123,7 @@ Wire meter bars to `current/max * 100` percent widths.
 
 ---
 
-### 11. Per-asset P&L reset → `/api/reset_pnl` ✅ ENDPOINT EXISTS
+### 11. Per-asset P&L reset -> `/api/reset_pnl`  ENDPOINT EXISTS
 
 **Mock location:** Quick Actions "Reset {sym} P&L" button (line 1542-1545) - no-op in mock.
 
@@ -131,7 +131,7 @@ Wire meter bars to `current/max * 100` percent widths.
 
 ---
 
-### 12. Export CSV → `/api/export/trades` ✅ ENDPOINT EXISTS
+### 12. Export CSV -> `/api/export/trades`  ENDPOINT EXISTS
 
 **Mock location:** Download button in Trades tab (line 801) - no-op in mock.
 
@@ -139,7 +139,7 @@ Wire meter bars to `current/max * 100` percent widths.
 
 ---
 
-### 13. localStorage persistence ⚠️ RECOMMENDED, NOT IN MOCK
+### 13. localStorage persistence  RECOMMENDED, NOT IN MOCK
 
 Save and restore on load:
 - Active tab (`data-tab` value)
@@ -148,7 +148,7 @@ Save and restore on load:
 
 ---
 
-### 14. Allocation pie → real P&L data ⚠️ WIRE TO `/api/pnl`
+### 14. Allocation pie -> real P&L data  WIRE TO `/api/pnl`
 
 **Mock location:** `renderAllocation()` uses `MARKETS[i].pnlToday` (line 1159).
 
@@ -180,13 +180,13 @@ BTC and ETH have `sessions.length > 1` (15m + hourly). SOL, XRP, DOGE have only 
 
 ## Replacement sequence (suggested order)
 
-1. Wire `/api/market-state` → market strip + decision pipeline (biggest visible payoff)
-2. Wire `/api/pnl` → KPI strip
+1. Wire `/api/market-state` -> market strip + decision pipeline (biggest visible payoff)
+2. Wire `/api/pnl` -> KPI strip
 3. Wire `/api/status` + bot toggle
-4. Wire `/api/market-pulse` → event log
-5. Build + wire `/api/equity` → equity chart
-6. Wire `/api/trades` → trades table
-7. Build + wire `/api/market/<sym>` → per-asset pages
-8. Build + wire `/api/risk` → risk status meters
+4. Wire `/api/market-pulse` -> event log
+5. Build + wire `/api/equity` -> equity chart
+6. Wire `/api/trades` -> trades table
+7. Build + wire `/api/market/<sym>` -> per-asset pages
+8. Build + wire `/api/risk` -> risk status meters
 9. Build + wire `/api/mode` + `/api/bot/toggle` + `/api/asset/<sym>/pause`
 10. Add localStorage persistence for tab + range

@@ -7,7 +7,7 @@ Four targeted execution/risk fixes for the dual-brain bot. Signal quality issues
 ## Scope
 
 **In scope (this spec):**
-1. S2 OBI fail-open → fail-closed
+1. S2 OBI fail-open -> fail-closed
 2. S1 global + per-asset position cap
 3. S1 consecutive-loss persistence + alert trigger
 4. S1 session gate configurable for alts via per-asset config
@@ -49,7 +49,7 @@ def _s2_obi_gate(ticker: str, side: str, min_obi: float):
 
 **File:** `bot_strategy.py` - `strategy_brain_s1()`
 
-**Problem:** `_s1_pending_trades` has no maximum. Multiple markets per asset can both fire S1. With `_S1_ASSET_VOL_RATIO["DOGE"]=2.6`, two stacked DOGE positions = 5.2× base contracts.
+**Problem:** `_s1_pending_trades` has no maximum. Multiple markets per asset can both fire S1. With `_S1_ASSET_VOL_RATIO["DOGE"]=2.6`, two stacked DOGE positions = 5.2x base contracts.
 
 **Config keys (add to `config.json` defaults):**
 - `max_s1_positions` - global cap on `len(_s1_pending_trades)`. Default: `3`
@@ -114,7 +114,7 @@ else:
     max_cl = config.get("max_consecutive_losses", 5)
     if bot_state._s1_consecutive_losses >= max_cl:
         await send_telegram(
-            f"<b>🔵 [S1] {bot_state._s1_consecutive_losses} consecutive losses</b>"
+            f"<b> [S1] {bot_state._s1_consecutive_losses} consecutive losses</b>"
         )
 ```
 
@@ -161,8 +161,8 @@ Operator enables ETH gating with: `"asset_config": {"ETH": {"s1_session_gate": t
 
 New file: `tests/test_risk_guards.py`
 
-1. `test_s2_obi_gate_fails_closed_on_none` - `_s2_obi_gate(ticker, "yes", 0.20)` with `_ticker_obi` empty → returns `(False, None)`
-2. `test_s2_obi_gate_passes_with_data` - `_ticker_obi[ticker] = 0.40` → returns `(True, 0.40)` for `side="yes"`, `min_obi=0.20`
+1. `test_s2_obi_gate_fails_closed_on_none` - `_s2_obi_gate(ticker, "yes", 0.20)` with `_ticker_obi` empty -> returns `(False, None)`
+2. `test_s2_obi_gate_passes_with_data` - `_ticker_obi[ticker] = 0.40` -> returns `(True, 0.40)` for `side="yes"`, `min_obi=0.20`
 3. `test_s1_cap_global_source_check` - `inspect.getsource(strategy_brain_s1)` contains `s1_cap_global`
 4. `test_s1_cap_asset_source_check` - source contains `s1_cap_asset`
 5. `test_s1_consecutive_loss_persisted` - `write_state_file` state dict includes `s1_consecutive_losses` key

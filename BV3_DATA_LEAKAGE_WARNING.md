@@ -5,7 +5,7 @@
 Brain v3 (`_BV3_TABLE` in `bot.py`) is an empirical win-probability lookup table
 built from 4.5 million BTC 1-minute rows spanning **2017-2026**.
 
-It maps `(abs_pct_distance_from_strike, minutes_remaining)` → `win_probability`.
+It maps `(abs_pct_distance_from_strike, minutes_remaining)` -> `win_probability`.
 
 ## The Problem
 
@@ -55,11 +55,11 @@ BV3 tables have been **regenerated with a clean train/test split**.
 
 | Asset | Old (contaminated) | New (clean) | Delta   |
 |-------|--------------------|-------------|---------|
-| BTC   | 0.6811             | 0.6329      | −0.048  |
-| ETH   | 0.7255             | 0.6755      | −0.050  |
-| SOL   | 0.7477             | 0.6392      | −0.109  |
+| BTC   | 0.6811             | 0.6329      | -0.048  |
+| ETH   | 0.7255             | 0.6755      | -0.050  |
+| SOL   | 0.7477             | 0.6392      | -0.109  |
 | XRP   | 0.7970             | 0.8473      | +0.050  |
-| DOGE  | 0.7617             | 0.6872      | −0.075  |
+| DOGE  | 0.7617             | 0.6872      | -0.075  |
 
 The leakage was **real and material**: SOL and DOGE near-strike probabilities
 were overstated by 7-11pp. The clean tables are now live in `bv3_tables/*_bv3_full.json`.

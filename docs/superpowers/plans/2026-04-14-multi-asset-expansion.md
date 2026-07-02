@@ -15,7 +15,7 @@
 | File | Action | Responsibility |
 |------|--------|---------------|
 | `download_data.py` | **Create** | Resumable Binance klines downloader for all 5 assets |
-| `generate_bv3_table.py` | **Create** | Reads 1-min CSV → outputs `bv3_tables/{SYMBOL}_bv3_full.json` + `_pre2023.json` |
+| `generate_bv3_table.py` | **Create** | Reads 1-min CSV -> outputs `bv3_tables/{SYMBOL}_bv3_full.json` + `_pre2023.json` |
 | `bv3_tables/` | **Create dir** | JSON BV3 tables, one pair per asset |
 | `asset_manager.py` | **Create** | Asset config registry, BV3 loader/lookup, Binance WebSocket price feed |
 | `bot.py` | **Modify** | Replace single-asset globals with per-asset dicts; import from asset_manager; add `asset` column to DB; main loop iterates enabled assets |
@@ -360,7 +360,7 @@ DIST_BOUNDS = [
     0.0001, 0.0002, 0.0003, 0.0005, 0.0007,
     0.0010, 0.0015, 0.0020, 0.0025, 0.0030,
     0.0040, 0.0050,
-]  # 12 bounds → 13 buckets (last is open-ended >=0.0050)
+]  # 12 bounds -> 13 buckets (last is open-ended >=0.0050)
 
 MINUTES = list(range(1, 14))   # 1..13 minutes remaining (13 columns)
 WINDOW_MINUTES = 15            # Kalshi 15-minute window size
@@ -450,7 +450,7 @@ def build_table(df: pd.DataFrame, symbol: str, label: str) -> dict:
             stayed = (above == outcome_above)
 
             row = dist_bucket(dist_frac)
-            col = t - 1  # 0-indexed (minute 1 → col 0)
+            col = t - 1  # 0-indexed (minute 1 -> col 0)
 
             total[row][col] += 1
             if stayed:
@@ -514,7 +514,7 @@ def generate_for_asset(symbol: str, csv_path: str) -> None:
         df["open_time"] = df["open_time"].dt.tz_convert("UTC")
 
     df["close"] = df["close"].astype(float)
-    print(f"[{symbol}] {len(df):,} rows | {df['open_time'].min()} → {df['open_time'].max()}")
+    print(f"[{symbol}] {len(df):,} rows | {df['open_time'].min()} -> {df['open_time'].max()}")
 
     os.makedirs(BV3_DIR, exist_ok=True)
 
@@ -553,7 +553,7 @@ def generate_for_asset(symbol: str, csv_path: str) -> None:
             fv = full_table["table"][i][col6]
             pv = pre_table["table"][i][col6]
             delta = fv - pv
-            flag = " ← LARGE DIFF" if abs(delta) > 0.05 else ""
+            flag = " <- LARGE DIFF" if abs(delta) > 0.05 else ""
             print(f"  {label:<25} {fv:>8.3f} {pv:>10.3f} {delta:>+8.3f}{flag}")
 
 
@@ -600,7 +600,7 @@ Then generate:
 python generate_bv3_table.py --asset BTC --csv data/BTC_1m.csv
 ```
 
-Expected output ends with table comparison showing small deltas (≤0.02) if data is stable, larger deltas (flagged) if 2023+ data changed behavior significantly.
+Expected output ends with table comparison showing small deltas (<=0.02) if data is stable, larger deltas (flagged) if 2023+ data changed behavior significantly.
 
 - [ ] **Step 4: Verify output files**
 
@@ -672,7 +672,7 @@ BV3_DIR  = os.path.join(BASE_DIR, "bv3_tables")
 
 BINANCE_WS = "wss://stream.binance.com:9443/stream"
 
-# ── Asset registry ─────────────────────────────────────────────────────────────
+# Asset registry
 # kalshi_series: ordered list of Kalshi series tickers to try (first match wins)
 # binance_symbol: Binance trading pair
 # strike_increment: Kalshi strike price rounding unit
@@ -725,7 +725,7 @@ _BV3_TABLE_FALLBACK = [
 ]
 _BV3_DIST_BOUNDS_FALLBACK = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.0075, 0.010, 0.0125]
 
-# Per-asset price deques: asset → deque[(unix_ts, price)]
+# Per-asset price deques: asset -> deque[(unix_ts, price)]
 _prices: dict[str, deque] = {asset: deque(maxlen=500) for asset in ASSET_CONFIG}
 
 
@@ -862,7 +862,7 @@ async def binance_feed_task(enabled_assets: list[str]) -> None:
     )
     url = f"{BINANCE_WS}?streams={streams}"
 
-    # Map Binance symbol → asset name for fast lookup
+    # Map Binance symbol -> asset name for fast lookup
     sym_to_asset = {
         ASSET_CONFIG[a]["binance_symbol"].upper(): a
         for a in enabled_assets
@@ -1196,7 +1196,7 @@ This is the largest change. We introduce per-asset state and run the trading loo
 After the existing global state declarations (around line 85-100 in bot.py), add:
 
 ```python
-# ─── Per-asset state (replaces single-asset globals for multi-asset support) ──
+# Per-asset state (replaces single-asset globals for multi-asset support)
 # Each asset gets its own market, phase, position, and order-attempted set.
 # BTC state is initialized from the existing single-asset globals for compatibility.
 _asset_states: dict[str, dict] = {}
@@ -1295,14 +1295,14 @@ All Telegram calls should include the asset name. Find `send_telegram` calls in 
 ```python
 def _asset_tag(asset: str) -> str:
     """Return a short emoji+symbol tag for Telegram messages."""
-    tags = {"BTC": "₿ BTC", "ETH": "Ξ ETH", "SOL": "◎ SOL", "XRP": "✕ XRP", "DOGE": "🐕 DOGE"}
+    tags = {"BTC": "₿ BTC", "ETH": "Ξ ETH", "SOL": "◎ SOL", "XRP": " XRP", "DOGE": " DOGE"}
     return tags.get(asset, asset)
 ```
 
 - [ ] **Step 4: Refactor the main trading loop to iterate assets**
 
 The existing main loop (the `while True:` inside `main_loop()` or equivalent) currently does:
-1. Get BTC price → handle BTC market → sleep
+1. Get BTC price -> handle BTC market -> sleep
 
 We need it to do:
 1. For each enabled asset:
@@ -1324,7 +1324,7 @@ The refactor wraps the existing single-asset logic in a `for asset in enabled_as
                     if state is None:
                         continue
 
-                    # ── Price check ───────────────────────────────────────────
+                    # Price check
                     price = _am_get_price(asset)
                     if price is None:
                         log.warning(f"[{asset}] Waiting for price...")
@@ -1334,7 +1334,7 @@ The refactor wraps the existing single-asset logic in a `for asset in enabled_as
                         log.warning(f"[{asset}] Price stale ({age:.0f}s) - skipping")
                         continue
 
-                    # ── Market fetch ──────────────────────────────────────────
+                    # Market fetch
                     # BTC: use existing cached fetch_current_market for compatibility
                     # Others: use new per-asset fetcher
                     try:
@@ -1351,7 +1351,7 @@ The refactor wraps the existing single-asset logic in a `for asset in enabled_as
                         state["phase"] = "DONE"
                         continue
 
-                    # ── Phase logic ───────────────────────────────────────────
+                    # Phase logic
                     # Delegate to the existing handle_* functions, passing asset.
                     # The handle_ready_phase function needs asset param (see Task 5 Step 5).
                     try:
@@ -1378,10 +1378,10 @@ The refactor wraps the existing single-asset logic in a `for asset in enabled_as
 **Note on handle_ready_phase and handle_locked_phase:** These functions currently use global state variables (`current_position`, `current_phase`, `_order_attempted_tickers`). After this refactor, they should receive `state` dict and `asset` as parameters, reading/writing from `state["position"]`, `state["phase"]`, `state["order_attempted"]` instead of globals.
 
 This is a substantial signature change. Before making it, read both functions to understand all the global state they touch. The key globals to thread through `state`:
-- `current_position` → `state["position"]`
-- `current_phase` → `state["phase"]`
-- `_order_attempted_tickers` → `state["order_attempted"]`
-- `btc_price` → `price` (already a parameter)
+- `current_position` -> `state["position"]`
+- `current_phase` -> `state["phase"]`
+- `_order_attempted_tickers` -> `state["order_attempted"]`
+- `btc_price` -> `price` (already a parameter)
 
 The global `limit_triggered`, `_consecutive_losses`, `daily_reset_date` remain GLOBAL (shared across all assets).
 

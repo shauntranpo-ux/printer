@@ -1,4 +1,4 @@
-"""tests/test_kalshi_auth.py — Unit tests for auth robustness + order retry headroom."""
+"""tests/test_kalshi_auth.py - Unit tests for auth robustness + order retry headroom."""
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch, call
@@ -8,10 +8,10 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
-# ── 1. Clock-skew adjustment: large diff → bot_state updated ─────────────────
+# 1. Clock-skew adjustment: large diff -> bot_state updated
 
 async def test_clock_skew_adjustment():
-    """Date header 5000ms in the future → kalshi_clock_skew_ms set to ~5000."""
+    """Date header 5000ms in the future -> kalshi_clock_skew_ms set to ~5000."""
     import bot_state
     import bot_market
 
@@ -38,10 +38,10 @@ async def test_clock_skew_adjustment():
         bot_state.kalshi_clock_skew_ms = old_skew
 
 
-# ── 2. Clock-skew within tolerance → skew stays 0 ────────────────────────────
+# 2. Clock-skew within tolerance -> skew stays 0
 
 async def test_clock_skew_within_tolerance():
-    """Date header within ±2s → kalshi_clock_skew_ms unchanged."""
+    """Date header within +/-2s -> kalshi_clock_skew_ms unchanged."""
     import bot_state
     import bot_market
     import email.utils, time
@@ -66,10 +66,10 @@ async def test_clock_skew_within_tolerance():
         bot_state.kalshi_clock_skew_ms = old_skew
 
 
-# ── 3. Demo fallback: missing creds → bot disabled, no live creds loaded ─────
+# 3. Demo fallback: missing creds -> bot disabled, no live creds loaded
 
 def test_demo_fallback_no_live_creds():
-    """Missing KALSHI_DEMO_API_KEY → api_key="", private_key=None, bot_enabled=False."""
+    """Missing KALSHI_DEMO_API_KEY -> api_key="", private_key=None, bot_enabled=False."""
     import bot_state
     import bot_market
 
@@ -99,10 +99,10 @@ def test_demo_fallback_no_live_creds():
         bot_state.demo_fallback_alert = old_flag
 
 
-# ── 4. place_order safety guard: live mode with demo URL → refuse ─────────────
+# 4. place_order safety guard: live mode with demo URL -> refuse
 
 async def test_place_order_safety_guard_live_with_demo_url():
-    """place_order mode=live but BASE_URL=demo → fill_confirmed=False, no HTTP calls."""
+    """place_order mode=live but BASE_URL=demo -> fill_confirmed=False, no HTTP calls."""
     import bot_state
     import bot_market
 
@@ -123,10 +123,10 @@ async def test_place_order_safety_guard_live_with_demo_url():
         bot_state.KALSHI_BASE_URL = old_url
 
 
-# ── 5. 429 exponential backoff: 3 retries then success ───────────────────────
+# 5. 429 exponential backoff: 3 retries then success
 
 async def test_429_exponential_backoff():
-    """Three 429 responses then 200 → asyncio.sleep called with [1, 2, 4]."""
+    """Three 429 responses then 200 -> asyncio.sleep called with [1, 2, 4]."""
     import bot_market
     import bot_state
 
@@ -184,10 +184,10 @@ async def test_429_exponential_backoff():
     assert sleep_calls == [1, 2, 4], f"Expected [1, 2, 4], got {sleep_calls}"
 
 
-# ── 6. 5xx backoff: 2 server errors then 200 ─────────────────────────────────
+# 6. 5xx backoff: 2 server errors then 200
 
 async def test_5xx_backoff():
-    """Two 503 responses then 200 → asyncio.sleep called with [1, 2]."""
+    """Two 503 responses then 200 -> asyncio.sleep called with [1, 2]."""
     import bot_market
     import bot_state
 
@@ -243,10 +243,10 @@ async def test_5xx_backoff():
     assert sleep_calls == [1, 2], f"Expected [1, 2], got {sleep_calls}"
 
 
-# ── 7. Auth failure alert cooldown: second call within window → no double fire ─
+# ── 7. Auth failure alert cooldown: second call within window -> no double fire ─
 
 async def test_auth_failure_alert_cooldown():
-    """_alert_auth_failure called twice within 60s → send_telegram called once."""
+    """_alert_auth_failure called twice within 60s -> send_telegram called once."""
     import bot_market
 
     old_ts = bot_market._last_auth_alert_ts

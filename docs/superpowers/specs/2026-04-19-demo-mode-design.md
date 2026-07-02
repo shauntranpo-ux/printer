@@ -7,7 +7,7 @@
 
 ## Context
 
-The bot currently has two trading modes selected via `config.json` → `"mode"` or env var `BOT_MODE`:
+The bot currently has two trading modes selected via `config.json` -> `"mode"` or env var `BOT_MODE`:
 - `"paper"` - simulated fills, no API calls
 - `"live"` - real Kalshi API at hardcoded `KALSHI_BASE_URL`, credentials from `KALSHI_API_KEY` + `KALSHI_PRIVATE_KEY` env vars
 
@@ -43,7 +43,7 @@ Safety is enforced by startup assertions before any orders are placed.
 
 ## Mode Selection (unchanged pattern)
 
-Mode is read from `config.json` → `"mode"` key, overridable via `BOT_MODE` env var:
+Mode is read from `config.json` -> `"mode"` key, overridable via `BOT_MODE` env var:
 
 ```json
 { "mode": "demo" }
@@ -178,8 +178,8 @@ Guard that prevents demo from falling back to live URL if env var is missing: ha
 
 ### Edit 5 - Daily loss limit (DLL) guard (~line 2734)
 
-Current behavior: live DLL → flip mode to `"paper"`.  
-New behavior: demo DLL → `bot_enabled = false` + Telegram notification (no paper flip).
+Current behavior: live DLL -> flip mode to `"paper"`.  
+New behavior: demo DLL -> `bot_enabled = false` + Telegram notification (no paper flip).
 
 ```python
 async def trigger_loss_limit(config, reason: str) -> None:
@@ -192,7 +192,7 @@ async def trigger_loss_limit(config, reason: str) -> None:
         cfg = load_config()
         cfg["bot_enabled"] = False
         save_config(cfg)
-        msg = f"🛑 <b>DEMO DLL triggered</b>\n{reason}\nBot disabled. Re-enable manually."
+        msg = f" <b>DEMO DLL triggered</b>\n{reason}\nBot disabled. Re-enable manually."
         await send_telegram(msg)
         log.warning(f"Demo DLL triggered - bot_enabled set to False. Reason: {reason}")
         return
@@ -213,21 +213,21 @@ async def trigger_loss_limit(config, reason: str) -> None:
 - `src/kalshi_botv3/` package - untouched
 - Dashboard / UI / toggle button - untouched
 - Live mode DLL behavior - unchanged (still flips to paper)
-- Mode icon in trade log (`📄` / `💵`) - untouched (user said no UI changes)
+- Mode icon in trade log (`` / ``) - untouched (user said no UI changes)
 
 ---
 
 ## How to Test End-to-End
 
 1. Add `KALSHI_DEMO_API_KEY` and `KALSHI_DEMO_PRIVATE_KEY` to your Railway/local env
-2. Set `BOT_MODE=demo` (or edit `config.json` → `"mode": "demo"`)
+2. Set `BOT_MODE=demo` (or edit `config.json` -> `"mode": "demo"`)
 3. Start the bot - confirm startup prints:
    ```
    [DEMO MODE] Base URL : https://demo-api.kalshi.co/trade-api/v2
    [DEMO MODE] API key  : abc123...
    ```
 4. Confirm `bot_enabled: true` in config and let it run one cycle - check logs for a SKIP or SIGNAL event with `mode=demo`
-5. Query `kalshi_bot.db` → `trades` table: confirm `mode = 'demo'` on any recorded activity
+5. Query `kalshi_bot.db` -> `trades` table: confirm `mode = 'demo'` on any recorded activity
 6. To test DLL guard: temporarily lower `daily_loss_limit_dollars` to $0.01 and trigger a fill; confirm `bot_enabled` flips to `false` and Telegram fires
 7. To verify no live orders: check your live Kalshi account - zero activity should appear
 
@@ -239,6 +239,6 @@ async def trigger_loss_limit(config, reason: str) -> None:
 |------|-----------|
 | Demo creds accidentally used for live | Startup assertion: `KALSHI_BASE_URL == KALSHI_LIVE_BASE_URL` when mode=="live" |
 | Live creds accidentally used for demo | Startup assertion: `KALSHI_BASE_URL == KALSHI_DEMO_BASE_URL` when mode=="demo" |
-| Demo creds missing → silent live fallback | `sys.exit()` in credential loader before any assertion is reached |
+| Demo creds missing -> silent live fallback | `sys.exit()` in credential loader before any assertion is reached |
 | Wrong URL set | Two named constants prevent typos; assertions cross-check mode↔URL |
 | DB records mixed up | `mode` column records "demo" vs "live" string; queryable |

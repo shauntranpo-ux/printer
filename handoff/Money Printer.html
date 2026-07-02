@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Printr · Trading Desk</title>
+<title>Printr * Trading Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -269,7 +269,7 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
   font:600 9px/1 'Montserrat',sans-serif;letter-spacing:0.1em;text-transform:uppercase;
   padding:3px 7px;border-radius:4px;
 }
-/* phase: WATCH (waiting) → READY (signal qualified) → LOCKED (in trade) → DONE (resolved) → OFFLINE */
+/* phase: WATCH (waiting) -> READY (signal qualified) -> LOCKED (in trade) -> DONE (resolved) -> OFFLINE */
 .mc-status.watch  {background:var(--bg-2);color:var(--ink-3);}
 .mc-status.ready  {background:oklch(0.55 0.16 245 / 0.12);color:oklch(0.5 0.16 245);}
 .mc-status.locked {background:oklch(0.78 0.13 85 / 0.18);color:oklch(0.5 0.13 85);}
@@ -536,7 +536,7 @@ tbody tr:last-child td{border-bottom:none;}
 .heat-strip{display:grid;grid-template-columns:repeat(60,1fr);gap:1px;height:24px;}
 .heat-strip > div{border-radius:1px;}
 
-/* Decision summary rows (Overview · Live Signals) */
+/* Decision summary rows (Overview * Live Signals) */
 .ds-list{margin:-4px 0;}
 .ds-row{
   display:grid;grid-template-columns:120px auto 1fr auto auto auto auto;align-items:center;gap:10px;
@@ -619,7 +619,7 @@ tbody tr:last-child td{border-bottom:none;}
   <div class="topbar-inner">
     <div class="brand">
       <div class="brand-mark">P</div>
-      <div class="brand-name"><b>printr</b><span>15m · KALSHI</span></div>
+      <div class="brand-name"><b>printr</b><span>15m * KALSHI</span></div>
     </div>
 
     <div class="tabs" id="tabs">
@@ -649,7 +649,7 @@ tbody tr:last-child td{border-bottom:none;}
         <button data-mode="live">LIVE</button>
       </div>
       <div class="clock" id="clock">--:--:--</div>
-      <button class="icon-btn" title="Reset P&L" id="resetPnlBtn" onclick="(function(btn){apiPost('/api/reset_pnl',{mode:'all'}).then(()=>{btn.textContent='✓ reset';btn.disabled=true;setTimeout(()=>{btn.innerHTML='<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><polyline points=\'1 4 1 10 7 10\'/><path d=\'M3.51 15a9 9 0 1 0 2.13-9.36L1 10\'/></svg> P&L';btn.disabled=false;},2000)});btn.textContent='…'})(this)">
+      <button class="icon-btn" title="Reset P&L" id="resetPnlBtn" onclick="(function(btn){apiPost('/api/reset_pnl',{mode:'all'}).then(()=>{btn.textContent='✓ reset';btn.disabled=true;setTimeout(()=>{btn.innerHTML='<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><polyline points=\'1 4 1 10 7 10\'/><path d=\'M3.51 15a9 9 0 1 0 2.13-9.36L1 10\'/></svg> P&L';btn.disabled=false;},2000)});btn.textContent='...'})(this)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> P&amp;L
       </button>
     </div>
@@ -663,15 +663,15 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- KPI STRIP - Strategy 2 (D3 Hybrid) -->
   <div class="kpi-strip" id="kpi-strip-s2">
-    <div class="kpi-strip-label">S2 · Velocity + OBI</div>
+    <div class="kpi-strip-label">S2 * Velocity + OBI</div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-alltime-val" class="kpi-cell-v up mono">+$1,847.20</div>
       <div id="kpi-alltime-sub" class="kpi-cell-s"><span class="kpi-trend up">▲ 4.2%</span> vs yesterday</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Win Rate · All-Time</div>
+      <div class="kpi-cell-l">Win Rate * All-Time</div>
       <div id="kpi-wr-val" class="kpi-cell-v mono">62.4<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
       <div id="kpi-wr-sub" class="kpi-cell-s"><span class="kpi-trend up">▲ 1.8</span> 187 trades</div>
     </div>
@@ -679,21 +679,21 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="kpi-cell">
       <div class="kpi-cell-l">Today's P&amp;L<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-today-val" class="kpi-cell-v up mono">+$84.60</div>
-      <div id="kpi-today-sub" class="kpi-cell-s"><span class="mono">12 trades</span> · 7W / 5L</div>
+      <div id="kpi-today-sub" class="kpi-cell-s"><span class="mono">12 trades</span> * 7W / 5L</div>
     </div>
   </div>
 
   <!-- KPI STRIP - Strategy 1 (Original) -->
   <div class="kpi-strip" id="kpi-strip-s1">
-    <div class="kpi-strip-label s1">S1 · EMA Momentum</div>
+    <div class="kpi-strip-label s1">S1 * EMA Momentum</div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
       <div id="kpi-s1-alltime-sub" class="kpi-cell-s">-</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Win Rate · All-Time</div>
+      <div class="kpi-cell-l">Win Rate * All-Time</div>
       <div id="kpi-s1-wr-val" class="kpi-cell-v mono" style="color:var(--amber);">-<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
       <div id="kpi-s1-wr-sub" class="kpi-cell-s">- trades</div>
     </div>
@@ -712,7 +712,7 @@ tbody tr:last-child td{border-bottom:none;}
   <div class="grid-2" style="margin-bottom:8px;">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 · vel+OBI</span></div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * vel+OBI</span></div>
         <div class="seg" id="equity-seg">
           <button class="active" data-range="1d">1D</button>
           <button data-range="1w">1W</button>
@@ -724,7 +724,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 · vel+OBI</span></div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * vel+OBI</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
@@ -738,13 +738,13 @@ tbody tr:last-child td{border-bottom:none;}
   <div class="grid-2">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 · EMA</span></div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * EMA</span></div>
       </div>
       <div class="chart-wrap" id="equity-chart-s1"></div>
     </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 · EMA</span></div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * EMA</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
@@ -796,7 +796,7 @@ tbody tr:last-child td{border-bottom:none;}
   <!-- DECISION SIGNALS -->
   <div class="card" style="margin-top:14px;">
     <div class="card-head">
-      <div class="card-title"><span class="accent"></span>Decision Signals &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">per-asset · live</span></div>
+      <div class="card-title"><span class="accent"></span>Decision Signals &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">per-asset * live</span></div>
     </div>
     <div id="sig-list"></div>
   </div>
@@ -871,13 +871,13 @@ tbody tr:last-child td{border-bottom:none;}
 <div class="panel" id="panel-edge">
   <div style="display:flex;flex-direction:column;gap:14px;padding:8px 0;">
     <div class="card" id="edge-verdict-card">
-      <div class="card-head"><div class="card-title"><span class="accent"></span>Do we have an edge? &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">GATE&nbsp;1 · decision_log</span></div></div>
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Do we have an edge? &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">GATE&nbsp;1 * decision_log</span></div></div>
       <div id="edge-verdict" style="font-family:'Montserrat';font-weight:700;font-size:15px;padding:6px 2px;">-</div>
-      <div id="edge-counts" style="font-size:11px;color:var(--ink-3);margin-top:6px;">Collecting paper data…</div>
+      <div id="edge-counts" style="font-size:11px;color:var(--ink-3);margin-top:6px;">Collecting paper data...</div>
       <div class="meter-bar" style="margin-top:8px;"><div id="edge-progress" class="up" style="width:0%"></div></div>
     </div>
     <div class="card">
-      <div class="card-head"><div class="card-title"><span class="accent"></span>Calibration &amp; net edge · per strategy</div></div>
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Calibration &amp; net edge * per strategy</div></div>
       <div style="overflow-x:auto;"><table style="width:100%;"><thead><tr>
         <th>Strategy</th><th>Picks</th><th>Win%</th><th>Model P</th><th>Mkt P</th>
         <th>Brier M/K</th><th>Net $/ct</th><th>Wilson LB</th>
@@ -885,7 +885,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Net $/ct = realized P&amp;L per contract after fees on the gate's picks. Wilson LB &gt; 0 = statistically positive edge.</div>
     </div>
     <div class="card">
-      <div class="card-head"><div class="card-title"><span class="accent"></span>Better market times &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">ET session · net edge on picks</span></div></div>
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Better market times &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">ET session * net edge on picks</span></div></div>
       <div style="overflow-x:auto;"><table style="width:100%;"><thead><tr>
         <th>Session (ET)</th><th>Picks</th><th>Win%</th><th>Net $/ct</th><th>Wilson LB</th><th></th>
       </tr></thead><tbody id="edge-session"></tbody></table></div>
@@ -895,12 +895,12 @@ tbody tr:last-child td{border-bottom:none;}
       <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Which ET sessions / days actually pay. Sessions: us_open 9:30-11:30, us_midday-15:00, us_close-16:30, us_evening-22:00, overnight. To skip a losing one, set <code>blocked_sessions</code> (or <code>block_weekends</code>) in config. "insufficient" = too few settled picks to trust yet.</div>
     </div>
     <div class="card">
-      <div class="card-head"><div class="card-title"><span class="accent"></span>Maker vs taker &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">maker_log · counterfactual</span></div></div>
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Maker vs taker &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">maker_log * counterfactual</span></div></div>
       <div id="edge-maker-verdict" style="font-family:'Montserrat';font-weight:700;font-size:13px;padding:4px 2px;">-</div>
       <div style="overflow-x:auto;margin-top:6px;"><table style="width:100%;"><thead><tr>
         <th>Strategy</th><th>n</th><th>Fill%</th><th>Taker $/ct</th><th>Maker $/ct</th><th>Δ $/ct</th><th>Δ SE</th>
       </tr></thead><tbody id="edge-maker"></tbody></table></div>
-      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Maker $/ct counts an unfilled order as $0 (no trade). Once Δ clears ~2·SE with 200+ samples, set <code>maker_execution_enabled: true</code> (paper) to settle trades at maker pricing.</div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Maker $/ct counts an unfilled order as $0 (no trade). Once Δ clears ~2*SE with 200+ samples, set <code>maker_execution_enabled: true</code> (paper) to settle trades at maker pricing.</div>
     </div>
     <div class="card">
       <div class="card-head"><div class="card-title"><span class="accent"></span>Model self-tuning &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">refit every 30 min from settled data</span></div></div>
@@ -1021,7 +1021,7 @@ const FIELD_TIP = {
   market_prob:  'Market P(YES) - market-implied probability from ask prices.',
   yes_ev:       'YES EV - expected value if betting YES.',
   no_ev:        'NO EV - expected value if betting NO.',
-  supertrend:   'Supertrend direction. +1 up / −1 down.',
+  supertrend:   'Supertrend direction. +1 up / -1 down.',
   velocity:     'Contract velocity - rising / falling / flat.',
   vote_count:   'D3 votes - number of sub-signals agreeing (0-5).',
   ev_pass:      'EV gate - did EV exceed minimum threshold?',
@@ -1033,7 +1033,7 @@ const FIELD_TIP = {
 const SKIP_REASON_LABEL = {
   votes_below_threshold: 'Votes < threshold',
   ev_below_threshold:    'EV below floor',
-  gate_a_velocity_block: 'Gate A · velocity opposed',
+  gate_a_velocity_block: 'Gate A * velocity opposed',
   no_strategy_signal:    'No signal',
   daily_loss_limit:      'Daily loss limit',
 };
@@ -1063,8 +1063,8 @@ const MARKET_DATA = {
     ladder:{ asks:[[58,12],[57,18],[56,24],[55,31],[54,46]], bids:[[52,38],[51,29],[50,21],[49,15],[48,9]] },
     log:[
       ['00:42','signal','15m strategy: <b>UP signal</b>, EV 7.6%, vol 1.42'],
-      ['01:14','entry','Entered <b>YES @ 54¢</b> · qty 5 · est P&L +$2.30'],
-      ['03:20','exit','Closed <b>+$2.30</b> · win @ resolution UP'],
+      ['01:14','entry','Entered <b>YES @ 54¢</b> * qty 5 * est P&L +$2.30'],
+      ['03:20','exit','Closed <b>+$2.30</b> * win @ resolution UP'],
       ['04:02','signal','15m strategy: holding, EV below floor'],
       ['05:48','skip','EV 4.2% < floor 7.0% - sitting out'],
       ['07:11','signal','New 15m candle, vol expanding'],
@@ -1079,7 +1079,7 @@ const MARKET_DATA = {
     ladder:{ asks:[[62,8],[60,14],[58,22],[57,28],[56,42]], bids:[[44,36],[43,28],[42,20],[41,12],[40,6]] },
     log:[
       ['01:02','signal','Hourly model: <b>DOWN bias</b>, score 81'],
-      ['01:18','entry','Entered <b>NO @ 56¢</b> · qty 3 · hourly'],
+      ['01:18','entry','Entered <b>NO @ 56¢</b> * qty 3 * hourly'],
       ['02:48','signal','15m strategy idle (no trigger)'],
       ['04:22','exit','Closed <b>+$1.20</b> on early exit'],
       ['06:01','skip','15m EV 5.1% below floor'],
@@ -1093,11 +1093,11 @@ const MARKET_DATA = {
     ladder:{ asks:[[64,4],[62,12],[60,20],[59,28],[58,52]], bids:[[44,48],[43,32],[42,24],[41,14],[40,8]] },
     log:[
       ['00:18','signal','<b>Strong UP</b>, vol 1.74, EV 9.4%'],
-      ['00:32','entry','Entered <b>YES @ 58¢</b> · qty 7'],
-      ['02:14','exit','Closed <b>+$2.94</b> · win'],
+      ['00:32','entry','Entered <b>YES @ 58¢</b> * qty 7'],
+      ['02:14','exit','Closed <b>+$2.94</b> * win'],
       ['03:48','signal','Reentry triggered, momentum'],
-      ['04:02','entry','Entered <b>YES @ 56¢</b> · qty 6'],
-      ['05:51','exit','Closed <b>+$2.64</b> · win'],
+      ['04:02','entry','Entered <b>YES @ 56¢</b> * qty 6'],
+      ['05:51','exit','Closed <b>+$2.64</b> * win'],
       ['07:42','signal','15m: bias UP, holding for entry'],
     ],
     stats:{ wins:51, losses:24, wr:0.680, todayPnl:+38.20, avgEV:7.9, bestExit:'+$11.20', worstDD:-7.80 }
@@ -1413,7 +1413,7 @@ function renderSignals(){
         <div class="ds-field"><span class="l" title="${FIELD_TIP.raw_p_yes}">Raw P(YES)</span><span class="v">${(s.raw_p_yes*100).toFixed(1)}%</span></div>
         <div class="ds-field"><span class="l" title="${FIELD_TIP.p_ev}">Model P(YES)</span><span class="v">${(s.p_ev*100).toFixed(1)}%</span></div>
         <div class="ds-field"><span class="l" title="${FIELD_TIP.market_prob}">Market P(YES)</span><span class="v">${(s.market_prob*100).toFixed(1)}%</span></div>
-        <div class="ds-field"><span class="l" title="${FIELD_TIP.supertrend}">Supertrend</span><span class="v ${s.supertrend>0?'up':'down'}">${s.supertrend>0?'+1 up':'−1 down'}</span></div>
+        <div class="ds-field"><span class="l" title="${FIELD_TIP.supertrend}">Supertrend</span><span class="v ${s.supertrend>0?'up':'down'}">${s.supertrend>0?'+1 up':'-1 down'}</span></div>
         <div class="ds-field"><span class="l" title="${FIELD_TIP.yes_ev}">YES EV</span><span class="v ${s.yes_ev>0?'up':'down'}">${s.yes_ev>=0?'+':''}${s.yes_ev.toFixed(1)}%</span></div>
         <div class="ds-field"><span class="l" title="${FIELD_TIP.no_ev}">NO EV</span><span class="v ${s.no_ev>0?'up':'down'}">${s.no_ev>=0?'+':''}${s.no_ev.toFixed(1)}%</span></div>
         <div class="ds-field"><span class="l" title="${FIELD_TIP.velocity}">Velocity</span><span class="v ${s.velocity==='rising'?'up':s.velocity==='falling'?'down':'muted'}">${s.velocity}</span></div>
@@ -1437,16 +1437,16 @@ function renderSignals(){
 // event log
 function renderEventLog(evts){
   const events = evts || [
-    ['07:42','entry','SOL → <b>YES @ 58¢</b> · qty 7 · EV 9.4%'],
+    ['07:42','entry','SOL -> <b>YES @ 58¢</b> * qty 7 * EV 9.4%'],
     ['07:38','signal','SOL: 15m strong UP, vol 1.74'],
-    ['07:21','exit','BTC <b>+$2.30</b> · win @ resolution UP'],
-    ['07:14','entry','BTC → <b>YES @ 54¢</b> · qty 5'],
+    ['07:21','exit','BTC <b>+$2.30</b> * win @ resolution UP'],
+    ['07:14','entry','BTC -> <b>YES @ 54¢</b> * qty 5'],
     ['07:02','signal','BTC: 15m UP signal, EV 7.6%'],
     ['06:48','skip','DOGE: no_strategy_signal'],
     ['06:32','signal','XRP: range bound'],
-    ['05:51','exit','SOL <b>+$2.64</b> · win'],
-    ['05:18','entry','SOL → <b>YES @ 56¢</b> · qty 6'],
-    ['04:48','exit','ETH <b>+$1.20</b> · early exit'],
+    ['05:51','exit','SOL <b>+$2.64</b> * win'],
+    ['05:18','entry','SOL -> <b>YES @ 56¢</b> * qty 6'],
+    ['04:48','exit','ETH <b>+$1.20</b> * early exit'],
   ];
   document.getElementById('event-log').innerHTML = events.map(e=>`
     <div class="log-row">
@@ -1478,17 +1478,17 @@ function brainStatsHTML(stats) {
         '<div>' +
           '<div style="font-size:9px;color:var(--ink-3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">Today</div>' +
           '<div class="mono ' + tdCls + '" style="font-size:16px;font-weight:700;">' + fmtPnl(tdPnl) + '</div>' +
-          '<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">' + (td.wins != null ? td.wins : 0) + 'W / ' + (td.losses != null ? td.losses : 0) + 'L · ' + (td.trades != null ? td.trades : 0) + ' trades</div>' +
+          '<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">' + (td.wins != null ? td.wins : 0) + 'W / ' + (td.losses != null ? td.losses : 0) + 'L * ' + (td.trades != null ? td.trades : 0) + ' trades</div>' +
         '</div>' +
         '<div>' +
           '<div style="font-size:9px;color:var(--ink-3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">All-time</div>' +
           '<div class="mono ' + atCls + '" style="font-size:16px;font-weight:700;">' + fmtPnl(atPnl) + '</div>' +
-          '<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">' + (at.wins != null ? at.wins : 0) + 'W / ' + (at.losses != null ? at.losses : 0) + 'L · ' + (at.trades != null ? at.trades : 0) + ' trades</div>' +
+          '<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">' + (at.wins != null ? at.wins : 0) + 'W / ' + (at.losses != null ? at.losses : 0) + 'L * ' + (at.trades != null ? at.trades : 0) + ' trades</div>' +
         '</div>' +
       '</div>' +
     '</div>';
   }
-  return '<div style="padding:0 2px;">' + row('s1', 'S1 · EMA Momentum') + row('s2', 'S2 · vel+OBI') + '</div>';
+  return '<div style="padding:0 2px;">' + row('s1', 'S1 * EMA Momentum') + row('s2', 'S2 * vel+OBI') + '</div>';
 }
 // ════════════════════════════════════════════════════
 //  PER-MARKET PANEL
@@ -1565,7 +1565,7 @@ function renderMarketPanel(sym){
   // session tabs (only for multi-session)
   const sessionTabsHTML = hasMulti ? `
     <div class="session-tabs">
-      ${data.sessions.map((s,i)=>`<div class="session-tab ${s.active?'active':''}"><span class="pip"></span>${s.type==='15m'?'15-Minute':'Hourly'} · ${s.active?'ACTIVE':'Idle'}</div>`).join('')}
+      ${data.sessions.map((s,i)=>`<div class="session-tab ${s.active?'active':''}"><span class="pip"></span>${s.type==='15m'?'15-Minute':'Hourly'} * ${s.active?'ACTIVE':'Idle'}</div>`).join('')}
     </div>` : '';
 
   document.getElementById('panel-market').innerHTML = `
@@ -1573,14 +1573,14 @@ function renderMarketPanel(sym){
       <div class="hero-row">
         <div class="hero-logo">${cryptoLogo(sym)}</div>
         <div class="hero-info">
-          <div class="hero-name">${sym} <span>${sym==='BTC'?'Bitcoin':sym==='ETH'?'Ethereum':sym==='SOL'?'Solana':sym==='XRP'?'XRP':'Dogecoin'} · 15m Kalshi</span></div>
+          <div class="hero-name">${sym} <span>${sym==='BTC'?'Bitcoin':sym==='ETH'?'Ethereum':sym==='SOL'?'Solana':sym==='XRP'?'XRP':'Dogecoin'} * 15m Kalshi</span></div>
           <div class="hero-px">${fmtPx(sym,m.px)}</div>
           <div class="hero-sub">
             <span class="ch ${dirCls}">${m.ch24>=0?'+':''}${m.ch24.toFixed(2)}%</span>
             <span>24h</span>
-            <span style="color:var(--line-2);">·</span>
+            <span style="color:var(--line-2);">*</span>
             <span>Strike ${fmtPx(sym,m.strike)}</span>
-            <span style="color:var(--line-2);">·</span>
+            <span style="color:var(--line-2);">*</span>
             <span>${m.side}</span>
           </div>
         </div>
@@ -1636,10 +1636,10 @@ function renderMarketPanel(sym){
           </div>
         </div>
         <div class="card">
-          <div class="card-head"><div class="card-title"><span class="accent"></span>15m Win Heatmap · last 60</div></div>
+          <div class="card-head"><div class="card-title"><span class="accent"></span>15m Win Heatmap * last 60</div></div>
           <div class="heat-strip">${heat.map(c=>`<div style="background:${c};"></div>`).join('')}</div>
           <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--ink-3);font-family:'Montserrat',monospace;">
-            <span>−15h</span><span>now</span>
+            <span>-15h</span><span>now</span>
           </div>
         </div>
       </div>
@@ -1647,8 +1647,8 @@ function renderMarketPanel(sym){
 
     <div class="grid-2" style="margin-top:14px;">
       <div class="card">
-        <div class="card-head"><div class="card-title"><span class="accent"></span>Recent Trades · ${sym}</div>
-          <span style="font-size:10px;color:var(--ink-3);">${data.stats.wins}W / ${data.stats.losses}L · WR ${(data.stats.wr*100).toFixed(1)}%</span>
+        <div class="card-head"><div class="card-title"><span class="accent"></span>Recent Trades * ${sym}</div>
+          <span style="font-size:10px;color:var(--ink-3);">${data.stats.wins}W / ${data.stats.losses}L * WR ${(data.stats.wr*100).toFixed(1)}%</span>
         </div>
         <div style="overflow-x:auto;">
           <table>
@@ -1676,7 +1676,7 @@ function renderMarketPanel(sym){
 
     <div class="grid-3" style="margin-top:14px;">
       <div class="card">
-        <div class="card-head"><div class="card-title"><span class="accent"></span>Performance · ${sym}</div></div>
+        <div class="card-head"><div class="card-title"><span class="accent"></span>Performance * ${sym}</div></div>
         <div style="display:flex;flex-direction:column;gap:14px;">
           <div class="meter">
             <div class="meter-head"><span class="meter-name">Win Rate</span><span class="meter-val">${(data.stats.wr*100).toFixed(1)}%</span></div>
@@ -1700,7 +1700,7 @@ function renderMarketPanel(sym){
       <div class="card">
         <div class="card-head"><div class="card-title"><span class="accent"></span>Strategy Signals</div></div>
         <div>
-          <div class="sig-row"><div class="sig-dot ${(session.ev??0)>=7?'on':'off'}"></div><div class="sig-name">EV ≥ floor</div><div class="sig-val">${session.ev!=null?session.ev.toFixed(1)+'% / 7.0%':'- / 7.0%'}</div></div>
+          <div class="sig-row"><div class="sig-dot ${(session.ev??0)>=7?'on':'off'}"></div><div class="sig-name">EV >= floor</div><div class="sig-val">${session.ev!=null?session.ev.toFixed(1)+'% / 7.0%':'- / 7.0%'}</div></div>
           <div class="sig-row"><div class="sig-dot ${(session.vol??0)>=1.2?'on':'warn'}"></div><div class="sig-name">Vol gate</div><div class="sig-val">${session.vol!=null?session.vol.toFixed(2)+' / 1.80':'- / 1.80'}</div></div>
           <div class="sig-row"><div class="sig-dot ${session.wp!=null&&session.wp>=0.55?'on':'off'}"></div><div class="sig-name">Win prob</div><div class="sig-val">${session.wp!=null?(session.wp*100).toFixed(1)+'%':'-'}</div></div>
           <div class="sig-row"><div class="sig-dot ${(session.score??0)>=60?'on':'warn'}"></div><div class="sig-name">Confidence</div><div class="sig-val">${session.score??'-'}/100</div></div>
@@ -1810,7 +1810,7 @@ function renderEdge(d){
   else if(/no edge/.test(v)) col='var(--down)';
   vEl.textContent = v; vEl.style.color = col;
   document.getElementById('edge-counts').textContent =
-    `${c.logged} decisions logged · ${c.settled} settled · ${c.pending} pending`;
+    `${c.logged} decisions logged * ${c.settled} settled * ${c.pending} pending`;
   const pct = Math.min(100, Math.round((c.settled/200)*100));
   const pb = document.getElementById('edge-progress'); pb.style.width = pct+'%';
   pb.className = pct>=100 ? 'up' : 'amber';
@@ -1907,7 +1907,7 @@ function renderEdge(d){
   for(const sa of (ab.strategy_assets||[])) abParts.push(`${sa[0]==='strategy1'?'S1':'S2'}/${sa[1]}`);
   const abEl = document.getElementById('edge-autoblock');
   if(abParts.length){
-    abEl.innerHTML = `<span class="down"><b>Auto-blocked:</b></span> ${abParts.join(' · ')}`;
+    abEl.innerHTML = `<span class="down"><b>Auto-blocked:</b></span> ${abParts.join(' * ')}`;
   } else {
     abEl.innerHTML = '<span class="muted">Auto-gate: nothing blocked (no bucket has 150+ picks with non-positive Wilson-LB).</span>';
   }
@@ -1945,7 +1945,7 @@ async function setStrategyMode(strat, mode){
     const r = await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok) throw new Error(r.status);
     _applyStrategyMode(strat, mode);
-    if(statusEl){ statusEl.textContent = mode==='live'?'🔴 LIVE':'paper'; setTimeout(()=>{ statusEl.textContent=''; },3000); }
+    if(statusEl){ statusEl.textContent = mode==='live'?'LIVE':'paper'; setTimeout(()=>{ statusEl.textContent=''; },3000); }
   } catch(e){
     if(statusEl){ statusEl.textContent='error'; setTimeout(()=>{ statusEl.textContent=''; },3000); }
   }
@@ -1967,7 +1967,7 @@ async function saveTradeAmount(){
 
 async function testTelegram(){
   const statusEl = document.getElementById('telegram-status');
-  if(statusEl) statusEl.textContent='sending…';
+  if(statusEl) statusEl.textContent='sending...';
   try {
     const r = await fetch('/api/test-telegram',{method:'POST'});
     const d = await r.json();
@@ -2130,7 +2130,7 @@ window.addEventListener('resize',()=>{
   }
 });
 
-// equity seg buttons → rebuild per-strategy charts from TRADES
+// equity seg buttons -> rebuild per-strategy charts from TRADES
 document.getElementById('equity-seg').querySelectorAll('button').forEach(b=>{
   b.addEventListener('click',()=>{
     document.querySelectorAll('#equity-seg button').forEach(x=>x.classList.remove('active'));
@@ -2269,7 +2269,7 @@ async function fetchPnl() {
     const tdSub = document.getElementById('kpi-today-sub');
     if (tdSub) {
       const w = today.wins ?? 0, cnt = today.trades ?? 0, l = cnt - w;
-      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> · ${w}W / ${l}L`;
+      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> * ${w}W / ${l}L`;
     }
   } catch(e) {}
 }
@@ -2304,7 +2304,7 @@ async function fetchPnlS1() {
     const tdSub = document.getElementById('kpi-s1-today-sub');
     if (tdSub) {
       const w = today.wins ?? 0, cnt = today.trades ?? 0, l = cnt - w;
-      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> · ${w}W / ${l}L`;
+      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> * ${w}W / ${l}L`;
     }
   } catch(e) {}
 }
@@ -2324,7 +2324,7 @@ async function fetchEventLog() {
     for (const t of (d.recent_trades || [])) {
       const sign   = (t.pnl_dollars ?? 0) >= 0 ? '+' : '';
       const pnlStr = t.pnl_dollars != null ? ` <b>${sign}$${Math.abs(t.pnl_dollars).toFixed(2)}</b>` : '';
-      events.push([fmtT(t.ts), 'exit', `${t.asset}${pnlStr} · ${t.outcome} @ ${t.entry_price_cents}¢`]);
+      events.push([fmtT(t.ts), 'exit', `${t.asset}${pnlStr} * ${t.outcome} @ ${t.entry_price_cents}¢`]);
     }
     if (events.length) renderEventLog(events);
   } catch(e) {}

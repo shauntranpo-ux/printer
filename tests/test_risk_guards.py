@@ -47,14 +47,18 @@ def test_s1_cl_alert_source_check():
         "_settle_s1_trade missing [S1] consecutive losses Telegram text"
 
 
-def test_s1_momentum_signal_source_check():
-    """bot_loops.py must call _s1_multitf_momentum as the S1 direction pointer."""
+def test_dashboard_arrows_come_from_brain_side():
+    """Dashboard direction arrows must reflect the brain's traded side, not the old
+    momentum/velocity helpers (those are no longer on any live path)."""
     from pathlib import Path
     bot_loops_path = Path(__file__).parent.parent / "bot_loops.py"
     with open(bot_loops_path, encoding="utf-8") as f:
         src = f.read()
-    assert "_s1_multitf_momentum" in src, \
-        "bot_loops.py does not call _s1_multitf_momentum — S1 direction is not multi-timeframe"
+    assert "_brain_dir" in src, "bot_loops.py should derive arrows via _brain_dir"
+    assert "_s1_multitf_momentum" not in src, \
+        "bot_loops.py still references the retired momentum helper"
+    assert "_s2_contract_direction" not in src, \
+        "bot_loops.py still references the retired velocity helper"
 
 
 def test_s1_rate_limit_skips_after_max_per_hour():

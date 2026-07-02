@@ -71,7 +71,7 @@ Remove the function from `bot_strategy.py` and its import from `bot_loops.py`. T
 `check_daily_limits` returns `(False, "")` immediately when `mode == "paper"` (line 70-71). This is by design - paper mode isn't supposed to enforce limits. But the current config.json has `daily_loss_limit_dollars: 20` and `daily_profit_target_dollars: 50`. When going live, the first check against today's P&L will query only live-mode trades (`db_get_today_pnl(mode)` is mode-aware). This is correct. But the limit state (`bot_state.limit_triggered`) is never reset when switching from paper to live mid-session.
 
 **Fix:**
-In `midnight_reset()`, also reset `limit_triggered = False` and `limit_reason = ""`. Additionally, after any config write that changes `mode` (in `server.py` `api_config`), reset `limit_triggered` in bot_state so the new mode starts clean. Document the paper→live limit semantics with a comment in `check_daily_limits`.
+In `midnight_reset()`, also reset `limit_triggered = False` and `limit_reason = ""`. Additionally, after any config write that changes `mode` (in `server.py` `api_config`), reset `limit_triggered` in bot_state so the new mode starts clean. Document the paper->live limit semantics with a comment in `check_daily_limits`.
 
 ---
 
@@ -89,8 +89,8 @@ Write the state file immediately after setting `current_phase = "LOCKED"` in `ha
 
 After all bugs are fixed:
 
-1. **Unit tests for fill-verify fallback** - mock `_verify_order_fill` to raise an exception, mock `_portfolio_has_position` to return True → confirm phase=LOCKED and trade is DB-written.
-2. **S1 orphan settlement test** - seed DB with a pending S1 trade, call startup recovery logic with a mocked Kalshi response returning `result="yes"` → confirm `db_update_trade` called with `outcome="won"`.
+1. **Unit tests for fill-verify fallback** - mock `_verify_order_fill` to raise an exception, mock `_portfolio_has_position` to return True -> confirm phase=LOCKED and trade is DB-written.
+2. **S1 orphan settlement test** - seed DB with a pending S1 trade, call startup recovery logic with a mocked Kalshi response returning `result="yes"` -> confirm `db_update_trade` called with `outcome="won"`.
 3. **Non-BTC state persistence test** - write a LOCKED asset state, simulate restart by re-running the startup recovery block, confirm `_asset_states` contains the LOCKED position.
 4. **`_session_ev_adjustment` removed** - grep confirms no reference in any `.py` file.
 5. **Daily limit reset test** - set `limit_triggered=True`, call `midnight_reset()`, confirm `limit_triggered=False`.

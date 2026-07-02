@@ -12,7 +12,7 @@ All changes are in existing files. No new modules. No new abstractions.
 
 ## Fix 1: Cross-asset S1 window guard
 
-**Problem:** `_non_btc_asset_loop` processes ETH → SOL → XRP sequentially. When all three have pending markets, all three can fire S1 within seconds of each other. These assets are ~0.9 correlated - one macro move hits all three simultaneously. 9 of 155 trades in the dataset were near-simultaneous multi-asset fires.
+**Problem:** `_non_btc_asset_loop` processes ETH -> SOL -> XRP sequentially. When all three have pending markets, all three can fire S1 within seconds of each other. These assets are ~0.9 correlated - one macro move hits all three simultaneously. 9 of 155 trades in the dataset were near-simultaneous multi-asset fires.
 
 **Solution:** Add `_s1_window_fired: float = 0.0` to `bot_state.py`. After any non-BTC S1 fill confirms in `_execute_s1_trade` (bot_risk.py), set `bot_state._s1_window_fired = time.time()`. In `strategy_brain_s1` (bot_strategy.py), after the per-asset cap gate, add: if `asset != "BTC"` and `time.time() - bot_state._s1_window_fired < 300`, return skip with reason `s1_window_gate`.
 
@@ -44,7 +44,7 @@ if do_trade and ticker in bot_state._s1_pending_trades:
 
 **Problem:** `_check_daily_stats` only fires at 14h LV (2 PM PT). No notification fires when the bot stops trading at quiet_start_et (default 22h ET). Users have no end-of-day summary.
 
-**Solution:** Track `_prev_quiet: bool` across loop iterations. On each tick, compute `_now_quiet = _is_quiet_hours(config)`. When `_now_quiet and not _prev_quiet` (False→True transition), immediately call `await _check_daily_stats(today)`. Update `_prev_quiet = _now_quiet`.
+**Solution:** Track `_prev_quiet: bool` across loop iterations. On each tick, compute `_now_quiet = _is_quiet_hours(config)`. When `_now_quiet and not _prev_quiet` (False->True transition), immediately call `await _check_daily_stats(today)`. Update `_prev_quiet = _now_quiet`.
 
 **Where to add:** Both `main_loop` (BTC loop, inner `while True`) and `_non_btc_asset_loop`. Since `_check_daily_stats` is idempotent per date (guarded by `_last_stats_date`), both loops detecting the transition is safe - only the first detection fires, the second is a no-op.
 
@@ -70,6 +70,6 @@ if do_trade and ticker in bot_state._s1_pending_trades:
 
 ## Testing
 
-- **Window guard:** patch `_s1_window_fired` to `time.time() - 30` → expect skip; patch to `time.time() - 400` → expect pass-through; ETH cooldown must not block SOL.
+- **Window guard:** patch `_s1_window_fired` to `time.time() - 30` -> expect skip; patch to `time.time() - 400` -> expect pass-through; ETH cooldown must not block SOL.
 - **S1+S2 dedup:** inspect `handle_ready_phase` source for `s2_dedup` string; verify `_s1_pending_trades` checked after `_execute_s1_trade`.
-- **EOD summary:** mock `_is_quiet_hours` to flip False→True mid-loop; assert `_check_daily_stats` called exactly once; assert second flip (True→False→True) fires again on next session.
+- **EOD summary:** mock `_is_quiet_hours` to flip False->True mid-loop; assert `_check_daily_stats` called exactly once; assert second flip (True->False->True) fires again on next session.

@@ -21,7 +21,7 @@ def test_s1_pending_reserved_before_place_order():
     post_idx = src.index(await_marker)
     assert pre_idx < post_idx, (
         f"BUG: _s1_pending_trades set at char {pre_idx} AFTER await place_order at "
-        f"char {post_idx} — race condition present"
+        f"char {post_idx} - race condition present"
     )
 
 
@@ -29,5 +29,5 @@ def test_s1_pop_on_fill_failure():
     """After the fix: failed fill must pop the reservation (not leave stale entry)."""
     src = inspect.getsource(_execute_s1_trade)
     assert "_s1_pending_trades.pop(ticker" in src, (
-        "_s1_pending_trades.pop(ticker, ...) not found — failed fills leave stale reservation"
+        "_s1_pending_trades.pop(ticker, ...) not found - failed fills leave stale reservation"
     )

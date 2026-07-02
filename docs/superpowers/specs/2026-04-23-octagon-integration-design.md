@@ -35,8 +35,8 @@ No changes to `bot.py`, `feature_builder.py`, or any strategy subclass.
 Two module-level dicts:
 
 ```python
-_slug_cache:   dict[str, str]                 # series_ticker → event_slug (permanent)
-_report_cache: dict[str, tuple[dict, float]]  # event_ticker  → (parsed_table, fetched_at)
+_slug_cache:   dict[str, str]                 # series_ticker -> event_slug (permanent)
+_report_cache: dict[str, tuple[dict, float]]  # event_ticker  -> (parsed_table, fetched_at)
 ```
 
 - `_slug_cache` key: `series_ticker` (e.g. `"kxbtcd"`) - event slug never changes for a given series, so one Kalshi API lookup per series lifetime.
@@ -47,8 +47,8 @@ _report_cache: dict[str, tuple[dict, float]]  # event_ticker  → (parsed_table,
 
 Given ticker `KXBTCD-26APR2300-T100000`:
 
-1. `series = ticker.split("-")[0].lower()` → `"kxbtcd"`
-2. `event_ticker = "-".join(ticker.split("-")[:-1])` → `"KXBTCD-26APR2300"`
+1. `series = ticker.split("-")[0].lower()` -> `"kxbtcd"`
+2. `event_ticker = "-".join(ticker.split("-")[:-1])` -> `"KXBTCD-26APR2300"`
 3. `event_slug` - check `_slug_cache[series]`; on miss: `GET /trade-api/v2/events/{event_ticker}`, slugify `event["title"]` (lowercase, replace non-alphanumeric runs with `-`, strip leading/trailing `-`), cache permanently.
 4. Final URL: `https://kalshi.com/markets/{series}/{event_slug}/{event_ticker.lower()}`
 
@@ -85,7 +85,7 @@ Response text extracted from `response_json["output"][0]["content"][0]["text"]`.
 The report contains a markdown table under "Executive Verdict" or "Who Wins and Why" with columns: Outcome, Market %, Model %, Why.
 
 Algorithm:
-1. Find `|`-delimited lines with ≥ 3 columns.
+1. Find `|`-delimited lines with >= 3 columns.
 2. Locate header row containing "Outcome", "Market", "Model".
 3. For each subsequent non-separator data row, split on `|` and trim.
 4. Match the "Above" row to the current contract: check that `str(int(strike))` appears in the Outcome cell after stripping `$` and `,`.
@@ -159,7 +159,7 @@ if _oct_prob is not None:
                             contributing_signals={**signals, ...}, expected_value=ev.best_ev)
 ```
 
-`_oct_prob is None` (API error / timeout / no key) → gate skipped entirely → trade proceeds.
+`_oct_prob is None` (API error / timeout / no key) -> gate skipped entirely -> trade proceeds.
 
 ---
 
@@ -169,11 +169,11 @@ All exceptions caught inside `query()`:
 
 | Exception | Behavior |
 |-----------|----------|
-| `httpx.TimeoutException` | `log.warning("Octagon timeout for {ticker}")` → return `(None, None, None, False)` |
-| `httpx.RequestError` | `log.warning(...)` → fallthrough |
-| Parse error (`KeyError`, `ValueError`, no matching row) | `log.warning(...)` → fallthrough |
-| Missing `OCTAGON_API_KEY` env var | Silent → fallthrough (don't spam logs on every decide()) |
-| Any other `Exception` | `log.warning(...)` → fallthrough |
+| `httpx.TimeoutException` | `log.warning("Octagon timeout for {ticker}")` -> return `(None, None, None, False)` |
+| `httpx.RequestError` | `log.warning(...)` -> fallthrough |
+| Parse error (`KeyError`, `ValueError`, no matching row) | `log.warning(...)` -> fallthrough |
+| Missing `OCTAGON_API_KEY` env var | Silent -> fallthrough (don't spam logs on every decide()) |
+| Any other `Exception` | `log.warning(...)` -> fallthrough |
 
 ---
 

@@ -5,9 +5,9 @@
 **Goal:** Consolidate the current 11-module split into 6 focused modules with clear `__all__` interfaces, deleting 7 intermediate files.
 
 **Architecture:**
-- `bot_infra.py` ← merges bot_config + bot_db + bot_notify (infrastructure bundle)
-- `bot_market.py` ← merges bot_kalshi + bot_orders (Kalshi API + order layer)
-- `bot_risk.py` ← expands to absorb bot_trade + bot_preflight (risk + trading + preflight)
+- `bot_infra.py` <- merges bot_config + bot_db + bot_notify (infrastructure bundle)
+- `bot_market.py` <- merges bot_kalshi + bot_orders (Kalshi API + order layer)
+- `bot_risk.py` <- expands to absorb bot_trade + bot_preflight (risk + trading + preflight)
 - `bot_strategy.py`, `bot_loops.py`, `bot_state.py`, `bot.py` - import updates only
 
 **Worktree:** `C:\Users\alxnt\.config\superpowers\worktrees\kalshi-bot\refactor-module-consolidation`
@@ -17,13 +17,13 @@
 
 **Final dependency graph (no circular imports):**
 ```
-bot_state  ← leaf
-bot_infra  → bot_state
-bot_market → bot_state, bot_infra
-bot_strategy → bot_state, bot_infra
-bot_risk   → bot_state, bot_infra, bot_market, bot_strategy
-bot_loops  → bot_state, bot_infra, bot_market, bot_strategy, bot_risk, asset_manager
-bot.py     → bot_loops, bot_infra, bot_state, obi_monitor, asset_manager
+bot_state  <- leaf
+bot_infra  -> bot_state
+bot_market -> bot_state, bot_infra
+bot_strategy -> bot_state, bot_infra
+bot_risk   -> bot_state, bot_infra, bot_market, bot_strategy
+bot_loops  -> bot_state, bot_infra, bot_market, bot_strategy, bot_risk, asset_manager
+bot.py     -> bot_loops, bot_infra, bot_state, obi_monitor, asset_manager
 ```
 
 ---
@@ -77,9 +77,7 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
 # Config
-# ---------------------------------------------------------------------------
 
 def atomic_write_json(data: dict, path: str) -> None:
     """
@@ -193,9 +191,7 @@ def _init_config() -> None:
     log.info(f"Config ready: mode={cfg['mode']} enabled={cfg['bot_enabled']}")
 
 
-# ---------------------------------------------------------------------------
 # Database
-# ---------------------------------------------------------------------------
 
 def init_db() -> None:
     """Create the database and all required tables if they do not exist."""
@@ -442,9 +438,7 @@ async def db_get_today_pnl(mode: str) -> float:
         return 0.0
 
 
-# ---------------------------------------------------------------------------
 # Notifications
-# ---------------------------------------------------------------------------
 
 def _phase_for_eth(asset, elapsed_seconds):
     """Return ETH hourly window-phase label ('Mid'/'Dwell'/'Late') or None."""
@@ -491,10 +485,10 @@ async def _maybe_fill_verification_notify(
     if _target is not None:
         _slip_target = int(round(_filled - _target))
         _slip_target_str = f"{_slip_target:+d}¢ vs target"
-        _warn = "⚠️ " if abs(_slip_target) > 3 else "🎯 "
+        _warn = " " if abs(_slip_target) > 3 else " "
     else:
         _slip_target_str = "n/a vs target"
-        _warn = "🎯 "
+        _warn = " "
     _slip_market_str = (
         f"{int(round(_filled - _ask)):+d}¢ vs market" if _ask is not None else "n/a vs market"
     )
@@ -516,7 +510,7 @@ async def send_telegram(text: str) -> None:
     url = f"https://api.telegram.org/bot{bot_state.TELEGRAM_BOT_TOKEN}/sendMessage"
     for attempt in range(1, 4):
         try:
-            log.info(f"Telegram: sending (attempt {attempt}/3)…")
+            log.info(f"Telegram: sending (attempt {attempt}/3)...")
             async with aiohttp.ClientSession() as tg:
                 async with tg.post(
                     url,
@@ -528,7 +522,7 @@ async def send_telegram(text: str) -> None:
                         log.info("Telegram: sent OK")
                         return
                     elif resp.status == 429:
-                        log.warning(f"Telegram: rate-limited (429) - attempt {attempt}/3, retrying…")
+                        log.warning(f"Telegram: rate-limited (429) - attempt {attempt}/3, retrying...")
                     else:
                         log.warning(f"Telegram: HTTP {resp.status} - {body}")
                         return

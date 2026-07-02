@@ -90,7 +90,7 @@ and may indicate a paper trading simulation artifact.
 | Breakeven WR at 72c | 77.4% |
 | Phase 2 PnL | $136.36 |
 
-**Win rate 60.3% vs breakeven 77.4% → Phase 2 is unprofitable on paper.**
+**Win rate 60.3% vs breakeven 77.4% -> Phase 2 is unprofitable on paper.**
 
 ### Phase 2 Side Distribution
 
@@ -142,7 +142,7 @@ write path for settlement-settled positions doesn't populate it.
 **Critical fixes required before meaningful Step 2B analysis:**
 
 1. **Fix the market_log write path** to always populate:
-   - `confidence_score` (model's predicted win_prob × 100)
+   - `confidence_score` (model's predicted win_prob x 100)
    - `seconds_left_at_entry` (time remaining at fill)
    - `trade_amount_dollars` (actual dollars committed)
 
@@ -150,7 +150,7 @@ write path for settlement-settled positions doesn't populate it.
    Currently "order not filled" or NULL for Phase 2 positions held to expiry.
 
 3. **Accumulate more Phase 1 trades** (real-time paper trades with full data).
-   12 trades in one day is insufficient for calibration. Need ≥ 100 per asset.
+   12 trades in one day is insufficient for calibration. Need >= 100 per asset.
 
 4. **Phase 1's 0% WR on 5 settled trades** is a red flag:
    - All entries were contrarian (2-43c for NO/YES against trend)
@@ -158,5 +158,5 @@ write path for settlement-settled positions doesn't populate it.
    - S2 may be entering too early (6-11 min before expiry) in trending markets
    - The FifteenMinStrategy contrarian approach needs separate evaluation
 
-Once data logging is fixed and ≥ 100 trades per asset accumulate, run this script
+Once data logging is fixed and >= 100 trades per asset accumulate, run this script
 again to compute the full reliability diagram and calibration gap.

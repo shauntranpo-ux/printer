@@ -4,19 +4,19 @@
 
 ### Input
 - CSV files: `data/{ASSET}_1m.csv` - 1-minute OHLCV from Binance
-- Column: `time` (Unix seconds) → normalised to `open_time` (datetime64 UTC)
+- Column: `time` (Unix seconds) -> normalised to `open_time` (datetime64 UTC)
 
 ### Algorithm (`build_table`)
 1. Sort by `open_time`, floor to 15-minute `window_start`
-2. For each 15-min window with ≥15 rows: take first 15 rows
+2. For each 15-min window with >=15 rows: take first 15 rows
 3. Identify `nearest_strike` using asset-specific increments
-4. At each `t ∈ [1, 13]` minutes remaining, check if `close ≥ strike`
+4. At each `t ∈ [1, 13]` minutes remaining, check if `close >= strike`
 5. Accumulate `wins / total` per `(dist_bucket, minutes_remaining)` cell
 
 ### Output schema
 ```json
 {
-  "table": [[p_row0_t1, ..., p_row0_t13], ...],   // 13 rows × 13 cols
+  "table": [[p_row0_t1, ..., p_row0_t13], ...],   // 13 rows x 13 cols
   "dist_bounds": [...],
   "label": "full" | "pre2023",
   "metadata": {"total_windows": N, "data_start": "...", "data_end": "..."}

@@ -174,7 +174,7 @@ async def test_daily_limit_resets_when_mode_changes(monkeypatch):
     triggered, reason = await check_daily_limits(config)
 
     assert not bot_state.limit_triggered, "limit_triggered must be reset when mode changed"
-    assert triggered is False, "no pnl → no new trigger after reset"
+    assert triggered is False, "no pnl -> no new trigger after reset"
 
     # Cleanup
     bot_state.limit_triggered = False
@@ -195,7 +195,7 @@ Expected: FAIL - currently `check_daily_limits` returns `(True, "daily loss limi
 Find `check_daily_limits` (line 58). After `mode = config.get("mode", "paper")` and the early `if mode == "paper": return False, ""` guard, add:
 
 ```python
-    # If the mode changed since the limit was triggered (e.g., demo → live),
+    # If the mode changed since the limit was triggered (e.g., demo -> live),
     # reset so the new mode starts with a fresh daily count.
     if (
         bot_state.limit_triggered
@@ -217,7 +217,7 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
     if mode == "paper":
         return False, ""
 
-    # If the mode changed since the limit was triggered (e.g., demo → live),
+    # If the mode changed since the limit was triggered (e.g., demo -> live),
     # reset so the new mode starts with a fresh daily count.
     if (
         bot_state.limit_triggered
@@ -253,7 +253,7 @@ Expected: 606+ passed.
 
 ```
 git add bot_risk.py tests/test_go_live_reliability.py
-git commit -m "fix: reset daily limit state when mode changes (paper→live transition)"
+git commit -m "fix: reset daily limit state when mode changes (paper->live transition)"
 ```
 
 ---

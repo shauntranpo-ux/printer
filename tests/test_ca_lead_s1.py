@@ -80,7 +80,7 @@ def test_betas_loader_mtime_refresh(monkeypatch, tmp_path):
     monkeypatch.setattr(bs, "_BETA_CACHE", {})
     monkeypatch.setattr(bs, "_BETA_MTIME", -1.0)
     assert bs._asset_beta("SOL") == pytest.approx(0.30)
-    # Rewrite with a new value and bump mtime → loader must pick it up.
+    # Rewrite with a new value and bump mtime -> loader must pick it up.
     p.write_text(json.dumps({"SOL": {"beta": 0.50}}))
     os.utime(str(p), (time.time() + 10, time.time() + 10))
     assert bs._asset_beta("SOL") == pytest.approx(0.50)
@@ -97,7 +97,7 @@ def test_sigma_eff_within_static_clamp():
 # --------------------------------------------------------------------------- S1 fires / skips
 
 def test_s1_fires_on_btc_lead_dislocation():
-    """BTC jumped, SOL lagged → positive residual → predicted SOL up → YES cheap → trade."""
+    """BTC jumped, SOL lagged -> positive residual -> predicted SOL up -> YES cheap -> trade."""
     _seed("BTC", last=60000.0, ret_over_window=0.008)   # BTC +~0.8%
     _seed("SOL", last=150.03, ret_over_window=0.0001)    # SOL nearly flat
     r = _run_s1("SOL", spot=150.03, strike=149.9, yes_ask=46.0, no_ask=54.0)
@@ -109,7 +109,7 @@ def test_s1_fires_on_btc_lead_dislocation():
 
 
 def test_s1_skips_when_btc_flat():
-    """No BTC lead → no residual signal → skip."""
+    """No BTC lead -> no residual signal -> skip."""
     _seed("BTC", last=60000.0, ret_over_window=0.00001)  # BTC flat
     _seed("SOL", last=150.03, ret_over_window=0.00001)
     r = _run_s1("SOL", spot=150.03, strike=149.9, yes_ask=46.0, no_ask=54.0)
@@ -118,7 +118,7 @@ def test_s1_skips_when_btc_flat():
 
 
 def test_s1_skips_when_alt_already_followed():
-    """BTC moved AND SOL already followed by beta*btc_ret → residual ~0 → skip."""
+    """BTC moved AND SOL already followed by beta*btc_ret -> residual ~0 -> skip."""
     _seed("BTC", last=60000.0, ret_over_window=0.008)
     _seed("SOL", last=150.0, ret_over_window=0.008 * bs._asset_beta("SOL"))  # already caught up
     r = _run_s1("SOL", spot=150.0, strike=149.5, yes_ask=46.0, no_ask=54.0)

@@ -47,7 +47,7 @@ def get_fee_adjusted_threshold(
     min_edge = taker_fee + safety_margin + regime_extra
 
     # fees.yaml stores a dollar-denominated flat-rate approximation ($0.03 per contract).
-    # The actual Kalshi taker fee is ceil(0.07·C·p·(1-p)) per src/strategies/fees.py,
+    # The actual Kalshi taker fee is ceil(0.07*C*p*(1-p)) per src/strategies/fees.py,
     # which peaks at $0.02 per contract at p=0.50. The $0.03 flat overstates the true
     # fee at every price point, ensuring only high-edge trades pass the threshold.
     """

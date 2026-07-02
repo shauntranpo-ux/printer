@@ -143,20 +143,20 @@ No circular imports. Arrow = "imports from".
 ```
 asset_manager  (external, unchanged)
       ↑
-bot_state      ← leaf, imported by everything else
+bot_state      <- leaf, imported by everything else
 
-bot_config     → bot_state
-bot_db         → bot_state
-bot_notify     → bot_state
-bot_kalshi     → bot_state, bot_config
-bot_orders     → bot_state, bot_kalshi, bot_notify, bot_db
-bot_strategy   → bot_state, bot_config, asset_manager (for price deques)
-bot_risk       → bot_state, bot_db, bot_config, bot_notify
-bot_trade      → bot_state, bot_orders, bot_strategy, bot_db, bot_notify, bot_kalshi, bot_risk
-bot_loops      → bot_state, bot_strategy, bot_orders, bot_trade, bot_risk,
+bot_config     -> bot_state
+bot_db         -> bot_state
+bot_notify     -> bot_state
+bot_kalshi     -> bot_state, bot_config
+bot_orders     -> bot_state, bot_kalshi, bot_notify, bot_db
+bot_strategy   -> bot_state, bot_config, asset_manager (for price deques)
+bot_risk       -> bot_state, bot_db, bot_config, bot_notify
+bot_trade      -> bot_state, bot_orders, bot_strategy, bot_db, bot_notify, bot_kalshi, bot_risk
+bot_loops      -> bot_state, bot_strategy, bot_orders, bot_trade, bot_risk,
                  bot_kalshi, bot_db, bot_notify, bot_config, asset_manager
-bot_preflight  → bot_state, bot_kalshi, bot_db, bot_notify
-bot.py         → bot_loops, bot_preflight, bot_db, bot_config, bot_state,
+bot_preflight  -> bot_state, bot_kalshi, bot_db, bot_notify
+bot.py         -> bot_loops, bot_preflight, bot_db, bot_config, bot_state,
                  obi_monitor, asset_manager
 ```
 

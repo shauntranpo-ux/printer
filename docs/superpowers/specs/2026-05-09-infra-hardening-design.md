@@ -38,7 +38,7 @@ The existing `None` return is kept so callers can still check; the log makes the
 
 ---
 
-## Fix 3 - `bot_infra.py:447` fragile date filter (`LIKE` → `DATE()`)
+## Fix 3 - `bot_infra.py:447` fragile date filter (`LIKE` -> `DATE()`)
 
 **Problem:** `WHERE ts LIKE f"{today}%"` is fragile. Breaks if the `ts` column ever contains timezone offsets or non-standard separators. `DATE(ts)` in SQLite correctly extracts the date part from any ISO-8601 string.
 
@@ -126,7 +126,7 @@ if bad_cols:
 | File | Fix |
 |------|-----|
 | `bot_market.py` | Fix 1: extract dict comprehension from f-string |
-| `bot_infra.py` | Fix 2: error log on db_write_trade failure; Fix 3: LIKE→DATE(); Fix 4: close file handle; Fix 6b: column whitelist |
+| `bot_infra.py` | Fix 2: error log on db_write_trade failure; Fix 3: LIKE->DATE(); Fix 4: close file handle; Fix 6b: column whitelist |
 | `bot.py` | Fix 5: finally block on startup DB connection |
 | `bot_stats.py` | Fix 6a: log unknown strategy_variant |
 
