@@ -1,7 +1,7 @@
 """
 scripts/backtest_gate_changes.py
 Simulate effect of new filter gates on historical trades.
-Does NOT replay strategy — only checks which existing trades new gates would block.
+Does NOT replay strategy - only checks which existing trades new gates would block.
 
 Usage:
     python scripts/backtest_gate_changes.py <path_to_trades.csv>

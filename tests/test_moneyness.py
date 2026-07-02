@@ -28,24 +28,24 @@ class TestComputeMoneynessFeatures:
         assert feat["distance_to_spot_bps"] == pytest.approx(0.0)
 
     def test_deep_otm_far_above_spot(self):
-        # Strike much higher than spot → deep_otm
+        # Strike much higher than spot -> deep_otm
         feat = compute_moneyness_features(100.0, 150.0, 0.5, 3600.0, _CONFIG)
         assert feat["log_moneyness"] > 0
         assert feat["moneyness_bucket"] == "deep_otm"
 
     def test_deep_itm_far_below_spot(self):
-        # Strike much lower than spot → deep_itm (log(K/S) << 0)
+        # Strike much lower than spot -> deep_itm (log(K/S) << 0)
         feat = compute_moneyness_features(100.0, 50.0, 0.5, 3600.0, _CONFIG)
         assert feat["log_moneyness"] < 0
         assert feat["moneyness_bucket"] == "deep_itm"
 
     def test_slight_itm(self):
-        # Strike slightly below spot: log(99/100) ≈ -0.01 → itm (between -0.02 and -0.005)
+        # Strike slightly below spot: log(99/100) ~ -0.01 -> itm (between -0.02 and -0.005)
         feat = compute_moneyness_features(100.0, 99.0, 0.5, 3600.0, _CONFIG)
         assert feat["moneyness_bucket"] == "itm"
 
     def test_slight_otm(self):
-        # Strike slightly above spot: log(101/100) ≈ +0.01 → otm (between 0.005 and 0.02)
+        # Strike slightly above spot: log(101/100) ~ +0.01 -> otm (between 0.005 and 0.02)
         feat = compute_moneyness_features(100.0, 101.0, 0.5, 3600.0, _CONFIG)
         assert feat["moneyness_bucket"] == "otm"
 
@@ -65,7 +65,7 @@ class TestComputeMoneynessFeatures:
         assert feat["distance_to_spot_sigma"] > 0
 
     def test_distance_sigma_zero_tte(self):
-        # time_to_expiry_seconds = 0 → sigma_expiry = 0 → distance_sigma = 0 (no division)
+        # time_to_expiry_seconds = 0 -> sigma_expiry = 0 -> distance_sigma = 0 (no division)
         feat = compute_moneyness_features(100.0, 110.0, 0.5, 0.0, _CONFIG)
         assert feat["distance_to_spot_sigma"] == 0.0
 

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Printr · Trading Desk</title>
+<title>Printr * Trading Desk</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -269,7 +269,7 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
   font:600 9px/1 'Montserrat',sans-serif;letter-spacing:0.1em;text-transform:uppercase;
   padding:3px 7px;border-radius:4px;
 }
-/* phase: WATCH (waiting) → READY (signal qualified) → LOCKED (in trade) → DONE (resolved) → OFFLINE */
+/* phase: WATCH (waiting) -> READY (signal qualified) -> LOCKED (in trade) -> DONE (resolved) -> OFFLINE */
 .mc-status.watch  {background:var(--bg-2);color:var(--ink-3);}
 .mc-status.ready  {background:oklch(0.55 0.16 245 / 0.12);color:oklch(0.5 0.16 245);}
 .mc-status.locked {background:oklch(0.78 0.13 85 / 0.18);color:oklch(0.5 0.13 85);}
@@ -536,7 +536,7 @@ tbody tr:last-child td{border-bottom:none;}
 .heat-strip{display:grid;grid-template-columns:repeat(60,1fr);gap:1px;height:24px;}
 .heat-strip > div{border-radius:1px;}
 
-/* Decision summary rows (Overview · Live Signals) */
+/* Decision summary rows (Overview * Live Signals) */
 .ds-list{margin:-4px 0;}
 .ds-row{
   display:grid;grid-template-columns:120px auto 1fr auto auto auto auto;align-items:center;gap:10px;
@@ -619,7 +619,7 @@ tbody tr:last-child td{border-bottom:none;}
   <div class="topbar-inner">
     <div class="brand">
       <div class="brand-mark">P</div>
-      <div class="brand-name"><b>printr</b><span>15m · KALSHI</span></div>
+      <div class="brand-name"><b>printr</b><span>15m * KALSHI</span></div>
     </div>
 
     <div class="tabs" id="tabs">
@@ -630,6 +630,7 @@ tbody tr:last-child td{border-bottom:none;}
       <button class="tab" data-tab="XRP"><span class="dot" data-sym="XRP"></span>XRP</button>
       <button class="tab" data-tab="DOGE"><span class="dot" data-sym="DOGE"></span>DOGE</button>
       <button class="tab" data-tab="trades">Trades</button>
+      <button class="tab" data-tab="edge">Edge</button>
       <button class="tab" data-tab="settings">Settings</button>
     </div>
 
@@ -648,7 +649,7 @@ tbody tr:last-child td{border-bottom:none;}
         <button data-mode="live">LIVE</button>
       </div>
       <div class="clock" id="clock">--:--:--</div>
-      <button class="icon-btn" title="Reset P&L" id="resetPnlBtn" onclick="(function(btn){apiPost('/api/reset_pnl',{mode:'all'}).then(()=>{btn.textContent='✓ reset';btn.disabled=true;setTimeout(()=>{btn.innerHTML='<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><polyline points=\'1 4 1 10 7 10\'/><path d=\'M3.51 15a9 9 0 1 0 2.13-9.36L1 10\'/></svg> P&L';btn.disabled=false;},2000)});btn.textContent='…'})(this)">
+      <button class="icon-btn" title="Reset P&L" id="resetPnlBtn" onclick="(function(btn){apiPost('/api/reset_pnl',{mode:'all'}).then(()=>{btn.textContent='✓ reset';btn.disabled=true;setTimeout(()=>{btn.innerHTML='<svg width=\'14\' height=\'14\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><polyline points=\'1 4 1 10 7 10\'/><path d=\'M3.51 15a9 9 0 1 0 2.13-9.36L1 10\'/></svg> P&L';btn.disabled=false;},2000)});btn.textContent='...'})(this)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg> P&amp;L
       </button>
     </div>
@@ -660,17 +661,17 @@ tbody tr:last-child td{border-bottom:none;}
 <!-- ═════════════════ OVERVIEW ═════════════════ -->
 <div class="panel active" id="panel-overview">
 
-  <!-- KPI STRIP — Strategy 2 (D3 Hybrid) -->
+  <!-- KPI STRIP - Strategy 2 (D3 Hybrid) -->
   <div class="kpi-strip" id="kpi-strip-s2">
-    <div class="kpi-strip-label">S2 · Velocity + OBI</div>
+    <div class="kpi-strip-label">S2 * Velocity + OBI</div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-alltime-val" class="kpi-cell-v up mono">+$1,847.20</div>
       <div id="kpi-alltime-sub" class="kpi-cell-s"><span class="kpi-trend up">▲ 4.2%</span> vs yesterday</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Win Rate · All-Time</div>
+      <div class="kpi-cell-l">Win Rate * All-Time</div>
       <div id="kpi-wr-val" class="kpi-cell-v mono">62.4<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
       <div id="kpi-wr-sub" class="kpi-cell-s"><span class="kpi-trend up">▲ 1.8</span> 187 trades</div>
     </div>
@@ -678,40 +679,40 @@ tbody tr:last-child td{border-bottom:none;}
     <div class="kpi-cell">
       <div class="kpi-cell-l">Today's P&amp;L<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-today-val" class="kpi-cell-v up mono">+$84.60</div>
-      <div id="kpi-today-sub" class="kpi-cell-s"><span class="mono">12 trades</span> · 7W / 5L</div>
+      <div id="kpi-today-sub" class="kpi-cell-s"><span class="mono">12 trades</span> * 7W / 5L</div>
     </div>
   </div>
 
-  <!-- KPI STRIP — Strategy 1 (Original) -->
+  <!-- KPI STRIP - Strategy 1 (Original) -->
   <div class="kpi-strip" id="kpi-strip-s1">
-    <div class="kpi-strip-label s1">S1 · EMA Momentum</div>
+    <div class="kpi-strip-label s1">S1 * EMA Momentum</div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Net P&amp;L · All-Time<span class="badge mode-badge">PAPER</span></div>
-      <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">—</div>
-      <div id="kpi-s1-alltime-sub" class="kpi-cell-s">—</div>
+      <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
+      <div id="kpi-s1-alltime-sub" class="kpi-cell-s">-</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Win Rate · All-Time</div>
-      <div id="kpi-s1-wr-val" class="kpi-cell-v mono" style="color:var(--amber);">—<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
-      <div id="kpi-s1-wr-sub" class="kpi-cell-s">— trades</div>
+      <div class="kpi-cell-l">Win Rate * All-Time</div>
+      <div id="kpi-s1-wr-val" class="kpi-cell-v mono" style="color:var(--amber);">-<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
+      <div id="kpi-s1-wr-sub" class="kpi-cell-s">- trades</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Today's P&amp;L<span class="badge mode-badge">PAPER</span></div>
-      <div id="kpi-s1-today-val" class="kpi-cell-v mono" style="color:var(--amber);">—</div>
-      <div id="kpi-s1-today-sub" class="kpi-cell-s">— trades</div>
+      <div id="kpi-s1-today-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
+      <div id="kpi-s1-today-sub" class="kpi-cell-s">- trades</div>
     </div>
   </div>
 
   <!-- MARKET STRIP -->
   <div class="market-strip" id="market-strip"></div>
 
-  <!-- EQUITY + ALLOCATION — Strategy 2 -->
+  <!-- EQUITY + ALLOCATION - Strategy 2 -->
   <div class="grid-2" style="margin-bottom:8px;">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 · vel+OBI</span></div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * vel+OBI</span></div>
         <div class="seg" id="equity-seg">
           <button class="active" data-range="1d">1D</button>
           <button data-range="1w">1W</button>
@@ -723,7 +724,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 · vel+OBI</span></div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * vel+OBI</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
@@ -733,17 +734,17 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
   </div>
 
-  <!-- EQUITY + ALLOCATION — Strategy 1 -->
+  <!-- EQUITY + ALLOCATION - Strategy 1 -->
   <div class="grid-2">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 · EMA</span></div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * EMA</span></div>
       </div>
       <div class="chart-wrap" id="equity-chart-s1"></div>
     </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 · EMA</span></div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * EMA</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
@@ -795,7 +796,7 @@ tbody tr:last-child td{border-bottom:none;}
   <!-- DECISION SIGNALS -->
   <div class="card" style="margin-top:14px;">
     <div class="card-head">
-      <div class="card-title"><span class="accent"></span>Decision Signals &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">per-asset · live</span></div>
+      <div class="card-title"><span class="accent"></span>Decision Signals &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">per-asset * live</span></div>
     </div>
     <div id="sig-list"></div>
   </div>
@@ -866,6 +867,55 @@ tbody tr:last-child td{border-bottom:none;}
   </div>
 </div>
 
+<!-- ═════════════════ EDGE PANEL (harness / GATE-1) ═════════════════ -->
+<div class="panel" id="panel-edge">
+  <div style="display:flex;flex-direction:column;gap:14px;padding:8px 0;">
+    <div class="card" id="edge-verdict-card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Do we have an edge? &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">GATE&nbsp;1 * decision_log</span></div></div>
+      <div id="edge-verdict" style="font-family:'Montserrat';font-weight:700;font-size:15px;padding:6px 2px;">-</div>
+      <div id="edge-counts" style="font-size:11px;color:var(--ink-3);margin-top:6px;">Collecting paper data...</div>
+      <div class="meter-bar" style="margin-top:8px;"><div id="edge-progress" class="up" style="width:0%"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Calibration &amp; net edge * per strategy</div></div>
+      <div style="overflow-x:auto;"><table style="width:100%;"><thead><tr>
+        <th>Strategy</th><th>Picks</th><th>Win%</th><th>Model P</th><th>Mkt P</th>
+        <th>Brier M/K</th><th>Net $/ct</th><th>Wilson LB</th>
+      </tr></thead><tbody id="edge-decisions"></tbody></table></div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Net $/ct = realized P&amp;L per contract after fees on the gate's picks. Wilson LB &gt; 0 = statistically positive edge.</div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Better market times &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">ET session * net edge on picks</span></div></div>
+      <div style="overflow-x:auto;"><table style="width:100%;"><thead><tr>
+        <th>Session (ET)</th><th>Picks</th><th>Win%</th><th>Net $/ct</th><th>Wilson LB</th><th></th>
+      </tr></thead><tbody id="edge-session"></tbody></table></div>
+      <div style="overflow-x:auto;margin-top:10px;"><table style="width:100%;"><thead><tr>
+        <th>Day type</th><th>Picks</th><th>Win%</th><th>Net $/ct</th><th>Wilson LB</th><th></th>
+      </tr></thead><tbody id="edge-daytype"></tbody></table></div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Which ET sessions / days actually pay. Sessions: us_open 9:30-11:30, us_midday-15:00, us_close-16:30, us_evening-22:00, overnight. To skip a losing one, set <code>blocked_sessions</code> (or <code>block_weekends</code>) in config. "insufficient" = too few settled picks to trust yet.</div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Maker vs taker &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">maker_log * counterfactual</span></div></div>
+      <div id="edge-maker-verdict" style="font-family:'Montserrat';font-weight:700;font-size:13px;padding:4px 2px;">-</div>
+      <div style="overflow-x:auto;margin-top:6px;"><table style="width:100%;"><thead><tr>
+        <th>Strategy</th><th>n</th><th>Fill%</th><th>Taker $/ct</th><th>Maker $/ct</th><th>Δ $/ct</th><th>Δ SE</th>
+      </tr></thead><tbody id="edge-maker"></tbody></table></div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Maker $/ct counts an unfilled order as $0 (no trade). Once Δ clears ~2*SE with 200+ samples, set <code>maker_execution_enabled: true</code> (paper) to settle trades at maker pricing.</div>
+    </div>
+    <div class="card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Model self-tuning &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">refit every 30 min from settled data</span></div></div>
+      <div style="overflow-x:auto;"><table style="width:100%;"><thead><tr>
+        <th>Knob</th><th>Value</th><th>Meaning</th>
+      </tr></thead><tbody id="edge-tuning"></tbody></table></div>
+      <div style="overflow-x:auto;margin-top:10px;"><table style="width:100%;"><thead><tr>
+        <th>Settlement basis (asset)</th><th>n</th><th>Agree%</th><th>Mean dist @ disagree</th>
+      </tr></thead><tbody id="edge-basis"></tbody></table></div>
+      <div id="edge-autoblock" style="font-size:11px;margin-top:8px;"></div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">prob_scale 1.0 = neutral (&lt;1 means the model was overconfident and is being shrunk). Live betas replace the static betas file. Auto-blocked buckets have 150+ settled picks with a non-positive Wilson-LB net-$.</div>
+    </div>
+  </div>
+</div>
+
 <div class="panel" id="panel-settings">
   <div style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding:16px 0;">
 
@@ -874,7 +924,7 @@ tbody tr:last-child td{border-bottom:none;}
       <div style="display:flex;flex-direction:column;gap:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S1 — EMA Momentum</div>
+            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S1 - EMA Momentum</div>
             <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">3-min vs N-min EMA crossover</div>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
@@ -885,7 +935,7 @@ tbody tr:last-child td{border-bottom:none;}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S2 — Velocity + OBI</div>
+            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S2 - Velocity + OBI</div>
             <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Contract velocity + orderbook imbalance</div>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
@@ -942,12 +992,12 @@ function cryptoLogo(sym){
 }
 
 // ════════════════════════════════════════════════════
-//  MOCK DATA  (representative — wire to real bot API)
+//  MOCK DATA  (representative - wire to real bot API)
 // ════════════════════════════════════════════════════
-// MARKETS — live state replaced by fetchMarketState() every 30s
+// MARKETS - live state replaced by fetchMarketState() every 30s
 let MARKETS = ['BTC','ETH','SOL','XRP','DOGE'].map(sym => ({
   sym, phase: 'OFFLINE', px: null, ch24: 0, dist: 0, strike: null,
-  ev: 0, wp: null, timer: '—', pnlToday: 0, side: '—',
+  ev: 0, wp: null, timer: '-', pnlToday: 0, side: '-',
   yesAsk: null, noAsk: null, vol: 0,
   sig: { final_decision: 'skip', vote_count: 0, ev_pass: false,
          skip_reason: null, decision_mode: 'd3_hybrid',
@@ -958,7 +1008,7 @@ let MARKETS = ['BTC','ETH','SOL','XRP','DOGE'].map(sym => ({
 // Phase explainers// Phase explainers
 const PHASE_TIP = {
   WATCH:   'Bot is monitoring this asset. Window not yet at the entry minute.',
-  READY:   'Signal qualified for trade — waiting for the entry minute (5 of 15).',
+  READY:   'Signal qualified for trade - waiting for the entry minute (5 of 15).',
   LOCKED:  'In an open position on this market.',
   DONE:    'Window resolved. Awaiting next 15-minute window.',
   OFFLINE: 'Asset disabled, or no live data feed.',
@@ -966,16 +1016,16 @@ const PHASE_TIP = {
 
 // Signal field glossary (matches the bot\u2019s entry_signals payload)
 const FIELD_TIP = {
-  raw_p_yes:    'Raw P(YES) — model probability before calibration.',
-  p_ev:         'Model P(YES) — calibrated probability used for EV calc.',
-  market_prob:  'Market P(YES) — market-implied probability from ask prices.',
-  yes_ev:       'YES EV — expected value if betting YES.',
-  no_ev:        'NO EV — expected value if betting NO.',
-  supertrend:   'Supertrend direction. +1 up / −1 down.',
-  velocity:     'Contract velocity — rising / falling / flat.',
-  vote_count:   'D3 votes — number of sub-signals agreeing (0–5).',
-  ev_pass:      'EV gate — did EV exceed minimum threshold?',
-  final_decision:'Final decision — trade or skip.',
+  raw_p_yes:    'Raw P(YES) - model probability before calibration.',
+  p_ev:         'Model P(YES) - calibrated probability used for EV calc.',
+  market_prob:  'Market P(YES) - market-implied probability from ask prices.',
+  yes_ev:       'YES EV - expected value if betting YES.',
+  no_ev:        'NO EV - expected value if betting NO.',
+  supertrend:   'Supertrend direction. +1 up / -1 down.',
+  velocity:     'Contract velocity - rising / falling / flat.',
+  vote_count:   'D3 votes - number of sub-signals agreeing (0-5).',
+  ev_pass:      'EV gate - did EV exceed minimum threshold?',
+  final_decision:'Final decision - trade or skip.',
   skip_reason:  'Why the trade was skipped (if any).',
   decision_mode:'Strategy mode (currently d3_hybrid).',
 };
@@ -983,7 +1033,7 @@ const FIELD_TIP = {
 const SKIP_REASON_LABEL = {
   votes_below_threshold: 'Votes < threshold',
   ev_below_threshold:    'EV below floor',
-  gate_a_velocity_block: 'Gate A · velocity opposed',
+  gate_a_velocity_block: 'Gate A * velocity opposed',
   no_strategy_signal:    'No signal',
   daily_loss_limit:      'Daily loss limit',
 };
@@ -997,10 +1047,10 @@ function genEquity(seed, len, drift, vol){
   }
   return pts;
 }
-// EQ — populated by fetchEquity(), starts empty so chart shows no-data state
+// EQ - populated by fetchEquity(), starts empty so chart shows no-data state
 const EQ = { '1d': [], '1w': [], '1m': [], 'all': [] };
 
-// trades data — populated by fetchTrades()
+// trades data - populated by fetchTrades()
 let TRADES = [];
 
 // per-market data
@@ -1013,10 +1063,10 @@ const MARKET_DATA = {
     ladder:{ asks:[[58,12],[57,18],[56,24],[55,31],[54,46]], bids:[[52,38],[51,29],[50,21],[49,15],[48,9]] },
     log:[
       ['00:42','signal','15m strategy: <b>UP signal</b>, EV 7.6%, vol 1.42'],
-      ['01:14','entry','Entered <b>YES @ 54¢</b> · qty 5 · est P&L +$2.30'],
-      ['03:20','exit','Closed <b>+$2.30</b> · win @ resolution UP'],
+      ['01:14','entry','Entered <b>YES @ 54¢</b> * qty 5 * est P&L +$2.30'],
+      ['03:20','exit','Closed <b>+$2.30</b> * win @ resolution UP'],
       ['04:02','signal','15m strategy: holding, EV below floor'],
-      ['05:48','skip','EV 4.2% < floor 7.0% — sitting out'],
+      ['05:48','skip','EV 4.2% < floor 7.0% - sitting out'],
       ['07:11','signal','New 15m candle, vol expanding'],
     ],
     stats:{ wins:38, losses:21, wr:0.644, todayPnl:+24.40, avgEV:6.8, bestExit:'+$8.40', worstDD:-12.10 }
@@ -1029,7 +1079,7 @@ const MARKET_DATA = {
     ladder:{ asks:[[62,8],[60,14],[58,22],[57,28],[56,42]], bids:[[44,36],[43,28],[42,20],[41,12],[40,6]] },
     log:[
       ['01:02','signal','Hourly model: <b>DOWN bias</b>, score 81'],
-      ['01:18','entry','Entered <b>NO @ 56¢</b> · qty 3 · hourly'],
+      ['01:18','entry','Entered <b>NO @ 56¢</b> * qty 3 * hourly'],
       ['02:48','signal','15m strategy idle (no trigger)'],
       ['04:22','exit','Closed <b>+$1.20</b> on early exit'],
       ['06:01','skip','15m EV 5.1% below floor'],
@@ -1043,11 +1093,11 @@ const MARKET_DATA = {
     ladder:{ asks:[[64,4],[62,12],[60,20],[59,28],[58,52]], bids:[[44,48],[43,32],[42,24],[41,14],[40,8]] },
     log:[
       ['00:18','signal','<b>Strong UP</b>, vol 1.74, EV 9.4%'],
-      ['00:32','entry','Entered <b>YES @ 58¢</b> · qty 7'],
-      ['02:14','exit','Closed <b>+$2.94</b> · win'],
+      ['00:32','entry','Entered <b>YES @ 58¢</b> * qty 7'],
+      ['02:14','exit','Closed <b>+$2.94</b> * win'],
       ['03:48','signal','Reentry triggered, momentum'],
-      ['04:02','entry','Entered <b>YES @ 56¢</b> · qty 6'],
-      ['05:51','exit','Closed <b>+$2.64</b> · win'],
+      ['04:02','entry','Entered <b>YES @ 56¢</b> * qty 6'],
+      ['05:51','exit','Closed <b>+$2.64</b> * win'],
       ['07:42','signal','15m: bias UP, holding for entry'],
     ],
     stats:{ wins:51, losses:24, wr:0.680, todayPnl:+38.20, avgEV:7.9, bestExit:'+$11.20', worstDD:-7.80 }
@@ -1059,7 +1109,7 @@ const MARKET_DATA = {
     ladder:{ asks:[[55,6],[54,11],[53,17],[52,22],[51,34]], bids:[[49,30],[48,18],[47,12],[46,8],[45,4]] },
     log:[
       ['01:48','signal','Mid-range, no strong bias'],
-      ['03:14','skip','EV 4.2% < floor — skipped'],
+      ['03:14','skip','EV 4.2% < floor - skipped'],
       ['05:02','signal','Vol gate blocked entry (0.92)'],
       ['06:38','signal','Range bound, watching for breakout'],
     ],
@@ -1172,10 +1222,10 @@ function renderMarketStrip(){
       footRight = `<span class="locked-tag">LOCKED</span>`;
     } else {
       const warn = (m.timer||'').match(/^[0-5]?[0-9]s$/) || (m.timer||'').match(/^0m/);
-      footRight = `<span class="timer ${warn?'warn':''}">⏱ ${m.timer||'—'}</span>`;
+      footRight = `<span class="timer ${warn?'warn':''}">⏱ ${m.timer||'-'}</span>`;
     }
-    const yesLabel = hasAsk ? `${m.yesAsk}¢` : '—';
-    const noLabel  = hasAsk ? `${m.noAsk}¢`  : '—';
+    const yesLabel = hasAsk ? `${m.yesAsk}¢` : '-';
+    const noLabel  = hasAsk ? `${m.noAsk}¢`  : '-';
     const battleHTML = `
       <div class="mc-battle" style="${offline?'opacity:0.5;':''}">
         <div class="mc-battle-track-wrap">
@@ -1201,7 +1251,7 @@ function renderMarketStrip(){
         <div class="mc-price">
           <span class="mc-price-label" style="color:${_evVal>0?'oklch(0.5 0.18 150)':_evVal<-0.01?'oklch(0.5 0.20 25)':'var(--ink-3)'}">EV</span>
           <span class="mc-price-val" style="color:${_evVal>0?'oklch(0.5 0.18 150)':_evVal<-0.01?'oklch(0.5 0.20 25)':'var(--ink-2)'}">
-            ${_evVal!=null&&Math.abs(_evVal)<=200?((_evVal>0?'+':'')+_evVal.toFixed(1)+'%'):_evVal!=null?'—*':'—'}
+            ${_evVal!=null&&Math.abs(_evVal)<=200?((_evVal>0?'+':'')+_evVal.toFixed(1)+'%'):_evVal!=null?'-*':'-'}
           </span>
           ${_skipLabel?`<span style="font-size:9px;color:var(--ink-3);font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;display:block">${_skipLabel}</span>`:''}
         </div>
@@ -1212,7 +1262,7 @@ function renderMarketStrip(){
   }).join('');
 
   el.querySelectorAll('.mc').forEach(card=>{
-    // non-interactive — informational only
+    // non-interactive - informational only
   });
 }
 
@@ -1228,7 +1278,7 @@ function buildStrategyEquity(sv, range) {
   return pts.length > 1 ? pts : [];
 }
 
-// equity chart — renders to containerId using provided pts array
+// equity chart - renders to containerId using provided pts array
 function renderEquity(range, containerId, pts){
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
@@ -1284,7 +1334,7 @@ function renderEquity(range, containerId, pts){
     </svg>`;
 }
 
-// allocation donut — renders one donut for a given strategy variant
+// allocation donut - renders one donut for a given strategy variant
 function renderAllocForStrategy(sv, donutId, listId) {
   const colors = {BTC:'oklch(0.72 0.16 60)', ETH:'oklch(0.55 0.12 270)', SOL:'oklch(0.42 0.22 300)', XRP:'oklch(0.6 0.012 250)', DOGE:'oklch(0.72 0.13 85)'};
   const pool = sv ? TRADES.filter(t => t.sv === sv) : TRADES;
@@ -1324,7 +1374,7 @@ function renderAllocation(){
   renderAllocForStrategy('strategy1', 'alloc-donut-s1', 'alloc-list-s1');
 }
 
-// signals — per-asset Decision Pipeline summary on Overview
+// signals - per-asset Decision Pipeline summary on Overview
 function renderSignals(){
   const caret = '<svg class="ds-caret" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4 L10 8 L6 12"/></svg>';
   const html = MARKETS.map(m=>{
@@ -1336,7 +1386,7 @@ function renderSignals(){
     const evVal = m.side==='NO/DOWN' ? s.no_ev : s.yes_ev;
     const evCls = evVal > 0 ? 'up' : evVal < 0 ? 'down' : 'idle';
     const decisionTrade = s.final_decision === 'trade';
-    const sideLabel = m.side==='—' ? 'NO SIDE' : m.side;
+    const sideLabel = m.side==='-' ? 'NO SIDE' : m.side;
     const skipLabel = s.skip_reason ? (SKIP_REASON_LABEL[s.skip_reason] || s.skip_reason) : '';
 
     return `
@@ -1354,7 +1404,7 @@ function renderSignals(){
       </div>
       <div></div>
       <div class="ds-gate ${evState}" title="${FIELD_TIP.ev_pass}">EV ${s.ev_pass?'✓':'✕'}</div>
-      <div class="ds-ev ${evCls}" title="${FIELD_TIP.yes_ev}">${evVal!=null&&Math.abs(evVal)<=200?(evVal>=0?'+':'')+evVal.toFixed(1)+'%':evVal!=null?'—*':'—'}</div>
+      <div class="ds-ev ${evCls}" title="${FIELD_TIP.yes_ev}">${evVal!=null&&Math.abs(evVal)<=200?(evVal>=0?'+':'')+evVal.toFixed(1)+'%':evVal!=null?'-*':'-'}</div>
       <div style="display:flex;align-items:center;gap:8px;">
         <div class="ds-decision ${decisionTrade?'trade':'skip'}" title="${FIELD_TIP.final_decision}">${decisionTrade?'TRADE':'SKIP'}</div>
         ${caret}
@@ -1363,7 +1413,7 @@ function renderSignals(){
         <div class="ds-field"><span class="l" title="${FIELD_TIP.raw_p_yes}">Raw P(YES)</span><span class="v">${(s.raw_p_yes*100).toFixed(1)}%</span></div>
         <div class="ds-field"><span class="l" title="${FIELD_TIP.p_ev}">Model P(YES)</span><span class="v">${(s.p_ev*100).toFixed(1)}%</span></div>
         <div class="ds-field"><span class="l" title="${FIELD_TIP.market_prob}">Market P(YES)</span><span class="v">${(s.market_prob*100).toFixed(1)}%</span></div>
-        <div class="ds-field"><span class="l" title="${FIELD_TIP.supertrend}">Supertrend</span><span class="v ${s.supertrend>0?'up':'down'}">${s.supertrend>0?'+1 up':'−1 down'}</span></div>
+        <div class="ds-field"><span class="l" title="${FIELD_TIP.supertrend}">Supertrend</span><span class="v ${s.supertrend>0?'up':'down'}">${s.supertrend>0?'+1 up':'-1 down'}</span></div>
         <div class="ds-field"><span class="l" title="${FIELD_TIP.yes_ev}">YES EV</span><span class="v ${s.yes_ev>0?'up':'down'}">${s.yes_ev>=0?'+':''}${s.yes_ev.toFixed(1)}%</span></div>
         <div class="ds-field"><span class="l" title="${FIELD_TIP.no_ev}">NO EV</span><span class="v ${s.no_ev>0?'up':'down'}">${s.no_ev>=0?'+':''}${s.no_ev.toFixed(1)}%</span></div>
         <div class="ds-field"><span class="l" title="${FIELD_TIP.velocity}">Velocity</span><span class="v ${s.velocity==='rising'?'up':s.velocity==='falling'?'down':'muted'}">${s.velocity}</span></div>
@@ -1387,16 +1437,16 @@ function renderSignals(){
 // event log
 function renderEventLog(evts){
   const events = evts || [
-    ['07:42','entry','SOL → <b>YES @ 58¢</b> · qty 7 · EV 9.4%'],
+    ['07:42','entry','SOL -> <b>YES @ 58¢</b> * qty 7 * EV 9.4%'],
     ['07:38','signal','SOL: 15m strong UP, vol 1.74'],
-    ['07:21','exit','BTC <b>+$2.30</b> · win @ resolution UP'],
-    ['07:14','entry','BTC → <b>YES @ 54¢</b> · qty 5'],
+    ['07:21','exit','BTC <b>+$2.30</b> * win @ resolution UP'],
+    ['07:14','entry','BTC -> <b>YES @ 54¢</b> * qty 5'],
     ['07:02','signal','BTC: 15m UP signal, EV 7.6%'],
     ['06:48','skip','DOGE: no_strategy_signal'],
     ['06:32','signal','XRP: range bound'],
-    ['05:51','exit','SOL <b>+$2.64</b> · win'],
-    ['05:18','entry','SOL → <b>YES @ 56¢</b> · qty 6'],
-    ['04:48','exit','ETH <b>+$1.20</b> · early exit'],
+    ['05:51','exit','SOL <b>+$2.64</b> * win'],
+    ['05:18','entry','SOL -> <b>YES @ 56¢</b> * qty 6'],
+    ['04:48','exit','ETH <b>+$1.20</b> * early exit'],
   ];
   document.getElementById('event-log').innerHTML = events.map(e=>`
     <div class="log-row">
@@ -1428,17 +1478,17 @@ function brainStatsHTML(stats) {
         '<div>' +
           '<div style="font-size:9px;color:var(--ink-3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">Today</div>' +
           '<div class="mono ' + tdCls + '" style="font-size:16px;font-weight:700;">' + fmtPnl(tdPnl) + '</div>' +
-          '<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">' + (td.wins != null ? td.wins : 0) + 'W / ' + (td.losses != null ? td.losses : 0) + 'L · ' + (td.trades != null ? td.trades : 0) + ' trades</div>' +
+          '<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">' + (td.wins != null ? td.wins : 0) + 'W / ' + (td.losses != null ? td.losses : 0) + 'L * ' + (td.trades != null ? td.trades : 0) + ' trades</div>' +
         '</div>' +
         '<div>' +
           '<div style="font-size:9px;color:var(--ink-3);margin-bottom:3px;text-transform:uppercase;letter-spacing:.05em;">All-time</div>' +
           '<div class="mono ' + atCls + '" style="font-size:16px;font-weight:700;">' + fmtPnl(atPnl) + '</div>' +
-          '<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">' + (at.wins != null ? at.wins : 0) + 'W / ' + (at.losses != null ? at.losses : 0) + 'L · ' + (at.trades != null ? at.trades : 0) + ' trades</div>' +
+          '<div style="font-size:10px;color:var(--ink-3);margin-top:2px;">' + (at.wins != null ? at.wins : 0) + 'W / ' + (at.losses != null ? at.losses : 0) + 'L * ' + (at.trades != null ? at.trades : 0) + ' trades</div>' +
         '</div>' +
       '</div>' +
     '</div>';
   }
-  return '<div style="padding:0 2px;">' + row('s1', 'S1 · EMA Momentum') + row('s2', 'S2 · vel+OBI') + '</div>';
+  return '<div style="padding:0 2px;">' + row('s1', 'S1 * EMA Momentum') + row('s2', 'S2 * vel+OBI') + '</div>';
 }
 // ════════════════════════════════════════════════════
 //  PER-MARKET PANEL
@@ -1473,7 +1523,7 @@ function renderMarketPanel(sym){
         <path d="M 10,80 A 70,70 0 0 1 ${gx.toFixed(1)},${gy.toFixed(1)}" fill="none" stroke="${gColor}" stroke-width="10" stroke-linecap="round"/>
         <circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="5" fill="${gColor}"/>
       </svg>
-      <div class="gauge-val" style="color:${gColor};">${session.score ?? '—'}</div>
+      <div class="gauge-val" style="color:${gColor};">${session.score ?? '-'}</div>
       <div class="gauge-label">Confidence</div>
     </div>`;
 
@@ -1485,17 +1535,17 @@ function renderMarketPanel(sym){
     return `<tr>
       <td>${time}</td>
       <td><span class="td-dir ${t.dir==='UP'?'up':'down'}">${t.dir}</span></td>
-      <td>${t.qty || '—'}</td>
-      <td>${t.entry != null ? t.entry+'¢' : '—'}</td>
-      <td>${t.exit  != null ? t.exit +'¢' : '—'}</td>
-      <td>${t.ev ? t.ev+'%' : '—'}</td>
+      <td>${t.qty || '-'}</td>
+      <td>${t.entry != null ? t.entry+'¢' : '-'}</td>
+      <td>${t.exit  != null ? t.exit +'¢' : '-'}</td>
+      <td>${t.ev ? t.ev+'%' : '-'}</td>
       <td><span class="td-fill ${t.fill==='filled'?'':t.fill}">${t.fill}</span></td>
-      <td>${t.reason || '—'}</td>
+      <td>${t.reason || '-'}</td>
       <td style="text-align:right;" class="td-pnl ${t.pnl>=0?'up':'down'}">${fmtMoney(t.pnl)}</td>
     </tr>`;
   }).join('') : `<tr><td colspan="9" style="text-align:center;color:var(--ink-3);padding:24px;">No trades yet for ${sym}</td></tr>`;
 
-  // hourly heatmap (last 60 buckets) — uses real outcomes when available
+  // hourly heatmap (last 60 buckets) - uses real outcomes when available
   const _outcomes = MARKET_DATA[sym]?.outcomes;
   const heat = (_outcomes && _outcomes.length > 0)
     ? [..._outcomes].reverse().map(o => {
@@ -1515,7 +1565,7 @@ function renderMarketPanel(sym){
   // session tabs (only for multi-session)
   const sessionTabsHTML = hasMulti ? `
     <div class="session-tabs">
-      ${data.sessions.map((s,i)=>`<div class="session-tab ${s.active?'active':''}"><span class="pip"></span>${s.type==='15m'?'15-Minute':'Hourly'} · ${s.active?'ACTIVE':'Idle'}</div>`).join('')}
+      ${data.sessions.map((s,i)=>`<div class="session-tab ${s.active?'active':''}"><span class="pip"></span>${s.type==='15m'?'15-Minute':'Hourly'} * ${s.active?'ACTIVE':'Idle'}</div>`).join('')}
     </div>` : '';
 
   document.getElementById('panel-market').innerHTML = `
@@ -1523,14 +1573,14 @@ function renderMarketPanel(sym){
       <div class="hero-row">
         <div class="hero-logo">${cryptoLogo(sym)}</div>
         <div class="hero-info">
-          <div class="hero-name">${sym} <span>${sym==='BTC'?'Bitcoin':sym==='ETH'?'Ethereum':sym==='SOL'?'Solana':sym==='XRP'?'XRP':'Dogecoin'} · 15m Kalshi</span></div>
+          <div class="hero-name">${sym} <span>${sym==='BTC'?'Bitcoin':sym==='ETH'?'Ethereum':sym==='SOL'?'Solana':sym==='XRP'?'XRP':'Dogecoin'} * 15m Kalshi</span></div>
           <div class="hero-px">${fmtPx(sym,m.px)}</div>
           <div class="hero-sub">
             <span class="ch ${dirCls}">${m.ch24>=0?'+':''}${m.ch24.toFixed(2)}%</span>
             <span>24h</span>
-            <span style="color:var(--line-2);">·</span>
+            <span style="color:var(--line-2);">*</span>
             <span>Strike ${fmtPx(sym,m.strike)}</span>
-            <span style="color:var(--line-2);">·</span>
+            <span style="color:var(--line-2);">*</span>
             <span>${m.side}</span>
           </div>
         </div>
@@ -1555,11 +1605,11 @@ function renderMarketPanel(sym){
 
     <div class="mkpi-grid">
       <div class="mkpi"><div class="mkpi-l">Strike</div><div class="mkpi-v">${fmtPx(sym,session.strike)}</div><div class="mkpi-sub">${session.expires}</div></div>
-      <div class="mkpi"><div class="mkpi-l">Distance</div><div class="mkpi-v ${(session.dist??0)>=0?'up':'down'}">${session.dist!=null?((session.dist>=0?'+':'')+session.dist.toFixed(2)+'%'):'—'}</div></div>
-      <div class="mkpi"><div class="mkpi-l">EV</div><div class="mkpi-v ${(session.ev??0)>=7?'up':(session.ev??0)>=5?'':'down'}">${session.ev!=null?session.ev.toFixed(1)+'%':'—'}</div><div class="mkpi-sub">floor 7.0%</div></div>
-      <div class="mkpi"><div class="mkpi-l">Win Prob</div><div class="mkpi-v">${session.wp != null ? (session.wp*100).toFixed(1)+'%' : '—'}</div></div>
-      <div class="mkpi"><div class="mkpi-l">Vol Gate</div><div class="mkpi-v ${(session.vol??0)>=1.8?'up':(session.vol??0)>=1.2?'':'down'}">${session.vol!=null?session.vol.toFixed(2):'—'}</div><div class="mkpi-sub">thresh 1.80</div></div>
-      <div class="mkpi"><div class="mkpi-l">Position</div><div class="mkpi-v">${session.qty>0?session.qty:'—'}</div><div class="mkpi-sub">${session.qty>0?'YES @ '+session.yesAsk+'¢':'flat'}</div></div>
+      <div class="mkpi"><div class="mkpi-l">Distance</div><div class="mkpi-v ${(session.dist??0)>=0?'up':'down'}">${session.dist!=null?((session.dist>=0?'+':'')+session.dist.toFixed(2)+'%'):'-'}</div></div>
+      <div class="mkpi"><div class="mkpi-l">EV</div><div class="mkpi-v ${(session.ev??0)>=7?'up':(session.ev??0)>=5?'':'down'}">${session.ev!=null?session.ev.toFixed(1)+'%':'-'}</div><div class="mkpi-sub">floor 7.0%</div></div>
+      <div class="mkpi"><div class="mkpi-l">Win Prob</div><div class="mkpi-v">${session.wp != null ? (session.wp*100).toFixed(1)+'%' : '-'}</div></div>
+      <div class="mkpi"><div class="mkpi-l">Vol Gate</div><div class="mkpi-v ${(session.vol??0)>=1.8?'up':(session.vol??0)>=1.2?'':'down'}">${session.vol!=null?session.vol.toFixed(2):'-'}</div><div class="mkpi-sub">thresh 1.80</div></div>
+      <div class="mkpi"><div class="mkpi-l">Position</div><div class="mkpi-v">${session.qty>0?session.qty:'-'}</div><div class="mkpi-sub">${session.qty>0?'YES @ '+session.yesAsk+'¢':'flat'}</div></div>
     </div>
 
     <div class="grid-2">
@@ -1586,10 +1636,10 @@ function renderMarketPanel(sym){
           </div>
         </div>
         <div class="card">
-          <div class="card-head"><div class="card-title"><span class="accent"></span>15m Win Heatmap · last 60</div></div>
+          <div class="card-head"><div class="card-title"><span class="accent"></span>15m Win Heatmap * last 60</div></div>
           <div class="heat-strip">${heat.map(c=>`<div style="background:${c};"></div>`).join('')}</div>
           <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--ink-3);font-family:'Montserrat',monospace;">
-            <span>−15h</span><span>now</span>
+            <span>-15h</span><span>now</span>
           </div>
         </div>
       </div>
@@ -1597,8 +1647,8 @@ function renderMarketPanel(sym){
 
     <div class="grid-2" style="margin-top:14px;">
       <div class="card">
-        <div class="card-head"><div class="card-title"><span class="accent"></span>Recent Trades · ${sym}</div>
-          <span style="font-size:10px;color:var(--ink-3);">${data.stats.wins}W / ${data.stats.losses}L · WR ${(data.stats.wr*100).toFixed(1)}%</span>
+        <div class="card-head"><div class="card-title"><span class="accent"></span>Recent Trades * ${sym}</div>
+          <span style="font-size:10px;color:var(--ink-3);">${data.stats.wins}W / ${data.stats.losses}L * WR ${(data.stats.wr*100).toFixed(1)}%</span>
         </div>
         <div style="overflow-x:auto;">
           <table>
@@ -1626,7 +1676,7 @@ function renderMarketPanel(sym){
 
     <div class="grid-3" style="margin-top:14px;">
       <div class="card">
-        <div class="card-head"><div class="card-title"><span class="accent"></span>Performance · ${sym}</div></div>
+        <div class="card-head"><div class="card-title"><span class="accent"></span>Performance * ${sym}</div></div>
         <div style="display:flex;flex-direction:column;gap:14px;">
           <div class="meter">
             <div class="meter-head"><span class="meter-name">Win Rate</span><span class="meter-val">${(data.stats.wr*100).toFixed(1)}%</span></div>
@@ -1650,11 +1700,11 @@ function renderMarketPanel(sym){
       <div class="card">
         <div class="card-head"><div class="card-title"><span class="accent"></span>Strategy Signals</div></div>
         <div>
-          <div class="sig-row"><div class="sig-dot ${(session.ev??0)>=7?'on':'off'}"></div><div class="sig-name">EV ≥ floor</div><div class="sig-val">${session.ev!=null?session.ev.toFixed(1)+'% / 7.0%':'— / 7.0%'}</div></div>
-          <div class="sig-row"><div class="sig-dot ${(session.vol??0)>=1.2?'on':'warn'}"></div><div class="sig-name">Vol gate</div><div class="sig-val">${session.vol!=null?session.vol.toFixed(2)+' / 1.80':'— / 1.80'}</div></div>
-          <div class="sig-row"><div class="sig-dot ${session.wp!=null&&session.wp>=0.55?'on':'off'}"></div><div class="sig-name">Win prob</div><div class="sig-val">${session.wp!=null?(session.wp*100).toFixed(1)+'%':'—'}</div></div>
-          <div class="sig-row"><div class="sig-dot ${(session.score??0)>=60?'on':'warn'}"></div><div class="sig-name">Confidence</div><div class="sig-val">${session.score??'—'}/100</div></div>
-          <div class="sig-row"><div class="sig-dot ${session.dist!=null&&Math.abs(session.dist)<0.5?'on':'warn'}"></div><div class="sig-name">Strike distance</div><div class="sig-val">${session.dist!=null?(session.dist>=0?'+':'')+session.dist.toFixed(2)+'%':'—'}</div></div>
+          <div class="sig-row"><div class="sig-dot ${(session.ev??0)>=7?'on':'off'}"></div><div class="sig-name">EV >= floor</div><div class="sig-val">${session.ev!=null?session.ev.toFixed(1)+'% / 7.0%':'- / 7.0%'}</div></div>
+          <div class="sig-row"><div class="sig-dot ${(session.vol??0)>=1.2?'on':'warn'}"></div><div class="sig-name">Vol gate</div><div class="sig-val">${session.vol!=null?session.vol.toFixed(2)+' / 1.80':'- / 1.80'}</div></div>
+          <div class="sig-row"><div class="sig-dot ${session.wp!=null&&session.wp>=0.55?'on':'off'}"></div><div class="sig-name">Win prob</div><div class="sig-val">${session.wp!=null?(session.wp*100).toFixed(1)+'%':'-'}</div></div>
+          <div class="sig-row"><div class="sig-dot ${(session.score??0)>=60?'on':'warn'}"></div><div class="sig-name">Confidence</div><div class="sig-val">${session.score??'-'}/100</div></div>
+          <div class="sig-row"><div class="sig-dot ${session.dist!=null&&Math.abs(session.dist)<0.5?'on':'warn'}"></div><div class="sig-name">Strike distance</div><div class="sig-val">${session.dist!=null?(session.dist>=0?'+':'')+session.dist.toFixed(2)+'%':'-'}</div></div>
           <div class="sig-row"><div class="sig-dot on"></div><div class="sig-name">Price validation</div><div class="sig-val">OK</div></div>
         </div>
       </div>
@@ -1696,12 +1746,12 @@ function renderTrades(filter='all'){
       <td><span class="td-sym"><span class="swatch" style="background:${colors[t.sym]};"></span>${t.sym}</span></td>
       <td><span class="badge" style="${(t.brain==='s1'||t.sv==='strategy1')?'background:var(--amber-soft);color:var(--amber);':'background:var(--accent-soft);color:var(--accent);'}border:none;font-size:9px;">${(t.brain==='s1'||t.sv==='strategy1')?'S1':'S2'}</span></td>
       <td><span class="td-dir ${t.dir==='UP'?'up':'down'}">${t.dir}</span></td>
-      <td>${t.qty || '—'}</td>
-      <td>${t.entry != null ? t.entry+'¢' : '—'}</td>
-      <td>${t.exit  != null ? t.exit +'¢' : '—'}</td>
-      <td>${t.ev ? t.ev+'%' : '—'}</td>
+      <td>${t.qty || '-'}</td>
+      <td>${t.entry != null ? t.entry+'¢' : '-'}</td>
+      <td>${t.exit  != null ? t.exit +'¢' : '-'}</td>
+      <td>${t.ev ? t.ev+'%' : '-'}</td>
       <td><span class="td-fill ${t.fill==='filled'?'':t.fill}">${t.fill}</span></td>
-      <td>${t.reason || '—'}</td>
+      <td>${t.reason || '-'}</td>
       <td style="text-align:right;" class="td-pnl ${t.pnl>=0?'up':'down'}">${fmtMoney(t.pnl)}</td>
     </tr>`;
   }).join('');
@@ -1732,12 +1782,141 @@ function switchTab(tab){
     document.getElementById('panel-market').classList.add('active');
     renderMarketPanel(tab);
     fetchMarketDetail(tab);
+  } else if(tab==='edge'){
+    _activeMarketSym = null;
+    document.getElementById('panel-edge').classList.add('active');
+    fetchEdge();
   } else if(tab==='settings'){
     _activeMarketSym = null;
     document.getElementById('panel-settings').classList.add('active');
     fetchSettingsConfig();
   }
   window.scrollTo(0,0);
+}
+
+// ── Edge panel (harness / GATE-1) ───────────────────────────────────────────
+function _edgeCell(v, nd, pct){
+  if(v==null) return '<span class="muted">-</span>';
+  const x = pct ? (v*100).toFixed(nd)+'%' : v.toFixed(nd);
+  return x;
+}
+function renderEdge(d){
+  const dec = (d&&d.decisions)||{}, mk=(d&&d.maker)||{}, c=(d&&d.counts)||{logged:0,settled:0,pending:0};
+  // verdict headline (color-coded)
+  const vEl = document.getElementById('edge-verdict');
+  const v = dec.verdict || 'insufficient data';
+  let col = 'var(--amber)';
+  if(/net positive/.test(v)) col='var(--up)';
+  else if(/no edge/.test(v)) col='var(--down)';
+  vEl.textContent = v; vEl.style.color = col;
+  document.getElementById('edge-counts').textContent =
+    `${c.logged} decisions logged * ${c.settled} settled * ${c.pending} pending`;
+  const pct = Math.min(100, Math.round((c.settled/200)*100));
+  const pb = document.getElementById('edge-progress'); pb.style.width = pct+'%';
+  pb.className = pct>=100 ? 'up' : 'amber';
+  // per-strategy decisions table
+  const rows = [];
+  const bs = dec.by_strategy||{};
+  const keys = Object.keys(bs).sort();
+  if(dec.overall) keys.push('__overall__');
+  for(const k of keys){
+    const g = k==='__overall__' ? dec.overall : bs[k];
+    if(!g) continue;
+    const lbl = k==='__overall__' ? '<b>ALL</b>' : (k==='strategy1'?'S1':k==='strategy2'?'S2':k);
+    const netCls = g.net_pnl_per_contract>0?'up':g.net_pnl_per_contract<0?'down':'muted';
+    const lbCls  = g.wilson_lb_pnl>0?'up':'down';
+    rows.push(`<tr><td>${lbl}</td><td>${g.n}</td><td>${_edgeCell(g.win_rate,1,true)}</td>
+      <td>${_edgeCell(g.mean_model_p,2)}</td><td>${_edgeCell(g.mean_market_p,2)}</td>
+      <td>${_edgeCell(g.brier_model,3)} / ${_edgeCell(g.brier_market,3)}</td>
+      <td class="${netCls}">${_edgeCell(g.net_pnl_per_contract,4)}</td>
+      <td class="${lbCls}">${_edgeCell(g.wilson_lb_pnl,4)}</td></tr>`);
+  }
+  document.getElementById('edge-decisions').innerHTML = rows.join('') ||
+    '<tr><td colspan="8" class="muted">No settled picks yet.</td></tr>';
+  // per-time breakdowns - which ET sessions / days actually pay ("better market times")
+  const _timeRows = (obj, order) => {
+    const out=[]; const ks = order.filter(k=>obj[k]).concat(Object.keys(obj).filter(k=>!order.includes(k)));
+    for(const k of ks){
+      const g=obj[k]; if(!g) continue;
+      const netCls=g.net_pnl_per_contract>0?'up':g.net_pnl_per_contract<0?'down':'muted';
+      const lbCls=g.wilson_lb_pnl>0?'up':'down';
+      const note=g.insufficient?'<span class="muted">insufficient</span>':'';
+      out.push(`<tr><td>${k}</td><td>${g.n}</td><td>${_edgeCell(g.win_rate,1,true)}</td>
+        <td class="${netCls}">${_edgeCell(g.net_pnl_per_contract,4)}</td>
+        <td class="${lbCls}">${_edgeCell(g.wilson_lb_pnl,4)}</td><td>${note}</td></tr>`);
+    }
+    return out.join('');
+  };
+  const SESS_ORDER=['us_open','us_midday','us_close','us_evening','overnight'];
+  const _se=document.getElementById('edge-session');
+  if(_se) _se.innerHTML = _timeRows(dec.by_session||{}, SESS_ORDER) ||
+    '<tr><td colspan="6" class="muted">No settled picks yet.</td></tr>';
+  const _dt=document.getElementById('edge-daytype');
+  if(_dt) _dt.innerHTML = _timeRows(dec.by_daytype||{}, ['weekday','weekend']) ||
+    '<tr><td colspan="6" class="muted">No settled picks yet.</td></tr>';
+  // maker
+  const mvEl = document.getElementById('edge-maker-verdict');
+  const mv = mk.verdict || 'insufficient data';
+  mvEl.textContent = mv;
+  mvEl.style.color = /clearly better/.test(mv)?'var(--up)':/not better/.test(mv)?'var(--down)':'var(--amber)';
+  const mrows=[]; const mbs=mk.by_strategy||{}; const mkeys=Object.keys(mbs).sort();
+  if(mk.overall) mkeys.push('__overall__');
+  for(const k of mkeys){
+    const g = k==='__overall__'?mk.overall:mbs[k];
+    if(!g) continue;
+    const lbl = k==='__overall__'?'<b>ALL</b>':(k==='strategy1'?'S1':k==='strategy2'?'S2':k);
+    const dCls = g.delta>0?'up':g.delta<0?'down':'muted';
+    mrows.push(`<tr><td>${lbl}</td><td>${g.n}</td><td>${_edgeCell(g.fill_rate,1,true)}</td>
+      <td>${_edgeCell(g.taker_mean,4)}</td><td>${_edgeCell(g.maker_strategy_mean,4)}</td>
+      <td class="${dCls}">${_edgeCell(g.delta,4)}</td><td>${_edgeCell(g.delta_se,4)}</td></tr>`);
+  }
+  document.getElementById('edge-maker').innerHTML = mrows.join('') ||
+    '<tr><td colspan="7" class="muted">No maker samples yet.</td></tr>';
+  // model self-tuning: fitted calibration knobs, basis stats, auto-blocked buckets
+  const cal = (d&&d.calibration)||{};
+  const trows = [];
+  const ps = cal.prob_scale||{};
+  for(const k of Object.keys(ps).sort()){
+    const lbl = k==='strategy1'?'S1':'S2';
+    const v = ps[k];
+    const cls = Math.abs(v-1.0)<0.001?'muted':(v<1?'amber':'up');
+    trows.push(`<tr><td>prob_scale ${lbl}</td><td class="${cls}">${v}</td><td>${Math.abs(v-1.0)<0.001?'neutral (no fit yet or well calibrated)':(v<1?'model was overconfident: shrunk':'model was underconfident: expanded')}</td></tr>`);
+  }
+  const lb = cal.live_beta||{};
+  for(const k of Object.keys(lb).sort()){
+    trows.push(`<tr><td>live beta ${k}</td><td>${lb[k]}</td><td>rolling BTC-lead fit (replaces static)</td></tr>`);
+  }
+  const bo = cal.basis_offset||{};
+  for(const k of Object.keys(bo).sort()){
+    if(bo[k]) trows.push(`<tr><td>basis offset ${k}</td><td>${bo[k]}</td><td>spot vs Kalshi settlement correction</td></tr>`);
+  }
+  document.getElementById('edge-tuning').innerHTML = trows.join('') ||
+    '<tr><td colspan="3" class="muted">No fits yet - needs 200+ settled decisions (collecting).</td></tr>';
+  const bs2 = (d&&d.basis)||{};
+  const brows = [];
+  for(const k of Object.keys(bs2).sort()){
+    const g = bs2[k];
+    const aCls = g.agree_rate>=0.97?'up':g.agree_rate>=0.9?'amber':'down';
+    brows.push(`<tr><td>${k}</td><td>${g.n}</td><td class="${aCls}">${_edgeCell(g.agree_rate,1,true)}</td><td>${g.mean_disagree_dist==null?'-':g.mean_disagree_dist}</td></tr>`);
+  }
+  document.getElementById('edge-basis').innerHTML = brows.join('') ||
+    '<tr><td colspan="4" class="muted">No official settles recorded yet.</td></tr>';
+  const ab = cal.auto_blocked||{};
+  const abParts = [];
+  for(const s of (ab.sessions||[])) abParts.push(`session:${s}`);
+  for(const sa of (ab.strategy_assets||[])) abParts.push(`${sa[0]==='strategy1'?'S1':'S2'}/${sa[1]}`);
+  const abEl = document.getElementById('edge-autoblock');
+  if(abParts.length){
+    abEl.innerHTML = `<span class="down"><b>Auto-blocked:</b></span> ${abParts.join(' * ')}`;
+  } else {
+    abEl.innerHTML = '<span class="muted">Auto-gate: nothing blocked (no bucket has 150+ picks with non-positive Wilson-LB).</span>';
+  }
+}
+async function fetchEdge(){
+  try{
+    const d = await fetch('/api/edge').then(r=>r.json());
+    renderEdge(d);
+  }catch(e){}
 }
 
 // ── Settings panel ────────────────────────────────────────────────────────────
@@ -1766,7 +1945,7 @@ async function setStrategyMode(strat, mode){
     const r = await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     if(!r.ok) throw new Error(r.status);
     _applyStrategyMode(strat, mode);
-    if(statusEl){ statusEl.textContent = mode==='live'?'🔴 LIVE':'paper'; setTimeout(()=>{ statusEl.textContent=''; },3000); }
+    if(statusEl){ statusEl.textContent = mode==='live'?'LIVE':'paper'; setTimeout(()=>{ statusEl.textContent=''; },3000); }
   } catch(e){
     if(statusEl){ statusEl.textContent='error'; setTimeout(()=>{ statusEl.textContent=''; },3000); }
   }
@@ -1788,7 +1967,7 @@ async function saveTradeAmount(){
 
 async function testTelegram(){
   const statusEl = document.getElementById('telegram-status');
-  if(statusEl) statusEl.textContent='sending…';
+  if(statusEl) statusEl.textContent='sending...';
   try {
     const r = await fetch('/api/test-telegram',{method:'POST'});
     const d = await r.json();
@@ -1841,7 +2020,7 @@ document.getElementById('mode-seg').querySelectorAll('button').forEach(b=>{
   });
 });
 
-// quick actions (pause / reset) — event delegation on the shared market panel
+// quick actions (pause / reset) - event delegation on the shared market panel
 document.getElementById('panel-market').addEventListener('click', e => {
   const btn = e.target.closest('[data-action]');
   if(!btn) return;
@@ -1870,7 +2049,7 @@ async function fetchRisk(){
     if(d.error) return;
     const el = document.getElementById('risk-meters');
     if(!el) return;
-    const fmt = v => v == null ? '—' : v.toFixed(2);
+    const fmt = v => v == null ? '-' : v.toFixed(2);
     const pct = (cur, max) => max > 0 ? Math.min(100, cur / max * 100).toFixed(0) : 0;
     const ll = d.daily_loss_limit,  pt = d.daily_profit_target;
     const vg = d.vol_gate,          ef = d.ev_floor,  st = d.streak;
@@ -1884,7 +2063,7 @@ async function fetchRisk(){
         <div class="meter-bar"><div class="up" style="width:${pct(pt.current,pt.max)}%"></div></div>
       </div>
       <div class="meter">
-        <div class="meter-head"><span class="meter-name">Vol Gate (${vg.asset||'BTC'})</span><span class="meter-val">${vg.current != null ? vg.current : '—'} / ${fmt(vg.threshold)}</span></div>
+        <div class="meter-head"><span class="meter-name">Vol Gate (${vg.asset||'BTC'})</span><span class="meter-val">${vg.current != null ? vg.current : '-'} / ${fmt(vg.threshold)}</span></div>
         <div class="meter-bar"><div class="${vg.current == null ? '' : vg.current >= vg.threshold * 0.9 ? 'amber' : 'up'}" style="width:${vg.current != null ? pct(vg.current,vg.threshold) : 0}%"></div></div>
       </div>
       <div class="meter">
@@ -1951,7 +2130,7 @@ window.addEventListener('resize',()=>{
   }
 });
 
-// equity seg buttons → rebuild per-strategy charts from TRADES
+// equity seg buttons -> rebuild per-strategy charts from TRADES
 document.getElementById('equity-seg').querySelectorAll('button').forEach(b=>{
   b.addEventListener('click',()=>{
     document.querySelectorAll('#equity-seg button').forEach(x=>x.classList.remove('active'));
@@ -1965,7 +2144,7 @@ function mapAssetState(sym, a) {
   const rawSecs = a.secs_left || 0;
   const secs = Math.floor(rawSecs);
   const mins = Math.floor(secs / 60), s = secs % 60;
-  const timer = secs > 0 ? `${mins}m ${s}s` : '—';
+  const timer = secs > 0 ? `${mins}m ${s}s` : '-';
   const ex  = MARKETS.find(m => m.sym === sym) || {};
   const dec = a.signals || a.decision || {};
   return {
@@ -1982,7 +2161,7 @@ function mapAssetState(sym, a) {
     yesAsk:   a.yes_ask != null ? Math.round(a.yes_ask) : (dec.yes_ask != null ? Math.round(dec.yes_ask) : (ex.yesAsk ?? null)),
     noAsk:    a.no_ask  != null ? Math.round(a.no_ask)  : (dec.no_ask  != null ? Math.round(dec.no_ask)  : (ex.noAsk  ?? null)),
     vol:      a.vol       ?? ex.vol       ?? 1.0,
-    side:     a.side ?? (a.direction?.toUpperCase() === 'UP' ? 'YES/UP' : a.direction?.toUpperCase() === 'DOWN' ? 'NO/DOWN' : ex.side ?? '—'),
+    side:     a.side ?? (a.direction?.toUpperCase() === 'UP' ? 'YES/UP' : a.direction?.toUpperCase() === 'DOWN' ? 'NO/DOWN' : ex.side ?? '-'),
     sig:      { ...(ex.sig || {}), ...dec },
     s1_dir:   a.s1_dir   ?? ex.s1_dir   ?? 'neutral',
     s2_dir:   a.s2_dir   ?? ex.s2_dir   ?? 'neutral',
@@ -2001,7 +2180,7 @@ async function fetchMarketState() {
         const a = data.assets[sym];
         if (!a) return MARKETS.find(m => m.sym === sym) || {
           sym, phase:'OFFLINE', px:null, ch24:0, dist:0, strike:null,
-          ev:0, wp:null, timer:'—', pnlToday:0, side:'—',
+          ev:0, wp:null, timer:'-', pnlToday:0, side:'-',
           yesAsk:null, noAsk:null, vol:0,
           sig:{ final_decision:'skip', vote_count:0, ev_pass:false,
                 skip_reason:null, decision_mode:'d3_hybrid',
@@ -2090,7 +2269,7 @@ async function fetchPnl() {
     const tdSub = document.getElementById('kpi-today-sub');
     if (tdSub) {
       const w = today.wins ?? 0, cnt = today.trades ?? 0, l = cnt - w;
-      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> · ${w}W / ${l}L`;
+      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> * ${w}W / ${l}L`;
     }
   } catch(e) {}
 }
@@ -2125,7 +2304,7 @@ async function fetchPnlS1() {
     const tdSub = document.getElementById('kpi-s1-today-sub');
     if (tdSub) {
       const w = today.wins ?? 0, cnt = today.trades ?? 0, l = cnt - w;
-      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> · ${w}W / ${l}L`;
+      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> * ${w}W / ${l}L`;
     }
   } catch(e) {}
 }
@@ -2135,7 +2314,7 @@ async function fetchEventLog() {
   try {
     const d = await fetch('/api/market-pulse').then(r => r.json());
     const fmtT = ts => {
-      if (!ts) return '—';
+      if (!ts) return '-';
       const dt = new Date(ts);
       return dt.getHours().toString().padStart(2,'0') + ':' + dt.getMinutes().toString().padStart(2,'0');
     };
@@ -2145,7 +2324,7 @@ async function fetchEventLog() {
     for (const t of (d.recent_trades || [])) {
       const sign   = (t.pnl_dollars ?? 0) >= 0 ? '+' : '';
       const pnlStr = t.pnl_dollars != null ? ` <b>${sign}$${Math.abs(t.pnl_dollars).toFixed(2)}</b>` : '';
-      events.push([fmtT(t.ts), 'exit', `${t.asset}${pnlStr} · ${t.outcome} @ ${t.entry_price_cents}¢`]);
+      events.push([fmtT(t.ts), 'exit', `${t.asset}${pnlStr} * ${t.outcome} @ ${t.entry_price_cents}¢`]);
     }
     if (events.length) renderEventLog(events);
   } catch(e) {}
@@ -2158,7 +2337,7 @@ async function fetchMarketDetail(sym) {
     if (sym !== _activeMarketSym) return;  // user switched tabs during fetch
     if (data.error) return;
     const ex = MARKET_DATA[sym] || {};
-    // Merge API sessions over mock defaults — keep null mock fields when API returns null
+    // Merge API sessions over mock defaults - keep null mock fields when API returns null
     const mergedSessions = data.sessions?.length ? data.sessions.map((s, i) => {
       const base = (ex.sessions || [])[i] || {};
       const merged = { ...base };
@@ -2189,6 +2368,7 @@ setInterval(fetchMarketState, 30_000);
 setInterval(fetchEventLog,    30_000);
 setInterval(fetchPnl,         60_000);
 setInterval(fetchPnlS1,       60_000);
+setInterval(()=>{ if(document.getElementById('panel-edge')?.classList.contains('active')) fetchEdge(); }, 60_000);
 </script>
 </body>
 </html>

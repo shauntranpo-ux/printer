@@ -15,7 +15,7 @@ Available gstack skills:
 
 - **Live bot = top-level flat `.py` files** (bot.py, runner.py, server.py, bot_loops.py, bot_market.py, bot_risk.py, bot_strategy.py, bot_infra.py, bot_state.py, bot_stats.py, asset_manager.py, obs.py, notify.py, and the sidecar scripts). These run on Railway and trade real money.
 - **`src/kalshi_bot/` is quarantined and dead.** Empty scaffold for an abandoned rewrite. Not imported by anything. Do not edit it as if it were live.
-- **Live deps = `requirements.txt`.** `pyproject.toml` is quarantined — it describes the dead rewrite ("kalshi-botv3") and lists FastAPI, SQLAlchemy, etc. that are not used at runtime.
+- **Live deps = `requirements.txt`.** `pyproject.toml` is quarantined - it describes the dead rewrite ("kalshi-botv3") and lists FastAPI, SQLAlchemy, etc. that are not used at runtime.
 - **Live DB = raw sqlite3 via `bot_infra.init_db()` (bot_infra.py:158).** `alembic/` does not run. Do not run `alembic upgrade`. Do not add SQLAlchemy models.
 
 ### What drives trading decisions

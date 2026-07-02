@@ -1,4 +1,4 @@
-"""Unit tests for calibrate_winrates.py — pure computation only, no HTTP."""
+"""Unit tests for calibrate_winrates.py - pure computation only, no HTTP."""
 import os
 import sys
 from unittest.mock import patch
@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
 import calibrate_winrates as cal
 
 
-# ── Task 2: Binance fetch ─────────────────────────────────────────────────────
+# Task 2: Binance fetch
 
 def _make_kline_batch(start_ms, count, price=50000.0):
     rows = []
@@ -41,7 +41,7 @@ def test_fetch_binance_1m_paginates():
     assert call_count == 2
 
 
-# ── Task 3: S1 EMA simulation ─────────────────────────────────────────────────
+# Task 3: S1 EMA simulation
 
 def test_compute_ema_basic():
     prices = [100.0] * 10
@@ -71,7 +71,7 @@ def test_simulate_s1_reversal_filtered():
         assert abs_pct > 0
 
 
-# ── Task 4: S1 bucketing ──────────────────────────────────────────────────────
+# Task 4: S1 bucketing
 
 def test_bucket_s1_basic():
     records = [(0.003, 4.0, True)] * 70 + [(0.003, 4.0, False)] * 30
@@ -99,7 +99,7 @@ def test_bucket_s1_dist_boundaries():
         assert (expected_idx, 0) in table, f"abs_pct={abs_pct} expected bucket {expected_idx}"
 
 
-# ── Task 5: Kalshi market listing ─────────────────────────────────────────────
+# Task 5: Kalshi market listing
 
 def test_fetch_kalshi_markets_paginates():
     # Use a fixed "now" so close_times within 60 days pass the cutoff check
@@ -149,7 +149,7 @@ def test_fetch_kalshi_markets_paginates():
     assert markets[0]["result"] in ("yes", "no")
 
 
-# ── Task 6: Kalshi price history ──────────────────────────────────────────────
+# Task 6: Kalshi price history
 
 def test_fetch_market_history_extracts_yes_ask():
     fake_response = {
@@ -168,7 +168,7 @@ def test_fetch_market_history_extracts_yes_ask():
     assert result == [(1715079000, 45), (1715079060, 46)]
 
 
-# ── Task 7: S2 velocity simulation ───────────────────────────────────────────
+# Task 7: S2 velocity simulation
 
 def test_simulate_s2_window_bullish():
     close_time_s = 1_715_080_000
@@ -186,8 +186,8 @@ def test_simulate_s2_reversal_filtered():
     close_time_s = 1_715_090_000
     open_time_s  = close_time_s - 900
     strike       = 100.0
-    # yes_ask goes from 30→43 — stays below 50 at all entry points → implied_above=False
-    # velocity is rising (YES side) + implied_above=False → reversal → all filtered
+    # yes_ask goes from 30->43 - stays below 50 at all entry points -> implied_above=False
+    # velocity is rising (YES side) + implied_above=False -> reversal -> all filtered
     history      = [(open_time_s + i * 60, 30 + i) for i in range(15)]
     cfg          = dict(min_dist=0.0035, min_vel_delta=0.80, vel_lookback=4)
     records      = cal.simulate_s2_window(
@@ -196,7 +196,7 @@ def test_simulate_s2_reversal_filtered():
     assert len(records) == 0
 
 
-# ── Task 8: S2 bucketing ──────────────────────────────────────────────────────
+# Task 8: S2 bucketing
 
 def test_bucket_s2_basic():
     records = [(0.9, 3.0, True)] * 60 + [(0.9, 3.0, False)] * 40
@@ -208,9 +208,9 @@ def test_bucket_s2_basic():
 def test_bucket_s2_vel_boundaries():
     min_v  = 0.80
     cases  = [
-        (0.9,  0),   # 1× to 2× min_vel
-        (1.7,  1),   # 2× to 4× min_vel
-        (3.5,  2),   # >= 4× min_vel
+        (0.9,  0),   # 1x to 2x min_vel
+        (1.7,  1),   # 2x to 4x min_vel
+        (3.5,  2),   # >= 4x min_vel
     ]
     for vel_delta, expected_idx in cases:
         records = [(vel_delta, 3.0, True)] * 60
@@ -218,7 +218,7 @@ def test_bucket_s2_vel_boundaries():
         assert (expected_idx, 0) in table, f"vel_delta={vel_delta} expected bucket {expected_idx}"
 
 
-# ── Task 10: bot_strategy lookup functions ────────────────────────────────────
+# Task 10: bot_strategy lookup functions
 
 def test_s1_lookup_uses_table():
     import bot_strategy as bs
@@ -228,13 +228,13 @@ def test_s1_lookup_uses_table():
 
 def test_s1_lookup_falls_back_to_tanh():
     import bot_strategy as bs
-    # BTC (dist_idx=2, time_idx=1) = None — hits tanh fallback
+    # BTC (dist_idx=2, time_idx=1) = None - hits tanh fallback
     # dist_idx=2: abs_pct=0.015 in [0.010, 0.020); time_idx=1: mins_left=7.0 in [6.0, 9.0)
     result = bs._s1_lookup_win_rate("BTC", abs_pct=0.015, mins_left=7.0)
     assert 0.5 < result <= 0.85, f"Fallback win_prob {result} out of expected range"
 
 
-# ── Task 10b: S2 lookup function ──────────────────────────────────────────────
+# Task 10b: S2 lookup function
 
 def test_s2_lookup_uses_table():
     import bot_strategy as bs
@@ -258,8 +258,8 @@ def test_s2_lookup_falls_back_to_tanh():
 def test_s2_lookup_returns_table_value():
     import bot_strategy as bs
     # Inject a known value and verify it's returned.
-    # vel_delta=0.015, min_vel_delta=0.01 (BTC) → ratio=1.5 < 2.0 → vel_idx=0
-    # mins_left=3.0 < 5.0 → time_idx=0
+    # vel_delta=0.015, min_vel_delta=0.01 (BTC) -> ratio=1.5 < 2.0 -> vel_idx=0
+    # mins_left=3.0 < 5.0 -> time_idx=0
     original = bs._S2_WIN_RATE.get("BTC")
     bs._S2_WIN_RATE["BTC"] = {(0, 0): 0.7234}
     try:
@@ -272,7 +272,7 @@ def test_s2_lookup_returns_table_value():
 def test_s2_lookup_vel_idx_boundaries():
     import bot_strategy as bs
     # _S2_VEL_MULTIPLIERS = [2.0, 4.0], min_vel_delta BTC = 0.80
-    # ratio < 2.0 → vel_idx=0; ratio in [2.0,4.0) → vel_idx=1; ratio >= 4.0 → vel_idx=2
+    # ratio < 2.0 -> vel_idx=0; ratio in [2.0,4.0) -> vel_idx=1; ratio >= 4.0 -> vel_idx=2
     original = bs._S2_WIN_RATE.get("BTC")
     bs._S2_WIN_RATE["BTC"] = {(0, 0): 0.60, (1, 0): 0.70, (2, 0): 0.80}
     try:

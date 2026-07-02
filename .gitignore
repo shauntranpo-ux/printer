@@ -31,7 +31,7 @@ logs/
 *.log
 brain.log
 
-# Data — ignore contents but track directories via .gitkeep
+# Data - ignore contents but track directories via .gitkeep
 data/*
 !data/.gitkeep
 !data/betas.json
@@ -54,7 +54,7 @@ bot_state.json
 bot_state_*.json
 config.json
 
-# Backtest outputs — large files, not committed
+# Backtest outputs - large files, not committed
 results/*.parquet
 data/historical/*.parquet
 

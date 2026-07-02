@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Probe threshold candidates — find fire rates for ETH, DOGE, SOL, XRP."""
+"""Probe threshold candidates - find fire rates for ETH, DOGE, SOL, XRP."""
 import sys, random
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.path.insert(0, __import__("os").path.dirname(__import__("os").path.dirname(__import__("os").path.abspath(__file__))))

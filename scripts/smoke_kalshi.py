@@ -24,7 +24,7 @@ async def main() -> None:
         sys.exit(0)
 
     if settings.mode == "dry_run":
-        print("[smoke] mode=dry_run — no real credentials configured. Skipping live call.")
+        print("[smoke] mode=dry_run - no real credentials configured. Skipping live call.")
         sys.exit(0)
 
     from kalshi_botv3.kalshi.auth import KalshiSigner

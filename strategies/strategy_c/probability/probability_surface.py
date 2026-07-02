@@ -5,7 +5,7 @@ Evaluates P_model(S_T > K) for every strike on the Kalshi ladder, producing
 a surface DataFrame with model probability, market-implied probability, and edge.
 
 Calibration is applied per moneyness bucket (see model.py).  When no calibrators
-are loaded, raw N(d₂) values are used.
+are loaded, raw N(d2) values are used.
 """
 from __future__ import annotations
 import math
@@ -53,12 +53,12 @@ class ProbabilitySurface:
             spot_price:              current underlying spot price
             ladder_df:               output of parse_ladder(); must have 'strike' and
                                      'implied_probability' columns
-            time_to_expiry_seconds:  T−t in seconds
-            integrated_variance:     σ²·(T−t) from vol_term_structure.integrate_forecasted_variance
+            time_to_expiry_seconds:  T-t in seconds
+            integrated_variance:     sigma²*(T-t) from vol_term_structure.integrate_forecasted_variance
             feature_vector:          flat feature dict (reserved for future calibration features)
             config:                  asset config dict
-            mu_hat:                  optional signed drift adjustment added to d₂'s numerator
-                                     as mu_hat·(T−t); 0.0 = no adjustment
+            mu_hat:                  optional signed drift adjustment added to d2's numerator
+                                     as mu_hat*(T-t); 0.0 = no adjustment
 
         Returns:
             DataFrame with columns: strike, p_model, p_market, edge, moneyness_bucket

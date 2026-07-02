@@ -1,4 +1,4 @@
-"""tests/test_reconcile.py — Unit tests for reconcile.py crash-recovery helpers."""
+"""tests/test_reconcile.py - Unit tests for reconcile.py crash-recovery helpers."""
 import os
 import sqlite3
 import sys
@@ -10,7 +10,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
-# ── helpers ───────────────────────────────────────────────────────────────────
+# helpers
 
 class _Row:
     """Minimal sqlite3.Row substitute for testing classify_pending_trade."""
@@ -36,13 +36,13 @@ def _make_row(**overrides):
     return _Row(**defaults)
 
 
-# ── 1. Paper mode → mark_expired_unfilled, no Kalshi calls ───────────────────
+# 1. Paper mode -> mark_expired_unfilled, no Kalshi calls
 
 async def test_classify_paper_mode_no_kalshi_calls():
     """Paper mode returns mark_expired_unfilled with PnL=0; Kalshi must not be called."""
     from reconcile import classify_pending_trade
 
-    # session.get raises if called — proves no Kalshi call made
+    # session.get raises if called - proves no Kalshi call made
     session = MagicMock()
     session.get = MagicMock(side_effect=AssertionError("Kalshi called in paper mode"))
 
@@ -54,10 +54,10 @@ async def test_classify_paper_mode_no_kalshi_calls():
     session.get.assert_not_called()
 
 
-# ── 2. Live mode with matching fill → mark_filled with realized PnL ───────────
+# 2. Live mode with matching fill -> mark_filled with realized PnL
 
 async def test_classify_live_with_fill_win():
-    """Live: matching YES fill on a resolved_yes market → win with correct PnL."""
+    """Live: matching YES fill on a resolved_yes market -> win with correct PnL."""
     from reconcile import classify_pending_trade
 
     session = AsyncMock()
@@ -78,7 +78,7 @@ async def test_classify_live_with_fill_win():
 
 
 async def test_classify_live_with_fill_loss():
-    """Live: YES fill on resolved_no market → loss with negative PnL."""
+    """Live: YES fill on resolved_no market -> loss with negative PnL."""
     from reconcile import classify_pending_trade
 
     session = AsyncMock()
@@ -97,10 +97,10 @@ async def test_classify_live_with_fill_loss():
     assert abs(result["pnl_dollars"] - (-1.40)) < 0.01
 
 
-# ── 3. No fill + resolved market → mark_phantom ──────────────────────────────
+# 3. No fill + resolved market -> mark_phantom
 
 async def test_classify_no_fill_resolved_market():
-    """Live: no fill, resolved market, no open position → mark_phantom."""
+    """Live: no fill, resolved market, no open position -> mark_phantom."""
     from reconcile import classify_pending_trade
 
     session = AsyncMock()
@@ -115,10 +115,10 @@ async def test_classify_no_fill_resolved_market():
     assert "reason" in result
 
 
-# ── 4. Open market → leave_pending; fills not queried ────────────────────────
+# 4. Open market -> leave_pending; fills not queried
 
 async def test_classify_open_market_leaves_pending():
-    """Live: market still open → leave_pending; fills endpoint not called."""
+    """Live: market still open -> leave_pending; fills endpoint not called."""
     from reconcile import classify_pending_trade
 
     session = AsyncMock()
@@ -132,7 +132,7 @@ async def test_classify_open_market_leaves_pending():
     mock_fills.assert_not_called()
 
 
-# ── 5. Position verification: empty Kalshi → clears current_position ──────────
+# 5. Position verification: empty Kalshi -> clears current_position
 
 async def test_verify_positions_clears_when_kalshi_empty():
     """
@@ -169,10 +169,10 @@ async def test_verify_positions_clears_when_kalshi_empty():
         bot_state.current_phase = old_phase
 
 
-# ── 6. Specific PnL: fill at 42c, 10 contracts, resolved_yes → 5.80 ──────────
+# 6. Specific PnL: fill at 42c, 10 contracts, resolved_yes -> 5.80
 
 async def test_classify_resolved_with_fills():
-    """entry_fill=42c, 10 contracts, resolved_yes → pnl=(100-42)*10/100=5.80."""
+    """entry_fill=42c, 10 contracts, resolved_yes -> pnl=(100-42)*10/100=5.80."""
     from reconcile import classify_pending_trade
 
     session = AsyncMock()
@@ -190,10 +190,10 @@ async def test_classify_resolved_with_fills():
     assert abs(result["pnl_dollars"] - 5.80) < 0.01
 
 
-# ── 7. Position still open after market close → leave_pending ─────────────────
+# 7. Position still open after market close -> leave_pending
 
 async def test_classify_position_still_held():
-    """Market settled, no fills, but position still on Kalshi → leave_pending."""
+    """Market settled, no fills, but position still on Kalshi -> leave_pending."""
     from reconcile import classify_pending_trade
 
     session = AsyncMock()
@@ -209,7 +209,7 @@ async def test_classify_position_still_held():
     assert result["action"] == "leave_pending"
 
 
-# ── 8. Pagination: cursor followed, both pages aggregated ─────────────────────
+# 8. Pagination: cursor followed, both pages aggregated
 
 async def test_classify_handles_fills_pagination():
     """fetch_fills_for_ticker follows cursor and returns fills from all pages."""
@@ -243,10 +243,10 @@ async def test_classify_handles_fills_pagination():
     assert session.get.call_count == 2
 
 
-# ── 9. All Kalshi calls error → leave_pending, no exception bubbles ───────────
+# 9. All Kalshi calls error -> leave_pending, no exception bubbles
 
 async def test_classify_all_kalshi_errors():
-    """All Kalshi helpers raise internally → classify returns leave_pending."""
+    """All Kalshi helpers raise internally -> classify returns leave_pending."""
     from reconcile import classify_pending_trade
 
     def _raising_ctx(*_a, **_kw):
@@ -260,14 +260,14 @@ async def test_classify_all_kalshi_errors():
     with patch("reconcile.kalshi_headers", return_value={}):
         result = await classify_pending_trade(session, row, "live")
 
-    # fetch_market_resolution → "unknown"; fills → []; positions → None → leave_pending
+    # fetch_market_resolution -> "unknown"; fills -> []; positions -> None -> leave_pending
     assert result["action"] == "leave_pending"
 
 
-# ── 10. Count mismatch: saved=5, kalshi=3 → contracts=3, telegram called ──────
+# 10. Count mismatch: saved=5, kalshi=3 -> contracts=3, telegram called
 
 async def test_count_mismatch_warning():
-    """Position count mismatch: saved=5, kalshi=3 → contracts updated, telegram fired."""
+    """Position count mismatch: saved=5, kalshi=3 -> contracts updated, telegram fired."""
     import bot_state
     import bot_loops
 
@@ -303,10 +303,10 @@ async def test_count_mismatch_warning():
         bot_state.current_phase    = old_phase
 
 
-# ── 11. Ticker missing from Kalshi → position cleared ─────────────────────────
+# 11. Ticker missing from Kalshi -> position cleared
 
 async def test_position_missing_from_kalshi():
-    """Saved ticker absent in Kalshi positions → current_position cleared."""
+    """Saved ticker absent in Kalshi positions -> current_position cleared."""
     import bot_state
     import bot_loops
 
@@ -340,7 +340,7 @@ async def test_position_missing_from_kalshi():
         bot_state.current_phase    = old_phase
 
 
-# ── 12. Idempotency: second reconcile pass touches zero rows ──────────────────
+# 12. Idempotency: second reconcile pass touches zero rows
 
 async def test_idempotency():
     """Running startup reconcile twice: second pass produces zero DB updates."""
@@ -386,7 +386,7 @@ async def test_idempotency():
             conn.close()
             assert outcome == "phantom"
 
-            # Second pass — no pending rows remain, classify must never be called.
+            # Second pass - no pending rows remain, classify must never be called.
             with patch("bot.classify_pending_trade") as mock_classify:
                 with patch("bot.send_telegram", new=AsyncMock()):
                     await _startup_reconcile(session, "live")

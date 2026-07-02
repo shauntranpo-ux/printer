@@ -1,4 +1,4 @@
-"""Rolling win rate tracking — brain_log emits WR after each S1 settlement."""
+"""Rolling win rate tracking - brain_log emits WR after each S1 settlement."""
 import sys
 import os
 import inspect
@@ -12,10 +12,10 @@ def test_settle_s1_logs_rolling_wr():
     """_settle_s1_trade must emit rolling WR to brain_log."""
     src = inspect.getsource(_settle_s1_trade)
     assert "rolling_wr" in src, (
-        "_settle_s1_trade must emit rolling_wr to brain_log — add this instrumentation"
+        "_settle_s1_trade must emit rolling_wr to brain_log - add this instrumentation"
     )
     assert "_brain_log" in src, (
-        "_settle_s1_trade must call _brain_log — import brain_log from bot_strategy"
+        "_settle_s1_trade must call _brain_log - import brain_log from bot_strategy"
     )
 
 

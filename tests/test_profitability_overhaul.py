@@ -55,7 +55,7 @@ def test_quiet_hours_disabled_returns_false():
 
 
 def test_quiet_hours_span_midnight_logic():
-    """span-midnight (22→7): midnight/6am/10pm=quiet; noon/7am=not quiet."""
+    """span-midnight (22->7): midnight/6am/10pm=quiet; noon/7am=not quiet."""
     import bot_strategy, datetime as dt_real
     from unittest.mock import patch
 
@@ -78,7 +78,7 @@ def test_quiet_hours_span_midnight_logic():
 
 
 def test_s1_s2_min_ev_reasonable():
-    """S1 and S2 min_ev must be 0.02-0.06 — positive edge required."""
+    """S1 and S2 min_ev must be 0.02-0.06 - positive edge required."""
     import re
     with open('bot_strategy.py', encoding='utf-8') as f:
         src = f.read()
@@ -93,7 +93,7 @@ def test_s1_s2_min_ev_reasonable():
 
 
 def test_max_entry_price_caps_are_profitable():
-    """S1/S2 max entry 50-60c — realistic 57-65% WR is profitable in this range."""
+    """S1/S2 max entry 50-60c - realistic 57-65% WR is profitable in this range."""
     import re
     with open('bot_strategy.py', encoding='utf-8') as f:
         src = f.read()

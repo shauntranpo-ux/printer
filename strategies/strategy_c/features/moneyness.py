@@ -22,15 +22,15 @@ def compute_moneyness_features(
         current_price: current spot price S_t
         strike_price: strike price K
         sigma_hat: annualized volatility estimate (e.g. 0.43 for BTC)
-        time_to_expiry_seconds: seconds until contract expiry; used to scale σ̂
+        time_to_expiry_seconds: seconds until contract expiry; used to scale sigma
         config: asset config dict (moneyness section required for bucket boundaries)
 
     Returns:
         dict with keys:
-            log_moneyness          float  — ln(K / S)
-            moneyness_bucket       str    — deep_itm | itm | atm | otm | deep_otm
-            distance_to_spot_bps   float  — (K/S − 1) × 10_000
-            distance_to_spot_sigma float  — |ln(K/S)| / (σ̂ · √(T−t)) in annualized units
+            log_moneyness          float  - ln(K / S)
+            moneyness_bucket       str    - deep_itm | itm | atm | otm | deep_otm
+            distance_to_spot_bps   float  - (K/S - 1) x 10_000
+            distance_to_spot_sigma float  - |ln(K/S)| / (sigma * sqrt(T-t)) in annualized units
     """
     log_m = math.log(strike_price / current_price)
     dist_bps = (strike_price / current_price - 1.0) * 10_000.0

@@ -1,5 +1,5 @@
 """
-Strategy C2 orchestrator — ladder no-arbitrage scanner.
+Strategy C2 orchestrator - ladder no-arbitrage scanner.
 
 Thin glue between parse_ladder() and LadderArbitrageScanner.
 Logs violation diagnostics including sub-hurdle counts for monitoring.
@@ -65,7 +65,7 @@ class StrategyC2Scanner:
             mono = sum(1 for s in signals if s.violation_type == "monotonicity")
             conv = sum(1 for s in signals if s.violation_type == "convexity")
             logger.info(
-                "C2 scan: %d tradeable signal(s) — monotonicity=%d, convexity=%d",
+                "C2 scan: %d tradeable signal(s) - monotonicity=%d, convexity=%d",
                 n_total, mono, conv,
             )
         else:

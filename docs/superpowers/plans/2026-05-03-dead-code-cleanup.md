@@ -1,4 +1,4 @@
-# Dead Code Cleanup + Signal Extractor Fix — Implementation Plan
+# Dead Code Cleanup + Signal Extractor Fix - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -32,7 +32,7 @@
 - Delete: `src/strategies/signals/btc_diurnal_obi.py`
 - Delete: `src/strategies/signals/session_clock.py`
 
-Do NOT delete: `time_windows.py`, `black_scholes.py`, `fifteen_min_signal.py` — these are imported by the live bot.
+Do NOT delete: `time_windows.py`, `black_scholes.py`, `fifteen_min_signal.py` - these are imported by the live bot.
 
 - [ ] **Step 1: Confirm the 18 files exist**
 
@@ -144,11 +144,11 @@ The `_get_or_make_strategy` function at ~line 1700 has a 5-branch if/elif that i
 grep -n "BTCStrategy\|SOLStrategy\|XRPStrategy\|DOGEStrategy" bot.py
 ```
 
-Expected: lines ~1700–1724 show the 5 import branches.
+Expected: lines ~1700-1724 show the 5 import branches.
 
 - [ ] **Step 2: Replace the if/elif block**
 
-Find this block in `bot.py` (lines ~1700–1730):
+Find this block in `bot.py` (lines ~1700-1730):
 
 ```python
         if asset == "BTC":
@@ -238,7 +238,7 @@ git commit -m "feat: collapse strategy dispatch to FifteenMinStrategy for all as
 
 ---
 
-### Task 4: Write new failing tests for signal_extractor (TDD — red phase)
+### Task 4: Write new failing tests for signal_extractor (TDD - red phase)
 
 **Files:**
 - Modify: `tests/backtesting/research/test_signal_extractor.py`
@@ -287,7 +287,7 @@ def test_output_length_matches_bars():
 
 
 def test_v2_inverted_downtrend_produces_high_prob():
-    # Strong downtrend → MTF momentum negative → V2 inverted → 0.65 (YES)
+    # Strong downtrend -> MTF momentum negative -> V2 inverted -> 0.65 (YES)
     result = extract_all_signals(_bars(n=200, trend=-500.0), strike=200_000.0, asset='BTC')
     v2 = result['v2_mtf_momentum']
     late = v2[50:]
@@ -295,7 +295,7 @@ def test_v2_inverted_downtrend_produces_high_prob():
 
 
 def test_v3_inverted_downtrend_produces_high_prob():
-    # Strong downtrend → RSI oversold → V3 inverted → 0.65 (YES)
+    # Strong downtrend -> RSI oversold -> V3 inverted -> 0.65 (YES)
     result = extract_all_signals(_bars(n=200, trend=-500.0), strike=200_000.0, asset='BTC')
     v3 = result['v3_rsi']
     late = v3[30:]
@@ -313,7 +313,7 @@ def test_v5_fires_at_least_as_often_as_v2():
 
 
 def test_asset_thresholds_differ():
-    # BTC RSI threshold=5.0, SOL=10.0 — both should run cleanly and return correct shapes
+    # BTC RSI threshold=5.0, SOL=10.0 - both should run cleanly and return correct shapes
     result_btc = extract_all_signals(_bars(n=200, trend=-100.0), strike=100_000.0, asset='BTC')
     result_sol = extract_all_signals(_bars(n=200, trend=-100.0), strike=100_000.0, asset='SOL')
     for name in SIGNAL_NAMES:
@@ -321,7 +321,7 @@ def test_asset_thresholds_differ():
         assert len(result_sol[name]) == 200, f"SOL {name} length wrong"
 ```
 
-- [ ] **Step 2: Run tests — confirm they FAIL**
+- [ ] **Step 2: Run tests - confirm they FAIL**
 
 ```bash
 pytest tests/backtesting/research/test_signal_extractor.py -v
@@ -331,7 +331,7 @@ Expected: `FAILED test_returns_all_signal_names` (because extractor still has ol
 
 ---
 
-### Task 5: Rewrite signal_extractor.py to make tests pass (TDD — green phase)
+### Task 5: Rewrite signal_extractor.py to make tests pass (TDD - green phase)
 
 **Files:**
 - Modify: `backtesting/research/signal_extractor.py`
@@ -372,7 +372,7 @@ SIGNAL_NAMES = [
     'v5_mtf_magnitude',
 ]
 
-# Mirrored from fifteen_min_signal.py — update both if thresholds change
+# Mirrored from fifteen_min_signal.py - update both if thresholds change
 _MTF_THRESHOLDS  = {'BTC': 0.0005, 'ETH': 0.0005, 'SOL': 0.0005, 'XRP': 0.0005}
 _RSI_THRESHOLDS  = {'BTC': 5.0,    'ETH': 8.0,     'SOL': 10.0,   'XRP': 8.0}
 _BOLL_THRESHOLDS = {'BTC': 0.75,   'ETH': 0.50,    'SOL': 0.50,   'XRP': 0.35}
@@ -381,7 +381,7 @@ _RSI_DEFAULT     = 8.0
 _BOLL_DEFAULT    = 0.50
 
 
-# ── helpers copied verbatim from fifteen_min_signal.py ─────────────────────────
+# helpers copied verbatim from fifteen_min_signal.py
 
 def _rsi(prices: List[float], period: int = 14) -> Optional[float]:
     if len(prices) < period + 2:
@@ -423,7 +423,7 @@ def _multi_tf_mom(prices: List[float]) -> Optional[float]:
     return (r5 + r15 + r30) / 3.0
 
 
-# ── per-voter extractors ───────────────────────────────────────────────────────
+# per-voter extractors
 
 def _v1_predictions(bars: pd.DataFrame, strike: float, seconds_left: float = 900.0) -> np.ndarray:
     """V1: BS p_yes directly (continuous)."""
@@ -447,7 +447,7 @@ def _v1_predictions(bars: pd.DataFrame, strike: float, seconds_left: float = 900
 
 
 def _v2_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V2: MTF momentum inverted — negative momentum → 0.65 (YES)."""
+    """V2: MTF momentum inverted - negative momentum -> 0.65 (YES)."""
     T = _MTF_THRESHOLDS.get(asset.upper(), _MTF_DEFAULT)
     prices = bars['close'].tolist()
     n = len(prices)
@@ -464,7 +464,7 @@ def _v2_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
 
 
 def _v3_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V3: RSI deviation inverted — oversold (rsi_dev < -T) → 0.65 (YES)."""
+    """V3: RSI deviation inverted - oversold (rsi_dev < -T) -> 0.65 (YES)."""
     T = _RSI_THRESHOLDS.get(asset.upper(), _RSI_DEFAULT)
     prices = bars['close'].tolist()
     n = len(prices)
@@ -482,7 +482,7 @@ def _v3_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
 
 
 def _v4_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V4: Bollinger z-score inverted — below lower band (z < -T) → 0.65 (YES)."""
+    """V4: Bollinger z-score inverted - below lower band (z < -T) -> 0.65 (YES)."""
     T = _BOLL_THRESHOLDS.get(asset.upper(), _BOLL_DEFAULT)
     prices = bars['close'].tolist()
     n = len(prices)
@@ -499,7 +499,7 @@ def _v4_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
 
 
 def _v5_predictions(bars: pd.DataFrame, asset: str) -> np.ndarray:
-    """V5: MTF magnitude soft confirmation — uses T/2 threshold, inverted."""
+    """V5: MTF magnitude soft confirmation - uses T/2 threshold, inverted."""
     T = _MTF_THRESHOLDS.get(asset.upper(), _MTF_DEFAULT) / 2.0
     prices = bars['close'].tolist()
     n = len(prices)
@@ -533,13 +533,13 @@ def extract_all_signals(
     }
 ```
 
-- [ ] **Step 2: Run tests — confirm they PASS**
+- [ ] **Step 2: Run tests - confirm they PASS**
 
 ```bash
 pytest tests/backtesting/research/test_signal_extractor.py -v
 ```
 
-Expected: all 7 tests pass. If `test_v2_inverted_downtrend_produces_high_prob` fails, check that `_MTF_THRESHOLDS['BTC'] = 0.0005` — the bars have `trend=-500.0` per step so MTF should far exceed that threshold.
+Expected: all 7 tests pass. If `test_v2_inverted_downtrend_produces_high_prob` fails, check that `_MTF_THRESHOLDS['BTC'] = 0.0005` - the bars have `trend=-500.0` per step so MTF should far exceed that threshold.
 
 - [ ] **Step 3: Run full test suite to check no regressions**
 
@@ -569,7 +569,7 @@ git commit -m "feat: rewrite signal_extractor with V1-V5 voters from compute_15m
 python backtesting/research_cli.py --asset BTC --layers 1 --iters 1000
 ```
 
-This will take a few minutes (4.5M bars × 5 signals, but the rolling IC is vectorized so it should be fast).
+This will take a few minutes (4.5M bars x 5 signals, but the rolling IC is vectorized so it should be fast).
 
 Expected output: Layer 1 verdict printed with IC results for `v1_bs_prob`, `v2_mtf_momentum`, `v3_rsi`, `v4_bollinger`, `v5_mtf_magnitude`.
 
@@ -593,13 +593,13 @@ git commit -m "research: BTC Layer 1 IC results for V1-V5 signals (correct voter
 ## Self-Review
 
 **Spec coverage:**
-- Part 1 (delete dead code): Tasks 1–3 cover all 18 signal files, 5 strategy files, 7 test files, and bot.py dispatch.
-- Part 2 (rewrite extractor): Tasks 4–5 fully rewrite the extractor and its tests with TDD.
+- Part 1 (delete dead code): Tasks 1-3 cover all 18 signal files, 5 strategy files, 7 test files, and bot.py dispatch.
+- Part 2 (rewrite extractor): Tasks 4-5 fully rewrite the extractor and its tests with TDD.
 - Part 3 (re-run validation): Task 6 runs the CLI and commits results.
 
-**Placeholder scan:** None found — all steps contain exact file paths, exact commands, and complete code.
+**Placeholder scan:** None found - all steps contain exact file paths, exact commands, and complete code.
 
-**Type consistency:** `extract_all_signals(bars, strike, asset)` signature unchanged between old and new — callers in `layer1.py` and `research_cli.py` are unaffected.
+**Type consistency:** `extract_all_signals(bars, strike, asset)` signature unchanged between old and new - callers in `layer1.py` and `research_cli.py` are unaffected.
 
 **Out-of-scope items confirmed NOT included:**
 - `compute_15m_signal` is untouched

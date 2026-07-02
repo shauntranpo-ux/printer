@@ -1,4 +1,4 @@
-# Multi-Asset Kalshi Bot Expansion — Implementation Plan
+# Multi-Asset Kalshi Bot Expansion - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -15,7 +15,7 @@
 | File | Action | Responsibility |
 |------|--------|---------------|
 | `download_data.py` | **Create** | Resumable Binance klines downloader for all 5 assets |
-| `generate_bv3_table.py` | **Create** | Reads 1-min CSV → outputs `bv3_tables/{SYMBOL}_bv3_full.json` + `_pre2023.json` |
+| `generate_bv3_table.py` | **Create** | Reads 1-min CSV -> outputs `bv3_tables/{SYMBOL}_bv3_full.json` + `_pre2023.json` |
 | `bv3_tables/` | **Create dir** | JSON BV3 tables, one pair per asset |
 | `asset_manager.py` | **Create** | Asset config registry, BV3 loader/lookup, Binance WebSocket price feed |
 | `bot.py` | **Modify** | Replace single-asset globals with per-asset dicts; import from asset_manager; add `asset` column to DB; main loop iterates enabled assets |
@@ -42,7 +42,7 @@ Resumable logic: if `data/{SYMBOL}_1m.csv` exists, read the last `open_time`, co
 ```python
 #!/usr/bin/env python3
 """
-download_data.py — Resumable Binance 1-minute klines downloader.
+download_data.py - Resumable Binance 1-minute klines downloader.
 
 Downloads historical 1-minute OHLCV data for all enabled assets.
 If a CSV already exists, resumes from the last row instead of re-downloading.
@@ -267,7 +267,7 @@ open_time,open,high,low,close,volume
 
 - [ ] **Step 4: Verify resumability**
 
-Run again immediately — should print "Already up to date" or add only new rows. Delete last line of CSV manually, re-run, confirm it fills in the missing row.
+Run again immediately - should print "Already up to date" or add only new rows. Delete last line of CSV manually, re-run, confirm it fills in the missing row.
 
 - [ ] **Step 5: Commit**
 
@@ -328,11 +328,11 @@ Output JSON format:
 ```python
 #!/usr/bin/env python3
 """
-generate_bv3_table.py — Build per-asset BV3 probability tables from 1-minute CSV.
+generate_bv3_table.py - Build per-asset BV3 probability tables from 1-minute CSV.
 
 Outputs two JSON files per asset:
-  bv3_tables/{SYMBOL}_bv3_full.json      — all available data (for live trading)
-  bv3_tables/{SYMBOL}_bv3_pre2023.json   — pre-2023 only (for honest backtesting)
+  bv3_tables/{SYMBOL}_bv3_full.json      - all available data (for live trading)
+  bv3_tables/{SYMBOL}_bv3_pre2023.json   - pre-2023 only (for honest backtesting)
 
 Usage:
     python generate_bv3_table.py --asset BTC --csv data/BTC_1m.csv
@@ -360,7 +360,7 @@ DIST_BOUNDS = [
     0.0001, 0.0002, 0.0003, 0.0005, 0.0007,
     0.0010, 0.0015, 0.0020, 0.0025, 0.0030,
     0.0040, 0.0050,
-]  # 12 bounds → 13 buckets (last is open-ended >=0.0050)
+]  # 12 bounds -> 13 buckets (last is open-ended >=0.0050)
 
 MINUTES = list(range(1, 14))   # 1..13 minutes remaining (13 columns)
 WINDOW_MINUTES = 15            # Kalshi 15-minute window size
@@ -421,7 +421,7 @@ def build_table(df: pd.DataFrame, symbol: str, label: str) -> dict:
     for ws, grp in df.groupby("window_start"):
         grp = grp.reset_index(drop=True)
         if len(grp) < WINDOW_MINUTES:
-            continue  # incomplete window — skip
+            continue  # incomplete window - skip
 
         windows_seen += 1
         # Use exactly the first WINDOW_MINUTES rows
@@ -450,7 +450,7 @@ def build_table(df: pd.DataFrame, symbol: str, label: str) -> dict:
             stayed = (above == outcome_above)
 
             row = dist_bucket(dist_frac)
-            col = t - 1  # 0-indexed (minute 1 → col 0)
+            col = t - 1  # 0-indexed (minute 1 -> col 0)
 
             total[row][col] += 1
             if stayed:
@@ -468,7 +468,7 @@ def build_table(df: pd.DataFrame, symbol: str, label: str) -> dict:
                 prob_row.append(round(wins[row][col] / n, 4))
                 min_count = min(min_count, n)
             else:
-                # No data for this bucket — use a reasonable default
+                # No data for this bucket - use a reasonable default
                 # (outer rows have very few samples; fall back to 0.99 for far-from-strike)
                 prob_row.append(0.99 if row >= 8 else 0.85)
         table.append(prob_row)
@@ -500,7 +500,7 @@ def build_table(df: pd.DataFrame, symbol: str, label: str) -> dict:
 def generate_for_asset(symbol: str, csv_path: str) -> None:
     """Load CSV, build full and pre-2023 tables, write JSON, print comparison."""
     if not os.path.exists(csv_path):
-        print(f"[{symbol}] CSV not found: {csv_path} — skipping")
+        print(f"[{symbol}] CSV not found: {csv_path} - skipping")
         return
 
     print(f"\n{'='*60}")
@@ -514,7 +514,7 @@ def generate_for_asset(symbol: str, csv_path: str) -> None:
         df["open_time"] = df["open_time"].dt.tz_convert("UTC")
 
     df["close"] = df["close"].astype(float)
-    print(f"[{symbol}] {len(df):,} rows | {df['open_time'].min()} → {df['open_time'].max()}")
+    print(f"[{symbol}] {len(df):,} rows | {df['open_time'].min()} -> {df['open_time'].max()}")
 
     os.makedirs(BV3_DIR, exist_ok=True)
 
@@ -530,7 +530,7 @@ def generate_for_asset(symbol: str, csv_path: str) -> None:
     cutoff = pd.Timestamp("2023-01-01", tz="UTC")
     df_pre = df[df["open_time"] < cutoff]
     if len(df_pre) < 1000:
-        print(f"[{symbol}] Warning: only {len(df_pre)} pre-2023 rows — table may be sparse")
+        print(f"[{symbol}] Warning: only {len(df_pre)} pre-2023 rows - table may be sparse")
 
     print(f"[{symbol}] Building PRE-2023 table ({len(df_pre):,} rows) ...")
     pre_table = build_table(df_pre, symbol, "pre2023")
@@ -540,7 +540,7 @@ def generate_for_asset(symbol: str, csv_path: str) -> None:
     print(f"[{symbol}] Wrote {pre_path} ({pre_table['metadata']['total_windows']:,} windows)")
 
     # Comparison: show max absolute difference per bucket row (minute=6 col, middle)
-    print(f"\n[{symbol}] Table comparison (full vs pre-2023) — max delta per distance row @ 6 min remaining:")
+    print(f"\n[{symbol}] Table comparison (full vs pre-2023) - max delta per distance row @ 6 min remaining:")
     print(f"  {'Distance bucket':<25} {'Full':>8} {'Pre-2023':>10} {'Delta':>8}")
     bucket_labels = [
         "0.00-0.01%", "0.01-0.02%", "0.02-0.03%", "0.03-0.05%", "0.05-0.07%",
@@ -553,7 +553,7 @@ def generate_for_asset(symbol: str, csv_path: str) -> None:
             fv = full_table["table"][i][col6]
             pv = pre_table["table"][i][col6]
             delta = fv - pv
-            flag = " ← LARGE DIFF" if abs(delta) > 0.05 else ""
+            flag = " <- LARGE DIFF" if abs(delta) > 0.05 else ""
             print(f"  {label:<25} {fv:>8.3f} {pv:>10.3f} {delta:>+8.3f}{flag}")
 
 
@@ -600,7 +600,7 @@ Then generate:
 python generate_bv3_table.py --asset BTC --csv data/BTC_1m.csv
 ```
 
-Expected output ends with table comparison showing small deltas (≤0.02) if data is stable, larger deltas (flagged) if 2023+ data changed behavior significantly.
+Expected output ends with table comparison showing small deltas (<=0.02) if data is stable, larger deltas (flagged) if 2023+ data changed behavior significantly.
 
 - [ ] **Step 4: Verify output files**
 
@@ -646,13 +646,13 @@ Messages arrive as: `{"stream": "btcusdt@aggTrade", "data": {"p": "95000.00", ..
 
 ```python
 """
-asset_manager.py — Asset configuration, BV3 lookup, and Binance price feeds.
+asset_manager.py - Asset configuration, BV3 lookup, and Binance price feeds.
 
 Provides:
   - ASSET_CONFIG: per-asset metadata (strike increment, Kalshi series, Binance symbol)
   - load_bv3_tables(): loads JSON tables from bv3_tables/
   - empirical_win_prob(asset, abs_pct, mins_left): looks up the loaded table
-  - binance_feed_task(): async coroutine — maintains per-asset price deques
+  - binance_feed_task(): async coroutine - maintains per-asset price deques
   - get_price(asset): returns latest price for an asset
 """
 
@@ -672,7 +672,7 @@ BV3_DIR  = os.path.join(BASE_DIR, "bv3_tables")
 
 BINANCE_WS = "wss://stream.binance.com:9443/stream"
 
-# ── Asset registry ─────────────────────────────────────────────────────────────
+# Asset registry
 # kalshi_series: ordered list of Kalshi series tickers to try (first match wins)
 # binance_symbol: Binance trading pair
 # strike_increment: Kalshi strike price rounding unit
@@ -686,7 +686,7 @@ ASSET_CONFIG = {
     "ETH": {
         "binance_symbol":   "ethusdt",
         "strike_increment": 25.0,
-        # Guessed from BTC pattern — verify via discover_markets.py if needed
+        # Guessed from BTC pattern - verify via discover_markets.py if needed
         "kalshi_series":    ("KXETHD", "ETHD-B", "KXETH15M", "KXETH", "ETH"),
     },
     "SOL": {
@@ -725,7 +725,7 @@ _BV3_TABLE_FALLBACK = [
 ]
 _BV3_DIST_BOUNDS_FALLBACK = [0.001, 0.002, 0.003, 0.004, 0.005, 0.006, 0.0075, 0.010, 0.0125]
 
-# Per-asset price deques: asset → deque[(unix_ts, price)]
+# Per-asset price deques: asset -> deque[(unix_ts, price)]
 _prices: dict[str, deque] = {asset: deque(maxlen=500) for asset in ASSET_CONFIG}
 
 
@@ -754,13 +754,13 @@ def load_bv3_tables(use_pre2023: bool = False) -> None:
                     f"label={data.get('label', suffix)})"
                 )
             except Exception as exc:
-                log.warning(f"BV3 [{asset}] failed to load {path}: {exc} — using fallback")
+                log.warning(f"BV3 [{asset}] failed to load {path}: {exc} - using fallback")
                 _bv3[asset] = _fallback_entry()
         else:
             if asset == "BTC":
-                log.warning(f"BV3 [BTC] table not found at {path} — using hardcoded fallback")
+                log.warning(f"BV3 [BTC] table not found at {path} - using hardcoded fallback")
             else:
-                log.info(f"BV3 [{asset}] no table at {path} — using BTC fallback (different volatility!)")
+                log.info(f"BV3 [{asset}] no table at {path} - using BTC fallback (different volatility!)")
             _bv3[asset] = _fallback_entry()
 
 
@@ -862,7 +862,7 @@ async def binance_feed_task(enabled_assets: list[str]) -> None:
     )
     url = f"{BINANCE_WS}?streams={streams}"
 
-    # Map Binance symbol → asset name for fast lookup
+    # Map Binance symbol -> asset name for fast lookup
     sym_to_asset = {
         ASSET_CONFIG[a]["binance_symbol"].upper(): a
         for a in enabled_assets
@@ -919,10 +919,10 @@ git commit -m "feat: add asset_manager module (BV3 multi-asset lookup + Binance 
 
 ---
 
-## Task 4: Database Migration — Add `asset` Column
+## Task 4: Database Migration - Add `asset` Column
 
 **Files:**
-- Modify: `bot.py` lines ~476–492 (migration block in `init_db`)
+- Modify: `bot.py` lines ~476-492 (migration block in `init_db`)
 - Run: migration SQL against existing `kalshi_bot.db`
 
 The migration adds `asset TEXT DEFAULT 'BTC'` to the `trades` table. Existing rows stay labeled as BTC. New trades get their actual asset symbol.
@@ -932,7 +932,7 @@ The migration adds `asset TEXT DEFAULT 'BTC'` to the `trades` table. Existing ro
 Find the migration block (around line 476) that already does `ALTER TABLE trades ADD COLUMN`:
 
 ```python
-        # Migrate existing DB — add new columns if not present
+        # Migrate existing DB - add new columns if not present
         for col, typedef in (
             ("claude_confidence", "INTEGER"),
             ("claude_signals", "TEXT"),
@@ -943,7 +943,7 @@ Find the migration block (around line 476) that already does `ALTER TABLE trades
 Change it to:
 
 ```python
-        # Migrate existing DB — add new columns if not present
+        # Migrate existing DB - add new columns if not present
         for col, typedef in (
             ("claude_confidence", "INTEGER"),
             ("claude_signals",    "TEXT"),
@@ -1044,7 +1044,7 @@ git commit -m "feat: add asset column to trades table (defaults to BTC for exist
 ## Task 5: Multi-Asset Price Feeds in bot.py
 
 **Files:**
-- Modify: `bot.py` — replace `btc_feed_task` with Binance feed, import asset_manager
+- Modify: `bot.py` - replace `btc_feed_task` with Binance feed, import asset_manager
 
 The existing `btc_feed_task` and `get_btc_price` / `btc_prices` globals are BTC-specific. We replace them with asset_manager's Binance feed and `get_price(asset)` calls.
 
@@ -1113,7 +1113,7 @@ def get_btc_price() -> float | None:
     return _am_get_price("BTC")
 ```
 
-Remove the now-unused `btc_prices` deque global and `btc_feed_task` function (or leave them as dead code with a comment — do NOT remove if they are referenced from other places; search first):
+Remove the now-unused `btc_prices` deque global and `btc_feed_task` function (or leave them as dead code with a comment - do NOT remove if they are referenced from other places; search first):
 
 ```bash
 grep -n "btc_prices\|btc_feed_task" /c/Users/alxnt/kalshi-bot/bot.py
@@ -1127,7 +1127,7 @@ Replace with:
 ```python
 age = _am_price_age("BTC")
 if age is not None and age > 60:
-    log.warning(f"BTC price stale ({age:.0f}s old) — skipping cycle.")
+    log.warning(f"BTC price stale ({age:.0f}s old) - skipping cycle.")
     ...
 ```
 
@@ -1173,7 +1173,7 @@ print('get_btc_price (no feed yet):', bot.get_btc_price())
 "
 ```
 
-Expected: `enabled_assets: ['BTC']`, `get_btc_price: None` (no feed running yet — that's fine).
+Expected: `enabled_assets: ['BTC']`, `get_btc_price: None` (no feed running yet - that's fine).
 
 - [ ] **Step 7: Commit**
 
@@ -1187,7 +1187,7 @@ git commit -m "feat: replace BTC-only Coinbase feed with Binance multi-asset fee
 ## Task 6: Multi-Asset Market Fetching and Trading Loop
 
 **Files:**
-- Modify: `bot.py` — per-asset state dicts, per-asset `fetch_current_market`, main loop iteration
+- Modify: `bot.py` - per-asset state dicts, per-asset `fetch_current_market`, main loop iteration
 
 This is the largest change. We introduce per-asset state and run the trading loop for each enabled asset each cycle.
 
@@ -1196,7 +1196,7 @@ This is the largest change. We introduce per-asset state and run the trading loo
 After the existing global state declarations (around line 85-100 in bot.py), add:
 
 ```python
-# ─── Per-asset state (replaces single-asset globals for multi-asset support) ──
+# Per-asset state (replaces single-asset globals for multi-asset support)
 # Each asset gets its own market, phase, position, and order-attempted set.
 # BTC state is initialized from the existing single-asset globals for compatibility.
 _asset_states: dict[str, dict] = {}
@@ -1295,14 +1295,14 @@ All Telegram calls should include the asset name. Find `send_telegram` calls in 
 ```python
 def _asset_tag(asset: str) -> str:
     """Return a short emoji+symbol tag for Telegram messages."""
-    tags = {"BTC": "₿ BTC", "ETH": "Ξ ETH", "SOL": "◎ SOL", "XRP": "✕ XRP", "DOGE": "🐕 DOGE"}
+    tags = {"BTC": "₿ BTC", "ETH": "Ξ ETH", "SOL": "◎ SOL", "XRP": " XRP", "DOGE": " DOGE"}
     return tags.get(asset, asset)
 ```
 
 - [ ] **Step 4: Refactor the main trading loop to iterate assets**
 
 The existing main loop (the `while True:` inside `main_loop()` or equivalent) currently does:
-1. Get BTC price → handle BTC market → sleep
+1. Get BTC price -> handle BTC market -> sleep
 
 We need it to do:
 1. For each enabled asset:
@@ -1324,17 +1324,17 @@ The refactor wraps the existing single-asset logic in a `for asset in enabled_as
                     if state is None:
                         continue
 
-                    # ── Price check ───────────────────────────────────────────
+                    # Price check
                     price = _am_get_price(asset)
                     if price is None:
                         log.warning(f"[{asset}] Waiting for price...")
                         continue
                     age = _am_price_age(asset)
                     if age is not None and age > 60:
-                        log.warning(f"[{asset}] Price stale ({age:.0f}s) — skipping")
+                        log.warning(f"[{asset}] Price stale ({age:.0f}s) - skipping")
                         continue
 
-                    # ── Market fetch ──────────────────────────────────────────
+                    # Market fetch
                     # BTC: use existing cached fetch_current_market for compatibility
                     # Others: use new per-asset fetcher
                     try:
@@ -1351,7 +1351,7 @@ The refactor wraps the existing single-asset logic in a `for asset in enabled_as
                         state["phase"] = "DONE"
                         continue
 
-                    # ── Phase logic ───────────────────────────────────────────
+                    # Phase logic
                     # Delegate to the existing handle_* functions, passing asset.
                     # The handle_ready_phase function needs asset param (see Task 5 Step 5).
                     try:
@@ -1378,10 +1378,10 @@ The refactor wraps the existing single-asset logic in a `for asset in enabled_as
 **Note on handle_ready_phase and handle_locked_phase:** These functions currently use global state variables (`current_position`, `current_phase`, `_order_attempted_tickers`). After this refactor, they should receive `state` dict and `asset` as parameters, reading/writing from `state["position"]`, `state["phase"]`, `state["order_attempted"]` instead of globals.
 
 This is a substantial signature change. Before making it, read both functions to understand all the global state they touch. The key globals to thread through `state`:
-- `current_position` → `state["position"]`
-- `current_phase` → `state["phase"]`
-- `_order_attempted_tickers` → `state["order_attempted"]`
-- `btc_price` → `price` (already a parameter)
+- `current_position` -> `state["position"]`
+- `current_phase` -> `state["phase"]`
+- `_order_attempted_tickers` -> `state["order_attempted"]`
+- `btc_price` -> `price` (already a parameter)
 
 The global `limit_triggered`, `_consecutive_losses`, `daily_reset_date` remain GLOBAL (shared across all assets).
 
@@ -1535,7 +1535,7 @@ In the main backtest entry point (look for `if __name__ == "__main__":` or the f
     for a in assets_to_run:
         entry = asset_manager._bv3.get(a, {})
         if not entry.get("loaded"):
-            print(f"  WARNING: {a} has no pre-2023 BV3 table — using BTC fallback (biased!)")
+            print(f"  WARNING: {a} has no pre-2023 BV3 table - using BTC fallback (biased!)")
 ```
 
 - [ ] **Step 5: Wrap the main backtest function to accept `asset` parameter**
@@ -1598,7 +1598,7 @@ def print_combined_reality_check(per_asset_results: dict[str, dict]) -> None:
     if total_trades > 0:
         combined_wr = total_wins / total_trades * 100
         print(f"{'COMBINED':<8} {total_trades:>7} {combined_wr:>7.1f} {total_pnl:>+9.2f}")
-    print(f"\nBV3 data leakage: FIXED — using pre-2023 table for OOS evaluation")
+    print(f"\nBV3 data leakage: FIXED - using pre-2023 table for OOS evaluation")
 ```
 
 - [ ] **Step 7: Wire up the `--asset` flag in `__main__`**
@@ -1632,7 +1632,7 @@ if __name__ == "__main__":
 python backtest.py --asset BTC --start-year 2023
 ```
 
-Expected: same output structure as before, with "BV3 data leakage: FIXED" in the REALITY CHECK. The OOS metrics may look WORSE than before — this is correct and expected (the table is now honest).
+Expected: same output structure as before, with "BV3 data leakage: FIXED" in the REALITY CHECK. The OOS metrics may look WORSE than before - this is correct and expected (the table is now honest).
 
 - [ ] **Step 9: Commit**
 
@@ -1682,17 +1682,17 @@ git commit -m "feat: multi-asset backtest with --asset flag and pre-2023 BV3 tab
 
 1. **dashboard.py / server.py**: The spec mentions "dashboard should show per-asset breakdown". The plan updates `write_state_file` to include per-asset prices but does NOT modify `server.py`. This is a UI concern; bot functionality is complete without it. Flag for follow-up.
 
-2. **Kalshi series for non-BTC assets**: The series tickers (KXETHD, KXXRPD, etc.) are guesses based on the BTC pattern. If Kalshi uses different tickers, `fetch_market_for_asset` will return None for those assets. The bot will silently skip them and only trade BTC. This is the correct graceful degradation — add a log warning so it's visible.
+2. **Kalshi series for non-BTC assets**: The series tickers (KXETHD, KXXRPD, etc.) are guesses based on the BTC pattern. If Kalshi uses different tickers, `fetch_market_for_asset` will return None for those assets. The bot will silently skip them and only trade BTC. This is the correct graceful degradation - add a log warning so it's visible.
 
 3. **BTC CSV path in backtest.py**: Still hardcoded as fallback. Task 7 Step 3 adds a standard path first. Once `data/BTC_1m.csv` exists (from download_data.py or manual copy), the hardcoded fallback is never used.
 
-### Placeholder scan: clean — all steps have actual code.
+### Placeholder scan: clean - all steps have actual code.
 
 ### Type consistency check
-- `empirical_win_prob(asset: str, abs_pct: float, mins_left: float)` — used consistently in Task 3, Task 5, Task 7.
-- `bv3_bucket_indices(asset, abs_pct, mins_left)` — same.
-- `state: dict` with keys `market`, `phase`, `position`, `order_attempted` — consistent in Tasks 6.
-- `_bv3: dict[str, dict]` accessed via `asset_manager._bv3` in Task 7 — direct dict access is fine since both files are in the same package.
+- `empirical_win_prob(asset: str, abs_pct: float, mins_left: float)` - used consistently in Task 3, Task 5, Task 7.
+- `bv3_bucket_indices(asset, abs_pct, mins_left)` - same.
+- `state: dict` with keys `market`, `phase`, `position`, `order_attempted` - consistent in Tasks 6.
+- `_bv3: dict[str, dict]` accessed via `asset_manager._bv3` in Task 7 - direct dict access is fine since both files are in the same package.
 
 ---
 
@@ -1717,7 +1717,7 @@ git commit -m "feat: multi-asset backtest with --asset flag and pre-2023 BV3 tab
 python download_data.py          # all assets (~3-8 hours for full history)
 python download_data.py --asset ETH  # single asset (~1-2 hours for ETH)
 ```
-Resumable — safe to interrupt and restart.
+Resumable - safe to interrupt and restart.
 
 ### Generate BV3 tables (Phase 2)
 ```bash

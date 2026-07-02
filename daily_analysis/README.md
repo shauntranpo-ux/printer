@@ -1,4 +1,4 @@
-# DEAD ARTIFACT — daily_analysis/
+# DEAD ARTIFACT - daily_analysis/
 
 Archived daily JSON analysis outputs from past research runs.
 

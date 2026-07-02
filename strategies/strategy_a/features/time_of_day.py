@@ -3,12 +3,12 @@ from __future__ import annotations
 Time-of-day regime encoder for Kalshi 15-minute crypto markets.
 
 Sessions (UTC):
-  asia_deep_night  00:00–04:00   Low liquidity, wide spreads
-  asia_active      04:00–08:00   Tokyo / Singapore active
-  eu_open          08:00–13:00   London open, highest volume
-  eu_us_overlap    13:00–16:00   Peak global liquidity
-  us_afternoon     16:00–20:00   US afternoon, Fed-news window
-  us_late          20:00–24:00   Thin US tail, Asia pre-open
+  asia_deep_night  00:00-04:00   Low liquidity, wide spreads
+  asia_active      04:00-08:00   Tokyo / Singapore active
+  eu_open          08:00-13:00   London open, highest volume
+  eu_us_overlap    13:00-16:00   Peak global liquidity
+  us_afternoon     16:00-20:00   US afternoon, Fed-news window
+  us_late          20:00-24:00   Thin US tail, Asia pre-open
 """
 import numpy as np
 import pandas as pd

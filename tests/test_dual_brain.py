@@ -2,7 +2,7 @@
 
 
 def test_s2_winprob_no_inflation():
-    """win_prob must equal base_p — no vel_adj or obi_adj added."""
+    """win_prob must equal base_p - no vel_adj or obi_adj added."""
     import bot_strategy as bs
     import inspect
     src = inspect.getsource(bs.strategy_brain_s2)
@@ -207,7 +207,7 @@ def test_format_scorecard_message():
 
 
 def test_s1_winprob_no_inflation():
-    """S1 win_prob must equal base_p — no ema_adj or session_adj added."""
+    """S1 win_prob must equal base_p - no ema_adj or session_adj added."""
     import bot_strategy as bs
     import inspect
     src = inspect.getsource(bs.strategy_brain_s1)

@@ -48,7 +48,7 @@ def test_signal_on_large_residual():
     ticks  = [_tick(old, 60, 62), _tick(now, 65, 67)]
     prices = [_price(old, 50000), _price(now, 50010)]
     result = d.detect_dislocation(ticks, prices)
-    # actual_move=5, implied_move≈small → residual > threshold(2)
+    # actual_move=5, implied_move~small -> residual > threshold(2)
     assert result is not None
 
 
@@ -83,7 +83,7 @@ def test_fade_up_yields_no_side():
     d.update_vol(0.80)
     now = pd.Timestamp.now("UTC")
     old = now - pd.Timedelta(seconds=40)
-    # Contract moved UP more than implied (underlying flat) → fade by buying NO
+    # Contract moved UP more than implied (underlying flat) -> fade by buying NO
     ticks  = [_tick(old, 60, 62), _tick(now, 65, 67)]
     prices = [_price(old, 50000), _price(now, 50000)]
     sig = d.detect_dislocation(ticks, prices)
@@ -97,7 +97,7 @@ def test_fade_down_yields_yes_side():
     d.update_vol(0.80)
     now = pd.Timestamp.now("UTC")
     old = now - pd.Timedelta(seconds=40)
-    # Contract dropped more than implied (underlying flat) → buy YES (it will revert up)
+    # Contract dropped more than implied (underlying flat) -> buy YES (it will revert up)
     ticks  = [_tick(old, 60, 62), _tick(now, 55, 57)]
     prices = [_price(old, 50000), _price(now, 50000)]
     sig = d.detect_dislocation(ticks, prices)

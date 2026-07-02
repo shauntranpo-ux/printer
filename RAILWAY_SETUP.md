@@ -12,7 +12,7 @@ See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the authoritative layout. This file
 1. Spawns `python runner.py` in a background restart loop (bot worker manager)
 2. Execs `gunicorn server:app --bind 0.0.0.0:${PORT:-5000}` (dashboard web server)
 
-> ~~"bot.py runs as the worker process"~~ — **this was wrong.** `runner.py` is the worker manager. It spawns `bot.py` as a subprocess per enabled strategy. See `start.sh` and `runner.py`.
+> ~~"bot.py runs as the worker process"~~ - **this was wrong.** `runner.py` is the worker manager. It spawns `bot.py` as a subprocess per enabled strategy. See `start.sh` and `runner.py`.
 
 ---
 
@@ -36,7 +36,7 @@ Minimum for live mode:
 | Variable | Value |
 |---|---|
 | `KALSHI_API_KEY` | Live API key UUID |
-| `KALSHI_PRIVATE_KEY` | RSA private key — literal `\n` between lines (not real newlines) |
+| `KALSHI_PRIVATE_KEY` | RSA private key - literal `\n` between lines (not real newlines) |
 | `BOT_DB_FILE` | `/app/data/kalshi_bot.db` |
 | `BOT_STATE_FILE` | `/app/data/bot_state.json` |
 | `BOT_MODE` | `live` |
@@ -52,13 +52,13 @@ Railway can poll `GET /healthz`. Returns `200 {"status":"ok"}` when `bot_state.j
 
 ---
 
-## SOLANA_RPC_URL — Status Unknown
+## SOLANA_RPC_URL - Status Unknown
 
-The previous version of this file documented `SOLANA_RPC_URL` as an optional env var for a SOL network health kill switch. **This variable is not read by any `.py` file in the current codebase** (`grep -rn SOLANA_RPC *.py` returns no results). It may have been removed from the code or was always doc-only. Do not set it — it has no effect.
+The previous version of this file documented `SOLANA_RPC_URL` as an optional env var for a SOL network health kill switch. **This variable is not read by any `.py` file in the current codebase** (`grep -rn SOLANA_RPC *.py` returns no results). It may have been removed from the code or was always doc-only. Do not set it - it has no effect.
 
 ---
 
-## TODO — Owner to Fill In
+## TODO - Owner to Fill In
 
 The following is unknown and should be documented by the owner:
 

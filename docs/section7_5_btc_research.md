@@ -10,7 +10,7 @@ its primary signal. Live performance showed a 30-point miscalibration gap:
 - Miscalibration: -30.3pp
 
 A 30-point gap cannot be closed by regenerating BV3 tables (Section 8).
-The gap is structural — "lookup by distance and time" ignores regime,
+The gap is structural - "lookup by distance and time" ignores regime,
 concurrent volatility, and order-flow signals that are actually predictive.
 
 ## Evidence Base for BTC Specifically
@@ -32,7 +32,7 @@ momentum-biased prior is justified as a structural default for BTC.
 Order-flow imbalance is predictive at short horizons in both equity and
 crypto markets. Kalshi contract velocity is a proxy for this: informed flow
 shows up as directional pressure in contract prices before the underlying
-settles. This signal is included at the same magnitude as ETH/SOL (±2pp).
+settles. This signal is included at the same magnitude as ETH/SOL (+/-2pp).
 
 ## Why Brownian-Bridge + VR Regime + BV3-as-Secondary Beats Pure BV3
 
@@ -47,15 +47,15 @@ anchor but it ignores:
 The new structure uses Brownian-bridge physics as the anchor (what the price
 path should look like under no information), then adjusts with signals that
 have evidence behind them. BV3 is retained at 20% weight as a sanity check
-because it still contains calibrated empirical information — just not enough
+because it still contains calibrated empirical information - just not enough
 on its own.
 
 ## Rollback Path
 
 The BTC_continuation_only flag is the escape hatch:
 
-- `"BTC_continuation_only": false` (default) → new evidence-based strategy
-- `"BTC_continuation_only": true` → reverts to legacy BV3 + momentum + velocity path
+- `"BTC_continuation_only": false` (default) -> new evidence-based strategy
+- `"BTC_continuation_only": true` -> reverts to legacy BV3 + momentum + velocity path
 
 The legacy path is preserved verbatim in `_decide_legacy_fallback()`. The
 A/B harness (scripts/section2_ab_harness.py) continues to validate parity.

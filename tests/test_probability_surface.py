@@ -16,7 +16,7 @@ def _make_ladder(strikes, spot=100.0):
     """Build a minimal synthetic ladder DataFrame with implied_probability."""
     rows = []
     for k in strikes:
-        # Use a realistic CDF: higher strike → lower prob
+        # Use a realistic CDF: higher strike -> lower prob
         prob = max(0.01, min(0.99, 0.5 - 0.05 * (k - spot)))
         rows.append({
             "strike": k,
@@ -77,7 +77,7 @@ class TestProbabilitySurface:
         df = self.surface.evaluate(100.0, ladder, 3600.0, iv, {}, _BASE_CONFIG)
         assert "edge" in df.columns
         assert df["edge"].dtype.kind == "f"  # float
-        # Edge can be positive or negative — just verify it's computed correctly
+        # Edge can be positive or negative - just verify it's computed correctly
         for _, row in df.iterrows():
             assert abs(row["edge"] - (row["p_model"] - row["p_market"])) < 1e-10
 

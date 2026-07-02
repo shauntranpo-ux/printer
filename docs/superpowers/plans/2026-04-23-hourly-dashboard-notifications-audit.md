@@ -4,7 +4,7 @@
 
 **Goal:** Label BTC/ETH hourly session markets on the dashboard, retrofit every Telegram notification with `[ASSET | session | ticker | phase?]` prefix, add a fill-verification alert for hourly fills, and audit + fix hourly limit-order price selection.
 
-**Architecture:** Keep the bot-writes-state-file → dashboard-reads-state-file pattern. Extend per-asset entries in `bot_state.json` with `session_type`, `strategy_name`, `strike`, `phase`. Dashboard branches on `strategy_name` to render ETH (Mid/Dwell/Late phase panel) vs BTC (V3 mean-reversion panel). A small `_notify_ctx` helper in `bot.py` prefixes every `send_telegram` call. A new fill-verification notification fires inside `place_order` for hourly markets. Audit pass traces each hourly strategy's `entry_cents = yes_ask if side==YES else no_ask` invariant and `place_order`'s use of strategy target across retries.
+**Architecture:** Keep the bot-writes-state-file -> dashboard-reads-state-file pattern. Extend per-asset entries in `bot_state.json` with `session_type`, `strategy_name`, `strike`, `phase`. Dashboard branches on `strategy_name` to render ETH (Mid/Dwell/Late phase panel) vs BTC (V3 mean-reversion panel). A small `_notify_ctx` helper in `bot.py` prefixes every `send_telegram` call. A new fill-verification notification fires inside `place_order` for hourly markets. Audit pass traces each hourly strategy's `entry_cents = yes_ask if side==YES else no_ask` invariant and `place_order`'s use of strategy target across retries.
 
 **Tech Stack:** Python 3 (`bot.py`, `src/strategies/`), vanilla JS + HTML (`dashboard.html`), pytest.
 
@@ -13,20 +13,20 @@
 ## File Structure
 
 **Modified:**
-- `bot.py` — helpers (`_parse_strike_from_ticker`, `_notify_ctx`), `write_state_file` extension, retrofit of 7 `send_telegram` call sites, new fill-verification call site inside `place_order`, audit-driven fixes.
-- `dashboard.html` — `_buildHourlyViewHtml` strategy branch, asset-card header.
+- `bot.py` - helpers (`_parse_strike_from_ticker`, `_notify_ctx`), `write_state_file` extension, retrofit of 7 `send_telegram` call sites, new fill-verification call site inside `place_order`, audit-driven fixes.
+- `dashboard.html` - `_buildHourlyViewHtml` strategy branch, asset-card header.
 
 **Created:**
-- `tests/strategies/test_hourly_entry_price.py` — audit-level unit tests for Mid/Dwell/Late/BTCHourly entry_cents side-consistency.
-- `tests/test_notify_ctx.py` — unit tests for `_parse_strike_from_ticker` and `_notify_ctx`.
-- `tests/fixtures/bot_state_hourly.json` — mock state file for dashboard manual verification.
+- `tests/strategies/test_hourly_entry_price.py` - audit-level unit tests for Mid/Dwell/Late/BTCHourly entry_cents side-consistency.
+- `tests/test_notify_ctx.py` - unit tests for `_parse_strike_from_ticker` and `_notify_ctx`.
+- `tests/fixtures/bot_state_hourly.json` - mock state file for dashboard manual verification.
 
 **Unchanged (no behavior change unless audit finds a bug):**
-- `src/strategies/mid_window_strategy.py`, `dwell_window_strategy.py`, `late_window_strategy.py`, `btc_hourly_strategy.py` — only touched if audit reveals a bug; fixes documented in the design spec §5.2.
+- `src/strategies/mid_window_strategy.py`, `dwell_window_strategy.py`, `late_window_strategy.py`, `btc_hourly_strategy.py` - only touched if audit reveals a bug; fixes documented in the design spec §5.2.
 
 ---
 
-## Task 1: Ticker → strike parser
+## Task 1: Ticker -> strike parser
 
 **Files:**
 - Modify: `bot.py` (add helper near other market utilities, before `write_state_file`)
@@ -117,9 +117,7 @@ Expected: 4 PASS.
 
 ```bash
 git add bot.py tests/test_notify_ctx.py
-git commit -m "feat: add _parse_strike_from_ticker helper for dashboard strike labeling
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+git commit -m "feat: add _parse_strike_from_ticker helper for dashboard strike labeling"
 ```
 
 ---
@@ -217,9 +215,7 @@ Expected: 9 PASS total.
 
 ```bash
 git add bot.py tests/test_notify_ctx.py
-git commit -m "feat: add _notify_ctx helper for session-aware Telegram prefix
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+git commit -m "feat: add _notify_ctx helper for session-aware Telegram prefix"
 ```
 
 ---
@@ -291,7 +287,7 @@ def _assert_entry_matches_side(decision, features):
     signals = decision.contributing_signals or {}
     entry = signals.get("entry_cents")
     if entry is None:
-        return  # strategies not yet expanded — re-audit once expanded
+        return  # strategies not yet expanded - re-audit once expanded
     if decision.side == "yes":
         assert entry == features.yes_ask, (
             f"YES side must post at yes_ask={features.yes_ask}, got {entry}"
@@ -309,7 +305,7 @@ def _assert_entry_matches_side(decision, features):
 ])
 def test_eth_hourly_yes_side_uses_yes_ask(cls, asset):
     strat = cls(asset, skip_config={}, stake_dollars=25.0, calibrator=None)
-    features = _make_features(current_price=3510.0, strike=3500.0)  # above strike → YES
+    features = _make_features(current_price=3510.0, strike=3500.0)  # above strike -> YES
     decision = strat.decide(features)
     _assert_entry_matches_side(decision, features)
 
@@ -321,7 +317,7 @@ def test_eth_hourly_yes_side_uses_yes_ask(cls, asset):
 ])
 def test_eth_hourly_no_side_uses_no_ask(cls, asset):
     strat = cls(asset, skip_config={}, stake_dollars=25.0, calibrator=None)
-    features = _make_features(current_price=3490.0, strike=3500.0)  # below strike → NO
+    features = _make_features(current_price=3490.0, strike=3500.0)  # below strike -> NO
     decision = strat.decide(features)
     _assert_entry_matches_side(decision, features)
 
@@ -348,7 +344,7 @@ For each failure, open the relevant strategy file and fix the `entry_cents` sele
 entry_cents = features.yes_ask if eth_itm else features.no_ask
 ```
 
-If a strategy returns `action="trade"` with `side="no"` but computes `entry_cents = yes_ask` (or vice versa), swap the branch. Add a one-line code comment recording the invariant: `# YES side → yes_ask; NO side → no_ask (audit invariant 2026-04-23).`
+If a strategy returns `action="trade"` with `side="no"` but computes `entry_cents = yes_ask` (or vice versa), swap the branch. Add a one-line code comment recording the invariant: `# YES side -> yes_ask; NO side -> no_ask (audit invariant 2026-04-23).`
 
 If a strategy returns `action="trade"` without putting `entry_cents` in `contributing_signals`, add it: `decision.contributing_signals["entry_cents"] = features.yes_ask if side == "yes" else features.no_ask`.
 
@@ -366,7 +362,7 @@ Edit `docs/superpowers/specs/2026-04-23-hourly-dashboard-notifications-audit-des
 
 - [File:line]: [description]. Fix: [what changed]. Invariant restored: entry_cents matches decision.side.
 
-(Or: "No bugs found — invariant holds across Mid/Dwell/Late/BTCHourly.")
+(Or: "No bugs found - invariant holds across Mid/Dwell/Late/BTCHourly.")
 ```
 
 - [ ] **Step 6: Commit**
@@ -377,16 +373,14 @@ git add tests/strategies/test_hourly_entry_price.py docs/superpowers/specs/2026-
 git add src/strategies/*.py 2>/dev/null || true
 git commit -m "test: audit hourly strategies' entry_cents side-consistency
 
-$(if git diff HEAD~0 --name-only | grep -q src/strategies; then echo 'Fixed: <summarize fixes>'; else echo 'No bugs found.'; fi)
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+$(if git diff HEAD~0 --name-only | grep -q src/strategies; then echo 'Fixed: <summarize fixes>'; else echo 'No bugs found.'; fi)"
 ```
 
 (If no strategy files changed, simplify the commit message body.)
 
 ---
 
-## Task 4: Audit `place_order` — capture market ask at post time
+## Task 4: Audit `place_order` - capture market ask at post time
 
 **Files:**
 - Modify: `bot.py` around the `place_order` function (line ~2560)
@@ -397,7 +391,7 @@ Run: `grep -n "def place_order\|price_this_attempt\|best_yes_ask\|best_no_ask" b
 
 Goal: identify where `price_this_attempt` is set inside the retry loop, where `best_yes_ask`/`best_no_ask` come from (once before the loop or refreshed per attempt), and where we know the fill confirmed.
 
-- [ ] **Step 2: Confirm invariant — `price_this_attempt` equals strategy target across retries**
+- [ ] **Step 2: Confirm invariant - `price_this_attempt` equals strategy target across retries**
 
 Walk the retry loop by hand. Invariant: `price_this_attempt` is set from `entry_price_cents` (the strategy's chosen target) at loop start and NEVER re-assigned from a fresh orderbook snapshot mid-loop.
 
@@ -409,7 +403,7 @@ Immediately before the first HTTP post in `place_order`, add:
 
 ```python
 # Capture the market ask at post time for fill-verification telemetry.
-# Must match the side we're trading: YES side → yes_ask, NO side → no_ask.
+# Must match the side we're trading: YES side -> yes_ask, NO side -> no_ask.
 market_ask_at_post = (
     orderbook.get("best_yes_ask") if side == "yes" else orderbook.get("best_no_ask")
 )
@@ -417,13 +411,11 @@ market_ask_at_post = (
 
 Where `orderbook` is the dict already built by the orderbook fetch earlier in the function. If the variable is named differently, use that name. Find with: `grep -n "best_yes_ask\|best_no_ask" bot.py | head -5` and read 20 lines of surrounding context.
 
-- [ ] **Step 4: Commit** (no behavior change yet — this just captures the variable; the notification in Task 5 uses it)
+- [ ] **Step 4: Commit** (no behavior change yet - this just captures the variable; the notification in Task 5 uses it)
 
 ```bash
 git add bot.py
-git commit -m "feat: capture market_ask_at_post in place_order for fill telemetry
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+git commit -m "feat: capture market_ask_at_post in place_order for fill telemetry"
 ```
 
 ---
@@ -444,7 +436,7 @@ Locate the block (around line 3001) where the fill is confirmed and `_fill_yes_p
 Immediately after the fill is confirmed and BEFORE the existing `send_telegram` at line ~3792 (which notifies the fill), insert:
 
 ```python
-# Fill-verification alert (hourly markets only — lets us spot price-selection bugs in flight).
+# Fill-verification alert (hourly markets only - lets us spot price-selection bugs in flight).
 _is_hourly = (elapsed_seconds + secs_left) / 60.0 > 25.0
 if _is_hourly and market_ask_at_post is not None and _fill_yes_price is not None:
     _target_c = int(round(entry_price_cents))
@@ -453,7 +445,7 @@ if _is_hourly and market_ask_at_post is not None and _fill_yes_price is not None
     _fill_c = int(round(_fill_yes_price))
     _slip_target = _fill_c - _target_c
     _slip_market = _fill_c - _ask_c
-    _warn = "⚠️ " if abs(_slip_target) > 3 else "🎯 "
+    _warn = " " if abs(_slip_target) > 3 else " "
     _ctx = _notify_ctx(
         asset, ticker, (elapsed_seconds + secs_left) / 60.0,
         _phase_for_eth(asset, elapsed_seconds),
@@ -481,9 +473,7 @@ git add bot.py
 git commit -m "feat: fill-verification Telegram alert for hourly markets
 
 Shows target / market ask / posted / filled / slippage after every hourly
-fill. Warns with ⚠️ when slippage vs target > 3¢.
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+fill. Warns with  when slippage vs target > 3¢."
 ```
 
 ---
@@ -491,7 +481,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ## Task 6: Retrofit existing `send_telegram` calls with `_notify_ctx`
 
 **Files:**
-- Modify: `bot.py` — each of the 7 target call sites
+- Modify: `bot.py` - each of the 7 target call sites
 
 Each step below is one call site. The pattern: build `_ctx = _notify_ctx(asset, ticker, duration_min, phase)` (phase optional), then prefix the existing message with `f"{_ctx} "`.
 
@@ -499,14 +489,14 @@ Each step below is one call site. The pattern: build `_ctx = _notify_ctx(asset, 
 
 For ETH hourly, compute `phase` as in Task 5 Step 2. For BTC and all 15m, pass `phase=None`.
 
-Both helpers `_phase_for_eth` and `_notify_ctx` were added in Task 2 Step 3 — use them directly.
+Both helpers `_phase_for_eth` and `_notify_ctx` were added in Task 2 Step 3 - use them directly.
 
 - [ ] **Step 1: Limit placed (`bot.py:2652`)**
 
 Before:
 ```python
 asyncio.create_task(send_telegram(
-    f"📋 <b>[{asset}] LIMIT ORDER PLACED</b>\n"
+    f" <b>[{asset}] LIMIT ORDER PLACED</b>\n"
     ...
 ))
 ```
@@ -516,7 +506,7 @@ After:
 _ctx = _notify_ctx(asset, ticker, (elapsed_seconds + secs_left) / 60.0,
                    _phase_for_eth(asset, elapsed_seconds))
 asyncio.create_task(send_telegram(
-    f"📋 <b>{_ctx} LIMIT ORDER PLACED</b>\n"
+    f" <b>{_ctx} LIMIT ORDER PLACED</b>\n"
     ...
 ))
 ```
@@ -528,7 +518,7 @@ Apply same pattern:
 _ctx = _notify_ctx(asset, ticker, (elapsed_seconds + secs_left) / 60.0,
                    _phase_for_eth(asset, elapsed_seconds))
 await send_telegram(
-    f"{_ctx} <b>ORDER FAILED</b>  —  {err_code}\n"
+    f"{_ctx} <b>ORDER FAILED</b>  -  {err_code}\n"
     f"{side.upper()}  {contracts}x @ {price_this_attempt}c"
 )
 ```
@@ -539,20 +529,20 @@ await send_telegram(
 _ctx = _notify_ctx(asset, ticker, (elapsed_seconds + secs_left) / 60.0,
                    _phase_for_eth(asset, elapsed_seconds))
 await send_telegram(
-    f"⚠️ <b>{_ctx} ORDER NOT FILLED</b>  —  no liquidity\n"
+    f" <b>{_ctx} ORDER NOT FILLED</b>  -  no liquidity\n"
     f"{side.upper()}  {contracts}x @ {entry_price_cents}¢"
 )
 ```
 
 - [ ] **Step 4: Fill confirmed / reversal (`bot.py:3792`)**
 
-Existing message includes `_strat_tag = "🔄 REVERSAL" if _is_reversal else "LIMIT ORDER FILLED"`:
+Existing message includes `_strat_tag = " REVERSAL" if _is_reversal else "LIMIT ORDER FILLED"`:
 
 ```python
 _ctx = _notify_ctx(asset, ticker, (elapsed_seconds + secs_left) / 60.0,
                    _phase_for_eth(asset, elapsed_seconds))
 await send_telegram(
-    f"{mode_icon} <b>{_ctx} {_strat_tag}</b>  —  {_time_str}\n"
+    f"{mode_icon} <b>{_ctx} {_strat_tag}</b>  -  {_time_str}\n"
     ...
 )
 ```
@@ -565,11 +555,11 @@ No `ticker`/`elapsed_seconds` in scope at this site. Use the `pos` dict (closed 
 
 ```python
 _dur_min = (pos.get("close_ts", time.time()) - pos.get("entry_ts", time.time())) / 60.0
-# Approximate: if held ≥25 min, call it hourly; otherwise 15m.
+# Approximate: if held >=25 min, call it hourly; otherwise 15m.
 _ctx = _notify_ctx(asset, pos.get("ticker", "?"), _dur_min,
                    _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)))
 await send_telegram(
-    f"⚠️ <b>{_ctx} {_consecutive_losses} consecutive losses</b> — pausing 15 min.\n"
+    f" <b>{_ctx} {_consecutive_losses} consecutive losses</b> - pausing 15 min.\n"
     f"Resumes at {_resume_str}"
 )
 ```
@@ -585,9 +575,9 @@ _dur_min = (pos.get("close_ts", time.time()) - pos.get("entry_ts", time.time()))
 _ctx = _notify_ctx(asset, pos.get("ticker", "?"), _dur_min,
                    _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)))
 await send_telegram(
-    f"{result_icon} <b>{_ctx} {'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+    f"{result_icon} <b>{_ctx} {'WIN' if outcome == 'win' else 'LOSS'}  {pnl_str}  ({pct_str})</b>  -  {_time_str}\n"
     f"{mode_icon}  {pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
-    f"Entry: {pos['entry_price_cents']}¢  →  Expiry: {exit_price}¢"
+    f"Entry: {pos['entry_price_cents']}¢  ->  Expiry: {exit_price}¢"
 )
 ```
 
@@ -608,9 +598,7 @@ git commit -m "feat: retrofit trade-related Telegram notifications with [ASSET |
 
 Every limit-placed, fill, failed, not-filled, win/loss, and consecutive-loss
 notification now carries the session-market context. Pre-flight, startup,
-and DLL notifications unchanged (no market context applicable).
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+and DLL notifications unchanged (no market context applicable)."
 ```
 
 ---
@@ -618,7 +606,7 @@ Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ## Task 7: Extend `write_state_file` with hourly fields
 
 **Files:**
-- Modify: `bot.py` — `write_state_file` and the per-asset state builders (lines ~3185-3280)
+- Modify: `bot.py` - `write_state_file` and the per-asset state builders (lines ~3185-3280)
 
 - [ ] **Step 1: Locate the per-asset state builders**
 
@@ -746,17 +734,15 @@ git add bot.py
 git commit -m "feat: extend bot_state.json per-asset entries with session_type, strategy_name, strike, phase
 
 Dashboard uses these to pick the right signal panel (ETH Mid/Dwell/Late vs
-BTC V3 mean-reversion) and display the current hourly contract's ticker+strike.
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+BTC V3 mean-reversion) and display the current hourly contract's ticker+strike."
 ```
 
 ---
 
-## Task 8: Dashboard — update asset-card header
+## Task 8: Dashboard - update asset-card header
 
 **Files:**
-- Modify: `dashboard.html` (around line 779 — asset-card header in `renderMarketView`)
+- Modify: `dashboard.html` (around line 779 - asset-card header in `renderMarketView`)
 
 - [ ] **Step 1: Find the current header**
 
@@ -865,17 +851,15 @@ mv bot_state.json.bak bot_state.json
 
 ```bash
 git add dashboard.html tests/fixtures/bot_state_hourly.json
-git commit -m "feat: dashboard asset-card header shows ticker, strike, strategy name
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+git commit -m "feat: dashboard asset-card header shows ticker, strike, strategy name"
 ```
 
 ---
 
-## Task 9: Dashboard — BTC V3 signal panel
+## Task 9: Dashboard - BTC V3 signal panel
 
 **Files:**
-- Modify: `dashboard.html` — `_buildHourlyViewHtml(a)` function (line 1285)
+- Modify: `dashboard.html` - `_buildHourlyViewHtml(a)` function (line 1285)
 
 - [ ] **Step 1: Branch `_buildHourlyViewHtml` on strategy_name**
 
@@ -901,21 +885,21 @@ function _buildBTCHourlyViewHtml(a) {
   const s = a.signals || {};
   const session = s.session || 'unknown';
   const sessionDisplay = session === 'asian'
-    ? '<span style="color:var(--down);font-weight:700;">Asian — SKIPPED</span>'
+    ? '<span style="color:var(--down);font-weight:700;">Asian - SKIPPED</span>'
     : '<span style="color:var(--up);font-weight:700;">Active</span>';
   const rows = [
     ['Session',    sessionDisplay],
-    ['VWAP z',     s.vwap_z != null ? (s.vwap_z >= 0 ? '+' : '') + s.vwap_z.toFixed(2) : '—'],
-    ['RSI',        s.rsi != null ? s.rsi.toFixed(0) : '—'],
-    ['Bollinger',  s.bollinger || '—'],
-    ['Momentum',   s.momentum_reversal || '—'],
-    ['Total adj',  s.total_adj_before_taper != null ? (s.total_adj_before_taper >= 0 ? '+' : '') + s.total_adj_before_taper.toFixed(3) : '—'],
-    ['p_yes',      s.final_p_yes != null ? s.final_p_yes.toFixed(2) + (s.baseline_p_above != null ? ` <span style="color:var(--ink-3)">(baseline ${s.baseline_p_above.toFixed(2)})</span>` : '') : '—'],
-    ['Entry',      s.entry_cents != null ? s.entry_cents.toFixed(0) + '¢' : '—'],
-  ].filter(([,v]) => v !== '—');
+    ['VWAP z',     s.vwap_z != null ? (s.vwap_z >= 0 ? '+' : '') + s.vwap_z.toFixed(2) : '-'],
+    ['RSI',        s.rsi != null ? s.rsi.toFixed(0) : '-'],
+    ['Bollinger',  s.bollinger || '-'],
+    ['Momentum',   s.momentum_reversal || '-'],
+    ['Total adj',  s.total_adj_before_taper != null ? (s.total_adj_before_taper >= 0 ? '+' : '') + s.total_adj_before_taper.toFixed(3) : '-'],
+    ['p_yes',      s.final_p_yes != null ? s.final_p_yes.toFixed(2) + (s.baseline_p_above != null ? ` <span style="color:var(--ink-3)">(baseline ${s.baseline_p_above.toFixed(2)})</span>` : '') : '-'],
+    ['Entry',      s.entry_cents != null ? s.entry_cents.toFixed(0) + '¢' : '-'],
+  ].filter(([,v]) => v !== '-');
 
   if (!rows.length) {
-    return '<div style="color:var(--ink-3);font-size:12px;padding:8px 0;">No BTC V3 data — strategy skipped or mid-signal-build.</div>';
+    return '<div style="color:var(--ink-3);font-size:12px;padding:8px 0;">No BTC V3 data - strategy skipped or mid-signal-build.</div>';
   }
   return rows.map(([k,v]) => `<div class="cf-row"><div class="cf-dot"></div><span class="cf-name">${k}</span><span class="cf-val">${v}</span></div>`).join('');
 }
@@ -925,11 +909,11 @@ function _buildBTCHourlyViewHtml(a) {
 
 Re-run Task 8 Step 3 (swap `bot_state.json` for the fixture). Confirm:
 - ETH card body: Phase / Elapsed / crossings / ITM / Dwell / Streak / Entry rows (unchanged).
-- BTC card body: Session (Active) / VWAP z (+1.42) / RSI (28) / Bollinger (below) / Momentum (fade_down) / Total adj (−0.08) / p_yes (0.47 baseline 0.55) / no Entry row (since fixture didn't set entry_cents).
+- BTC card body: Session (Active) / VWAP z (+1.42) / RSI (28) / Bollinger (below) / Momentum (fade_down) / Total adj (-0.08) / p_yes (0.47 baseline 0.55) / no Entry row (since fixture didn't set entry_cents).
 
 - [ ] **Step 3: Test Asian session branch**
 
-Edit the fixture, change `"session": "other"` → `"session": "asian"`, reload. Confirm Session row shows red "Asian — SKIPPED".
+Edit the fixture, change `"session": "other"` -> `"session": "asian"`, reload. Confirm Session row shows red "Asian - SKIPPED".
 
 Restore fixture to `"other"`.
 
@@ -941,9 +925,7 @@ git commit -m "feat: dashboard BTC hourly panel renders V3 mean-reversion signal
 
 Branches _buildHourlyViewHtml on strategy_name. BTC V3 shows Session,
 VWAP z, RSI, Bollinger, Momentum, Total adj, p_yes+baseline, Entry.
-ETH path unchanged.
-
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
+ETH path unchanged."
 ```
 
 ---
@@ -967,7 +949,7 @@ Run: `py -c "import os; print('BOT:', bool(os.environ.get('TELEGRAM_BOT_TOKEN'))
 
 If both True, notifications will fire. If not, messages are silently dropped (the test still passes but you won't see the alerts).
 
-- [ ] **Step 3: Run bot for one full hourly window (≥70 min)**
+- [ ] **Step 3: Run bot for one full hourly window (>=70 min)**
 
 ```bash
 py bot.py
@@ -997,8 +979,8 @@ With bot still running, open the dashboard (`py server.py` in another shell, bro
 - [ ] **Step 5: If an entry fires, verify notifications**
 
 When a paper entry fires, check Telegram. Expected messages, in order:
-1. `📋 [ETH | hourly | <ticker> | Dwell] LIMIT ORDER PLACED ...`
-2. `🎯 [ETH | hourly | <ticker> | Dwell] FILL VERIFICATION` with 5 numeric rows.
+1. ` [ETH | hourly | <ticker> | Dwell] LIMIT ORDER PLACED ...`
+2. ` [ETH | hourly | <ticker> | Dwell] FILL VERIFICATION` with 5 numeric rows.
 3. `<mode_icon> [ETH | hourly | <ticker> | Dwell] LIMIT ORDER FILLED ...`
 4. On close: `<result_icon> [ETH | hourly | <ticker> | Dwell] WIN/LOSS ...`
 
@@ -1018,20 +1000,20 @@ Record any findings from this integration test in the design spec §5.2 if new b
 
 **Spec coverage** (against `docs/superpowers/specs/2026-04-23-hourly-dashboard-notifications-audit-design.md`):
 
-- §3 data flow / state contract → Task 7 ✓
-- §4.1 card header → Task 8 ✓
-- §4.2 ETH hourly body (unchanged) → covered in Task 9 branch ✓
-- §4.3 BTC hourly body → Task 9 ✓
-- §4.4 sync guarantee → Task 7 writes the same fields the dashboard reads ✓
-- §5 limit-order + price-selection audit → Tasks 3 + 4 ✓
-- §6.1 `_notify_ctx` helper → Task 2 ✓
-- §6.2 retrofit of existing `send_telegram` → Task 6 ✓
-- §6.3 new fill-verification notification → Task 5 ✓
-- §8.1 dashboard rendering test → Task 8 Step 3, Task 9 Step 2 ✓
-- §8.2 integration → Task 10 ✓
-- §8.3 audit harness → Task 3 ✓
+- §3 data flow / state contract -> Task 7 
+- §4.1 card header -> Task 8 
+- §4.2 ETH hourly body (unchanged) -> covered in Task 9 branch 
+- §4.3 BTC hourly body -> Task 9 
+- §4.4 sync guarantee -> Task 7 writes the same fields the dashboard reads 
+- §5 limit-order + price-selection audit -> Tasks 3 + 4 
+- §6.1 `_notify_ctx` helper -> Task 2 
+- §6.2 retrofit of existing `send_telegram` -> Task 6 
+- §6.3 new fill-verification notification -> Task 5 
+- §8.1 dashboard rendering test -> Task 8 Step 3, Task 9 Step 2 
+- §8.2 integration -> Task 10 
+- §8.3 audit harness -> Task 3 
 
-**Placeholder scan:** no "TBD" in task bodies; §5.2 of the spec still has a TBD (filled at execution time — Task 3 Step 5). This is intentional: the audit produces findings the plan cannot predict.
+**Placeholder scan:** no "TBD" in task bodies; §5.2 of the spec still has a TBD (filled at execution time - Task 3 Step 5). This is intentional: the audit produces findings the plan cannot predict.
 
 **Type consistency:** `session_type` (string) / `strategy_name` (string) / `strike` (int|null) / `phase` (string|null) used consistently across Tasks 7, 8, 9. Helper `_phase_for_eth(asset, elapsed_seconds)` defined in Task 6 Step 1, reused in Tasks 5 (originally inlined, replaced), 6 (all steps), 7 (Step 4). `_notify_ctx` signature stable.
 
@@ -1039,4 +1021,4 @@ Record any findings from this integration test in the design spec §5.2 if new b
 
 ## Execution note
 
-This plan assumes you execute tasks in numeric order. Tasks 1→2 are parallel-safe (both add helpers to `bot.py`). Tasks 3 and 4 can run in parallel. Tasks 5 depends on 2+4. Task 6 depends on 2. Task 7 depends on 1+2. Tasks 8 and 9 depend on 7. Task 10 depends on all prior.
+This plan assumes you execute tasks in numeric order. Tasks 1->2 are parallel-safe (both add helpers to `bot.py`). Tasks 3 and 4 can run in parallel. Tasks 5 depends on 2+4. Task 6 depends on 2. Task 7 depends on 1+2. Tasks 8 and 9 depend on 7. Task 10 depends on all prior.

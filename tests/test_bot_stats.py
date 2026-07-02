@@ -1,4 +1,4 @@
-"""Unit tests for bot_stats.py — query_stats and format functions."""
+"""Unit tests for bot_stats.py - query_stats and format functions."""
 import datetime
 import sqlite3
 import sys
@@ -31,7 +31,7 @@ def _make_db(rows):
     return db
 
 
-# ── query_stats ───────────────────────────────────────────────────────────────
+# query_stats
 
 def test_query_stats_today_counts(tmp_path):
     db_path = str(tmp_path / "test.db")
@@ -53,7 +53,7 @@ def test_query_stats_today_counts(tmp_path):
             (f"{today}T10:00:00Z", "strategy1", "BTC", "win",  10.0),
             (f"{today}T11:00:00Z", "strategy1", "BTC", "loss", -5.0),
             (f"{today}T12:00:00Z", "strategy2", "ETH", "win",  20.0),
-            # yesterday — should not appear in today counts
+            # yesterday - should not appear in today counts
             ("2026-05-06T10:00:00Z", "strategy1", "BTC", "win", 99.0),
         ],
     )
@@ -167,7 +167,7 @@ def test_query_stats_db_unavailable():
     assert stats["last_trade_ts"] is None
 
 
-# ── format_telegram ───────────────────────────────────────────────────────────
+# format_telegram
 
 def _base_stats(**overrides):
     s = {
@@ -229,7 +229,7 @@ def test_format_telegram_hides_zero_strategy_sections():
         alltime_pnl=10.0,
         by_strategy_asset={
             ("strategy1", "BTC"): {"wins": 2, "losses": 0, "pnl": 10.0},
-            # strategy2 has zero trades → section should be hidden
+            # strategy2 has zero trades -> section should be hidden
         },
         last_trade_ts="2026-05-07T10:00:00Z",
     )
@@ -238,7 +238,7 @@ def test_format_telegram_hides_zero_strategy_sections():
     assert "S2" not in msg
 
 
-# ── midnight trigger ─────────────────────────────────────────────────────────
+# midnight trigger
 
 def test_check_daily_stats_fires_once_per_day():
     """_check_daily_stats sends stats exactly once per local date."""
@@ -259,8 +259,8 @@ def test_check_daily_stats_fires_once_per_day():
              patch.object(bot_state, "_DB_FILE", "/nonexistent/db.sqlite"), \
              patch.object(bot_state, "_consecutive_losses", 0):
             await bot_loops._check_daily_stats("2026-05-07")
-            await bot_loops._check_daily_stats("2026-05-07")  # same day — no-op
-            await bot_loops._check_daily_stats("2026-05-08")  # new day — fires
+            await bot_loops._check_daily_stats("2026-05-07")  # same day - no-op
+            await bot_loops._check_daily_stats("2026-05-08")  # new day - fires
 
     asyncio.run(run())
     assert len(sent) == 2  # once for each unique date

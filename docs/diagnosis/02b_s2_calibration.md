@@ -14,14 +14,14 @@ S2 data splits into two fundamentally different cohorts with different data qual
 | Phase 1 (real market) | 2026-03-31 | 12 | 0.0% | confidence_score present |
 | Phase 2 (settlement records) | 2026-04-01+ | 78 | 60.3% | confidence_score NULL |
 
-**Phase 1 verdict: CATASTROPHIC — 0% win rate on real market**
+**Phase 1 verdict: CATASTROPHIC - 0% win rate on real market**
 **Phase 2 verdict: BELOW_BREAKEVEN** (need 77.4% WR to break even at avg 72c entry)
 
 Meaningful calibration is not possible with 78/90 null confidence_score rows.
 
 ---
 
-## 2B.1 Phase 1 — Real Market Paper Trades (2026-03-31)
+## 2B.1 Phase 1 - Real Market Paper Trades (2026-03-31)
 
 These 12 trades have real time-series data: entry price, seconds remaining, stop-losses.
 
@@ -66,7 +66,7 @@ S2 was betting against a strong directional trend.
 
 ---
 
-## 2B.2 Phase 2 — Auto-Settlement Records (2026-04-01+)
+## 2B.2 Phase 2 - Auto-Settlement Records (2026-04-01+)
 
 These 78 records appear to be auto-generated settlement entries:
 - All have entry_price_cents = 72 and contracts = 1
@@ -74,7 +74,7 @@ These 78 records appear to be auto-generated settlement entries:
 - confidence_score = 0 or NULL (not from live model evaluation)
 - seconds_left_at_entry = 0 or NULL
 
-These are NOT real-time paper trades. They represent held positions that settled —
+These are NOT real-time paper trades. They represent held positions that settled -
 likely the S2 bot was running and placing orders that got filled, held to expiry,
 and settled automatically. The entry_price=72c with 1 contract each is suspicious
 and may indicate a paper trading simulation artifact.
@@ -90,7 +90,7 @@ and may indicate a paper trading simulation artifact.
 | Breakeven WR at 72c | 77.4% |
 | Phase 2 PnL | $136.36 |
 
-**Win rate 60.3% vs breakeven 77.4% → Phase 2 is unprofitable on paper.**
+**Win rate 60.3% vs breakeven 77.4% -> Phase 2 is unprofitable on paper.**
 
 ### Phase 2 Side Distribution
 
@@ -142,7 +142,7 @@ write path for settlement-settled positions doesn't populate it.
 **Critical fixes required before meaningful Step 2B analysis:**
 
 1. **Fix the market_log write path** to always populate:
-   - `confidence_score` (model's predicted win_prob × 100)
+   - `confidence_score` (model's predicted win_prob x 100)
    - `seconds_left_at_entry` (time remaining at fill)
    - `trade_amount_dollars` (actual dollars committed)
 
@@ -150,7 +150,7 @@ write path for settlement-settled positions doesn't populate it.
    Currently "order not filled" or NULL for Phase 2 positions held to expiry.
 
 3. **Accumulate more Phase 1 trades** (real-time paper trades with full data).
-   12 trades in one day is insufficient for calibration. Need ≥ 100 per asset.
+   12 trades in one day is insufficient for calibration. Need >= 100 per asset.
 
 4. **Phase 1's 0% WR on 5 settled trades** is a red flag:
    - All entries were contrarian (2-43c for NO/YES against trend)
@@ -158,5 +158,5 @@ write path for settlement-settled positions doesn't populate it.
    - S2 may be entering too early (6-11 min before expiry) in trending markets
    - The FifteenMinStrategy contrarian approach needs separate evaluation
 
-Once data logging is fixed and ≥ 100 trades per asset accumulate, run this script
+Once data logging is fixed and >= 100 trades per asset accumulate, run this script
 again to compute the full reliability diagram and calibration gap.
