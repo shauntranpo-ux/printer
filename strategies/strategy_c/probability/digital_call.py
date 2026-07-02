@@ -3,7 +3,7 @@ Digital (binary) call probability evaluator under geometric Brownian motion.
 
 ALL TIME UNITS IN THIS MODULE ARE SECONDS.
 
-The integrated_variance input is σ²·(T−t), pre-integrated over the horizon.
+The integrated_variance input is sigma²*(T-t), pre-integrated over the horizon.
 This decouples the probability evaluator from the term-structure integrator:
 the caller is responsible for supplying the correct integrated variance, which
 may come from a flat-vol assumption or from the vol_term_structure integrator.
@@ -16,7 +16,7 @@ from scipy.stats import norm
 
 
 def flat_vol_to_integrated_variance(sigma_per_second: float, dt_seconds: float) -> float:
-    """Return σ²_per_second × dt_seconds for a flat-vol horizon."""
+    """Return sigma²_per_second x dt_seconds for a flat-vol horizon."""
     return sigma_per_second ** 2 * dt_seconds
 
 
@@ -31,16 +31,16 @@ def binary_call_probability(
     P(S_T > K) under GBM with risk-neutral drift = risk_free_rate.
 
     Formula:
-        d₂ = [ln(S_t / K) + r·(T−t) − integrated_variance/2] / √(integrated_variance)
-        P  = N(d₂)
+        d2 = [ln(S_t / K) + r*(T-t) - integrated_variance/2] / sqrt(integrated_variance)
+        P  = N(d2)
 
-    where integrated_variance = σ²·(T−t).
+    where integrated_variance = sigma²*(T-t).
 
     Args:
         current_price:           S_t > 0; current spot price
         strike_price:            K > 0; contract strike
-        integrated_variance:     σ²·(T−t) > 0; pre-integrated variance over [t, T]
-        time_to_expiry_seconds:  T−t in seconds; ≤ 0 returns deterministic outcome
+        integrated_variance:     sigma²*(T-t) > 0; pre-integrated variance over [t, T]
+        time_to_expiry_seconds:  T-t in seconds; <= 0 returns deterministic outcome
         risk_free_rate:          r; defaults to 0.0 for crypto
 
     Returns:

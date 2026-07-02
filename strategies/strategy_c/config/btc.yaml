@@ -28,7 +28,7 @@ moneyness:
   itm_log_moneyness_cutoff: -0.005
   atm_log_moneyness_cutoff: 0.005
   otm_log_moneyness_cutoff: 0.02
-  # beyond otm_log_moneyness_cutoff → deep_otm
+  # beyond otm_log_moneyness_cutoff -> deep_otm
   deep_otm_implied_prob_cutoff: 0.15
   deep_itm_implied_prob_cutoff: 0.85
 
@@ -62,7 +62,7 @@ model:
   weights_path: null
 
 thresholds:
-  # Edge required above the fee hurdle, per regime.  null → 0.02 default until tuned.
+  # Edge required above the fee hurdle, per regime.  null -> 0.02 default until tuned.
   base_edge_above_fee:
     asia_deep_night: null
     asia_active: null

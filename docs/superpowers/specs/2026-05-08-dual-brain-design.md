@@ -14,15 +14,15 @@
 ```python
 _s1_attempted_tickers: set = set()   # replaces shared _order_attempted_tickers for S1
 _s2_attempted_tickers: set = set()   # replaces shared _order_attempted_tickers for S2
-_s2_positions: dict = {}             # ticker → {side, entry_cents, contracts, dollars, open_time, brain}
+_s2_positions: dict = {}             # ticker -> {side, entry_cents, contracts, dollars, open_time, brain}
 ```
 
-`_s1_pending_trades` already tracks open S1 trades — no new S1 state needed.
+`_s1_pending_trades` already tracks open S1 trades - no new S1 state needed.
 
 `_order_attempted_tickers` remains in `__all__` but both execution paths migrate to their own set. A ticker blocked for S1 does not block S2 and vice versa.
 
 **Remove from `__all__`** (keep the variable for any legacy callers until confirmed dead):
-No removals yet — add the two new sets and one new dict; removal is a follow-up.
+No removals yet - add the two new sets and one new dict; removal is a follow-up.
 
 ---
 
@@ -60,7 +60,7 @@ S2 settlement happens in `monitor_market` when the market resolves (result != No
 3. Write DB row (`db_update_trade`) with `brain='s2'`
 4. Remove ticker from `_s2_attempted_tickers`
 
-### S1 (`bot_risk.py` — `_execute_s1_trade` / `_settle_s1_trade`)
+### S1 (`bot_risk.py` - `_execute_s1_trade` / `_settle_s1_trade`)
 
 - Replace any use of `_order_attempted_tickers` with `_s1_attempted_tickers`
 - On DB write in `_settle_s1_trade`: set `brain='s1'`
@@ -69,7 +69,7 @@ S2 settlement happens in `monitor_market` when the market resolves (result != No
 
 ## 3. Strategy Bug Fixes (`bot_strategy.py`)
 
-### Bug 1 — Win-prob inflation removed
+### Bug 1 - Win-prob inflation removed
 
 `vel_adj` and `obi_adj` additive adjustments were inflating win probability beyond calibrated values. The 30-day calibration already priced velocity and OBI signals into `base_p`.
 
@@ -81,7 +81,7 @@ win_prob = min(0.99, base_p + vel_adj + obi_adj)
 win_prob = min(0.99, base_p)
 ```
 
-### Bug 2 — S2 fee hardcoded
+### Bug 2 - S2 fee hardcoded
 
 ```python
 # Before
@@ -92,7 +92,7 @@ _fee_cents = config.get("kalshi_fee_per_contract_cents", 7)
 fee = (_fee_cents / 100) * _ep_s2 * (1.0 - _ep_s2)
 ```
 
-### Bug 3 — S2 max entry price reads global not per-asset
+### Bug 3 - S2 max entry price reads global not per-asset
 
 `get_asset_config` must be added to `bot_strategy.py` imports from `bot_infra`.
 
@@ -141,29 +141,29 @@ All-time (no date filter, same columns).
 
 **Message format:**
 ```
-📊 Daily Brain Scorecard
+ Daily Brain Scorecard
 
 S1 (EMA momentum)
   BTC  +$2.10  3W/1L
   ETH  +$1.50  2W/0L
-  SOL  —
+  SOL  -
   XRP  -$0.40  1W/2L
-  DOGE —
+  DOGE -
   Total: +$3.20  6W/3L
 
 S2 (velocity+OBI)
   BTC  -$0.50  2W/3L
   ETH  +$1.00  2W/1L
   SOL  +$0.80  1W/0L
-  XRP  —
+  XRP  -
   DOGE -$0.40  0W/2L
   Total: +$0.90  5W/6L
 
 All-time │ S1: +$31.50 52W/21L │ S2: +$8.40 38W/29L
-Winner today: S1 🏆
+Winner today: S1 
 ```
 
-Assets with no trades show `—`. If both brains have zero trades today, no scorecard is sent. If P&L is tied, no winner declared.
+Assets with no trades show `-`. If both brains have zero trades today, no scorecard is sent. If P&L is tied, no winner declared.
 
 ---
 
@@ -181,10 +181,10 @@ Assets with no trades show `—`. If both brains have zero trades today, no scor
 
 ## 7. Testing
 
-- `test_dual_brain_isolation.py` — S1 and S2 can hold opposite sides on same ticker simultaneously
-- `test_dual_brain_no_bleed.py` — S1 attempted set does not block S2 entry and vice versa
-- `test_scorecard_query.py` — scorecard SQL returns correct per-brain per-asset rows
-- `test_s2_fee_fix.py` — S2 fee reads from config not hardcoded
-- `test_s2_winprob_no_inflation.py` — win_prob equals `base_p` with no additive adjustments
-- `test_s2_price_cap_per_asset.py` — S2 reads per-asset max entry price
-- `test_midnight_scorecard_telegram.py` — midnight reset sends scorecard when trades exist; skips when none
+- `test_dual_brain_isolation.py` - S1 and S2 can hold opposite sides on same ticker simultaneously
+- `test_dual_brain_no_bleed.py` - S1 attempted set does not block S2 entry and vice versa
+- `test_scorecard_query.py` - scorecard SQL returns correct per-brain per-asset rows
+- `test_s2_fee_fix.py` - S2 fee reads from config not hardcoded
+- `test_s2_winprob_no_inflation.py` - win_prob equals `base_p` with no additive adjustments
+- `test_s2_price_cap_per_asset.py` - S2 reads per-asset max entry price
+- `test_midnight_scorecard_telegram.py` - midnight reset sends scorecard when trades exist; skips when none

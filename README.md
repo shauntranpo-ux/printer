@@ -1,6 +1,6 @@
-# Money Printer — Kalshi Trading Bot
+# Money Printer - Kalshi Trading Bot
 
-Automated trading bot for Kalshi's 15-minute crypto up/down prediction markets. Trades BTC, ETH, SOL, XRP, and DOGE using two signal strategies (EMA momentum and contract velocity/OBI). Deployed on Railway.
+Automated trading bot for Kalshi's 15-minute crypto up/down prediction markets. Trades BTC, ETH, SOL, XRP, and DOGE with two fair-value strategies: S1 prices the alts off BTC's lead (cross-asset dislocation) and S2 prices each contract off the current spot (Bachelier fair value vs the market mid). Deployed on Railway.
 
 **Status: actively deployed. No rewrite in progress.**
 
@@ -22,7 +22,7 @@ pip install -r requirements.txt
 
 # 2. Copy and fill in env vars
 cp .env.example .env
-# edit .env — at minimum: KALSHI_API_KEY, KALSHI_PRIVATE_KEY
+# edit .env - at minimum: KALSHI_API_KEY, KALSHI_PRIVATE_KEY
 
 # 3. Run
 bash start.sh
@@ -36,7 +36,7 @@ bash start.sh
 |---|---|
 | `KALSHI_API_KEY` | Live API key (UUID) |
 | `KALSHI_PRIVATE_KEY` | RSA private key PEM string or path to `.pem` file |
-| `TELEGRAM_BOT_TOKEN` | Optional — alerts and trade notifications |
+| `TELEGRAM_BOT_TOKEN` | Optional - alerts and trade notifications |
 | `TELEGRAM_CHAT_ID` | Required if Telegram alerts enabled |
 | `BOT_DB_FILE` | SQLite DB path; default `kalshi_bot.db` |
 

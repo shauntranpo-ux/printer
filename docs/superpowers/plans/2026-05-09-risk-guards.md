@@ -18,17 +18,17 @@
 | `bot_risk.py` | Fix 3a (`write_state_file` state dict), Fix 3c (`_settle_s1_trade` alert) |
 | `bot_loops.py` | Fix 3b (startup recovery restores `_s1_consecutive_losses`) |
 | `config.json` | Fix 2: add `max_s1_positions`, `max_s1_positions_per_asset` defaults |
-| `tests/test_risk_guards.py` | New test file — 7 tests covering all 4 fixes |
+| `tests/test_risk_guards.py` | New test file - 7 tests covering all 4 fixes |
 
 ---
 
-### Task 1: Fix 1 — S2 OBI Fail-Closed
+### Task 1: Fix 1 - S2 OBI Fail-Closed
 
 **Files:**
 - Modify: `bot_strategy.py:386-387`
 - Create: `tests/test_risk_guards.py`
 
-**Context:** `_s2_obi_gate` (bot_strategy.py:378-393) currently returns `True, None` when `_ticker_obi[ticker]` is absent — S2 enters without OBI confirmation. Fix: return `False, None` instead.
+**Context:** `_s2_obi_gate` (bot_strategy.py:378-393) currently returns `True, None` when `_ticker_obi[ticker]` is absent - S2 enters without OBI confirmation. Fix: return `False, None` instead.
 
 - [ ] **Step 1: Create test file with two OBI tests**
 
@@ -108,7 +108,7 @@ git commit -m "fix: S2 OBI gate fails-closed when obi data absent"
 
 ---
 
-### Task 2: Fix 2 — S1 Global + Per-Asset Position Cap
+### Task 2: Fix 2 - S1 Global + Per-Asset Position Cap
 
 **Files:**
 - Modify: `bot_strategy.py:156-158` (insert cap gates before Gate 1 session check)
@@ -198,12 +198,12 @@ git commit -m "fix: add S1 global and per-asset position caps"
 
 ---
 
-### Task 3: Fix 3 — S1 Consecutive-Loss Persistence + Alert
+### Task 3: Fix 3 - S1 Consecutive-Loss Persistence + Alert
 
 **Files:**
-- Modify: `bot_risk.py:209` (`write_state_file` state dict — add `s1_consecutive_losses` key)
-- Modify: `bot_risk.py:508-511` (`_settle_s1_trade` — add alert after threshold crossed)
-- Modify: `bot_loops.py:963-965` (startup recovery — restore `_s1_consecutive_losses`)
+- Modify: `bot_risk.py:209` (`write_state_file` state dict - add `s1_consecutive_losses` key)
+- Modify: `bot_risk.py:508-511` (`_settle_s1_trade` - add alert after threshold crossed)
+- Modify: `bot_loops.py:963-965` (startup recovery - restore `_s1_consecutive_losses`)
 - Modify: `tests/test_risk_guards.py` (add 3 tests)
 
 **Context:**
@@ -280,7 +280,7 @@ Replace with:
         max_cl = config.get("max_consecutive_losses", 5)
         if bot_state._s1_consecutive_losses >= max_cl:
             await send_telegram(
-                f"<b>🔵 [S1] {bot_state._s1_consecutive_losses} consecutive losses</b>"
+                f"<b> [S1] {bot_state._s1_consecutive_losses} consecutive losses</b>"
             )
 ```
 
@@ -320,7 +320,7 @@ git commit -m "fix: persist and restore S1 consecutive losses; alert on threshol
 
 ---
 
-### Task 4: Fix 4 — S1 Session Gate Configurable for Alts
+### Task 4: Fix 4 - S1 Session Gate Configurable for Alts
 
 **Files:**
 - Modify: `bot_strategy.py:158-160` (replace hardcoded `cfg["session_gate"]` with `get_asset_config` lookup)

@@ -1,9 +1,9 @@
 """
-notify.py — Centralized alert dispatch: Telegram + volume-backed alerts.log.
+notify.py - Centralized alert dispatch: Telegram + volume-backed alerts.log.
 
 Usage:
     import notify
-    notify.send_alert("WARNING", "Bot crash loop detected — halting restarts.")
+    notify.send_alert("WARNING", "Bot crash loop detected - halting restarts.")
 
 Telegram sends are fire-and-forget. If Telegram fails or creds are missing,
 the alert is still written to alerts.log on the Railway volume so nothing is

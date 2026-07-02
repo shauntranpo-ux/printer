@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Fix six infrastructure bugs — a crash in bot_market.py, silent DB failures, fragile date query, file handle leak, connection leak on startup, and silent stats data loss.
+**Goal:** Fix six infrastructure bugs - a crash in bot_market.py, silent DB failures, fragile date query, file handle leak, connection leak on startup, and silent stats data loss.
 
-**Architecture:** Four independent targeted edits across four files. Each fix is 1–5 lines. Tests are source-inspection style (inspect.getsource) or lightweight functional checks — no live DB or API calls needed. All tests go in `tests/test_infra_hardening.py`.
+**Architecture:** Four independent targeted edits across four files. Each fix is 1-5 lines. Tests are source-inspection style (inspect.getsource) or lightweight functional checks - no live DB or API calls needed. All tests go in `tests/test_infra_hardening.py`.
 
 **Tech Stack:** Python 3.11, pytest, sqlite3, aiosqlite, asyncio.
 
@@ -15,14 +15,14 @@
 | File | Fixes |
 |------|-------|
 | `bot_market.py` | Fix 1: extract dict comprehension from f-string (line 411) |
-| `bot.py` | Fix 5: wrap startup DB connection in try/finally (lines 56–67) |
-| `bot_infra.py` | Fix 2: add trade data to db_write_trade error log (line 343); Fix 3: LIKE→DATE() in db_get_today_pnl (line 447); Fix 4: close file handle with context manager (line 137); Fix 6b: add _VALID_TRADE_COLS guard in db_update_trade (before line 347) |
+| `bot.py` | Fix 5: wrap startup DB connection in try/finally (lines 56-67) |
+| `bot_infra.py` | Fix 2: add trade data to db_write_trade error log (line 343); Fix 3: LIKE->DATE() in db_get_today_pnl (line 447); Fix 4: close file handle with context manager (line 137); Fix 6b: add _VALID_TRADE_COLS guard in db_update_trade (before line 347) |
 | `bot_stats.py` | Fix 6a: log warning for unknown strategy_variant in _run_queries (line 62) |
-| `tests/test_infra_hardening.py` | New — 4 tests covering Fixes 1, 3, 6a, 6b |
+| `tests/test_infra_hardening.py` | New - 4 tests covering Fixes 1, 3, 6a, 6b |
 
 ---
 
-### Task 1: Fix 1 + Fix 5 — bot_market.py crash + bot.py connection leak
+### Task 1: Fix 1 + Fix 5 - bot_market.py crash + bot.py connection leak
 
 **Files:**
 - Create: `tests/test_infra_hardening.py`
@@ -31,9 +31,9 @@
 
 **Context:**
 
-Fix 1 — `bot_market.py:411`: The warning log uses a nested dict comprehension directly inside an f-string (`f"...{ {k: v for k in (...)} }"`). This is confusing and can cause issues in some Python versions. Extract to a variable.
+Fix 1 - `bot_market.py:411`: The warning log uses a nested dict comprehension directly inside an f-string (`f"...{ {k: v for k in (...)} }"`). This is confusing and can cause issues in some Python versions. Extract to a variable.
 
-Fix 5 — `bot.py:55-71`: The startup zombie-cleanup block opens `conn = sqlite3.connect(...)` at line 56 and calls `conn.close()` at line 67 inside the `try` block. If `conn.execute()` or `conn.commit()` raises, `.close()` is never reached — connection leaks.
+Fix 5 - `bot.py:55-71`: The startup zombie-cleanup block opens `conn = sqlite3.connect(...)` at line 56 and calls `conn.close()` at line 67 inside the `try` block. If `conn.execute()` or `conn.commit()` raises, `.close()` is never reached - connection leaks.
 
 - [ ] **Step 1: Create `tests/test_infra_hardening.py`**
 
@@ -54,7 +54,7 @@ def test_bot_market_fstring_no_nested_comprehension():
     """parse_strike warning log must use a variable, not nested dict comprehension."""
     src = inspect.getsource(bot_market.parse_strike)
     assert "{ {k:" not in src, \
-        "Nested dict comprehension still in f-string — extract to _diag variable"
+        "Nested dict comprehension still in f-string - extract to _diag variable"
     assert "_diag" in src, \
         "parse_strike warning log must use _diag variable"
 ```
@@ -82,7 +82,7 @@ Replace with:
         log.warning(f"Cannot parse strike. Full market fields: {_diag}")
 ```
 
-- [ ] **Step 4: Fix `bot.py:56-67` — add try/finally around DB connection**
+- [ ] **Step 4: Fix `bot.py:56-67` - add try/finally around DB connection**
 
 Find this block (lines 55-71):
 ```python
@@ -145,21 +145,21 @@ git commit -m "fix: extract f-string dict comprehension in bot_market; add final
 
 ---
 
-### Task 2: bot_infra.py — Fixes 2, 3, 4, 6b
+### Task 2: bot_infra.py - Fixes 2, 3, 4, 6b
 
 **Files:**
-- Modify: `bot_infra.py` — four separate changes
-- Modify: `tests/test_infra_hardening.py` — append 2 tests
+- Modify: `bot_infra.py` - four separate changes
+- Modify: `tests/test_infra_hardening.py` - append 2 tests
 
 **Context:**
 
 - **Fix 2 (line 343):** `db_write_trade` except block logs `"DB write_trade error: {exc}"` but omits the trade dict, making it hard to diagnose which trade was lost. Update the message to include trade data.
 
-- **Fix 3 (line 447):** `db_get_today_pnl` uses `ts LIKE f"{today}%"` — fragile if ts format includes timezone offset. Change to `DATE(ts) = ?`.
+- **Fix 3 (line 447):** `db_get_today_pnl` uses `ts LIKE f"{today}%"` - fragile if ts format includes timezone offset. Change to `DATE(ts) = ?`.
 
 - **Fix 4 (line 137):** `open(_be_state)` in `_init_config` is not closed with a context manager. Change to `with open(_be_state) as _f:`.
 
-- **Fix 6b (before line 347):** `db_update_trade` builds `UPDATE trades SET {set_clause}` with column names from caller dict keys — no validation. Add `_VALID_TRADE_COLS` frozenset at module level and guard at top of function.
+- **Fix 6b (before line 347):** `db_update_trade` builds `UPDATE trades SET {set_clause}` with column names from caller dict keys - no validation. Add `_VALID_TRADE_COLS` frozenset at module level and guard at top of function.
 
 - [ ] **Step 1: Append 2 tests to `tests/test_infra_hardening.py`**
 
@@ -190,7 +190,7 @@ py -m pytest tests/test_infra_hardening.py::test_db_get_today_pnl_uses_date_func
 
 Expected: both FAIL.
 
-- [ ] **Step 3: Fix 4 — close file handle in `bot_infra.py:137`**
+- [ ] **Step 3: Fix 4 - close file handle in `bot_infra.py:137`**
 
 Find (line 137):
 ```python
@@ -203,7 +203,7 @@ Replace with:
                 cfg["bot_enabled"] = _f.read().strip() == "1"
 ```
 
-- [ ] **Step 4: Fix 2 — improve db_write_trade error log in `bot_infra.py:342-344`**
+- [ ] **Step 4: Fix 2 - improve db_write_trade error log in `bot_infra.py:342-344`**
 
 Find (lines 342-344):
 ```python
@@ -215,11 +215,11 @@ Find (lines 342-344):
 Replace with:
 ```python
     except Exception as exc:
-        log.error("db_write_trade FAILED — trade NOT recorded: %s | trade=%s", exc, trade)
+        log.error("db_write_trade FAILED - trade NOT recorded: %s | trade=%s", exc, trade)
         return None
 ```
 
-- [ ] **Step 5: Fix 3 — change LIKE to DATE() in `bot_infra.py:446-448`**
+- [ ] **Step 5: Fix 3 - change LIKE to DATE() in `bot_infra.py:446-448`**
 
 Find (lines 446-448):
 ```python
@@ -237,7 +237,7 @@ Replace with:
                 (mode, today),
 ```
 
-- [ ] **Step 6: Fix 6b — add `_VALID_TRADE_COLS` and guard in `bot_infra.py`**
+- [ ] **Step 6: Fix 6b - add `_VALID_TRADE_COLS` and guard in `bot_infra.py`**
 
 Find this line (line 347):
 ```python
@@ -262,7 +262,7 @@ _VALID_TRADE_COLS = frozenset({
 Then find inside `db_update_trade` (line 350-351, after the `trade_id is None` check):
 ```python
     if trade_id is None:
-        log.error("db_update_trade called with trade_id=None — trade will stay pending in DB")
+        log.error("db_update_trade called with trade_id=None - trade will stay pending in DB")
         return
     try:
 ```
@@ -270,11 +270,11 @@ Then find inside `db_update_trade` (line 350-351, after the `trade_id is None` c
 Replace with:
 ```python
     if trade_id is None:
-        log.error("db_update_trade called with trade_id=None — trade will stay pending in DB")
+        log.error("db_update_trade called with trade_id=None - trade will stay pending in DB")
         return
     bad_cols = set(fields) - _VALID_TRADE_COLS
     if bad_cols:
-        log.error("db_update_trade: unknown column(s) %s — skipping update for trade %s", bad_cols, trade_id)
+        log.error("db_update_trade: unknown column(s) %s - skipping update for trade %s", bad_cols, trade_id)
         return
     try:
 ```
@@ -299,16 +299,16 @@ Expected: all 3 tests pass.
 
 ```bash
 git add bot_infra.py tests/test_infra_hardening.py
-git commit -m "fix: bot_infra — db_write_trade log, DATE() query, file handle, column whitelist"
+git commit -m "fix: bot_infra - db_write_trade log, DATE() query, file handle, column whitelist"
 ```
 
 ---
 
-### Task 3: bot_stats.py — Fix 6a + full suite
+### Task 3: bot_stats.py - Fix 6a + full suite
 
 **Files:**
 - Modify: `bot_stats.py:62-73`
-- Modify: `tests/test_infra_hardening.py` — append 1 test
+- Modify: `tests/test_infra_hardening.py` - append 1 test
 
 **Context:** `_run_queries` builds `by_sa` from all DB rows without checking if `strategy_variant` is in `_STRATEGY_LABELS`. Unknown variants silently accumulate in `by_sa` and are never displayed in stats. Fix: add `log.warning` when an unknown variant is encountered.
 
@@ -363,7 +363,7 @@ Replace with:
     for row in rows:
         sv = row["strategy_variant"]
         if sv not in _STRATEGY_LABELS:
-            log.warning("Unknown strategy_variant in DB: %r — row excluded from stats display", sv)
+            log.warning("Unknown strategy_variant in DB: %r - row excluded from stats display", sv)
         key = (sv, row["asset"])
         if key not in by_sa:
             by_sa[key] = {"wins": 0, "losses": 0, "pnl": 0.0}

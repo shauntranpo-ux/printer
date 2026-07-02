@@ -27,7 +27,7 @@ class Signal:
     asset: str
     p_model: float        # calibrated P(up at 15-min expiry) in [0, 1]
     p_market: float       # Kalshi YES price in [0, 1] (not cents)
-    edge: float           # p_model - p_market; positive → buy YES
+    edge: float           # p_model - p_market; positive -> buy YES
     regime: str
     side: str             # "yes" or "no"
     strategy: str = "strategy_a"

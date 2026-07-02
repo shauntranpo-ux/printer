@@ -11,7 +11,7 @@ def test_s2_dedup_check_exists_after_s1_execute():
     )
     # Check that the dedup block sets do_trade=False
     assert "s2_dedup" in src, (
-        "s2_dedup skip reason not found in handle_ready_phase — S1+S2 dedup not implemented"
+        "s2_dedup skip reason not found in handle_ready_phase - S1+S2 dedup not implemented"
     )
 
 

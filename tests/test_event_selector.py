@@ -45,7 +45,7 @@ class TestSelectPositions:
 
     def test_adjacent_candidates_only_top_selected(self):
         # Three candidates all within spacing=2 of the top pick (ranks 0,1,2)
-        # → spacing constraint (min_spacing=3) prevents any 2nd pick
+        # -> spacing constraint (min_spacing=3) prevents any 2nd pick
         candidates = [(100.0, 0.10), (105.0, 0.09), (110.0, 0.08)]
         df = _make_candidates(candidates, ladder_ranks=[0, 1, 2])
         result = select_positions(df, _CONFIG)

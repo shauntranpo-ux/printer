@@ -4,7 +4,7 @@ import bot_strategy
 
 def test_quiet_hours_end_default_blocks_8am_et():
     """With empty config, 8 AM ET (hour=8) must be quiet (end default=9)."""
-    # Empty config — tests the hardcoded fallback, not config.json
+    # Empty config - tests the hardcoded fallback, not config.json
     result = bot_strategy._is_quiet_hours(config={})
     # We cannot easily set the clock, so inspect the source instead
     import inspect

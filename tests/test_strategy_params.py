@@ -52,22 +52,22 @@ def test_s2_vel_delta_matches_calibration():
 
 
 def test_s1_win_rate_tables_all_none():
-    """All S1 WR table entries must be None — forces realistic tanh fallback."""
+    """All S1 WR table entries must be None - forces realistic tanh fallback."""
     from bot_strategy import _S1_WIN_RATE
     for asset, buckets in _S1_WIN_RATE.items():
         for key, val in buckets.items():
             assert val is None, (
-                f"S1 WR {asset} bucket {key}={val} — must be None to use realistic tanh formula"
+                f"S1 WR {asset} bucket {key}={val} - must be None to use realistic tanh formula"
             )
 
 
 def test_s2_win_rate_tables_all_none():
-    """All S2 WR table entries must be None — forces realistic tanh fallback."""
+    """All S2 WR table entries must be None - forces realistic tanh fallback."""
     from bot_strategy import _S2_WIN_RATE
     for asset, buckets in _S2_WIN_RATE.items():
         for key, val in buckets.items():
             assert val is None, (
-                f"S2 WR {asset} bucket {key}={val} — must be None to use realistic tanh formula"
+                f"S2 WR {asset} bucket {key}={val} - must be None to use realistic tanh formula"
             )
 
 
@@ -79,28 +79,38 @@ def test_s1_lookup_conservative_baseline():
 
 
 def test_s2_lookup_conservative_baseline():
-    """S2 tanh fallback must return 55-65% — realistic for velocity signal."""
+    """S2 tanh fallback must return 55-65% - realistic for velocity signal."""
     from bot_strategy import _s2_lookup_win_rate
     wp = _s2_lookup_win_rate("ETH", 0.26, 4.0)
     assert 0.52 <= wp <= 0.65, f"ETH S2 tanh WR={wp:.3f} outside realistic 52-65% range"
 
 
-def test_s2_vel_flat_skips_below_threshold():
-    """S2 must skip when velocity delta < min_vel_delta."""
+def test_s2_skips_low_z_no_dislocation():
+    """New S2 must skip when the spot sits too close to the strike (|z| below conviction)."""
     from collections import deque
-    import bot_state
+    import time as _t
+    import asset_manager
+    from unittest.mock import patch
     from bot_strategy import strategy_brain_s2
 
-    bot_state._contract_price_history["TEST-ETH"] = deque(
-        [(0, 50.0), (1, 50.05), (2, 50.1), (3, 50.1), (4, 50.1)], maxlen=60
-    )
-    bot_state._ticker_obi["TEST-ETH"] = 0.5
-    result = strategy_brain_s2(
-        btc_price=2000, strike=2010, yes_ask=50, no_ask=51,
-        elapsed_seconds=300, secs_left=600, ticker="TEST-ETH", asset="ETH",
-    )
+    now = _t.time()
+    saved = asset_manager._prices.get("SOL")
+    try:
+        # SOL essentially AT the strike -> low z, no fair-value dislocation.
+        asset_manager._prices["SOL"] = deque(
+            [(now - (40 - i) * 2, 150.001) for i in range(40)], maxlen=2000
+        )
+        with patch("bot_strategy.read_config",
+                   return_value={"mode": "paper", "quiet_hours_enabled": False}):
+            result = strategy_brain_s2(
+                btc_price=150.001, strike=150.0, yes_ask=50, no_ask=51,
+                elapsed_seconds=300, secs_left=600, ticker="KXSOL-LOWZ", asset="SOL",
+            )
+    finally:
+        if saved is not None:
+            asset_manager._prices["SOL"] = saved
     assert result["action"] == "skip", f"Expected skip, got: {result['reasoning']}"
-    assert "s2_vel" in result["reasoning"], f"Expected vel skip: {result['reasoning']}"
+    assert "s2_fv_lowz" in result["reasoning"], f"Expected low-z skip: {result['reasoning']}"
 
 
 
@@ -124,7 +134,7 @@ def test_s1_certainty_win_prob_increases_with_less_time():
 
 
 def test_s1_certainty_win_prob_range():
-    """WR must stay in 0.50-0.85 range — no fantasy numbers."""
+    """WR must stay in 0.50-0.85 range - no fantasy numbers."""
     from bot_strategy import _s1_certainty_win_prob
     for dist in [0.001, 0.005, 0.010, 0.030]:
         for t in [60.0, 300.0, 600.0, 840.0]:
@@ -143,9 +153,9 @@ def test_certainty_win_prob_range_with_vol_multiplier():
 
 
 def test_s1_min_ev_at_least_010():
-    """S1 min_ev must be >= 0.10 — low-EV entries perform worse in trending regimes."""
+    """S1 min_ev must be >= 0.10 - low-EV entries perform worse in trending regimes."""
     for asset, cfg in _S1_ASSET_CONFIG.items():
         assert cfg["min_ev"] >= 0.10, (
-            f"{asset}: min_ev={cfg['min_ev']} < 0.10 — raises marginal trades "
+            f"{asset}: min_ev={cfg['min_ev']} < 0.10 - raises marginal trades "
             f"that evaporate in adverse regimes"
         )

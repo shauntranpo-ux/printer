@@ -15,7 +15,7 @@
 | Action | Path | Responsibility |
 |--------|------|----------------|
 | Create | `bot_stats.py` | DB queries + Telegram/terminal formatting |
-| Create | `scripts/stats_report.py` | CLI wrapper — prints stats to stdout |
+| Create | `scripts/stats_report.py` | CLI wrapper - prints stats to stdout |
 | Create | `tests/test_bot_stats.py` | Unit tests for query + format logic |
 | Modify | `bot_loops.py` | Add midnight trigger; remove 2 per-trade `send_telegram` calls |
 | Modify | `bot_market.py` | Remove 3 per-trade `send_telegram` calls |
@@ -23,7 +23,7 @@
 
 ---
 
-## Task 1: bot_stats.py — query_stats
+## Task 1: bot_stats.py - query_stats
 
 **Files:**
 - Create: `bot_stats.py`
@@ -54,7 +54,7 @@ def _make_db(trades: list[dict]) -> str:
             (t["ts"], t["strategy_variant"], t["asset"], t["outcome"], t["pnl_dollars"]),
         )
     conn.commit()
-    # bot_stats.query_stats expects a file path — monkey-patch sqlite3.connect to return our conn
+    # bot_stats.query_stats expects a file path - monkey-patch sqlite3.connect to return our conn
     return conn
 
 
@@ -128,7 +128,7 @@ Expected: `ModuleNotFoundError: No module named 'bot_stats'`
 ```python
 # bot_stats.py
 """
-bot_stats.py — Trade statistics queries and formatting.
+bot_stats.py - Trade statistics queries and formatting.
 
 query_stats(db_path, today_date) -> dict
 format_telegram(stats) -> str   (HTML for Telegram)
@@ -140,8 +140,8 @@ import sqlite3
 from collections import defaultdict
 
 _STRATEGY_LABELS = {
-    "strategy1": "S1 · EMA Momentum",
-    "strategy2": "S2 · Contract Velocity",
+    "strategy1": "S1 * EMA Momentum",
+    "strategy2": "S2 * Contract Velocity",
 }
 _SEP = "─" * 27
 
@@ -251,7 +251,7 @@ git commit -m "feat: add bot_stats.py with query_stats"
 
 ---
 
-## Task 2: bot_stats.py — format_telegram + format_terminal
+## Task 2: bot_stats.py - format_telegram + format_terminal
 
 **Files:**
 - Modify: `bot_stats.py`
@@ -260,7 +260,7 @@ git commit -m "feat: add bot_stats.py with query_stats"
 - [ ] **Step 1: Write failing tests**
 
 ```python
-# tests/test_bot_stats.py — append
+# tests/test_bot_stats.py - append
 
 def _base_stats(**overrides) -> dict:
     s = {
@@ -374,7 +374,7 @@ def format_telegram(stats: dict) -> str:
         return f"+${v:.2f}" if v >= 0 else f"-${abs(v):.2f}"
 
     lines = [
-        f"📊 <b>Daily Summary — {stats['date']}</b>",
+        f" <b>Daily Summary - {stats['date']}</b>",
         _SEP,
         f"Trades: {t}  |  WR: {wr}",
         f"P&L today: {_pstr(stats['today_pnl'])}  |  All-time: {_pstr(stats['alltime_pnl'])}",
@@ -440,7 +440,7 @@ git commit -m "feat: add format_telegram and format_terminal to bot_stats"
 ```python
 #!/usr/bin/env python3
 """
-scripts/stats_report.py — Print trade stats to stdout.
+scripts/stats_report.py - Print trade stats to stdout.
 
 Usage:
     py scripts/stats_report.py
@@ -489,7 +489,7 @@ git commit -m "feat: add scripts/stats_report.py terminal stats CLI"
 
 ---
 
-## Task 4: bot_loops.py — midnight trigger
+## Task 4: bot_loops.py - midnight trigger
 
 **Files:**
 - Modify: `bot_loops.py`
@@ -497,7 +497,7 @@ git commit -m "feat: add scripts/stats_report.py terminal stats CLI"
 - [ ] **Step 1: Write the failing test**
 
 ```python
-# tests/test_bot_stats.py — append
+# tests/test_bot_stats.py - append
 from unittest.mock import AsyncMock, patch, MagicMock
 import asyncio
 
@@ -530,8 +530,8 @@ def test_midnight_trigger_fires_once_per_day():
 
         async def run():
             await bot_loops._check_daily_stats("2026-05-07")
-            await bot_loops._check_daily_stats("2026-05-07")  # same day — no second send
-            await bot_loops._check_daily_stats("2026-05-08")  # new day — fires again
+            await bot_loops._check_daily_stats("2026-05-07")  # same day - no second send
+            await bot_loops._check_daily_stats("2026-05-08")  # new day - fires again
 
         asyncio.run(run())
 
@@ -613,14 +613,14 @@ git commit -m "feat: add midnight daily stats Telegram trigger to main_loop"
 
 ---
 
-## Task 5: Remove per-trade Telegram calls — bot_market.py
+## Task 5: Remove per-trade Telegram calls - bot_market.py
 
 **Files:**
 - Modify: `bot_market.py`
 
 Remove three `send_telegram` call blocks. For each: delete the block and any variable setup lines that exist solely to build the message (i.e., `_placed_ctx`, `_failed_ctx`, `_nofill_ctx` and their associated `_notify_ctx(...)` calls). Keep `log.info` lines.
 
-- [ ] **Step 1: Remove ORDER PLACED block (lines 970–978)**
+- [ ] **Step 1: Remove ORDER PLACED block (lines 970-978)**
 
 Find and delete this block in `bot_market.py`:
 
@@ -644,7 +644,7 @@ Also delete the preceding setup lines that only fed this block:
 
 Keep the `log.info(f"[live] market...")` line that follows.
 
-- [ ] **Step 2: Remove ORDER FAILED block (lines 1044–1052)**
+- [ ] **Step 2: Remove ORDER FAILED block (lines 1044-1052)**
 
 Find and delete this block:
 
@@ -662,7 +662,7 @@ Find and delete this block:
 
 Keep the `break` that follows.
 
-- [ ] **Step 3: Remove ORDER NOT FILLED block (lines 1170–1178)**
+- [ ] **Step 3: Remove ORDER NOT FILLED block (lines 1170-1178)**
 
 Find and delete this block:
 
@@ -697,13 +697,13 @@ git commit -m "refactor: remove per-trade Telegram pings from bot_market.py"
 
 ---
 
-## Task 6: Remove per-trade Telegram calls — bot_loops.py and bot_risk.py
+## Task 6: Remove per-trade Telegram calls - bot_loops.py and bot_risk.py
 
 **Files:**
 - Modify: `bot_loops.py`
 - Modify: `bot_risk.py`
 
-- [ ] **Step 1: Remove S2 ORDER FILLED notification from bot_loops.py (lines 529–536)**
+- [ ] **Step 1: Remove S2 ORDER FILLED notification from bot_loops.py (lines 529-536)**
 
 Find and delete this block (the `_fill_ctx` setup lines and the `send_telegram` call):
 
@@ -713,8 +713,8 @@ Find and delete this block (the `_fill_ctx` setup lines and the `send_telegram` 
         _phase_for_eth(asset, elapsed),
     )
     await send_telegram(
-        f"<b>🔵 [S2 D3 Hybrid] {_fill_ctx} {mode_icon} {_strat_tag}</b>  —  {_time_str}\n"
-        f"<b>{side.upper()} — {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
+        f"<b> [S2 D3 Hybrid] {_fill_ctx} {mode_icon} {_strat_tag}</b>  -  {_time_str}\n"
+        f"<b>{side.upper()} - {'UP' if side == 'yes' else 'DOWN'}</b>  {contracts} contracts @ <b>{fill_price}c</b>\n"
         f"Cost: ${_cost:.2f}  |  Max payout: ${_payout:.2f}\n"
         f"Win prob: {_win_pct}%  |  EV: {_ev_str}\n"
         f"Strike: ${strike:,.0f}  |  {asset}: ${btc_price:,.0f}\n"
@@ -739,7 +739,7 @@ and:
 
 Keep `_time_str`, `_expiry_dt`, `_expiry_str`, `_cost`, `_payout`, `_win_pct`, `_ev_str` only if they are used elsewhere in the same function. If not used after the deletion, remove them too.
 
-- [ ] **Step 2: Remove S2 trade close notification from bot_loops.py (lines 676–685)**
+- [ ] **Step 2: Remove S2 trade close notification from bot_loops.py (lines 676-685)**
 
 Find and delete this block:
 
@@ -749,16 +749,16 @@ Find and delete this block:
             _phase_for_eth(asset, pos.get("elapsed_at_entry", 0)),
         )
         await send_telegram(
-            f"<b>🔵 [S2 D3 Hybrid] {_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  —  {_time_str}\n"
+            f"<b> [S2 D3 Hybrid] {_close_ctx} {mode_icon} {outcome_str}  {pnl_str}  ({pct_str})</b>  -  {_time_str}\n"
             f"{pos['side'].upper()}  {pos['contracts']} contracts  |  held {_dur_str}\n"
             f"Entry: {pos['entry_price_cents']}c  ->  Expiry: {exit_price}c\n"
             f"{asset}: ${btc_price:,.0f}  vs  Strike: ${pos['strike']:,.0f}"
         )
 ```
 
-Keep the `await _settle_s1_trade(...)` and `return` that follow. Keep `_cl_ctx` / consecutive-losses block (lines 659–665) — that is a critical alert, not a per-trade ping.
+Keep the `await _settle_s1_trade(...)` and `return` that follow. Keep `_cl_ctx` / consecutive-losses block (lines 659-665) - that is a critical alert, not a per-trade ping.
 
-- [ ] **Step 3: Remove S1 ORDER FILLED notification from bot_risk.py (lines 454–461)**
+- [ ] **Step 3: Remove S1 ORDER FILLED notification from bot_risk.py (lines 454-461)**
 
 Find and delete this block:
 
@@ -775,7 +775,7 @@ Find and delete this block:
 
 Keep the preceding `log.info(...)` line.
 
-- [ ] **Step 4: Remove S1 outcome notification from bot_risk.py (lines 511–516)**
+- [ ] **Step 4: Remove S1 outcome notification from bot_risk.py (lines 511-516)**
 
 Find and delete this block:
 
@@ -817,18 +817,18 @@ git commit -m "refactor: remove per-trade Telegram pings from bot_loops and bot_
 ## Self-Review
 
 **Spec coverage:**
-- ✅ `bot_stats.py` with `query_stats`, `format_telegram`, `format_terminal` — Tasks 1–2
-- ✅ `scripts/stats_report.py` CLI — Task 3
-- ✅ Midnight trigger `_check_daily_stats` in `main_loop` — Task 4
-- ✅ `bot_market.py` 3 removals — Task 5
-- ✅ `bot_loops.py` 2 removals — Task 6
-- ✅ `bot_risk.py` 2 removals — Task 6
-- ✅ Kept: consecutive-losses warning (bot_loops 663), fill verification (bot_infra 462), loss limit (bot_risk 98/107), preflight (bot_risk 785), runner crash alerts
-- ✅ DB unavailable → no crash (try/except in query_stats)
-- ✅ No trades today → "No trades today" shown
-- ✅ `last_trade_ts=None` → "never"
-- ✅ Strategy sections hidden when zero today trades
+-  `bot_stats.py` with `query_stats`, `format_telegram`, `format_terminal` - Tasks 1-2
+-  `scripts/stats_report.py` CLI - Task 3
+-  Midnight trigger `_check_daily_stats` in `main_loop` - Task 4
+-  `bot_market.py` 3 removals - Task 5
+-  `bot_loops.py` 2 removals - Task 6
+-  `bot_risk.py` 2 removals - Task 6
+-  Kept: consecutive-losses warning (bot_loops 663), fill verification (bot_infra 462), loss limit (bot_risk 98/107), preflight (bot_risk 785), runner crash alerts
+-  DB unavailable -> no crash (try/except in query_stats)
+-  No trades today -> "No trades today" shown
+-  `last_trade_ts=None` -> "never"
+-  Strategy sections hidden when zero today trades
 
 **Placeholder scan:** None found.
 
-**Type consistency:** `query_stats` returns dict with `by_strategy_asset` keyed by `(str, str)` tuples. `format_telegram` iterates `stats["by_strategy_asset"].items()` — consistent across Tasks 1 and 2. `_check_daily_stats` passes `today: str` and mutates `_last_stats_date: str` — consistent.
+**Type consistency:** `query_stats` returns dict with `by_strategy_asset` keyed by `(str, str)` tuples. `format_telegram` iterates `stats["by_strategy_asset"].items()` - consistent across Tasks 1 and 2. `_check_daily_stats` passes `today: str` and mutates `_last_stats_date: str` - consistent.

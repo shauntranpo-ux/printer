@@ -5,10 +5,10 @@
 **Goal:** Consolidate the current 11-module split into 6 focused modules with clear `__all__` interfaces, deleting 7 intermediate files.
 
 **Architecture:**
-- `bot_infra.py` ← merges bot_config + bot_db + bot_notify (infrastructure bundle)
-- `bot_market.py` ← merges bot_kalshi + bot_orders (Kalshi API + order layer)
-- `bot_risk.py` ← expands to absorb bot_trade + bot_preflight (risk + trading + preflight)
-- `bot_strategy.py`, `bot_loops.py`, `bot_state.py`, `bot.py` — import updates only
+- `bot_infra.py` <- merges bot_config + bot_db + bot_notify (infrastructure bundle)
+- `bot_market.py` <- merges bot_kalshi + bot_orders (Kalshi API + order layer)
+- `bot_risk.py` <- expands to absorb bot_trade + bot_preflight (risk + trading + preflight)
+- `bot_strategy.py`, `bot_loops.py`, `bot_state.py`, `bot.py` - import updates only
 
 **Worktree:** `C:\Users\alxnt\.config\superpowers\worktrees\kalshi-bot\refactor-module-consolidation`
 **Branch:** `refactor/module-consolidation`
@@ -17,13 +17,13 @@
 
 **Final dependency graph (no circular imports):**
 ```
-bot_state  ← leaf
-bot_infra  → bot_state
-bot_market → bot_state, bot_infra
-bot_strategy → bot_state, bot_infra
-bot_risk   → bot_state, bot_infra, bot_market, bot_strategy
-bot_loops  → bot_state, bot_infra, bot_market, bot_strategy, bot_risk, asset_manager
-bot.py     → bot_loops, bot_infra, bot_state, obi_monitor, asset_manager
+bot_state  <- leaf
+bot_infra  -> bot_state
+bot_market -> bot_state, bot_infra
+bot_strategy -> bot_state, bot_infra
+bot_risk   -> bot_state, bot_infra, bot_market, bot_strategy
+bot_loops  -> bot_state, bot_infra, bot_market, bot_strategy, bot_risk, asset_manager
+bot.py     -> bot_loops, bot_infra, bot_state, obi_monitor, asset_manager
 ```
 
 ---
@@ -34,14 +34,14 @@ bot.py     → bot_loops, bot_infra, bot_state, obi_monitor, asset_manager
 - Create: `bot_infra.py`
 - No other files change in this task
 
-This task merges three modules into one. The old modules remain — they still exist and still work — so all 606 tests continue to pass. No other file imports bot_infra yet.
+This task merges three modules into one. The old modules remain - they still exist and still work - so all 606 tests continue to pass. No other file imports bot_infra yet.
 
 - [ ] **Step 1: Write bot_infra.py**
 
 Create `C:\Users\alxnt\.config\superpowers\worktrees\kalshi-bot\refactor-module-consolidation\bot_infra.py` with this exact content (concatenation of bot_config, bot_db, bot_notify with merged imports):
 
 ```python
-"""bot_infra.py — Infrastructure bundle: config, database, and Telegram notifications.
+"""bot_infra.py - Infrastructure bundle: config, database, and Telegram notifications.
 
 Public interface (see __all__):
   Config:  atomic_write_json, read_config, write_config, get_asset_config, _init_config
@@ -77,9 +77,7 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
 # Config
-# ---------------------------------------------------------------------------
 
 def atomic_write_json(data: dict, path: str) -> None:
     """
@@ -134,7 +132,7 @@ def write_config(data: dict) -> None:
 
 
 def get_asset_config(config: dict, asset: str, field: str, default=None):
-    """Get config value — asset override if present, else global value, else default."""
+    """Get config value - asset override if present, else global value, else default."""
     overrides = config.get("asset_overrides", {}).get(asset, {})
     if field in overrides:
         return overrides[field]
@@ -147,7 +145,7 @@ def _init_config() -> None:
 
     Set BOT_MODE=live and BOT_ENABLED=true in Railway environment variables
     so live mode survives every redeploy without manual editing.
-    Daily loss limits still work — they set bot_state.limit_triggered in memory which
+    Daily loss limits still work - they set bot_state.limit_triggered in memory which
     is checked independently of the mode flag.
     """
     defaults = {
@@ -193,9 +191,7 @@ def _init_config() -> None:
     log.info(f"Config ready: mode={cfg['mode']} enabled={cfg['bot_enabled']}")
 
 
-# ---------------------------------------------------------------------------
 # Database
-# ---------------------------------------------------------------------------
 
 def init_db() -> None:
     """Create the database and all required tables if they do not exist."""
@@ -346,7 +342,7 @@ def test_db_write() -> None:
     except Exception as exc:
         log.error(f"DB self-test FAILED: {exc}")
         log.error(f"DB path: {os.path.abspath(bot_state._DB_FILE)}")
-        log.error("Cannot write trades — halting to prevent silent data loss.")
+        log.error("Cannot write trades - halting to prevent silent data loss.")
         sys.exit(2)
 
 
@@ -442,9 +438,7 @@ async def db_get_today_pnl(mode: str) -> float:
         return 0.0
 
 
-# ---------------------------------------------------------------------------
 # Notifications
-# ---------------------------------------------------------------------------
 
 def _phase_for_eth(asset, elapsed_seconds):
     """Return ETH hourly window-phase label ('Mid'/'Dwell'/'Late') or None."""
@@ -484,17 +478,17 @@ async def _maybe_fill_verification_notify(
     _ask = market_ask_at_post_c
     _posted = price_this_attempt
     _filled = fill_yes_price
-    _target_str = f"{int(round(_target))}¢" if _target is not None else "—"
-    _ask_str    = f"{int(round(_ask))}¢"    if _ask    is not None else "—"
-    _posted_str = f"{int(round(_posted))}¢" if _posted is not None else "—"
+    _target_str = f"{int(round(_target))}¢" if _target is not None else "-"
+    _ask_str    = f"{int(round(_ask))}¢"    if _ask    is not None else "-"
+    _posted_str = f"{int(round(_posted))}¢" if _posted is not None else "-"
     _filled_str = f"{int(round(_filled))}¢"
     if _target is not None:
         _slip_target = int(round(_filled - _target))
         _slip_target_str = f"{_slip_target:+d}¢ vs target"
-        _warn = "⚠️ " if abs(_slip_target) > 3 else "🎯 "
+        _warn = " " if abs(_slip_target) > 3 else " "
     else:
         _slip_target_str = "n/a vs target"
-        _warn = "🎯 "
+        _warn = " "
     _slip_market_str = (
         f"{int(round(_filled - _ask)):+d}¢ vs market" if _ask is not None else "n/a vs market"
     )
@@ -516,7 +510,7 @@ async def send_telegram(text: str) -> None:
     url = f"https://api.telegram.org/bot{bot_state.TELEGRAM_BOT_TOKEN}/sendMessage"
     for attempt in range(1, 4):
         try:
-            log.info(f"Telegram: sending (attempt {attempt}/3)…")
+            log.info(f"Telegram: sending (attempt {attempt}/3)...")
             async with aiohttp.ClientSession() as tg:
                 async with tg.post(
                     url,
@@ -528,15 +522,15 @@ async def send_telegram(text: str) -> None:
                         log.info("Telegram: sent OK")
                         return
                     elif resp.status == 429:
-                        log.warning(f"Telegram: rate-limited (429) — attempt {attempt}/3, retrying…")
+                        log.warning(f"Telegram: rate-limited (429) - attempt {attempt}/3, retrying...")
                     else:
-                        log.warning(f"Telegram: HTTP {resp.status} — {body}")
+                        log.warning(f"Telegram: HTTP {resp.status} - {body}")
                         return
         except Exception as exc:
-            log.warning(f"Telegram: error on attempt {attempt}/3 — {exc}")
+            log.warning(f"Telegram: error on attempt {attempt}/3 - {exc}")
         if attempt < 3:
             await asyncio.sleep(2)
-    log.error("Telegram: failed after 3 attempts — notification dropped")
+    log.error("Telegram: failed after 3 attempts - notification dropped")
 ```
 
 - [ ] **Step 2: Run tests**
@@ -544,7 +538,7 @@ async def send_telegram(text: str) -> None:
 ```
 py -3 -m pytest tests/ -x -q
 ```
-Expected: 606 passed (bot_infra exists but nobody imports it yet — old modules unchanged)
+Expected: 606 passed (bot_infra exists but nobody imports it yet - old modules unchanged)
 
 - [ ] **Step 3: Commit**
 
@@ -561,7 +555,7 @@ git commit -m "refactor: create bot_infra.py (merges bot_config + bot_db + bot_n
 - Create: `bot_market.py`
 - No other files change in this task
 
-This task merges bot_kalshi + bot_orders into one file. The merged file references `bot_infra` instead of `bot_notify`/`bot_config`. Old modules remain — tests still pass. Nothing imports bot_market yet.
+This task merges bot_kalshi + bot_orders into one file. The merged file references `bot_infra` instead of `bot_notify`/`bot_config`. Old modules remain - tests still pass. Nothing imports bot_market yet.
 
 - [ ] **Step 1: Read current bot_kalshi.py and bot_orders.py in full**
 
@@ -571,9 +565,9 @@ Read both files completely. Note all functions and any internal cross-references
 
 Create `bot_market.py` with this structure:
 
-Header (merged imports — all the imports from both files, deduplicated):
+Header (merged imports - all the imports from both files, deduplicated):
 ```python
-"""bot_market.py — Kalshi API layer: auth, market data, order placement, contract math.
+"""bot_market.py - Kalshi API layer: auth, market data, order placement, contract math.
 
 Public interface (see __all__):
   Auth:    load_credentials, kalshi_headers
@@ -623,9 +617,9 @@ __all__ = [
 Then paste the COMPLETE body of bot_kalshi.py (all functions after its imports), followed by the COMPLETE body of bot_orders.py (all functions after its imports).
 
 Key import updates in the merged body:
-- bot_orders.py had `from bot_kalshi import kalshi_headers, fetch_orderbook, seconds_elapsed` — these are now in the same file, so remove that import line (functions are already defined above in the same module)
-- bot_orders.py had `from bot_notify import send_telegram, _maybe_fill_verification_notify, _phase_for_eth, _notify_ctx` — replace with `from bot_infra import ...` (already in the file header's `from bot_infra import` block)
-- bot_kalshi.py had `from bot_config import read_config, write_config` — replace with `from bot_infra import read_config, write_config` (already in the file header)
+- bot_orders.py had `from bot_kalshi import kalshi_headers, fetch_orderbook, seconds_elapsed` - these are now in the same file, so remove that import line (functions are already defined above in the same module)
+- bot_orders.py had `from bot_notify import send_telegram, _maybe_fill_verification_notify, _phase_for_eth, _notify_ctx` - replace with `from bot_infra import ...` (already in the file header's `from bot_infra import` block)
+- bot_kalshi.py had `from bot_config import read_config, write_config` - replace with `from bot_infra import read_config, write_config` (already in the file header)
 
 - [ ] **Step 3: Run tests**
 
@@ -736,7 +730,7 @@ Append all functions from bot_preflight.py after the bot_trade functions. Do NOT
 ```
 py -3 -m pytest tests/ -x -q
 ```
-Expected: 606 passed (bot_loops still imports from bot_trade, bot_preflight, bot_config, etc. — all old modules still exist)
+Expected: 606 passed (bot_loops still imports from bot_trade, bot_preflight, bot_config, etc. - all old modules still exist)
 
 - [ ] **Step 7: Commit**
 
@@ -867,7 +861,7 @@ git commit -m "refactor: bot_loops.py uses bot_infra + bot_market (consolidated 
 
 bot.py currently imports from bot_config, bot_db, bot_notify, bot_kalshi, bot_preflight. Switch to bot_infra, bot_market, bot_risk.
 
-- [ ] **Step 1: Read bot.py (full file — it's ~146 lines)**
+- [ ] **Step 1: Read bot.py (full file - it's ~146 lines)**
 
 - [ ] **Step 2: Replace import block**
 

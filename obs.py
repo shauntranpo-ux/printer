@@ -1,5 +1,5 @@
 """
-obs.py — Observability helpers: structured JSON logging + error ring buffer.
+obs.py - Observability helpers: structured JSON logging + error ring buffer.
 
 Usage:
     import obs

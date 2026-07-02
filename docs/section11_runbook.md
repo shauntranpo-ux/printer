@@ -5,7 +5,7 @@
 - [ ] Verify Railway paper-validation environment is deployed
 - [ ] Verify bot is running (Railway logs show price feeds, no crashes)
 - [ ] Run `python scripts\section11_monitor.py --db kalshi_paper_validation.db`
-      (may show empty trades table — normal, just confirm DB is reachable)
+      (may show empty trades table - normal, just confirm DB is reachable)
 - [ ] Record deploy timestamp in a note
 
 ## Daily (morning + evening check)
@@ -15,7 +15,7 @@
       total_trades, total_pnl, win_rate per asset
 - [ ] Verify bot heartbeat (timestamp of most recent log line
       5 minutes ago)
-- [ ] Check Kalshi account for unexpected orders (safety check —
+- [ ] Check Kalshi account for unexpected orders (safety check -
       paper mode should NEVER place real orders)
 
 ## T+7 (mid-point check)
@@ -41,12 +41,12 @@
 - **Bot crashes repeatedly**: check Railway logs for the traceback.
   Common causes: Solana RPC rate-limiting (non-fatal, will cache),
   Kalshi API token expiry, database lock contention. Fix and redeploy
-  — do NOT lose the accumulated paper data by wiping the DB.
+  - do NOT lose the accumulated paper data by wiping the DB.
 
 - **Bot stops firing trades for 24+ hours across all assets**: check
   Kalshi API connectivity, check config flags, check price feed health.
   If the bot is healthy but skipping everything, Min EV may still be
-  too tight — NOTE for Section 12, don't fix in-flight.
+  too tight - NOTE for Section 12, don't fix in-flight.
 
 - **Unexpected live trade detected**: EMERGENCY. Pause the bot
   immediately (Railway UI: stop the service). Reconcile Kalshi account

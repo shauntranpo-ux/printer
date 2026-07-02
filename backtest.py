@@ -26,9 +26,7 @@ from datetime import datetime, timezone
 import numpy as np
 import pandas as pd
 
-# -----------------------------------------------------------------------------
 # Config
-# -----------------------------------------------------------------------------
 CSV_PATH  = r'C:\Users\alxnt\Downloads\d5ae29c4-33c6-11f1-b1e7-6dda37cfa7b9\binance_api_BTCUSDT_1m.csv'
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH   = os.path.join(_BASE_DIR, "kalshi_bot.db")
@@ -59,9 +57,7 @@ def _get_csv_path(asset: str) -> str:
     return standard  # caller will error clearly if missing
 
 
-# -----------------------------------------------------------------------------
 # Split config helpers (reads data/split_config.json written by data/splitter.py)
-# -----------------------------------------------------------------------------
 
 def _load_split_cfg() -> dict | None:
     """Return the train/OOS split config, or None if not yet generated."""
@@ -127,11 +123,9 @@ def _load_best_params() -> dict:
         }
     return {"min_ev": 0.30, "vol_threshold": 1.80}
 
-# -----------------------------------------------------------------------------
 # Empirical win-probability tables -- loaded from bv3_tables/*.json
 # Pre-2023 tables are used to avoid data leakage in backtesting.
 # Falls back to the hardcoded BTC table when no JSON file is present.
-# -----------------------------------------------------------------------------
 _BV3_TABLE = [
     # 1min   2min   3min   4min   5min   6min   7min   8min   9min  10min  11min  12min  13min
     [0.850, 0.796, 0.758, 0.727, 0.705, 0.686, 0.672, 0.656, 0.639, 0.624, 0.606, 0.595, 0.578],  # 0.0-0.1%
@@ -198,9 +192,7 @@ def _empirical_win_prob(abs_pct: float, mins_left: float, asset: str = "BTC") ->
     return row[t_low] + (row[t_high] - row[t_low]) * frac
 
 
-# -----------------------------------------------------------------------------
 # AMM price simulator
-# -----------------------------------------------------------------------------
 
 def simulate_amm_prices(btc_price: float, strike: float, rng: random.Random) -> tuple[float, float]:
     """
@@ -239,9 +231,7 @@ def simulate_amm_prices(btc_price: float, strike: float, rng: random.Random) -> 
 
 
 
-# -----------------------------------------------------------------------------
 # Brain decision (stateless replica of printer_brain from bot.py)
-# -----------------------------------------------------------------------------
 
 def brain_decide(
     btc_price: float,
@@ -394,9 +384,7 @@ def brain_decide_simple(
     }
 
 
-# -----------------------------------------------------------------------------
 # Main backtest
-# -----------------------------------------------------------------------------
 
 def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True,
               mode: str = "train", asset: str = "BTC"):
@@ -496,7 +484,7 @@ def load_data(start_year: int = 2020, end_year: int = 9999, verbose: bool = True
                include_groups=False)
     )
 
-    # -- Apply train / OOS split -----------------------------------------------
+    # Apply train / OOS split
     if mode != "full":
         cfg = _load_split_cfg()
         _split_valid = cfg is not None and "train_start_ts" in cfg and "oos_start_ts" in cfg
@@ -579,14 +567,14 @@ def run_backtest(
     if asset not in _bv3_by_asset:
         _bv3_by_asset[asset] = _load_bv3_for_asset(asset)
 
-    # -- Load data (or use pre-loaded) -----------------------------------------
+    # Load data (or use pre-loaded)
     if _windows is None or _price_lookup is None:
         windows, price_lookup = load_data(start_year, end_year=end_year, verbose=verbose, asset=asset)
     else:
         windows      = _windows
         price_lookup = _price_lookup
 
-    # -- Simulation loop -------------------------------------------------------
+    # Simulation loop
     trades         = []
     skipped        = 0
     total_windows  = len(windows)
@@ -622,7 +610,7 @@ def run_backtest(
             mins_left = float(15 - minute)
             _above    = btc > strike
 
-            # -- Vol gate (mirrors bot.py realized vol gate) ------------------
+            # Vol gate (mirrors bot.py realized vol gate)
             # FIX: Original code used only prices from minute 0..`minute`
             # within the current window. At minute 2, that's 3 data points --
             # too few for a stable std estimate and ignores prior-window vol.
@@ -677,7 +665,7 @@ def run_backtest(
             if brain["action"] != "trade":
                 continue
 
-            # -- Entry ---------------------------------------------------------
+            # Entry
             side       = brain["side"]
             entry_c    = brain["entry_c"]
             win_prob   = brain["win_prob"]
@@ -688,7 +676,7 @@ def run_backtest(
 
             exit_reason = "expiry"
 
-            # -- Expiry outcome - hold to settlement, no stop loss -------------
+            # Expiry outcome - hold to settlement, no stop loss
             above_at_close = final_close > strike
             won = (side == "yes" and above_at_close) or \
                   (side == "no"  and not above_at_close)
@@ -721,11 +709,11 @@ def run_backtest(
         if not trade_placed:
             skipped += 1
 
-    # -- Expose trades for stress testing -------------------------------------
+    # Expose trades for stress testing
     if _trades_out is not None:
         _trades_out.extend(trades)
 
-    # -- Statistics ------------------------------------------------------------
+    # Statistics
     if not trades:
         print("No trades placed. Try reducing --ev threshold.")
         return {}
@@ -772,7 +760,7 @@ def run_backtest(
         mu  = sum(pnls) / len(pnls)
         var = sum((p - mu) ** 2 for p in pnls) / (len(pnls) - 1)
         sd  = math.sqrt(var)
-        # Per-trade Sharpe: no annualization multiplier -- honest baseline
+        # Per-trade Sharpe: no annualization multiplier
         sharpe_per_trade = (mu / sd) if sd > 0 else 0.0
         # Annualised Sharpe: inflated by sqrt35040 (each 15-min slot/year).
         # WARNING: this number is misleading -- use sharpe_per_trade for realistic assessment.
@@ -854,9 +842,7 @@ def run_backtest(
     return result
 
 
-# -----------------------------------------------------------------------------
 # DB writer
-# -----------------------------------------------------------------------------
 
 def write_to_db(r: dict, start_year: int) -> None:
     conn = sqlite3.connect(DB_PATH)
@@ -915,9 +901,7 @@ def write_to_db(r: dict, start_year: int) -> None:
     conn.close()
 
 
-# -----------------------------------------------------------------------------
 # Report printer
-# -----------------------------------------------------------------------------
 
 def print_report(r: dict) -> None:
     if not r:
@@ -930,7 +914,7 @@ def print_report(r: dict) -> None:
     _asset_r = r.get("asset", "BTC")
     _pre23_path = os.path.join(_BV3_DIR, f"{_asset_r}_bv3_pre2023.json")
     if os.path.exists(_pre23_path):
-        print(f"  [OK] BV3 table: pre-2023 data only -- honest out-of-sample baseline.")
+        print(f"  [OK] BV3 table: pre-2023 data only (out-of-sample baseline).")
     else:
         print(f"  [!!] WARNING: BV3 table built on 2017-2026 data -- OOS period NOT clean.")
         print(f"     Run: python generate_bv3_table.py --asset {_asset_r}")
@@ -949,7 +933,7 @@ def print_report(r: dict) -> None:
     print(f"  Max drawdown      : {r['max_drawdown_percent']:>9.1f}%")
     spt = r.get("sharpe_per_trade", 0.0)
     print(f"  Sharpe (annlzd)   : {r['sharpe_ratio']:>10.3f}  <- inflated by sqrt35040")
-    print(f"  Sharpe (per-trade): {spt:>10.4f}  <- use this for honest assessment")
+    print(f"  Sharpe (per-trade): {spt:>10.4f}")
     print(f"  NOTE: Per-slot annualized Sharpe is inflated by sqrt35040 multiplier.")
     print(f"        Use per-trade or daily Sharpe for realistic assessment.")
     if spt > 3.0:
@@ -967,9 +951,7 @@ def print_report(r: dict) -> None:
     print("=" * W)
 
 
-# -----------------------------------------------------------------------------
 # Reality check -- always-on block, cannot be disabled
-# -----------------------------------------------------------------------------
 
 def print_reality_check(r: dict) -> None:
     """
@@ -1043,7 +1025,7 @@ def print_reality_check(r: dict) -> None:
     _asset_rc = r.get("asset", "BTC")
     _pre23_path_rc = os.path.join(_BV3_DIR, f"{_asset_rc}_bv3_pre2023.json")
     if os.path.exists(_pre23_path_rc):
-        print(f"BV3 data leakage:             NO  -- pre-2023 table used (honest baseline)")
+        print(f"BV3 data leakage:             NO  -- pre-2023 table used")
     else:
         print(f"BV3 data leakage:             YES -- OOS metrics unreliable (generate pre-2023 table)")
     if price_validated:
@@ -1088,9 +1070,7 @@ def print_reality_check(r: dict) -> None:
     print(BORDER)
 
 
-# -----------------------------------------------------------------------------
 # EV sweep - test multiple thresholds and rank them
-# -----------------------------------------------------------------------------
 
 def run_sweep(start_year: int, trade_amount: float) -> None:
     thresholds = [0.05, 0.10, 0.12, 0.15, 0.18, 0.20, 0.25, 0.30]
@@ -1135,9 +1115,7 @@ def run_sweep(start_year: int, trade_amount: float) -> None:
         print_reality_check(sorted_results[0])
 
 
-# -----------------------------------------------------------------------------
 # Monte Carlo parameter search
-# -----------------------------------------------------------------------------
 
 MONTE_CARLO_OUT = os.path.join(_BASE_DIR, "monte_carlo_results.json")
 
@@ -1294,9 +1272,7 @@ def _print_mc_summary(top20: list) -> None:
     print(f"\n  Full results saved to : {MONTE_CARLO_OUT}")
 
 
-# -----------------------------------------------------------------------------
 # OOS evaluation
-# -----------------------------------------------------------------------------
 
 def run_oos_eval(start_year: int = 2020, trade_amount: float = 5.0,
                  custom_ev: float | None = None,
@@ -1470,9 +1446,7 @@ def _save_oos_report(train_r: dict, oos_r: dict,
     print(f"  Report saved to: {OOS_REPORT_PATH}")
 
 
-# -----------------------------------------------------------------------------
 # Period comparison -- runs the current live strategy across multiple date ranges
-# -----------------------------------------------------------------------------
 
 def run_period_comparison(trade_amount: float = 25.0) -> None:
     """
@@ -1526,7 +1500,7 @@ def run_period_comparison(trade_amount: float = 25.0) -> None:
     if not results:
         return
 
-    # == Annotate computed fields =============================================
+    # Annotate computed fields
     for r in results:
         t = r.get("total_trades", 0)
         w = r.get("total_windows", 1)
@@ -1535,7 +1509,7 @@ def run_period_comparison(trade_amount: float = 25.0) -> None:
         # Annualised: 96 windows/day x 365 days = 35,040 slots/year
         r["_ann_pnl"] = r["_pnl_per_trade"] * 35040 if t else 0
 
-    # == Side-by-side summary =================================================
+    # Side-by-side summary
     W = 78
     print("\n\n" + "=" * W)
     print("  PERIOD COMPARISON  --  current live strategy params")
@@ -1573,9 +1547,7 @@ def run_period_comparison(trade_amount: float = 25.0) -> None:
     print()
 
 
-# -----------------------------------------------------------------------------
 # Entry point
-# -----------------------------------------------------------------------------
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -1769,5 +1741,5 @@ if __name__ == "__main__":
             _cwr = combined_wins / combined_trades * 100 if combined_trades else 0
             print(f"  {'TOTAL':<8}  {combined_trades:>7,}  {_cwr:>5.1f}%  ${combined_pnl:>9,.2f}")
             print()
-            print("NOTE: Uses pre-2023 BV3 tables for all assets -- honest out-of-sample baseline.")
+            print("Uses pre-2023 BV3 tables for all assets (out-of-sample baseline).")
             print(f"{'='*70}")

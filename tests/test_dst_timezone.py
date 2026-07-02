@@ -28,5 +28,5 @@ def test_zoneinfo_imported_in_bot_strategy():
     """ZoneInfo must be importable from bot_strategy module."""
     src = pathlib.Path("bot_strategy.py").read_text()
     assert 'from zoneinfo import ZoneInfo' in src, (
-        "ZoneInfo not found in bot_strategy.py — add 'from zoneinfo import ZoneInfo' to imports."
+        "ZoneInfo not found in bot_strategy.py - add 'from zoneinfo import ZoneInfo' to imports."
     )

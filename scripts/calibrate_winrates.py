@@ -32,11 +32,11 @@ import requests
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
-# ── Kalshi API constants ──────────────────────────────────────────────────────
+# Kalshi API constants
 KALSHI_BASE_URL    = "https://api.elections.kalshi.com/trade-api/v2"
 KALSHI_PATH_PREFIX = "/trade-api/v2"
 
-# Candidate series tickers per asset — tried in order until one returns markets
+# Candidate series tickers per asset - tried in order until one returns markets
 KALSHI_SERIES = {
     "BTC":  ["KXBTC15M", "KXBTCD", "BTCD-B"],
     "ETH":  ["KXETH15M", "KXETHD"],
@@ -45,7 +45,7 @@ KALSHI_SERIES = {
     "DOGE": ["KXDOGE15M", "KXDOGED"],
 }
 
-# ── Binance API constants ─────────────────────────────────────────────────────
+# Binance API constants
 BINANCE_BASE_URL = "https://api.binance.us"  # binance.com blocks US IPs (451); .us same API
 BINANCE_SYMBOLS  = {
     "BTC":  "BTCUSDT",
@@ -55,7 +55,7 @@ BINANCE_SYMBOLS  = {
     "DOGE": "DOGEUSDT",
 }
 
-# ── Per-asset config — KEEP IN SYNC WITH bot_strategy.py ─────────────────────
+# Per-asset config - KEEP IN SYNC WITH bot_strategy.py
 S1_ASSET_CONFIG = {
     "BTC":  dict(min_dist=0.0025, ema_short=3, ema_long=10),
     "ETH":  dict(min_dist=0.0030, ema_short=3, ema_long=10),
@@ -71,7 +71,7 @@ S2_ASSET_CONFIG = {
     "DOGE": dict(min_dist=0.0100, min_vel_delta=1.50, vel_lookback=3),
 }
 
-MIN_SAMPLES     = 50   # buckets below this get None → bot falls back to tanh
+MIN_SAMPLES     = 50   # buckets below this get None -> bot falls back to tanh
 CALIBRATE_DAYS  = int(os.environ.get("CALIBRATE_DAYS", "30"))
 
 
@@ -87,7 +87,7 @@ def _binance_get(path: str, params: dict) -> dict:
         r = requests.get(url, params=params, timeout=15)
         if r.status_code == 429:
             wait = int(r.headers.get("Retry-After", 2 ** attempt))
-            _log(f"  Binance 429 — sleeping {wait}s")
+            _log(f"  Binance 429 - sleeping {wait}s")
             time.sleep(wait)
             continue
         r.raise_for_status()
@@ -146,13 +146,13 @@ def _kalshi_get(path: str, params: dict, key_id: str, private_key) -> dict:
             time.sleep(2 ** attempt)
             continue
         if r.status_code == 401:
-            raise RuntimeError("Kalshi 401 — check KALSHI_API_KEY and KALSHI_PRIVATE_KEY")
+            raise RuntimeError("Kalshi 401 - check KALSHI_API_KEY and KALSHI_PRIVATE_KEY")
         r.raise_for_status()
         return r.json()
     raise RuntimeError(f"Kalshi {path} failed after retries")
 
 
-# ── Binance data fetch ────────────────────────────────────────────────────────
+# Binance data fetch
 
 def fetch_binance_1m(symbol: str, days: int) -> list:
     """
@@ -185,7 +185,7 @@ def fetch_binance_1m(symbol: str, days: int) -> list:
     return result
 
 
-# ── EMA helper ────────────────────────────────────────────────────────────────
+# EMA helper
 
 def _compute_ema(values: list) -> float:
     """Standard EMA over a list of floats, newest value last."""
@@ -198,7 +198,7 @@ def _compute_ema(values: list) -> float:
     return v
 
 
-# ── S1 simulation ─────────────────────────────────────────────────────────────
+# S1 simulation
 
 S1_ENTRY_OFFSETS = [3, 5, 7, 10, 12]  # minutes remaining before expiry
 
@@ -313,7 +313,7 @@ def simulate_s1(closes: list, asset: str) -> list:
     return records
 
 
-# ── S1 bucketing ──────────────────────────────────────────────────────────────
+# S1 bucketing
 
 S1_DIST_BOUNDS = [0.005, 0.010, 0.020]  # 0.5%, 1.0%, 2.0%
 S1_TIME_BOUNDS = [6.0, 9.0]             # 3-6, 6-9, 9-12 min remaining
@@ -335,7 +335,7 @@ def _s1_time_idx(mins_left: float) -> int:
 
 def bucket_s1(records: list, min_dist: float, min_samples: int = MIN_SAMPLES) -> dict:
     """
-    Bucket S1 records into (dist_idx, time_idx) → win_rate table.
+    Bucket S1 records into (dist_idx, time_idx) -> win_rate table.
     Entries with fewer than min_samples records return None.
     """
     counts  = defaultdict(int)
@@ -363,7 +363,7 @@ def bucket_s1(records: list, min_dist: float, min_samples: int = MIN_SAMPLES) ->
     return table
 
 
-# ── Kalshi market listing ─────────────────────────────────────────────────────
+# Kalshi market listing
 
 def fetch_kalshi_markets(series_ticker: str, days: int, key_id: str, private_key) -> list:
     """
@@ -415,7 +415,7 @@ def fetch_kalshi_markets(series_ticker: str, days: int, key_id: str, private_key
     return markets
 
 
-# ── Kalshi price history ──────────────────────────────────────────────────────
+# Kalshi price history
 
 def fetch_market_history(
     series_ticker: str,
@@ -454,7 +454,7 @@ def fetch_market_history(
     return result
 
 
-# ── S2 simulation ─────────────────────────────────────────────────────────────
+# S2 simulation
 
 S2_ENTRY_OFFSETS = [2, 4, 6, 8, 10, 12]  # minutes remaining before expiry
 
@@ -510,7 +510,7 @@ def simulate_s2_window(
         if entry_s <= open_time_s:
             continue
 
-        # yes_ask at entry — infer implied direction
+        # yes_ask at entry - infer implied direction
         entry_yes_ask = None
         for ts, ask in history:
             if ts <= entry_s:
@@ -540,7 +540,7 @@ def simulate_s2_window(
     return records
 
 
-# ── S2 bucketing ──────────────────────────────────────────────────────────────
+# S2 bucketing
 
 S2_VEL_MULTIPLIERS = [2.0, 4.0]   # breakpoints as multipliers of min_vel_delta
 S2_TIME_BOUNDS_S2  = [5.0, 8.0]   # 2-5, 5-8, 8-13 min remaining
@@ -563,7 +563,7 @@ def _s2_time_idx(mins_left: float) -> int:
 
 def bucket_s2(records: list, min_vel_delta: float, min_samples: int = MIN_SAMPLES) -> dict:
     """
-    Bucket S2 records into (vel_idx, time_idx) → win_rate table.
+    Bucket S2 records into (vel_idx, time_idx) -> win_rate table.
     Entries with fewer than min_samples records return None.
     """
     counts = defaultdict(int)
@@ -586,7 +586,7 @@ def bucket_s2(records: list, min_vel_delta: float, min_samples: int = MIN_SAMPLE
     return table
 
 
-# ── Output formatting ─────────────────────────────────────────────────────────
+# Output formatting
 
 def _format_table(table: dict) -> str:
     """Format a bucket dict as a compact Python dict literal."""
@@ -596,7 +596,7 @@ def _format_table(table: dict) -> str:
     return "{" + items + "}"
 
 
-# ── Phase runners ─────────────────────────────────────────────────────────────
+# Phase runners
 
 def run_s1_phase(assets: list) -> dict:
     """Fetch Binance data and compute S1 win-rate tables for all assets."""
@@ -608,7 +608,7 @@ def run_s1_phase(assets: list) -> dict:
             closes = fetch_binance_1m(symbol, days=90)
             _log(f"[S1] {asset}: {len(closes):,} bars fetched")
         except Exception as exc:
-            _log(f"[S1] {asset}: FETCH FAILED — {exc} — skipping")
+            _log(f"[S1] {asset}: FETCH FAILED - {exc} - skipping")
             result[asset] = {}
             continue
 
@@ -646,7 +646,7 @@ def run_s2_phase(assets: list, key_id: str, private_key) -> dict:
                 continue
 
         if series_ticker is None:
-            _log(f"[S2] {asset}: ERROR — no markets found for any candidate ticker {candidates} — skipping")
+            _log(f"[S2] {asset}: ERROR - no markets found for any candidate ticker {candidates} - skipping")
             result[asset] = {}
             continue
 
@@ -706,7 +706,7 @@ def run_s2_phase(assets: list, key_id: str, private_key) -> dict:
     return result
 
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# Main
 
 def main():
     assets  = ["BTC", "ETH", "SOL", "XRP", "DOGE"]

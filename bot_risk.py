@@ -1,4 +1,4 @@
-"""bot_risk.py — Risk management, trade execution, and preflight checks.
+"""bot_risk.py - Risk management, trade execution, and preflight checks.
 
 Public interface (see __all__):
   Risk:      check_daily_limits, midnight_reset, write_state_file, _log_entry,
@@ -55,9 +55,7 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
 # Daily limits
-# ---------------------------------------------------------------------------
 
 async def check_daily_limits(config: dict) -> tuple[bool, str]:
     """
@@ -74,7 +72,7 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
     if mode == "paper":
         return False, ""
 
-    # If the mode changed since the limit was triggered (e.g., demo → live),
+    # If the mode changed since the limit was triggered (e.g., demo -> live),
     # reset so the new mode starts with a fresh daily count.
     if (
         bot_state.limit_triggered
@@ -88,7 +86,10 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
 
     pnl = await db_get_today_pnl(mode)
 
-    if pnl < 0 and abs(pnl) >= config.get("daily_loss_limit_dollars", 20):
+    # 0 / negative limit = disabled (no daily loss cap). Without this guard a 0 limit
+    # would make `abs(pnl) >= 0` always true and halt on the first cent of loss.
+    _dll = float(config.get("daily_loss_limit_dollars", 0))
+    if _dll > 0 and pnl < 0 and abs(pnl) >= _dll:
         if not bot_state.limit_triggered:
             bot_state.limit_triggered = True
             bot_state.limit_reason = "daily loss limit reached"
@@ -114,7 +115,8 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
                 )
         return True, bot_state.limit_reason
 
-    if pnl > 0 and pnl >= config.get("daily_profit_target_dollars", 50):
+    _dpt = float(config.get("daily_profit_target_dollars", 200))
+    if _dpt > 0 and pnl > 0 and pnl >= _dpt:
         if not bot_state.limit_triggered:
             bot_state.limit_triggered = True
             bot_state.limit_reason = "daily profit target reached"
@@ -152,9 +154,7 @@ def midnight_reset() -> None:
         bot_state.pre_limit_mode = None
 
 
-# ---------------------------------------------------------------------------
 # State file
-# ---------------------------------------------------------------------------
 
 def _parse_strike_from_ticker(ticker):
     """Parse strike price out of a Kalshi ticker.
@@ -204,7 +204,7 @@ async def write_state_file(
         "today_paper_pnl": await db_get_today_pnl("paper"),
         "today_demo_pnl": await db_get_today_pnl("demo"),
         "config": {**config,
-                   "min_ev_pct": round(config.get("min_ev_base", 3.0)),
+                   "min_ev_pct": round(config.get("min_ev_base", 8)),
                    "vol_gate_thresh": config.get("vol_gate_thresh", 1.80)},
         "bot_state.limit_triggered": bot_state.limit_triggered,
         "bot_state.limit_reason": bot_state.limit_reason,
@@ -356,9 +356,7 @@ async def _log_entry(
     })
 
 
-# ---------------------------------------------------------------------------
 # Trade execution (absorbed from bot_trade)
-# ---------------------------------------------------------------------------
 
 async def _execute_s1_trade(
     session: "aiohttp.ClientSession",
@@ -379,7 +377,7 @@ async def _execute_s1_trade(
     """Place a real S1 order alongside S2 and track it in _s1_pending_trades."""
     if brain_s1.get("action") != "trade":
         if not brain_s1.get("price_filter_skip"):
-            log.info("[S1] %s: watching — %s", ticker, brain_s1.get("reasoning", "no_reason"))
+            log.info("[S1] %s: watching - %s", ticker, brain_s1.get("reasoning", "no_reason"))
         return
     if ticker in bot_state._s1_pending_trades:
         return
@@ -392,7 +390,7 @@ async def _execute_s1_trade(
         _min_no_ask = float(get_asset_config(config, asset, "min_no_ask_cents",
                                              config.get("min_no_ask_cents", 10.0)))
         if no_ask < _min_no_ask:
-            log.info(f"[S1] {ticker}: no_ask {no_ask:.0f}c below floor {_min_no_ask:.0f}c — skip")
+            log.info(f"[S1] {ticker}: no_ask {no_ask:.0f}c below floor {_min_no_ask:.0f}c - skip")
             return
     entry_price_cents = yes_ask if side == "yes" else no_ask
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
@@ -401,7 +399,7 @@ async def _execute_s1_trade(
     if contracts == 0 or dollars_used < trade_amount * 0.90:
         return
 
-    # Reserve slot BEFORE awaiting place_order — prevents a concurrent loop iteration from
+    # Reserve slot BEFORE awaiting place_order - prevents a concurrent loop iteration from
     # passing the `if ticker in _s1_pending_trades` check during the async yield.
     bot_state._s1_pending_trades[ticker] = {
         "trade_id":          None,
@@ -543,9 +541,9 @@ async def _settle_s1_trade(
     else:
         bot_state._s1_consecutive_losses += 1
         max_cl = config.get("max_consecutive_losses", 5)
-        # Alert once on the exact crossing — re-fires only after a win resets the streak.
+        # Alert once on the exact crossing - re-fires only after a win resets the streak.
         if bot_state._s1_consecutive_losses == max_cl:
-            await send_telegram(f"⚠️ S1: {bot_state._s1_consecutive_losses} consecutive losses (threshold {max_cl})")
+            await send_telegram(f"S1: {bot_state._s1_consecutive_losses} consecutive losses (threshold {max_cl})")
         streak = bot_state._s1_consec_losses_by_asset.get(asset, 0) + 1
         bot_state._s1_consec_losses_by_asset[asset] = streak
         _per_asset_limit = config.get("s1_consec_loss_cooldown_count", 3)
@@ -553,7 +551,7 @@ async def _settle_s1_trade(
             _cooldown_secs = float(config.get("s1_consec_loss_cooldown_secs", 900))
             bot_state._s1_cooldown_until[asset] = time.time() + _cooldown_secs
             log.warning(
-                "[S1] %s: %d consecutive losses — cooling down %.0fs",
+                "[S1] %s: %d consecutive losses - cooling down %.0fs",
                 asset, streak, _cooldown_secs,
             )
 
@@ -671,9 +669,7 @@ async def _try_settle_orphaned_s1(
     await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
 
 
-# ---------------------------------------------------------------------------
 # Preflight checks (absorbed from bot_preflight)
-# ---------------------------------------------------------------------------
 
 async def verify_kalshi_connection(session: aiohttp.ClientSession) -> None:
     """Verify Kalshi credentials work and log all available BTC market series."""

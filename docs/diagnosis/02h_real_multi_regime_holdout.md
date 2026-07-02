@@ -13,7 +13,7 @@ from the Kalshi REST API (`/markets?series_ticker=KXBTC15M&status=settled`).
 Kalshi's API returns at most ~90 days of settlement history. The parquet
 files only contain records from ~2026-02-25 onwards.
 
-**Step 2E used 4 slices within a single 10-week window — not a holdout test.**
+**Step 2E used 4 slices within a single 10-week window - not a holdout test.**
 It was a within-period stability check only.
 
 ## 2H.2 Synthetic Settlement Generation

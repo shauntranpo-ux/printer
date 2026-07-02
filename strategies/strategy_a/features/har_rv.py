@@ -2,17 +2,17 @@ from __future__ import annotations
 """
 HAR-RS-J volatility forecaster (Patton & Sheppard 2015) adapted for 15-minute horizons.
 
-Model: σ̂² = const
-         + β_rv+_15m·RV+_15m + β_rv-_15m·RV-_15m
-         + β_rv+_1h·RV+_1h   + β_rv-_1h·RV-_1h
-         + β_rv+_4h·RV+_4h   + β_rv-_4h·RV-_4h
-         + β_J·J_15m
+Model: sigma² = const
+         + beta_rv+_15m*RV+_15m + beta_rv-_15m*RV-_15m
+         + beta_rv+_1h*RV+_1h   + beta_rv-_1h*RV-_1h
+         + beta_rv+_4h*RV+_4h   + beta_rv-_4h*RV-_4h
+         + beta_J*J_15m
 
 Crypto asymmetry: RV+ and RV- have *separate* coefficients. In crypto, positive
 semivariance is a stronger predictor of future variance than negative semivariance
-(opposite of equities). The model never constrains β_rv+_15m == β_rv-_15m.
+(opposite of equities). The model never constrains beta_rv+_15m == beta_rv-_15m.
 
-Output: σ̂ (not σ̂²) in log-return space, suitable as a 15-minute vol forecast.
+Output: sigma (not sigma²) in log-return space, suitable as a 15-minute vol forecast.
 """
 import numpy as np
 from collections import deque
@@ -28,7 +28,7 @@ class HARRSJForecaster:
         self._buf: deque[float] = deque(maxlen=max_bars)
         self._coef: dict = config["har_rs_j"]["coefficients"]
 
-    # ── public interface ──────────────────────────────────────────────────────
+    # public interface
 
     def update(self, new_bar: dict) -> None:
         """Append one bar. Expects {'log_return': float}."""
@@ -43,7 +43,7 @@ class HARRSJForecaster:
 
     def compute(self, data_window=None) -> dict[str, float]:
         """
-        Compute all HAR-RS-J features plus σ̂ forecast.
+        Compute all HAR-RS-J features plus sigma forecast.
         data_window: optional sequence of log-returns (float or dict with 'log_return')
                      appended before computation.
         """
@@ -66,7 +66,7 @@ class HARRSJForecaster:
         out["sigma_forecast"] = self._forecast(out)
         return out
 
-    # ── internals ─────────────────────────────────────────────────────────────
+    # internals
 
     @staticmethod
     def _rv_components(r: np.ndarray) -> dict[str, float]:
@@ -76,7 +76,7 @@ class HARRSJForecaster:
         rv      = float(sq.sum())
         rv_pos  = float(sq[r > 0].sum())
         rv_neg  = float(sq[r < 0].sum())
-        # BV = (π/2) · Σ|r_t|·|r_{t-1}| — scaled to match RV units
+        # BV = (π/2) * Σ|r_t|*|r_{t-1}| - scaled to match RV units
         bv = float((np.pi / 2) * (np.abs(r[1:]) * np.abs(r[:-1])).sum()) if r.size > 1 else rv
         jump         = max(rv - bv, 0.0)
         signed_jump  = rv_pos - rv_neg
@@ -86,7 +86,7 @@ class HARRSJForecaster:
     def _forecast(self, feats: dict[str, float]) -> float:
         c = self._coef
         if any(v is None for v in c.values()):
-            # Untrained model: proxy σ̂ ≈ √RV_15m (no-drift realized vol)
+            # Untrained model: proxy sigma ~ sqrtRV_15m (no-drift realized vol)
             return float(np.sqrt(max(feats.get("15m_rv", 0.0), 0.0)))
         sigma_sq = (
             c["const"]

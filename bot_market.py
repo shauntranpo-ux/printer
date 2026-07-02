@@ -1,4 +1,4 @@
-"""bot_market.py — Kalshi API layer: auth, market data, order placement, contract math.
+"""bot_market.py - Kalshi API layer: auth, market data, order placement, contract math.
 
 Public interface (see __all__):
   Auth:    load_credentials, kalshi_headers
@@ -68,9 +68,7 @@ __all__ = [
 ]
 
 
-# ---------------------------------------------------------------------------
-# Kalshi API — auth, market data, price helpers (from bot_kalshi)
-# ---------------------------------------------------------------------------
+# Kalshi API - auth, market data, price helpers (from bot_kalshi)
 
 
 def _read_pem_bytes(path: str) -> bytes:
@@ -83,9 +81,9 @@ def load_credentials(mode: str = "paper") -> None:
     """
     Load Kalshi API credentials from environment variables based on active mode.
 
-    paper — skips credential loading (no API calls needed)
-    live  — loads KALSHI_API_KEY + KALSHI_PRIVATE_KEY, routes to live endpoint
-    demo  — loads KALSHI_DEMO_API_KEY + KALSHI_DEMO_PRIVATE_KEY, routes to demo endpoint
+    paper - skips credential loading (no API calls needed)
+    live  - loads KALSHI_API_KEY + KALSHI_PRIVATE_KEY, routes to live endpoint
+    demo  - loads KALSHI_DEMO_API_KEY + KALSHI_DEMO_PRIVATE_KEY, routes to demo endpoint
 
     Credential values may be a PEM string or a path to a PEM file.
     Exits with a clear error message if required variables are missing.
@@ -101,7 +99,7 @@ def load_credentials(mode: str = "paper") -> None:
                 bot_state.private_key = serialization.load_pem_private_key(pem_bytes, password=None)
                 log.info("Paper mode: Kalshi credentials loaded for market data access.")
             except Exception as exc:
-                log.warning(f"Paper mode: credential load failed ({exc}) — market data unavailable.")
+                log.warning(f"Paper mode: credential load failed ({exc}) - market data unavailable.")
         return
 
     if mode == "demo":
@@ -123,7 +121,7 @@ def load_credentials(mode: str = "paper") -> None:
         if mode == "demo":
             log.error(
                 "DEMO mode requested but demo creds missing (%s not set). "
-                "NOT falling back to live — bot will be disabled.", missing,
+                "NOT falling back to live - bot will be disabled.", missing,
             )
             try:
                 cfg = read_config()
@@ -225,7 +223,7 @@ async def _maybe_adjust_clock_skew(session: aiohttp.ClientSession) -> None:
         server_ts_ms = int(server_dt.timestamp() * 1000)
         diff = server_ts_ms - local_ts_ms
         if abs(diff) > 2000:
-            log.warning("Kalshi clock skew detected: %+dms — applying correction", diff)
+            log.warning("Kalshi clock skew detected: %+dms - applying correction", diff)
             bot_state.kalshi_clock_skew_ms = diff
         else:
             log.info("Kalshi clock skew probe: diff=%+dms (within tolerance)", diff)
@@ -254,7 +252,7 @@ async def _kalshi_get(
             if status == 401:
                 await _alert_auth_failure(status, path, str(data)[:200])
             return status, data
-        log.warning("_kalshi_get 401 on %s — probing clock skew and retrying", path)
+        log.warning("_kalshi_get 401 on %s - probing clock skew and retrying", path)
         await _maybe_adjust_clock_skew(session)
     return 0, {}
 
@@ -405,12 +403,15 @@ async def fetch_current_market(session: aiohttp.ClientSession, return_all: bool 
     return pool if return_all else bot_state._market_cache
 
 
-async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> dict | None:
+async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str,
+                                 return_all: bool = False) -> "dict | None | list":
     """
     Fetch the soonest-expiring open market for the given non-BTC asset.
     Uses the kalshi_series priority list from ASSET_CONFIG.
     Accepts windows up to 20 minutes (15-min markets only).
-    Returns None if no suitable market found.
+    Returns None if no suitable market found. With return_all=True, returns the
+    full close-time-sorted candidate list (sibling strikes + next windows) so the
+    caller can pick the best-EV strike.
     """
     series_list = ASSET_CONFIG.get(asset, {}).get("kalshi_series", ())
     path = "/markets"
@@ -455,9 +456,11 @@ async def fetch_market_for_asset(session: aiohttp.ClientSession, asset: str) -> 
 
     valid = [m for m in all_markets if 0 < secs_to_close(m) < 20 * 60]
     if not valid:
-        return None
+        return [] if return_all else None
 
     valid.sort(key=secs_to_close)
+    if return_all:
+        return valid
     chosen = valid[0]
     log.debug(f"fetch_market_for_asset [{asset}]: {chosen.get('ticker')} ({secs_to_close(chosen):.0f}s left)")
     return chosen
@@ -693,9 +696,7 @@ async def fetch_orderbook(
     }
 
 
-# ---------------------------------------------------------------------------
 # Order placement and contract math (from bot_orders)
-# ---------------------------------------------------------------------------
 
 def calculate_contracts(
     trade_amount_dollars: float,
@@ -703,7 +704,7 @@ def calculate_contracts(
     liquidity: int,
 ) -> tuple[int, float]:
     """
-    Fixed position sizing — always spend exactly trade_amount_dollars.
+    Fixed position sizing - always spend exactly trade_amount_dollars.
 
     Returns:
         (contracts, dollars_used)
@@ -1066,7 +1067,7 @@ async def place_order(
             continue
 
         if http_status in (401, 403):
-            log.error(f"[live] Auth error HTTP {http_status} — not retrying")
+            log.error(f"[live] Auth error HTTP {http_status} - not retrying")
             await _alert_auth_failure(http_status, path, str(data)[:200])
             break
 
@@ -1155,7 +1156,7 @@ async def place_order(
             filled_count = _live_counts["total"] - _live_counts["remaining"]
         else:
             log.warning(
-                f"[live] Order {order_id}: missing count fields — checking portfolio",
+                f"[live] Order {order_id}: missing count fields - checking portfolio",
                 extra={"order_id": order_id, "keys": list(post_order.keys())},
             )
             break

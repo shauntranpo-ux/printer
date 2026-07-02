@@ -29,7 +29,7 @@ _SENTINEL: dict[str, float] = {
 def compute(data_window: dict) -> dict[str, float]:
     """
     data_window keys:
-      btc_features: {"har_rv": {...}, "order_flow": {...}}  — output of BTC's compute()
+      btc_features: {"har_rv": {...}, "order_flow": {...}}  - output of BTC's compute()
       btc_returns:  {"1m": float, "5m": float, "15m": float}
       config: asset config dict (cross_asset section; currently unused here)
     """

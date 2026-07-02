@@ -1,6 +1,6 @@
-# QUARANTINED — this project file describes an abandoned rewrite ("kalshi-botv3").
+# QUARANTINED - this project file describes an abandoned rewrite ("kalshi-botv3").
 # The live bot uses requirements.txt + flat top-level .py files. See ARCHITECTURE.md.
-# Do not "fix" inconsistencies between this file and the live bot — they are intentional.
+# Do not "fix" inconsistencies between this file and the live bot - they are intentional.
 
 [build-system]
 requires = ["hatchling"]

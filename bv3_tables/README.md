@@ -1,4 +1,4 @@
-# DEAD ARTIFACT — bv3_tables/
+# DEAD ARTIFACT - bv3_tables/
 
 Historical fit data for abandoned "v3" strategy backtest (strategy_b/strategy_c fitted YAML configs).
 

@@ -1,5 +1,5 @@
 <h2>Diagnosis: Where the Money Is Going</h2>
-<p class="subtitle">From EV sweep backtests across all EV thresholds (4%–25%). BTC is the culprit for both strategies.</p>
+<p class="subtitle">From EV sweep backtests across all EV thresholds (4%-25%). BTC is the culprit for both strategies.</p>
 
 <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px">
 
@@ -17,7 +17,7 @@
       <tbody>
         <tr style="border-top:1px solid oklch(0.22 0 0)">
           <td style="padding:6px 8px;font-weight:600">BTC</td>
-          <td style="text-align:right;padding:6px 8px;color:oklch(0.55 0.18 25)">−$1,984</td>
+          <td style="text-align:right;padding:6px 8px;color:oklch(0.55 0.18 25)">-$1,984</td>
           <td style="text-align:right;padding:6px 8px;color:oklch(0.5 0 0)">none</td>
           <td style="text-align:right;padding:6px 8px"><span style="background:oklch(0.55 0.18 25 / 0.15);color:oklch(0.7 0.18 25);border-radius:4px;padding:2px 8px;font-size:11px">BROKEN</span></td>
         </tr>
@@ -41,7 +41,7 @@
         </tr>
       </tbody>
     </table>
-    <div style="margin-top:10px;font-size:11px;color:oklch(0.5 0 0)">BTC loses at EVERY threshold (−$1,984 to −$2,477). No gate fixes it. ETH/SOL both profitable across almost all gates.</div>
+    <div style="margin-top:10px;font-size:11px;color:oklch(0.5 0 0)">BTC loses at EVERY threshold (-$1,984 to -$2,477). No gate fixes it. ETH/SOL both profitable across almost all gates.</div>
   </div>
 
   <div style="background:oklch(0.18 0.01 0);border:1px solid oklch(0.25 0.01 0);border-radius:11px;padding:16px">
@@ -58,7 +58,7 @@
       <tbody>
         <tr style="border-top:1px solid oklch(0.22 0 0)">
           <td style="padding:6px 8px;font-weight:600">BTC</td>
-          <td style="text-align:right;padding:6px 8px;color:oklch(0.55 0.18 25)">−$22,027</td>
+          <td style="text-align:right;padding:6px 8px;color:oklch(0.55 0.18 25)">-$22,027</td>
           <td style="text-align:right;padding:6px 8px;color:oklch(0.5 0 0)">none</td>
           <td style="text-align:right;padding:6px 8px"><span style="background:oklch(0.55 0.18 25 / 0.15);color:oklch(0.7 0.18 25);border-radius:4px;padding:2px 8px;font-size:11px">BROKEN</span></td>
         </tr>
@@ -82,17 +82,17 @@
         </tr>
       </tbody>
     </table>
-    <div style="margin-top:10px;font-size:11px;color:oklch(0.5 0 0)">BTC D3 win rate is only 17% — signal is essentially random for BTC. ETH/SOL/XRP all strongly profitable with higher EV gates.</div>
+    <div style="margin-top:10px;font-size:11px;color:oklch(0.5 0 0)">BTC D3 win rate is only 17% - signal is essentially random for BTC. ETH/SOL/XRP all strongly profitable with higher EV gates.</div>
   </div>
 
 </div>
 
 <div style="background:oklch(0.55 0.18 25 / 0.08);border:1px solid oklch(0.55 0.18 25 / 0.3);border-radius:9px;padding:14px 16px;margin-bottom:16px">
   <div style="font-weight:700;color:oklch(0.75 0.18 25);margin-bottom:4px">Root Cause: BTC has no edge in either strategy</div>
-  <div style="font-size:13px;color:oklch(0.65 0 0)">S1 BTC loses regardless of EV gate (BV3 table calibration is stale/wrong for BTC). S2 BTC has a 17% win rate — the D3 signal is directionally inverted or random for BTC. The fix for both strategies is the same: <strong style="color:oklch(0.8 0 0)">disable BTC, optimize gates for ETH/SOL/XRP.</strong></div>
+  <div style="font-size:13px;color:oklch(0.65 0 0)">S1 BTC loses regardless of EV gate (BV3 table calibration is stale/wrong for BTC). S2 BTC has a 17% win rate - the D3 signal is directionally inverted or random for BTC. The fix for both strategies is the same: <strong style="color:oklch(0.8 0 0)">disable BTC, optimize gates for ETH/SOL/XRP.</strong></div>
 </div>
 
 <div style="background:oklch(0.75 0.17 145 / 0.08);border:1px solid oklch(0.75 0.17 145 / 0.3);border-radius:9px;padding:14px 16px">
   <div style="font-weight:700;color:oklch(0.75 0.17 145);margin-bottom:4px">Good news: ETH and SOL are consistently profitable on both strategies</div>
-  <div style="font-size:13px;color:oklch(0.65 0 0)">The strategies work — just not for BTC. With BTC disabled and EV gates tuned to backtest optima, the combined portfolio shows strongly positive expected P&L.</div>
+  <div style="font-size:13px;color:oklch(0.65 0 0)">The strategies work - just not for BTC. With BTC disabled and EV gates tuned to backtest optima, the combined portfolio shows strongly positive expected P&L.</div>
 </div>

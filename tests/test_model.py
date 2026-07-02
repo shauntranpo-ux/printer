@@ -1,5 +1,7 @@
 import numpy as np
 import pytest
+
+pytest.importorskip("sklearn")  # strategies/strategy_a is non-live and needs sklearn; skip if absent
 from strategy_a.model import StrategyAModel
 
 _FEES = {"kalshi": {"taker_fee_rate": 0.03, "maker_fee_rate": 0.00}, "safety_margin": 0.005}
@@ -72,7 +74,7 @@ def test_weekend_threshold_used():
 
 def test_unknown_regime_defaults_to_002():
     m = StrategyAModel(_CFG, _FEES)
-    # unknown regime → 0.02 default; min_edge = 0.055
+    # unknown regime -> 0.02 default; min_edge = 0.055
     assert m.should_trade(0.70, 0.55, "unknown_regime", _CFG)
 
 
@@ -83,5 +85,5 @@ def test_no_side_with_zero_edge():
 
 def test_edge_exactly_at_threshold_does_not_trade():
     m = StrategyAModel(_CFG, _FEES)
-    # min_edge = 0.03 + 0.005 + 0.02 = 0.055; edge = exactly 0.055 → must NOT trade (> not >=)
+    # min_edge = 0.03 + 0.005 + 0.02 = 0.055; edge = exactly 0.055 -> must NOT trade (> not >=)
     assert not m.should_trade(0.605, 0.55, "eu_open", _CFG)

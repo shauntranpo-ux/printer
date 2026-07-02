@@ -1,4 +1,4 @@
-# BV3 Legacy Tables — Backup
+# BV3 Legacy Tables - Backup
 
 Copied from `bv3_tables/` on 2026-04-18 before Section 8 regeneration.
 
@@ -10,8 +10,8 @@ This is data leakage: the model "knows" the very data we would use to evaluate i
 
 ## Contents
 
-- `*_bv3_full.json`    — contaminated tables (trained on full history incl. 2024+)
-- `*_bv3_pre2023.json` — partial fix (trained on pre-2023 only; excludes all of 2023)
+- `*_bv3_full.json`    - contaminated tables (trained on full history incl. 2024+)
+- `*_bv3_pre2023.json` - partial fix (trained on pre-2023 only; excludes all of 2023)
 
 ## Replacement
 

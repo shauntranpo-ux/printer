@@ -60,13 +60,11 @@ def test_wr_buckets_isolated_by_asset():
             _update_wr_bucket("BTC", 0.006, 4.0, "loss", "live")
         eth_wr = _get_empirical_wr("ETH", 0.006, 4.0, "live", min_samples=20)
         btc_wr = _get_empirical_wr("BTC", 0.006, 4.0, "live", min_samples=20)
-        # ETH bucket is all wins -> proven above breakeven. If buckets were shared,
-        # ETH's 20 wins + BTC's 20 losses would dilute to ~0.5 and this would be None.
         assert eth_wr is not None and eth_wr > 0.9, f"ETH should be high WR: {eth_wr}"
-        # BTC bucket is all losses. _get_empirical_wr returns None for any bucket whose
-        # Wilson lower bound <= breakeven (no proven edge), so a losing bucket -> None.
-        # Non-None here would mean BTC read ETH's winning bucket (isolation broken).
-        assert btc_wr is None, f"losing BTC bucket should yield no actionable WR: {btc_wr}"
+        # BTC's bucket is all losses -> Wilson LB is far below breakeven, so _get_empirical_wr
+        # correctly returns None (it only surfaces a WR statistically PROVEN above breakeven).
+        # That ETH stays high while BTC is gated out also proves the buckets are isolated.
+        assert btc_wr is None, f"BTC (all losses) must be gated to None, got: {btc_wr}"
     finally:
         bot_state._DB_FILE = orig
         os.unlink(db_path)

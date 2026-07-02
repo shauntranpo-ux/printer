@@ -143,12 +143,12 @@ class TestShouldTradeStrike:
         assert self.model.should_trade_strike(0.15, "deep_otm", "us_afternoon", _CONFIG) is True
 
     def test_deep_otm_sell_yes_no_penalty(self):
-        # edge < 0 (buying NO) → no longshot penalty
+        # edge < 0 (buying NO) -> no longshot penalty
         # min_edge = (0.03+0.005+0.02)*2.0 = 0.11
         assert self.model.should_trade_strike(-0.12, "deep_otm", "us_afternoon", _CONFIG) is True
 
     def test_null_regime_uses_default(self):
-        # Regime not in config → uses 0.02 default
+        # Regime not in config -> uses 0.02 default
         assert self.model.should_trade_strike(0.15, "atm", "unknown_regime", _CONFIG) is True
 
     def test_deep_itm_multiplier_applied(self):

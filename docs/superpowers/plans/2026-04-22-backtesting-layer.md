@@ -4,7 +4,7 @@
 
 **Goal:** Build a complete backtesting and validation layer for the Kalshi 15-minute crypto binary strategy bot, integrating with existing `backtesting/walk_forward.py` and `backtesting/stress_test.py` without modifying them.
 
-**Architecture:** Event-driven single-threaded backtest engine + CPCV validation + calibration/overfitting/trading metrics + Jinja2 report generation + CLI entrypoint. Sequential only — no parallelism anywhere.
+**Architecture:** Event-driven single-threaded backtest engine + CPCV validation + calibration/overfitting/trading metrics + Jinja2 report generation + CLI entrypoint. Sequential only - no parallelism anywhere.
 
 **Tech Stack:** Python 3.11+, pandas, numpy, scipy, scikit-learn, statsmodels, pyyaml, pydantic, matplotlib, pytest, jinja2
 
@@ -12,13 +12,13 @@
 - DO NOT modify `strategies/` (read-only)
 - DO NOT modify existing `backtesting/walk_forward.py` or `backtesting/stress_test.py`
 - 3% Kalshi taker fee mandatory from first run
-- No look-ahead — programmatic check required
+- No look-ahead - programmatic check required
 - No data pooling across assets
 - Sequential execution only
 
 **Existing modules to wrap (not rewrite):**
-- `backtesting/walk_forward.py` — WFA engine that reads `data/split_config.json`, calls `backtest.py`
-- `backtesting/stress_test.py` — Monte Carlo noise stress test
+- `backtesting/walk_forward.py` - WFA engine that reads `data/split_config.json`, calls `backtest.py`
+- `backtesting/stress_test.py` - Monte Carlo noise stress test
 
 ---
 
@@ -164,14 +164,14 @@ import yaml
 for cfg in ["backtest", "per_asset/btc", "per_asset/eth", "per_asset/sol", "per_asset/xrp"]:
     with open(f"backtesting/configs/{cfg}.yaml") as f:
         d = yaml.safe_load(f)
-    print(f"{cfg}: OK — keys={list(d.keys())}")
+    print(f"{cfg}: OK - keys={list(d.keys())}")
 ```
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add backtesting/configs/ backtesting/data/__init__.py backtesting/training/__init__.py backtesting/validation/__init__.py backtesting/metrics/__init__.py backtesting/simulation/__init__.py backtesting/reports/__init__.py
-git commit -m "feat: backtesting scaffold — directories, __init__.py stubs, YAML configs"
+git commit -m "feat: backtesting scaffold - directories, __init__.py stubs, YAML configs"
 ```
 
 ---
@@ -513,7 +513,7 @@ WINDOW_MINUTES = 15
 
 def build_labels(
     bars: pd.DataFrame,
-    reference_source: str = "spot",  # "spot" or "perp" — from per-asset config
+    reference_source: str = "spot",  # "spot" or "perp" - from per-asset config
     window_minutes: int = WINDOW_MINUTES,
     drop_incomplete: bool = True,
 ) -> pd.DataFrame:
@@ -523,7 +523,7 @@ def build_labels(
     Args:
         bars: DataFrame with columns [timestamp, open, high, low, close, volume].
               Timestamp must be UTC-aware.
-        reference_source: "spot" or "perp" — informational only; caller ensures
+        reference_source: "spot" or "perp" - informational only; caller ensures
                           the correct bars were loaded.
         window_minutes: length of each binary window (default 15).
         drop_incomplete: if True, drop windows with any missing data.
@@ -613,7 +613,7 @@ from backtesting.data.label_builder import build_labels
 
 
 def _make_bars(n_windows=50, bars_per_window=90, start_price=50000.0, seed=42):
-    """90 bars per 15-min window (10s × 90 = 900s = 15min)."""
+    """90 bars per 15-min window (10s x 90 = 900s = 15min)."""
     rng = np.random.default_rng(seed)
     total = n_windows * bars_per_window
     ts = pd.date_range("2025-01-01 00:00:00", periods=total, freq="10s", tz="UTC")
@@ -652,7 +652,7 @@ def test_label_matches_price_comparison():
 def test_log_return_sign_matches_label():
     bars = _make_bars()
     out = build_labels(bars)
-    # label=1 → log_return > 0; label=0 → log_return <= 0
+    # label=1 -> log_return > 0; label=0 -> log_return <= 0
     assert (out.loc[out["label"] == 1, "log_return"] > 0).all()
     assert (out.loc[out["label"] == 0, "log_return"] <= 0).all()
 
@@ -750,7 +750,7 @@ def build_event_stream(
 
     Every DataFrame must have a UTC-aware 'timestamp' column.
     Returns events sorted by timestamp ascending.
-    No silent timezone drift — validates UTC for every input.
+    No silent timezone drift - validates UTC for every input.
     """
     events: list[Event] = []
 
@@ -914,7 +914,7 @@ Fits HAR-RS-J coefficients using OLS on a rolling training window.
 Writes results to a sidecar file: strategies/strategy_a/config/{asset}.fitted.yaml
 Does NOT modify the original config under strategies/.
 
-Reference: Patton & Sheppard (2015) — separate RV+/RV- coefficients for crypto
+Reference: Patton & Sheppard (2015) - separate RV+/RV- coefficients for crypto
 (RV+ predicts future variance more strongly than RV- in crypto, unlike equities).
 """
 from __future__ import annotations
@@ -930,7 +930,7 @@ TIMESCALES_MINUTES = [15, 60, 240]
 
 
 def _bipower_variation(log_returns: np.ndarray) -> float:
-    """BV = (π/2) · Σ|r[1:]||r[:-1]|"""
+    """BV = (π/2) * Σ|r[1:]||r[:-1]|"""
     if len(log_returns) < 2:
         return 0.0
     return float((np.pi / 2.0) * np.sum(np.abs(log_returns[1:]) * np.abs(log_returns[:-1])))
@@ -1131,7 +1131,7 @@ def fit_and_save(
     Fit a calibrated classifier and save to disk.
 
     Returns:
-        (weights_path, calibrator_path) — paths to the saved artifacts.
+        (weights_path, calibrator_path) - paths to the saved artifacts.
 
     weights_path:    pickle of feature_names list
     calibrator_path: pickle of the fitted CalibratedClassifierCV object
@@ -1230,7 +1230,7 @@ def _build_feature_matrix(
     if labels_df.empty:
         raise ValueError(f"[{asset}] No labels built from bars.")
 
-    # Align feature rows to label timestamps (approximate — features lead labels by 1 window)
+    # Align feature rows to label timestamps (approximate - features lead labels by 1 window)
     n = min(len(feat_df), len(labels_df))
     feat_df = feat_df.iloc[-n:]
     labels_df = labels_df.iloc[-n:]
@@ -1274,7 +1274,7 @@ def run_training_pipeline(
         per_asset_cfg_path = os.path.join(per_asset_config_dir, f"{asset.lower()}.yaml")
         asset_config = _load_yaml(per_asset_cfg_path)
 
-        # Load bars — skip if no data
+        # Load bars - skip if no data
         try:
             from backtesting.data.loaders import load_bars
             data_cfg = global_config.get("data", {})
@@ -1389,8 +1389,8 @@ def check_no_lookahead(
     data strictly before the decision timestamp.
 
     Each decision dict must have:
-        "timestamp": pd.Timestamp — the decision time
-        "feature_timestamps": dict[str, pd.Timestamp] — feature name → source data timestamp
+        "timestamp": pd.Timestamp - the decision time
+        "feature_timestamps": dict[str, pd.Timestamp] - feature name -> source data timestamp
 
     Returns a list of violations. Empty list means pass.
     """
@@ -1494,13 +1494,13 @@ def test_empty_decisions_passes():
 """
 Combinatorial Purged Cross-Validation (CPCV).
 
-Reference: Bailey & Lopez de Prado (2018) — "The Probability of Backtest Overfitting."
+Reference: Bailey & Lopez de Prado (2018) - "The Probability of Backtest Overfitting."
 
 Parameters:
     N: number of groups to split data into (default 6)
     k: number of groups used as test in each combination (default 2)
-    → produces C(N, k) = C(6, 2) = 15 splits
-    → produces (k · C(N,k)) / N = (2 · 15) / 6 = 5 distinct backtest paths
+    -> produces C(N, k) = C(6, 2) = 15 splits
+    -> produces (k * C(N,k)) / N = (2 * 15) / 6 = 5 distinct backtest paths
 
 Purging:
     Remove any training observation whose label window overlaps the test window.
@@ -1508,7 +1508,7 @@ Purging:
 
 Embargo:
     Drop a configurable number of minutes of observations after each test fold
-    before training resumes (default 30 min, must be ≥ label horizon 15 min).
+    before training resumes (default 30 min, must be >= label horizon 15 min).
 """
 from __future__ import annotations
 import math
@@ -1526,7 +1526,7 @@ def _n_combinations(n: int, k: int) -> int:
 
 
 def _n_paths(n: int, k: int) -> int:
-    """Number of distinct backtest paths = (k · C(N,k)) / N."""
+    """Number of distinct backtest paths = (k * C(N,k)) / N."""
     return (k * math.comb(n, k)) // n
 
 
@@ -1639,7 +1639,7 @@ def run_cpcv(
         bs = brier_score(y_test, p_hat)
         ll = log_loss_score(y_test, p_hat)
 
-        # Simplified trading metrics — assume trade when |edge| > min_edge
+        # Simplified trading metrics - assume trade when |edge| > min_edge
         p_market = 0.5  # TODO: wire real Kalshi prices per window
         edges = p_hat - p_market
         trade_mask = np.abs(edges) > 0.055  # approximate min_edge
@@ -1697,7 +1697,7 @@ def test_split_count():
 
 
 def test_path_count_formula():
-    """(k · C(N,k)) / N = (2 · 15) / 6 = 5."""
+    """(k * C(N,k)) / N = (2 * 15) / 6 = 5."""
     assert _n_paths(6, 2) == 5
 
 
@@ -1968,7 +1968,7 @@ Politis-Romano stationary block bootstrap for confidence intervals.
 Used for confidence intervals on Sharpe, win rate, and expectancy.
 Default mean block length: 24 hours of 15-min trades = 96 periods.
 
-Reference: Politis & Romano (1994) — "The Stationary Bootstrap."
+Reference: Politis & Romano (1994) - "The Stationary Bootstrap."
 """
 from __future__ import annotations
 import numpy as np
@@ -2050,7 +2050,7 @@ git commit -m "feat: add WFA/MC adapters and stationary block bootstrap"
 
 ---
 
-### Task 9: Metrics — calibration, trading, overfitting, regime
+### Task 9: Metrics - calibration, trading, overfitting, regime
 
 **Files:**
 - Create: `backtesting/metrics/calibration.py`
@@ -2094,7 +2094,7 @@ def expected_calibration_error(
     """
     Expected Calibration Error (ECE).
 
-    ECE = Σ_b (|B_b| / n) · |acc(B_b) - conf(B_b)|
+    ECE = Σ_b (|B_b| / n) * |acc(B_b) - conf(B_b)|
     where B_b is the set of predictions in bin b.
     """
     bin_edges = np.linspace(0.0, 1.0, n_bins + 1)
@@ -2172,7 +2172,7 @@ def sharpe_ratio(pnls: np.ndarray, periods_per_year: float = 252 * 96.0) -> floa
     """
     Annualized Sharpe ratio from per-trade P&L series.
 
-    periods_per_year default: 252 trading days × 96 15-min periods/day.
+    periods_per_year default: 252 trading days x 96 15-min periods/day.
     """
     if len(pnls) < 2:
         return float("nan")
@@ -2279,9 +2279,9 @@ def trading_summary(
 """
 Overfitting detection metrics.
 
-1. Deflated Sharpe Ratio (DSR) — Bailey & Lopez de Prado (2014)
-2. Probability of Backtest Overfitting (PBO) — Bailey et al. (2017)
-3. Probabilistic Sharpe Ratio (PSR) — Lopez de Prado & Bailey (2012)
+1. Deflated Sharpe Ratio (DSR) - Bailey & Lopez de Prado (2014)
+2. Probability of Backtest Overfitting (PBO) - Bailey et al. (2017)
+3. Probabilistic Sharpe Ratio (PSR) - Lopez de Prado & Bailey (2012)
 
 All three consume the CPCV Sharpe distribution.
 """
@@ -2378,7 +2378,7 @@ def probability_of_backtest_overfitting(
         return float("nan")
 
     n = len(oos_sharpes)
-    # IS best → index of split with highest IS Sharpe
+    # IS best -> index of split with highest IS Sharpe
     is_best_idx = int(np.argmax(is_sharpes))
     # OOS performance of the IS-best split
     oos_best = oos_sharpes[is_best_idx]
@@ -2555,14 +2555,14 @@ def test_brier_perfect():
 
 
 def test_brier_constant_half_balanced():
-    """Constant p=0.5 on balanced labels → Brier = 0.25."""
+    """Constant p=0.5 on balanced labels -> Brier = 0.25."""
     y = np.array([1, 0, 1, 0, 1, 0])
     p = np.full(6, 0.5)
     assert brier_score(y, p) == pytest.approx(0.25)
 
 
 def test_brier_worst_case():
-    """Completely wrong predictions → Brier = 1.0."""
+    """Completely wrong predictions -> Brier = 1.0."""
     y = np.array([1, 1, 0, 0])
     p = np.array([0.0, 0.0, 1.0, 1.0])
     assert brier_score(y, p) == pytest.approx(1.0)
@@ -2575,7 +2575,7 @@ def test_log_loss_perfect():
 
 
 def test_ece_perfect_calibration():
-    """Perfectly calibrated predictions → ECE near zero."""
+    """Perfectly calibrated predictions -> ECE near zero."""
     rng = np.random.default_rng(42)
     p = rng.uniform(0, 1, 1000)
     y = (rng.random(1000) < p).astype(int)
@@ -2584,11 +2584,11 @@ def test_ece_perfect_calibration():
 
 
 def test_ece_constant_predictions():
-    """Constant p=0.5 on balanced labels → ECE ≈ 0."""
+    """Constant p=0.5 on balanced labels -> ECE ~ 0."""
     y = np.array([1, 0] * 500)
     p = np.full(1000, 0.5)
     ece = expected_calibration_error(y, p, n_bins=10)
-    assert ece < 0.01  # all predictions in one bin, acc ≈ conf ≈ 0.5
+    assert ece < 0.01  # all predictions in one bin, acc ~ conf ~ 0.5
 
 
 def test_reliability_diagram_shape():
@@ -2612,7 +2612,7 @@ from backtesting.metrics.overfitting import (
 
 
 def test_dsr_constant_series():
-    """DSR of a constant Sharpe series with 1 trial → determined by the formula."""
+    """DSR of a constant Sharpe series with 1 trial -> determined by the formula."""
     dsr, pvalue = deflated_sharpe_ratio(sharpe_obs=0.0, n_trials=1, n_obs=100)
     assert 0.0 <= dsr <= 1.0
     assert 0.0 <= pvalue <= 1.0
@@ -2625,13 +2625,13 @@ def test_dsr_high_sharpe_many_trials():
 
 
 def test_dsr_negative_sharpe():
-    """Negative Sharpe → DSR near 0."""
+    """Negative Sharpe -> DSR near 0."""
     dsr, pvalue = deflated_sharpe_ratio(sharpe_obs=-2.0, n_trials=10, n_obs=200)
     assert dsr < 0.5
 
 
 def test_psr_high_negative_sharpe():
-    """PSR of a very negative Sharpe series → near zero."""
+    """PSR of a very negative Sharpe series -> near zero."""
     psr = probabilistic_sharpe_ratio(
         sharpe_obs=-3.0, sharpe_benchmark=0.0, n_obs=252
     )
@@ -2639,7 +2639,7 @@ def test_psr_high_negative_sharpe():
 
 
 def test_psr_high_positive_sharpe():
-    """PSR of a large positive Sharpe → near 1."""
+    """PSR of a large positive Sharpe -> near 1."""
     psr = probabilistic_sharpe_ratio(
         sharpe_obs=3.0, sharpe_benchmark=0.0, n_obs=252
     )
@@ -2678,7 +2678,7 @@ git commit -m "feat: add calibration, trading, overfitting, and regime metrics"
 
 ---
 
-### Task 10: Simulation — fill model and backtest engine
+### Task 10: Simulation - fill model and backtest engine
 
 **Files:**
 - Create: `backtesting/simulation/fill_model.py`
@@ -2704,7 +2704,7 @@ See spec: verify 3% fee applied, slippage crosses spread, latency respected, no 
 
 ---
 
-### Task 11: Reports — report builder, comparison, Jinja2 templates
+### Task 11: Reports - report builder, comparison, Jinja2 templates
 
 **Files:**
 - Create: `backtesting/reports/report_builder.py`

@@ -47,7 +47,7 @@ def test_no_side_projects_complement():
 
 def test_offline_asset_defaults_are_numeric():
     s = _frontend_signals({"phase": "OFFLINE"})
-    # never None — frontend calls .toFixed on EVs and *100 on probs
+    # never None - frontend calls .toFixed on EVs and *100 on probs
     for k in ("raw_p_yes", "p_ev", "market_prob"):
         assert s[k] == 0.5
     assert s["yes_ev"] == 0.0 and s["no_ev"] == 0.0

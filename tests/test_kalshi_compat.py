@@ -1,4 +1,4 @@
-"""tests/test_kalshi_compat.py — Unit tests for kalshi_compat.py helpers."""
+"""tests/test_kalshi_compat.py - Unit tests for kalshi_compat.py helpers."""
 import os
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -16,7 +16,7 @@ from kalshi_compat import (
 )
 
 
-# ── fp_to_int ─────────────────────────────────────────────────────────────────
+# fp_to_int
 
 def test_fp_to_int_whole():
     assert fp_to_int("10.00") == 10
@@ -42,7 +42,7 @@ def test_fp_to_int_negative_raises():
         fp_to_int("-1.00")
 
 
-# ── dollars_to_cents ──────────────────────────────────────────────────────────
+# dollars_to_cents
 
 def test_dollars_to_cents_basic():
     assert dollars_to_cents("0.5600") == 56
@@ -51,19 +51,19 @@ def test_dollars_to_cents_one_dollar():
     assert dollars_to_cents("1.0000") == 100
 
 def test_dollars_to_cents_half_even_lower():
-    # 0.5650 = 56.50 cents → rounds to 56 (banker's rounding: nearest even)
+    # 0.5650 = 56.50 cents -> rounds to 56 (banker's rounding: nearest even)
     assert dollars_to_cents("0.5650") == 56
 
 def test_dollars_to_cents_half_even_upper():
-    # 0.5750 = 57.50 cents → rounds to 58 (nearest even)
+    # 0.5750 = 57.50 cents -> rounds to 58 (nearest even)
     assert dollars_to_cents("0.5750") == 58
 
 def test_dollars_to_cents_very_small_rounds_to_zero():
-    # 0.0050 = 0.50 cents → banker's: 0 (nearest even to 0)
+    # 0.0050 = 0.50 cents -> banker's: 0 (nearest even to 0)
     assert dollars_to_cents("0.0050") == 0
 
 def test_dollars_to_cents_one_and_half():
-    # 0.0150 = 1.50 cents → rounds to 2 (nearest even)
+    # 0.0150 = 1.50 cents -> rounds to 2 (nearest even)
     assert dollars_to_cents("0.0150") == 2
 
 def test_dollars_to_cents_none():
@@ -76,7 +76,7 @@ def test_dollars_to_cents_unparseable():
     assert dollars_to_cents("bad") is None
 
 
-# ── extract_order_counts ──────────────────────────────────────────────────────
+# extract_order_counts
 
 def test_extract_counts_new_fp_fields():
     order = {
@@ -133,7 +133,7 @@ def test_extract_counts_count_fp_fallback_for_total():
     assert c["total"] == 3
 
 
-# ── _verify_order_fill regression: only status field → must return False ──────
+# _verify_order_fill regression: only status field -> must return False
 
 async def test_verify_order_fill_no_count_fields_returns_false():
     """Regression: order with only status='executed' and no count fields must return False."""
@@ -162,7 +162,7 @@ async def test_verify_order_fill_no_count_fields_returns_false():
     assert result is False
 
 
-# ── extract_fill_price_cents ───────────────────────────────────────────────────
+# extract_fill_price_cents
 
 def test_extract_fill_price_new_dollars_yes():
     fill = {"yes_price_dollars": "0.6000", "no_price_dollars": "0.4000"}
@@ -189,7 +189,7 @@ def test_extract_fill_price_missing_returns_none():
     assert extract_fill_price_cents({}, "no") is None
 
 
-# ── extract_fee_cents ──────────────────────────────────────────────────────────
+# extract_fee_cents
 
 def test_extract_fee_cents_new_string():
     assert extract_fee_cents({"fee_cost": "0.0700"}) == 7
@@ -201,7 +201,7 @@ def test_extract_fee_cents_missing():
     assert extract_fee_cents({}) is None
 
 
-# ── place_order body construction ──────────────────────────────────────────────
+# place_order body construction
 
 async def test_place_order_demo_body_ioc_no_type_field():
     """Demo mode: body must have time_in_force=IOC, yes_price=42, no type field, no no_price."""
@@ -224,34 +224,30 @@ async def test_place_order_demo_body_ioc_no_type_field():
         "obi": 0.0,
     }
 
-    captured_bodies = []
-
-    async def fake_post(url, **kwargs):
-        captured_bodies.append(kwargs.get("json", {}))
-        mock_r = AsyncMock()
-        mock_r.status = 200
-        order_payload = {
-            "order": {
-                "order_id": "demo-test-001",
-                "status": "executed",
-                "contracts_count_fp": "1.00",
-                "filled_count_fp": "1.00",
-                "remaining_count_fp": "0.00",
-                "yes_price_dollars": "0.4200",
-                "no_price_dollars": "0.5800",
-            }
-        }
-        mock_r.json = AsyncMock(return_value=order_payload)
-        return mock_r
-
     mock_session = MagicMock()
-    mock_session.post = MagicMock(return_value=AsyncMock(
-        __aenter__=AsyncMock(side_effect=lambda: _make_post_resp(captured_bodies)),
-        __aexit__=AsyncMock(return_value=False),
-    ))
 
-    # Use patch to avoid actual HTTP
-    with patch("bot_market.fetch_orderbook", new=AsyncMock(return_value=fake_ob)):
+    # GET poll response: order already executed, so the demo poll loop exits on the first
+    # check instead of sleeping through the full 30s timeout.
+    poll_payload = {
+        "order": {
+            "order_id": "demo-test-001",
+            "status": "executed",
+            "contracts_count_fp": "1.00",
+            "filled_count_fp": "1.00",
+            "remaining_count_fp": "0.00",
+            "yes_price_dollars": "0.4200",
+            "no_price_dollars": "0.5800",
+        }
+    }
+    poll_resp = AsyncMock()
+    poll_resp.__aenter__ = AsyncMock(return_value=poll_resp)
+    poll_resp.__aexit__ = AsyncMock(return_value=False)
+    poll_resp.status = 200
+    poll_resp.json = AsyncMock(return_value=poll_payload)
+    mock_session.get = MagicMock(return_value=poll_resp)
+
+    with patch("bot_market.fetch_orderbook", new=AsyncMock(return_value=fake_ob)), \
+         patch("asyncio.sleep", new=AsyncMock()):
         with patch.object(mock_session, "post") as mock_post_ctx:
             mock_resp = AsyncMock()
             mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)

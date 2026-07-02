@@ -1,5 +1,5 @@
 """
-server.py — Flask backend for the Kalshi BTC bot dashboard.
+server.py - Flask backend for the Kalshi BTC bot dashboard.
 
 Reads from kalshi_bot.db and bot_state.json (written by bot.py).
 Writes to config.json when the user changes settings.
@@ -57,11 +57,11 @@ _FULL_CONFIG_DEFAULT = {
     "mode": "paper",
     "trade_amount_dollars": 25,
     "confidence_threshold": 0,
-    "daily_loss_limit_dollars": 50,
+    "daily_loss_limit_dollars": 0,
     "daily_profit_target_dollars": 200,
     "quiet_hours_enabled": True,
     "quiet_start_et": 22,
-    "quiet_end_et": 7,
+    "quiet_end_et": 9,
     "enabled_assets": ["ETH", "SOL", "XRP"],
 }
 if not os.path.exists("config.json"):
@@ -72,7 +72,7 @@ if not os.path.exists("config.json"):
     except Exception as _cfg_err:
         logging.warning(f"Could not create default config.json: {_cfg_err}")
 
-# On startup: if mode was live, reset to paper (safety — never auto-start real trades on redeploy).
+# On startup: if mode was live, reset to paper (safety - never auto-start real trades on redeploy).
 # bot_enabled is intentionally preserved so the bot resumes running in paper mode after redeploy.
 try:
     if os.path.exists("config.json"):
@@ -82,19 +82,17 @@ try:
             _cfg["mode"] = "paper"
             with open("config.json", "w", encoding="utf-8") as _f:
                 json.dump(_cfg, _f, indent=2)
-            log.info("Startup safety reset: live → paper mode")
+            log.info("Startup safety reset: live -> paper mode")
 except Exception as _rst_err:
     logging.warning(f"Could not apply startup safety reset: {_rst_err}")
 
 app = Flask(__name__)
 
-# ── Bot subprocess tracking ──
+# Bot subprocess tracking
 _bot_process: subprocess.Popen | None = None
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 #  Helpers
-# ══════════════════════════════════════════════════════════════════════════════
 
 def _safe_json_read(path: str, default):
     """Read a JSON file and return default on any error (missing, corrupt, etc)."""
@@ -117,7 +115,7 @@ def _telegram_notify(text: str) -> None:
 
 
 _CONFIG_DEFAULT = {"mode": "paper", "trade_amount_dollars": 25, "confidence_threshold": 0,
-                   "daily_loss_limit_dollars": 50,
+                   "daily_loss_limit_dollars": 0,
                    "daily_profit_target_dollars": 200}
 _STATE_DEFAULT  = {"btc_price": None, "today_live_pnl": 0.0, "today_paper_pnl": 0.0,
                    "today_demo_pnl": 0.0, "phase": "waiting", "mode": "paper"}
@@ -169,9 +167,7 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
-# ══════════════════════════════════════════════════════════════════════════════
 #  API endpoints
-# ══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/api/state")
 def api_state():
@@ -183,29 +179,9 @@ def api_state():
 
 @app.route("/api/status")
 def api_status():
-    """
-    Aggregated status across all enabled strategies defined in strategies.json.
-
-    Returns:
-      {
-        "strategies": [
-          {
-            "name": "btc15m",
-            "state_file": "bot_state_btc15m.json",
-            "alive": true,          # false if state file is missing or stale (>60s)
-            "state": { ... }        # full bot_state dict, or {} if unreadable
-          },
-          ...
-        ],
-        "summary": {
-          "total": 2,
-          "alive": 1,
-          "today_live_pnl": 12.50,
-          "today_paper_pnl": -3.20,
-          "total_trades_today": 5
-        }
-      }
-    """
+    """Aggregated status across the strategies in strategies.json: a per-strategy list
+    (name, state_file, alive flag, state dict) plus a summary of counts and PnL totals.
+    A strategy is 'alive' when its state file exists and its timestamp is under 60s old."""
     strategies = _load_strategies()
     now = time.time()
     results = []
@@ -379,12 +355,10 @@ def api_config():
     new_mode    = config.get("mode", "paper")
 
     if "bot_enabled" in data and new_enabled != prev_enabled:
-        icon = "▶️" if new_enabled else "⏹"
-        _telegram_notify(f"{icon} <b>Bot {'ENABLED' if new_enabled else 'DISABLED'}</b>  —  {now_str}\nMode: {new_mode.upper()}")
+        _telegram_notify(f"<b>Bot {'ENABLED' if new_enabled else 'DISABLED'}</b>  -  {now_str}\nMode: {new_mode.upper()}")
 
     if "mode" in data and new_mode != prev_mode:
-        icon = "💵" if new_mode == "live" else "📄"
-        _telegram_notify(f"{icon} <b>Mode switched to {new_mode.upper()}</b>  —  {now_str}")
+        _telegram_notify(f"<b>Mode switched to {new_mode.upper()}</b>  -  {now_str}")
 
     return jsonify(config)
 
@@ -394,7 +368,7 @@ def api_test_telegram():
     """Send a test Telegram message to verify notification config."""
     now_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
     try:
-        notify.send_alert("INFO", f"\U0001f514 <b>Telegram test</b>  —  {now_str}\nBot notifications are working.")
+        notify.send_alert("INFO", f"\U0001f514 <b>Telegram test</b>  -  {now_str}\nBot notifications are working.")
         return jsonify({"ok": True, "message": "Test message sent"})
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
@@ -674,7 +648,7 @@ def _frontend_signals(a: dict) -> dict:
         "p_ev": p_ev if p_ev is not None else 0.5,
         "market_prob": market_prob if market_prob is not None else 0.5,
         # Bot computes EV for the chosen side only; show it on that side, 0 on the other
-        # (numeric, never None — the frontend calls .toFixed on both).
+        # (numeric, never None - the frontend calls .toFixed on both).
         "yes_ev": float(ev) if (ev is not None and up) else 0.0,
         "no_ev": float(ev) if (ev is not None and not up) else 0.0,
         "supertrend": supertrend,
@@ -804,7 +778,7 @@ def api_market_sym(sym):
             exp_dt  = datetime.now(timezone.utc) + timedelta(seconds=secs)
             expires = exp_dt.strftime("%H:%M:%S UTC")
         else:
-            expires = "—"
+            expires = "-"
 
         sessions = [{
             "type":       a.get("session_type", "15m"),
@@ -864,7 +838,7 @@ def api_market_sym(sym):
             log_entries = []
             for r in log_rows:
                 t = (r["ts"] or "")
-                time_str = t[11:16] if len(t) >= 16 else "—"
+                time_str = t[11:16] if len(t) >= 16 else "-"
                 if r["action"] in ("trade", "entry"):
                     tag = "entry"
                 elif r["action"] in ("skip", "watch"):
@@ -990,7 +964,7 @@ def api_equity():
         if not points:
             points = [0.0]
         else:
-            points = [0.0] + points  # ensure length ≥ 2 so dashboard renders the curve
+            points = [0.0] + points  # ensure length >= 2 so dashboard renders the curve
 
         return jsonify({"range": range_, "points": points, "x_labels": labels})
     except Exception as exc:
@@ -1008,9 +982,9 @@ def api_risk():
         cfg = read_config()
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
-        loss_limit  = cfg.get("daily_loss_limit_dollars", 50.0)
+        loss_limit  = cfg.get("daily_loss_limit_dollars", 0.0)
         profit_target = cfg.get("daily_profit_target_dollars", 200.0)
-        ev_floor    = cfg.get("min_ev_base", 7.0)
+        ev_floor    = cfg.get("min_ev_base", 8)
         vol_thresh  = cfg.get("vol_gate_thresh", 1.80)
 
         today_pnl   = 0.0
@@ -1242,6 +1216,198 @@ def api_trade_stats():
         "top_skip_reasons": [{"reason": r, "count": c} for r, c in top_skips],
     }
     return jsonify(payload)
+
+
+def _safe(x, nd=4):
+    """Round, mapping NaN/None -> None so the JSON is valid (no NaN tokens)."""
+    if x is None or (isinstance(x, float) and x != x):
+        return None
+    return round(x, nd)
+
+
+@app.route("/api/edge")
+def api_edge():
+    """
+    Surface the edge-measurement harness for the dashboard GATE-1 panel:
+    decision_log calibration + net-of-fee edge (Wilson LB) and the maker_log counterfactual.
+    Reuses the exact math from scripts/edge_report.py and scripts/maker_report.py.
+    Always returns HTTP 200 with an 'insufficient data' shape when tables are empty/missing.
+    """
+    _empty = {
+        "decisions": {"by_strategy": {}, "by_session": {}, "by_daytype": {},
+                      "overall": None, "verdict": "insufficient data"},
+        "maker": {"by_strategy": {}, "overall": None, "verdict": "insufficient data"},
+        "calibration": {},
+        "basis": {},
+        "counts": {"logged": 0, "settled": 0, "pending": 0},
+    }
+    try:
+        from scripts.edge_report import wilson_lower, _win, _p_side, _kalshi_fee, MIN_BUCKET_N
+        import sessions
+    except Exception as exc:
+        # scripts/ isn't part of the "15 live flat files" contract - degrade to 200, not 500.
+        log.warning("api_edge: edge_report import unavailable: %s", exc)
+        return jsonify(_empty)
+    try:
+        from scripts.maker_report import _stats as _maker_stats
+    except Exception:
+        _maker_stats = None
+
+    def _decision_group(rows):
+        n = len(rows)
+        if n == 0:
+            return None
+        wins = sum(_win(r["side"], r["outcome"]) for r in rows)
+        mean_model = sum(_p_side(r["model_p_yes"], r["side"]) for r in rows) / n
+        mkt = [r for r in rows if r["market_mid_p_yes"] is not None]
+        mean_mkt = (sum(_p_side(r["market_mid_p_yes"], r["side"]) for r in mkt) / len(mkt)) if mkt else None
+        brier_m = sum((_p_side(r["model_p_yes"], r["side"]) - _win(r["side"], r["outcome"])) ** 2 for r in rows) / n
+        brier_k = (sum((_p_side(r["market_mid_p_yes"], r["side"]) - _win(r["side"], r["outcome"])) ** 2 for r in mkt) / len(mkt)) if mkt else None
+        pnls, entries = [], []
+        for r in rows:
+            if r["entry_price_cents"] is None:
+                continue
+            e = r["entry_price_cents"] / 100.0
+            won = _win(r["side"], r["outcome"])
+            pnls.append((1.0 - e if won else -e) - _kalshi_fee(e))
+            entries.append(e)
+        mean_pnl = sum(pnls) / len(pnls) if pnls else None
+        mean_entry = sum(entries) / len(entries) if entries else None
+        wlb = wilson_lower(wins, n)
+        pnl_wlb = (wlb * (1 - mean_entry) - (1 - wlb) * mean_entry - _kalshi_fee(mean_entry)) if mean_entry is not None else None
+        return {
+            "n": n, "win_rate": _safe(wins / n, 3),
+            "mean_model_p": _safe(mean_model, 3), "mean_market_p": _safe(mean_mkt, 3),
+            "brier_model": _safe(brier_m), "brier_market": _safe(brier_k),
+            "net_pnl_per_contract": _safe(mean_pnl), "wilson_lb_pnl": _safe(pnl_wlb),
+        }
+
+    def _round_maker(st):
+        return {
+            "n": st["n"], "fill_rate": _safe(st["fill_rate"], 3),
+            "taker_mean": _safe(st["taker_mean"]), "maker_strategy_mean": _safe(st["ms_mean"]),
+            "delta": _safe(st["delta"]), "delta_se": _safe(st["delta_se"]),
+            "maker_filled_mean": _safe(st["maker_filled_mean"]),
+        }
+
+    result = {
+        "decisions": {"by_strategy": {}, "by_session": {}, "by_daytype": {},
+                      "overall": None, "verdict": "insufficient data"},
+        "maker": {"by_strategy": {}, "overall": None, "verdict": "insufficient data"},
+        "calibration": {},
+        "basis": {},
+        "counts": {"logged": 0, "settled": 0, "pending": 0},
+    }
+    try:
+        conn = get_db()
+        try:
+            result["counts"]["logged"] = conn.execute("SELECT COUNT(*) FROM decision_log").fetchone()[0]
+            result["counts"]["settled"] = conn.execute(
+                "SELECT COUNT(*) FROM decision_log WHERE outcome IN ('yes','no')").fetchone()[0]
+            result["counts"]["pending"] = conn.execute(
+                "SELECT COUNT(*) FROM decision_log WHERE outcome='pending'").fetchone()[0]
+            picks = conn.execute(
+                "SELECT ts, strategy, side, model_p_yes, market_mid_p_yes, entry_price_cents, outcome "
+                "FROM decision_log WHERE outcome IN ('yes','no') AND would_trade=1 "
+                "AND model_p_yes IS NOT NULL AND side IS NOT NULL "
+                "AND entry_price_cents IS NOT NULL").fetchall()
+        except sqlite3.OperationalError:
+            picks = []
+        groups = {}
+        for r in picks:
+            groups.setdefault(r["strategy"] or "?", []).append(r)
+        for strat, rs in groups.items():
+            g = _decision_group(rs)
+            if g:
+                result["decisions"]["by_strategy"][strat] = g
+        overall = _decision_group(picks)
+        result["decisions"]["overall"] = overall
+        if overall:
+            n, net, lb = overall["n"], overall["net_pnl_per_contract"], overall["wilson_lb_pnl"]
+            if n < 200:
+                result["decisions"]["verdict"] = f"insufficient data ({n}/200 picks)"
+            elif lb is not None and lb > 0:
+                result["decisions"]["verdict"] = "edge: net positive (Wilson LB > 0)"
+            elif net is not None and net > 0:
+                result["decisions"]["verdict"] = "marginal: positive but LB <= 0"
+            else:
+                result["decisions"]["verdict"] = "no edge: net <= 0"
+
+        # Per-time breakdowns - which ET sessions / day-types actually pay (the "better
+        # market times" view). Each bucket carries an 'insufficient' flag below MIN_BUCKET_N.
+        def _bucketed(bucketer):
+            b = {}
+            for r in picks:
+                key = bucketer(r["ts"])
+                if key is None:
+                    continue
+                b.setdefault(key, []).append(r)
+            out = {}
+            for key, rs in b.items():
+                g = _decision_group(rs)
+                if g:
+                    g["insufficient"] = g["n"] < MIN_BUCKET_N
+                    out[key] = g
+            return out
+        result["decisions"]["by_session"] = _bucketed(sessions.session_for_iso)
+        result["decisions"]["by_daytype"] = _bucketed(sessions.day_type_for_iso)
+
+        # Fitted model calibration (written by the bot's recalibration job).
+        try:
+            from scripts.calibration import load_calibration
+            result["calibration"] = load_calibration()
+        except Exception:
+            pass
+
+        # Settlement basis: per-asset agreement between our spot-implied side and
+        # Kalshi's official result, from the settlement_basis table.
+        try:
+            brows = conn.execute(
+                "SELECT asset, agree, signed_dist FROM settlement_basis "
+                "WHERE kalshi IN ('yes','no')").fetchall()
+            bstats: dict = {}
+            for r in brows:
+                st = bstats.setdefault(r["asset"], {"n": 0, "agree": 0, "disagree_dists": []})
+                st["n"] += 1
+                if r["agree"]:
+                    st["agree"] += 1
+                elif r["signed_dist"] is not None:
+                    st["disagree_dists"].append(r["signed_dist"])
+            for asset, st in bstats.items():
+                dd = st.pop("disagree_dists")
+                st["agree_rate"] = _safe(st["agree"] / st["n"], 3) if st["n"] else None
+                st["mean_disagree_dist"] = _safe(sum(dd) / len(dd), 5) if dd else None
+            result["basis"] = bstats
+        except sqlite3.OperationalError:
+            pass
+
+        try:
+            mrows = conn.execute("SELECT * FROM maker_log").fetchall()
+        except sqlite3.OperationalError:
+            mrows = []
+        conn.close()
+        if mrows and _maker_stats:
+            mg = {}
+            for r in mrows:
+                mg.setdefault(r["strategy"] or "?", []).append(r)
+            for strat, rs in mg.items():
+                st = _maker_stats(rs)
+                if st:
+                    result["maker"]["by_strategy"][strat] = _round_maker(st)
+            ov = _maker_stats(list(mrows))
+            result["maker"]["overall"] = _round_maker(ov) if ov else None
+            if ov:
+                if ov["n"] < 200:
+                    result["maker"]["verdict"] = f"insufficient data ({ov['n']}/200)"
+                elif ov["delta_se"] == ov["delta_se"] and ov["delta"] > 2 * ov["delta_se"] and ov["delta"] > 0:
+                    result["maker"]["verdict"] = "maker clearly better - build 3B"
+                elif ov["delta"] <= 0:
+                    result["maker"]["verdict"] = "maker not better - stay taker"
+                else:
+                    result["maker"]["verdict"] = "inconclusive - collect more"
+    except Exception as exc:
+        log.warning("api_edge error: %s", exc)
+    return jsonify(result)
 
 
 @app.route("/healthz")

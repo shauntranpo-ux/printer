@@ -1,6 +1,6 @@
 # Style Tokens
 
-All tokens are defined in `:root` at lines 11–39 of `Money Printer.html`. Use OKLCH — do not convert to hex/rgb (OKLCH gives perceptually uniform interpolation for the color-shift effects).
+All tokens are defined in `:root` at lines 11-39 of `Money Printer.html`. Use OKLCH - do not convert to hex/rgb (OKLCH gives perceptually uniform interpolation for the color-shift effects).
 
 ---
 
@@ -70,7 +70,7 @@ Applied to: `.kpi`, `.kpi-strip`, `.card`, `.mc` (all panels).
 
 ## Phase color map
 
-Applied as `.mc-status.<phase>` class (source lines 264–268):
+Applied as `.mc-status.<phase>` class (source lines 264-268):
 
 | Phase | Background | Text color |
 |---|---|---|
@@ -90,7 +90,7 @@ box-shadow: 0 0 0 1px oklch(0.78 0.13 85 / 0.4), 0 4px 14px oklch(0.78 0.13 85 /
 
 ## Mode color map
 
-Applied via `<body data-mode="...">` + `.mode-badge` CSS (source lines 181–183):
+Applied via `<body data-mode="...">` + `.mode-badge` CSS (source lines 181-183):
 
 | Mode | Text | Background | Border |
 |---|---|---|---|
@@ -108,7 +108,7 @@ font-family: 'Montserrat', ui-sans-serif, system-ui, -apple-system, sans-serif;
 
 Google Fonts load: `Montserrat:wght@300;400;500;600;700;800;900` + `Geist+Mono:wght@400;500;600;700`
 
-**Numeric formatting** — add to any number-displaying element:
+**Numeric formatting** - add to any number-displaying element:
 ```css
 font-feature-settings: 'tnum' 1, 'zero' 1;
 font-variant-numeric: tabular-nums;
@@ -116,18 +116,18 @@ font-variant-numeric: tabular-nums;
 The `.mono` class applies this. Use it for prices, P&L values, EV%, timestamps.
 
 **Type scale:**
-- 9px — micro labels (UPPERCASE + tracking 0.08–0.12em)
-- 10px — secondary labels, sub-values
-- 11px — table cells, signal rows, log messages
-- 12px — chips, pills, decision labels
-- 13px — body, pipeline asset names
-- 14px — sub-headers
-- 15px — brand
-- 18px — KPI card values
-- 22px — market price display
-- 24px — KPI strip values
-- 28px — gauge value
-- 32px — hero price
+- 9px - micro labels (UPPERCASE + tracking 0.08-0.12em)
+- 10px - secondary labels, sub-values
+- 11px - table cells, signal rows, log messages
+- 12px - chips, pills, decision labels
+- 13px - body, pipeline asset names
+- 14px - sub-headers
+- 15px - brand
+- 18px - KPI card values
+- 22px - market price display
+- 24px - KPI strip values
+- 28px - gauge value
+- 32px - hero price
 
 ---
 
@@ -138,7 +138,7 @@ Observed grid gaps and paddings (all in px):
 | Size | Usage |
 |---|---|
 | 4 | Tight gaps (pip spacing, small icon margins) |
-| 6 | Label–value gaps, sub-text |
+| 6 | Label-value gaps, sub-text |
 | 8 | Default gap between related elements |
 | 10 | Card internal gaps, ladder row padding |
 | 12 | Grid gaps (`.grid-2`, `.grid-3`, market strip) |
@@ -173,7 +173,7 @@ Observed grid gaps and paddings (all in px):
 | Panel fade-up | `350ms ease` | `.panel.active` opacity + translateY(6px) |
 | Allocation bar fill | `800ms cubic-bezier(.6,0,.2,1)` | `.alloc-bar > div` width |
 | Meter bar fill | `800ms cubic-bezier(.6,0,.2,1)` | `.meter-bar > div` width |
-| Status pulse ring | `1.6s ease-out infinite` | `.pulse-dot::after` scale 0.6→2, opacity 1→0 |
-| LOCKED live dot | `1.4s ease-in-out infinite` | `.locked-tag::before` opacity 0.4→1→0.4 |
-| Equity last-point pulse | SVG `<animate>` r 3→9, opacity 0.4→0, `1.4s infinite` | Equity chart terminal dot |
+| Status pulse ring | `1.6s ease-out infinite` | `.pulse-dot::after` scale 0.6->2, opacity 1->0 |
+| LOCKED live dot | `1.4s ease-in-out infinite` | `.locked-tag::before` opacity 0.4->1->0.4 |
+| Equity last-point pulse | SVG `<animate>` r 3->9, opacity 0.4->0, `1.4s infinite` | Equity chart terminal dot |
 | Topbar blur | `backdrop-filter: blur(16px)` | `#topbar` on scroll |

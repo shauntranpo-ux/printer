@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-data/splitter.py — Deterministic chronological train / OOS holdout split.
+data/splitter.py - Deterministic chronological train / OOS holdout split.
 
 Divides all 15-minute windows into:
-  70%  TRAIN   — used for all backtesting and Monte Carlo optimisation
-  30%  OOS     — locked holdout, never touched during parameter tuning
+  70%  TRAIN   - used for all backtesting and Monte Carlo optimisation
+  30%  OOS     - locked holdout, never touched during parameter tuning
 
 Split boundaries are saved to data/split_config.json.  Running this script
 again with the same --start-year always produces the identical split.
@@ -23,14 +23,14 @@ import time
 
 import pandas as pd
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
+# Paths
 _THIS_DIR         = os.path.dirname(os.path.abspath(__file__))
 CSV_PATH          = r"C:\Users\alxnt\Downloads\d5ae29c4-33c6-11f1-b1e7-6dda37cfa7b9\binance_api_BTCUSDT_1m.csv"
 SPLIT_CONFIG_PATH = os.path.join(_THIS_DIR, "split_config.json")
 TRAIN_RATIO       = 0.70
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# Public API
 
 def generate_split(start_year: int = 2020, force: bool = False) -> dict:
     """
@@ -145,7 +145,7 @@ def filter_windows(windows, price_lookup, mode: str, split_cfg: dict):
     return w_out, pl_out
 
 
-# ── Internal helpers ──────────────────────────────────────────────────────────
+# Internal helpers
 
 def _load_json(path: str) -> dict:
     with open(path) as fh:
@@ -160,7 +160,7 @@ def _print_existing(cfg: dict) -> None:
           f"[{cfg['oos_start_date']} ->{cfg['oos_end_date']}]")
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
+# CLI
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(

@@ -26,7 +26,7 @@ _CONFIG = {
 def _valid_snapshot(probs=None):
     strikes = [100.0, 200.0, 300.0, 400.0, 500.0]
     if probs is None:
-        # Linearly spaced → butterfly = 0 for every consecutive triple; no violations
+        # Linearly spaced -> butterfly = 0 for every consecutive triple; no violations
         probs = [0.85, 0.675, 0.50, 0.325, 0.15]
     return {
         "event_id": "test",

@@ -1,4 +1,4 @@
-# Section 5: SOL Strategy — Research Audit
+# Section 5: SOL Strategy - Research Audit
 
 ## Problem Statement
 
@@ -11,8 +11,8 @@ from Solana validator outages. Both are handled explicitly.
 ## Component 1: High-Beta Concurrent BTC Signal (Primary)
 
 **Basis:** Kurihara & Matsumoto (2026), same source as ETH. SOL is a
-large-cap and reacts to BTC at lag 0. Beta is higher than ETH's —
-approximately 1.5–2.0x on 1-minute returns, reflecting SOL's higher
+large-cap and reacts to BTC at lag 0. Beta is higher than ETH's -
+approximately 1.5-2.0x on 1-minute returns, reflecting SOL's higher
 retail participation and lower liquidity relative to BTC.
 
 **Implementation:** Same BTC 3-min return signal as ETHStrategy, but with
@@ -31,7 +31,7 @@ top-10 assets.
 
 **Implementation:** A small always-on continuation nudge (`MOMENTUM_BIAS =
 0.02`) stacked on top of the variance-ratio regime detector. If above
-strike → +2pp; if below strike → -2pp. This is independent of BV3 tables
+strike -> +2pp; if below strike -> -2pp. This is independent of BV3 tables
 and derived purely from published microstructure research.
 
 ---
@@ -46,7 +46,7 @@ network incidents between 2022 and 2024:
 - 2022-10-01: ~6h outage (non-determinism bug)
 - 2024-02-06: ~5h outage (compute overflow bug)
 
-During each event, SOL spot price dropped 3–12% in the first hour while
+During each event, SOL spot price dropped 3-12% in the first hour while
 Kalshi YES contracts would have expired worthless mid-window.
 
 **Implementation:** `check_solana_health()` queries `getHealth` on the
@@ -65,12 +65,12 @@ often partially reverse as market makers absorb residual directional flow.
 
 **Implementation:** `exhaustion_fade_adjustment()` activates only when
 `seconds_left < 120` AND `|1-min return| / realized_vol > 2`. Magnitude is
-small (±3pp), direction is opposite to the extreme move.
+small (+/-3pp), direction is opposite to the extreme move.
 
 ---
 
 ## Intentional Deviations from Legacy
 
-1. No BV3 table — SOL uses Brownian bridge + adjustments
+1. No BV3 table - SOL uses Brownian bridge + adjustments
 2. Network health kill switch not present in any legacy strategy
 3. `min_ev_base: 9` (higher than ETH's 8) due to elevated tail risk

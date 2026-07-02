@@ -40,11 +40,13 @@ def _run_s1(asset: str, prices: list, cooldown_until: dict, consec_losses: dict)
 
 def test_cooldown_blocks_asset_during_cooldown():
     """S1 must return skip for an asset currently in cooldown."""
-    prices = _make_prices()
+    # SOL is an enabled S1 asset (ETH is disabled in the cross-asset S1, so it would
+    # short-circuit before the cooldown gate - use SOL to exercise the cooldown path).
+    prices = _make_prices(base=150.0)
     future = time.time() + 600
-    result = _run_s1("ETH", prices,
-                     cooldown_until={"ETH": future},
-                     consec_losses={"ETH": 3})
+    result = _run_s1("SOL", prices,
+                     cooldown_until={"SOL": future},
+                     consec_losses={"SOL": 3})
     assert result["action"] == "skip", (
         f"Expected skip during cooldown, got action={result['action']}"
     )

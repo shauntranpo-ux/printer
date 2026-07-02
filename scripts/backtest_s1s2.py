@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/backtest_s1s2.py — S1/S2 strategy backtest: v1 vs v2 thresholds.
+scripts/backtest_s1s2.py - S1/S2 strategy backtest: v1 vs v2 thresholds.
 
 Runs against Binance 1-min OHLCV data (data/{ASSET}_1m.csv).
 For each 15-min window, tries entry at each valid minute; takes first gate-pass.
@@ -26,9 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import backtest as bt
 from bot_strategy import _S1_ASSET_CONFIG as _LIVE_S1, _S2_ASSET_CONFIG as _LIVE_S2
 
-# ---------------------------------------------------------------------------
-# S1 configs — v1 (original) and v2 (loosened x0.5)
-# ---------------------------------------------------------------------------
+# S1 configs - v1 (original) and v2 (loosened x0.5)
 
 S1_V1: dict = {
     "BTC":  dict(min_dist=0.0025, max_rv=0.0080, ema_short=3, ema_long=10,
@@ -56,9 +54,7 @@ S1_V2: dict = {
                  session_gate=False, min_ev=0.06, time_min=3.0, time_max=10.0),
 }
 
-# ---------------------------------------------------------------------------
-# S2 configs — v1 (original) and v2 (loosened x0.5)
-# ---------------------------------------------------------------------------
+# S2 configs - v1 (original) and v2 (loosened x0.5)
 
 S2_V1: dict = {
     # min_vel_delta in cents, calibrated for theoretical YES-ask model (~6x live market values)
@@ -93,9 +89,7 @@ KALSHI_FEE_CENTS = 7
 TRADE_AMOUNT = 25.0
 _VEL_BT_SCALE = 6.0  # theoretical YES-ask deltas are ~6x real market cent-tick deltas
 
-# ---------------------------------------------------------------------------
-# Signal utilities — operate on small per-window price lists (fast)
-# ---------------------------------------------------------------------------
+# Signal utilities - operate on small per-window price lists (fast)
 
 def _ema(vals: list) -> float:
     alpha = 2.0 / (len(vals) + 1)
@@ -154,7 +148,7 @@ def _s2_win_prob(vel_delta: float, min_vel: float) -> float:
 
 def _theoretical_yes_ask(spot: float, strike: float) -> float:
     """Deterministic YES-ask proxy (cents) calibrated for 15-min windows.
-    k=0.012 so 0.5% above strike ≈ 68c, 1.0% ≈ 81c — matches typical Kalshi market pricing.
+    k=0.012 so 0.5% above strike ~ 68c, 1.0% ~ 81c - matches typical Kalshi market pricing.
     (k=0.004 was too steep: 0.28% above already hit 76c ceiling, killing all S2 entries.)
     """
     if strike <= 0:
@@ -179,9 +173,7 @@ def _sharpe(pnl_list: list) -> float:
     return mean / std if std > 0 else 0.0
 
 
-# ---------------------------------------------------------------------------
 # S1 backtest
-# ---------------------------------------------------------------------------
 
 def backtest_s1_asset(asset: str, cfg: dict, windows, price_lookup,
                       rng: random.Random) -> dict:
@@ -202,7 +194,7 @@ def backtest_s1_asset(asset: str, cfg: dict, windows, price_lookup,
             prev_closes.clear()
             continue
 
-        # Session gate — BTC only — blocks whole window
+        # Session gate - BTC only - blocks whole window
         if cfg.get("session_gate") and not _is_us_session(int(w_ts)):
             # Carry forward this window's prices for next window's lookback
             for m in sorted(minute_dict):
@@ -274,9 +266,7 @@ def backtest_s1_asset(asset: str, cfg: dict, windows, price_lookup,
                 avg_pnl=tot / trades if trades else 0.0, sharpe=_sharpe(pnl_list))
 
 
-# ---------------------------------------------------------------------------
 # S2 backtest
-# ---------------------------------------------------------------------------
 
 def backtest_s2_asset(asset: str, cfg: dict, windows, price_lookup,
                       rng: random.Random) -> dict:
@@ -326,7 +316,7 @@ def backtest_s2_asset(asset: str, cfg: dict, windows, price_lookup,
             if side == "no" and current_price > strike:
                 continue
 
-            # OBI gate SKIPPED — no historical orderbook data
+            # OBI gate SKIPPED - no historical orderbook data
 
             yes_ask = _theoretical_yes_ask(current_price, strike)
             no_ask  = 100.0 - yes_ask
@@ -355,9 +345,7 @@ def backtest_s2_asset(asset: str, cfg: dict, windows, price_lookup,
                 avg_pnl=tot / trades if trades else 0.0, sharpe=_sharpe(pnl_list))
 
 
-# ---------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
 
 def _fmt(r: dict) -> str:
     return (f"trades={r['trades']:>6}  wr={r['win_rate']:.1%}  "

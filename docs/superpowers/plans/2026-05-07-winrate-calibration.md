@@ -4,9 +4,9 @@
 
 **Goal:** Build `scripts/calibrate_winrates.py` that fetches Binance 1m + Kalshi historical data, computes empirical win-rate tables for S1 and S2, prints Python dicts to stdout, then wire lookup functions into `bot_strategy.py` replacing the tanh formulas.
 
-**Architecture:** Standalone script (no bot imports, no bot_state). Phase 1 fetches Binance klines → simulates EMA continuation signals → buckets into `_S1_WIN_RATE`. Phase 2 fetches Kalshi historical markets + yes_ask histories → simulates velocity signals → buckets into `_S2_WIN_RATE`. Output printed to stdout; progress to stderr.
+**Architecture:** Standalone script (no bot imports, no bot_state). Phase 1 fetches Binance klines -> simulates EMA continuation signals -> buckets into `_S1_WIN_RATE`. Phase 2 fetches Kalshi historical markets + yes_ask histories -> simulates velocity signals -> buckets into `_S2_WIN_RATE`. Output printed to stdout; progress to stderr.
 
-**Tech Stack:** Python stdlib + `requests` (HTTP), `cryptography` (RSA-PSS for Kalshi auth), `math`/`statistics`. No pandas or numpy — pure Python for portability.
+**Tech Stack:** Python stdlib + `requests` (HTTP), `cryptography` (RSA-PSS for Kalshi auth), `math`/`statistics`. No pandas or numpy - pure Python for portability.
 
 ---
 
@@ -20,7 +20,7 @@
 
 ---
 
-## Task 1: Script skeleton — constants, HTTP helpers, Kalshi auth
+## Task 1: Script skeleton - constants, HTTP helpers, Kalshi auth
 
 **Files:**
 - Create: `scripts/calibrate_winrates.py`
@@ -39,8 +39,8 @@ Usage:
     python scripts/calibrate_winrates.py
 
 Env vars required for S2 (Kalshi) phase:
-    KALSHI_API_KEY         — API key ID (uuid)
-    KALSHI_PRIVATE_KEY     — PEM-encoded RSA private key (or path to .pem file)
+    KALSHI_API_KEY         - API key ID (uuid)
+    KALSHI_PRIVATE_KEY     - PEM-encoded RSA private key (or path to .pem file)
 """
 import math
 import os
@@ -53,11 +53,11 @@ import requests
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 
-# ── Kalshi API constants ───────────────────────────────────────────────────
+# Kalshi API constants
 KALSHI_BASE_URL    = "https://api.elections.kalshi.com/trade-api/v2"
 KALSHI_PATH_PREFIX = "/trade-api/v2"
 
-# Candidate series tickers per asset — tried in order until one returns markets
+# Candidate series tickers per asset - tried in order until one returns markets
 KALSHI_SERIES = {
     "BTC":  ["KXBTC15M", "KXBTCD", "BTCD-B"],
     "ETH":  ["KXETHD",   "KXETH15M"],
@@ -66,7 +66,7 @@ KALSHI_SERIES = {
     "DOGE": ["KXDOGED",  "KXDOGE15M"],
 }
 
-# ── Binance API constants ──────────────────────────────────────────────────
+# Binance API constants
 BINANCE_BASE_URL = "https://api.binance.com"
 BINANCE_SYMBOLS  = {
     "BTC":  "BTCUSDT",
@@ -76,7 +76,7 @@ BINANCE_SYMBOLS  = {
     "DOGE": "DOGEUSDT",
 }
 
-# ── Per-asset config — KEEP IN SYNC WITH bot_strategy.py ──────────────────
+# Per-asset config - KEEP IN SYNC WITH bot_strategy.py
 S1_ASSET_CONFIG = {
     "BTC":  dict(min_dist=0.0025, ema_short=3, ema_long=10),
     "ETH":  dict(min_dist=0.0030, ema_short=3, ema_long=10),
@@ -92,7 +92,7 @@ S2_ASSET_CONFIG = {
     "DOGE": dict(min_dist=0.0100, min_vel_delta=1.50, vel_lookback=3),
 }
 
-MIN_SAMPLES = 50  # buckets below this get None → bot falls back to tanh
+MIN_SAMPLES = 50  # buckets below this get None -> bot falls back to tanh
 
 
 def _log(msg: str) -> None:
@@ -107,7 +107,7 @@ def _binance_get(path: str, params: dict) -> dict:
         r = requests.get(url, params=params, timeout=15)
         if r.status_code == 429:
             wait = int(r.headers.get("Retry-After", 2 ** attempt))
-            _log(f"  Binance 429 — sleeping {wait}s")
+            _log(f"  Binance 429 - sleeping {wait}s")
             time.sleep(wait)
             continue
         r.raise_for_status()
@@ -166,14 +166,14 @@ def _kalshi_get(path: str, params: dict, key_id: str, private_key) -> dict:
             time.sleep(2 ** attempt)
             continue
         if r.status_code == 401:
-            raise RuntimeError("Kalshi 401 — check KALSHI_API_KEY and KALSHI_PRIVATE_KEY")
+            raise RuntimeError("Kalshi 401 - check KALSHI_API_KEY and KALSHI_PRIVATE_KEY")
         r.raise_for_status()
         return r.json()
     raise RuntimeError(f"Kalshi {path} failed after retries")
 
 
 if __name__ == "__main__":
-    _log("calibrate_winrates.py — run main() to start")
+    _log("calibrate_winrates.py - run main() to start")
 ```
 
 - [ ] **Step 2: Verify the file runs without error**
@@ -183,13 +183,13 @@ cd C:\Users\alxnt\kalshi-bot
 py scripts/calibrate_winrates.py
 ```
 
-Expected stderr: `calibrate_winrates.py — run main() to start`. No traceback.
+Expected stderr: `calibrate_winrates.py - run main() to start`. No traceback.
 
 - [ ] **Step 3: Create the test file**
 
 ```python
 # tests/test_calibrate_winrates.py
-"""Unit tests for calibrate_winrates.py — pure computation only, no HTTP."""
+"""Unit tests for calibrate_winrates.py - pure computation only, no HTTP."""
 import sys
 import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
@@ -223,7 +223,7 @@ git commit -m "feat: scaffold calibrate_winrates.py with Kalshi auth + HTTP help
 - [ ] **Step 1: Write failing test**
 
 ```python
-# tests/test_calibrate_winrates.py — append
+# tests/test_calibrate_winrates.py - append
 
 from unittest.mock import patch, MagicMock
 
@@ -267,7 +267,7 @@ py -m pytest tests/test_calibrate_winrates.py::test_fetch_binance_1m_paginates -
 
 Expected: `AttributeError: module 'calibrate_winrates' has no attribute 'fetch_binance_1m'`
 
-- [ ] **Step 3: Implement fetch_binance_1m — add to calibrate_winrates.py before `if __name__ == "__main__":`**
+- [ ] **Step 3: Implement fetch_binance_1m - add to calibrate_winrates.py before `if __name__ == "__main__":`**
 
 ```python
 def fetch_binance_1m(symbol: str, days: int) -> list[tuple[int, float]]:
@@ -293,7 +293,7 @@ def fetch_binance_1m(symbol: str, days: int) -> list[tuple[int, float]]:
             result.append((ts, close))
         last_ts = int(batch[-1][0])
         if last_ts <= cursor:
-            break  # no progress — done
+            break  # no progress - done
         cursor = last_ts + 60_000  # next minute after last bar
         if len(batch) < 1000:
             break  # reached the end
@@ -327,7 +327,7 @@ git commit -m "feat: add fetch_binance_1m with pagination"
 - [ ] **Step 1: Write failing tests**
 
 ```python
-# tests/test_calibrate_winrates.py — append
+# tests/test_calibrate_winrates.py - append
 
 def test_compute_ema_basic():
     """EMA of constant series equals that constant."""
@@ -338,7 +338,7 @@ def test_compute_ema_basic():
 def test_simulate_s1_continuation_only():
     """
     Build a 15-min window where price is above strike the whole time.
-    EMA should be flat (no crossover) — should generate no trade records
+    EMA should be flat (no crossover) - should generate no trade records
     because ema_ratio ~1.0 means direction is ambiguous (treated as 'yes' = above).
     """
     # 90 days of flat prices just above 100.0 so every window has price > strike
@@ -349,22 +349,22 @@ def test_simulate_s1_continuation_only():
     closes = [(aligned + i * 60_000, 100.1) for i in range(17)]
     cfg = dict(min_dist=0.0025, ema_short=3, ema_long=10)
     records = cal.simulate_s1_window(closes[0][0], 100.0, closes, cfg)
-    # All entry points: price > strike + EMA ~flat → may generate 'yes' records
+    # All entry points: price > strike + EMA ~flat -> may generate 'yes' records
     # Check that all records have abs_pct > min_dist
     for abs_pct, mins_left, won in records:
         assert abs_pct >= cfg["min_dist"], f"abs_pct {abs_pct} below min_dist"
 
 
 def test_simulate_s1_reversal_filtered():
-    """EMA bearish but price above strike → reversal → record must be skipped."""
+    """EMA bearish but price above strike -> reversal -> record must be skipped."""
     start_ms  = 1_700_100_000_000
     aligned   = (start_ms // (15 * 60_000)) * (15 * 60_000)
-    # Price starts at 101 (above strike 100), then drops to 99 — EMA lags and stays above
+    # Price starts at 101 (above strike 100), then drops to 99 - EMA lags and stays above
     prices_up   = [(aligned + i * 60_000, 101.0) for i in range(5)]
     prices_down = [(aligned + (5 + i) * 60_000, 99.0) for i in range(12)]
     closes = prices_up + prices_down
     strike = closes[0][1]  # 101.0
-    # After the drop, price is below strike, EMA still above → EMA=yes, price<strike → reversal
+    # After the drop, price is below strike, EMA still above -> EMA=yes, price<strike -> reversal
     # Records at those offsets should be skipped
     cfg = dict(min_dist=0.0025, ema_short=3, ema_long=10)
     records = cal.simulate_s1_window(closes[0][0], strike, closes, cfg)
@@ -383,10 +383,10 @@ py -m pytest tests/test_calibrate_winrates.py::test_compute_ema_basic tests/test
 
 Expected: `AttributeError: module 'calibrate_winrates' has no attribute '_compute_ema'`
 
-- [ ] **Step 3: Implement EMA and S1 window simulation — add to calibrate_winrates.py**
+- [ ] **Step 3: Implement EMA and S1 window simulation - add to calibrate_winrates.py**
 
 ```python
-# ── EMA helper ────────────────────────────────────────────────────────────
+# EMA helper
 
 def _compute_ema(values: list[float]) -> float:
     """Standard EMA over a list of floats, newest value last."""
@@ -399,7 +399,7 @@ def _compute_ema(values: list[float]) -> float:
     return v
 
 
-# ── S1 simulation ─────────────────────────────────────────────────────────
+# S1 simulation
 
 # Entry points: minutes remaining before expiry
 S1_ENTRY_OFFSETS = [3, 5, 7, 10, 12]  # minutes remaining
@@ -475,9 +475,9 @@ def simulate_s1_window(
 
         # Continuation-only filter
         if ema_side == "yes" and current_price < strike:
-            continue  # reversal — skip
+            continue  # reversal - skip
         if ema_side == "no" and current_price > strike:
-            continue  # reversal — skip
+            continue  # reversal - skip
 
         # Record: did we win? YES contract wins if expiry > strike
         won = (ema_side == "yes" and outcome_yes_wins) or \
@@ -551,12 +551,12 @@ git commit -m "feat: add S1 EMA simulation with continuation filter"
 - [ ] **Step 1: Write failing tests**
 
 ```python
-# tests/test_calibrate_winrates.py — append
+# tests/test_calibrate_winrates.py - append
 
 def test_bucket_s1_basic():
-    """Records in bucket (0,0) → win rate = wins / total."""
-    # abs_pct=0.003 → dist_idx=0 (between min_dist=0.0025 and 0.5%)
-    # mins_left=4.0 → time_idx=0 (3-6 min)
+    """Records in bucket (0,0) -> win rate = wins / total."""
+    # abs_pct=0.003 -> dist_idx=0 (between min_dist=0.0025 and 0.5%)
+    # mins_left=4.0 -> time_idx=0 (3-6 min)
     records = [(0.003, 4.0, True)] * 70 + [(0.003, 4.0, False)] * 30
     table = cal.bucket_s1(records, min_dist=0.0025, min_samples=50)
     assert (0, 0) in table
@@ -573,10 +573,10 @@ def test_bucket_s1_none_for_sparse():
 def test_bucket_s1_dist_boundaries():
     """Verify correct dist bucket assignment."""
     cases = [
-        (0.003,  0),   # 0.003 → bucket 0 (between 0.0025 and 0.005)
-        (0.006,  1),   # 0.006 → bucket 1 (between 0.005 and 0.010)
-        (0.015,  2),   # 0.015 → bucket 2 (between 0.010 and 0.020)
-        (0.030,  3),   # 0.030 → bucket 3 (>= 0.020)
+        (0.003,  0),   # 0.003 -> bucket 0 (between 0.0025 and 0.005)
+        (0.006,  1),   # 0.006 -> bucket 1 (between 0.005 and 0.010)
+        (0.015,  2),   # 0.015 -> bucket 2 (between 0.010 and 0.020)
+        (0.030,  3),   # 0.030 -> bucket 3 (>= 0.020)
     ]
     for abs_pct, expected_idx in cases:
         records = [(abs_pct, 4.0, True)] * 60
@@ -592,13 +592,13 @@ py -m pytest tests/test_calibrate_winrates.py::test_bucket_s1_basic -v
 
 Expected: `AttributeError: module 'calibrate_winrates' has no attribute 'bucket_s1'`
 
-- [ ] **Step 3: Implement bucketing — add to calibrate_winrates.py**
+- [ ] **Step 3: Implement bucketing - add to calibrate_winrates.py**
 
 ```python
-# ── S1 bucketing ──────────────────────────────────────────────────────────
+# S1 bucketing
 
 # dist boundaries (absolute fraction, not percent)
-S1_DIST_BOUNDS = [0.005, 0.010, 0.020]  # 0.5%, 1.0%, 2.0% — bucket 3 = >=2.0%
+S1_DIST_BOUNDS = [0.005, 0.010, 0.020]  # 0.5%, 1.0%, 2.0% - bucket 3 = >=2.0%
 S1_TIME_BOUNDS = [6.0, 9.0]             # 3-6, 6-9, 9-12 min remaining
 
 
@@ -622,7 +622,7 @@ def bucket_s1(
     min_samples: int = MIN_SAMPLES,
 ) -> dict[tuple[int, int], float | None]:
     """
-    Bucket S1 records into a (dist_idx, time_idx) → win_rate table.
+    Bucket S1 records into a (dist_idx, time_idx) -> win_rate table.
     Entries with fewer than min_samples records return None.
     Records with abs_pct < min_dist are excluded (already filtered by simulation,
     but guard here for safety).
@@ -678,7 +678,7 @@ git commit -m "feat: add S1 bucketing with dist/time boundaries"
 - [ ] **Step 1: Write failing test**
 
 ```python
-# tests/test_calibrate_winrates.py — append
+# tests/test_calibrate_winrates.py - append
 
 def test_fetch_kalshi_markets_paginates():
     """fetch_kalshi_markets should follow cursor pagination and filter by date range."""
@@ -732,10 +732,10 @@ py -m pytest tests/test_calibrate_winrates.py::test_fetch_kalshi_markets_paginat
 
 Expected: `AttributeError: module 'calibrate_winrates' has no attribute 'fetch_kalshi_markets'`
 
-- [ ] **Step 3: Implement fetch_kalshi_markets — add to calibrate_winrates.py**
+- [ ] **Step 3: Implement fetch_kalshi_markets - add to calibrate_winrates.py**
 
 ```python
-# ── Kalshi market listing ──────────────────────────────────────────────────
+# Kalshi market listing
 
 def fetch_kalshi_markets(
     series_ticker: str,
@@ -774,7 +774,7 @@ def fetch_kalshi_markets(
                 import datetime
                 ct = datetime.datetime.fromisoformat(close_str.replace("Z", "+00:00"))
                 if ct.timestamp() < cutoff_ts:
-                    cursor = ""  # stop paginating — markets are oldest-first from here
+                    cursor = ""  # stop paginating - markets are oldest-first from here
                     break
             except Exception:
                 continue
@@ -820,7 +820,7 @@ git commit -m "feat: add Kalshi market listing with cursor pagination"
 - [ ] **Step 1: Write failing test**
 
 ```python
-# tests/test_calibrate_winrates.py — append
+# tests/test_calibrate_winrates.py - append
 
 def test_fetch_market_history_extracts_yes_ask():
     """fetch_market_history should return list of (ts_sec, yes_ask_cents) pairs."""
@@ -844,7 +844,7 @@ py -m pytest tests/test_calibrate_winrates.py::test_fetch_market_history_extract
 
 Expected: `AttributeError: module 'calibrate_winrates' has no attribute 'fetch_market_history'`
 
-- [ ] **Step 3: Implement fetch_market_history — add to calibrate_winrates.py**
+- [ ] **Step 3: Implement fetch_market_history - add to calibrate_winrates.py**
 
 ```python
 def fetch_market_history(
@@ -902,17 +902,17 @@ git commit -m "feat: add fetch_market_history for Kalshi yes_ask series"
 - [ ] **Step 1: Write failing tests**
 
 ```python
-# tests/test_calibrate_winrates.py — append
+# tests/test_calibrate_winrates.py - append
 
 def test_simulate_s2_window_bullish():
-    """Rising yes_ask + price above strike → YES trade, check outcome logic."""
+    """Rising yes_ask + price above strike -> YES trade, check outcome logic."""
     close_time_s = 1_715_080_000
     open_time_s  = close_time_s - 900  # 15 min earlier
     strike = 100.0
-    # yes_ask rises from 40 to 50 — market pricing YES more likely
+    # yes_ask rises from 40 to 50 - market pricing YES more likely
     history = [(open_time_s + i * 60, 40 + i) for i in range(15)]
     cfg = dict(min_dist=0.0035, min_vel_delta=0.80, vel_lookback=4)
-    # Price above strike → continuation allowed for YES trade
+    # Price above strike -> continuation allowed for YES trade
     result_yes_wins = True
     records = cal.simulate_s2_window(
         open_time_s, close_time_s, strike, 101.0, history, result_yes_wins, cfg
@@ -922,13 +922,13 @@ def test_simulate_s2_window_bullish():
 
 
 def test_simulate_s2_reversal_filtered():
-    """Rising yes_ask but price BELOW strike → reversal → no records."""
+    """Rising yes_ask but price BELOW strike -> reversal -> no records."""
     close_time_s = 1_715_090_000
     open_time_s  = close_time_s - 900
     strike = 100.0
     history = [(open_time_s + i * 60, 40 + i) for i in range(15)]
     cfg = dict(min_dist=0.0035, min_vel_delta=0.80, vel_lookback=4)
-    # Price below strike — YES is reversal, should be filtered
+    # Price below strike - YES is reversal, should be filtered
     result_yes_wins = True
     records = cal.simulate_s2_window(
         open_time_s, close_time_s, strike, 99.0, history, result_yes_wins, cfg
@@ -936,7 +936,7 @@ def test_simulate_s2_reversal_filtered():
     # All YES-direction entries should be filtered since price < strike
     for vel_delta, mins_left, won in records:
         # Any remaining records would be NO direction entries
-        # But vel is rising → NO direction also filtered (vel says up, NO is down → reversal)
+        # But vel is rising -> NO direction also filtered (vel says up, NO is down -> reversal)
         assert False, f"Expected no records, got {records}"
 ```
 
@@ -948,10 +948,10 @@ py -m pytest tests/test_calibrate_winrates.py::test_simulate_s2_window_bullish -
 
 Expected: `AttributeError: module 'calibrate_winrates' has no attribute 'simulate_s2_window'`
 
-- [ ] **Step 3: Implement S2 simulation — add to calibrate_winrates.py**
+- [ ] **Step 3: Implement S2 simulation - add to calibrate_winrates.py**
 
 ```python
-# ── S2 simulation ─────────────────────────────────────────────────────────
+# S2 simulation
 
 S2_ENTRY_OFFSETS = [2, 4, 6, 8, 10, 12]  # minutes remaining before expiry
 
@@ -993,7 +993,7 @@ def simulate_s2_window(
         close_time_s:    Market close timestamp in seconds.
         strike:          Strike price (underlying asset price at market open).
         current_price:   Asset price at the time of entry (approximated as strike
-                         adjusted by yes_ask direction — use strike here for bucketing).
+                         adjusted by yes_ask direction - use strike here for bucketing).
         history:         List of (ts_sec, yes_ask_cents) for this market, sorted asc.
         result_yes_wins: True if YES contract won.
         cfg:             S2_ASSET_CONFIG entry for this asset.
@@ -1011,7 +1011,7 @@ def simulate_s2_window(
         if entry_s <= open_time_s:
             continue
 
-        # Abs distance — use strike as proxy for underlying at entry
+        # Abs distance - use strike as proxy for underlying at entry
         # (we don't have per-minute underlying price; use strike as baseline)
         # yes_ask at entry gives us market's implied probability
         entry_yes_ask = None
@@ -1022,12 +1022,12 @@ def simulate_s2_window(
             continue
 
         # Infer price-vs-strike direction from yes_ask:
-        # yes_ask > 50 → market thinks YES likely → price probably above strike
+        # yes_ask > 50 -> market thinks YES likely -> price probably above strike
         implied_above = entry_yes_ask > 50
 
         # Distance approximation: |current_price - strike| / strike
         # We use strike as a placeholder since per-minute underlying price unavailable.
-        # This means abs_pct = 0 here — we just use vel_delta for bucketing in S2.
+        # This means abs_pct = 0 here - we just use vel_delta for bucketing in S2.
         abs_pct = 0.0  # S2 calibration buckets on vel_delta, not abs_pct
 
         # Velocity signal
@@ -1037,9 +1037,9 @@ def simulate_s2_window(
 
         # Continuation-only filter using implied price direction
         if side == "yes" and not implied_above:
-            continue  # velocity up but market implies price below strike → reversal
+            continue  # velocity up but market implies price below strike -> reversal
         if side == "no" and implied_above:
-            continue  # velocity down but market implies price above strike → reversal
+            continue  # velocity down but market implies price above strike -> reversal
 
         # Did the trade win?
         won = (side == "yes" and result_yes_wins) or \
@@ -1076,11 +1076,11 @@ git commit -m "feat: add S2 velocity simulation with continuation filter"
 - [ ] **Step 1: Write failing test**
 
 ```python
-# tests/test_calibrate_winrates.py — append
+# tests/test_calibrate_winrates.py - append
 
 def test_bucket_s2_basic():
-    """Records in vel_bucket=0, time_bucket=0 → correct win rate."""
-    # vel_delta=0.9 with min_vel_delta=0.80 → idx 0 (between 1× and 2×)
+    """Records in vel_bucket=0, time_bucket=0 -> correct win rate."""
+    # vel_delta=0.9 with min_vel_delta=0.80 -> idx 0 (between 1x and 2x)
     records = [(0.9, 3.0, True)] * 60 + [(0.9, 3.0, False)] * 40
     table = cal.bucket_s2(records, min_vel_delta=0.80, min_samples=50)
     assert (0, 0) in table
@@ -1091,9 +1091,9 @@ def test_bucket_s2_vel_boundaries():
     """Verify correct vel bucket assignment relative to min_vel_delta."""
     min_v = 0.80
     cases = [
-        (0.9,  0),  # 1× to 2× min_vel
-        (1.7,  1),  # 2× to 4× min_vel
-        (3.5,  2),  # >= 4× min_vel
+        (0.9,  0),  # 1x to 2x min_vel
+        (1.7,  1),  # 2x to 4x min_vel
+        (3.5,  2),  # >= 4x min_vel
     ]
     for vel_delta, expected_idx in cases:
         records = [(vel_delta, 3.0, True)] * 60
@@ -1109,12 +1109,12 @@ py -m pytest tests/test_calibrate_winrates.py::test_bucket_s2_basic -v
 
 Expected: `AttributeError: module 'calibrate_winrates' has no attribute 'bucket_s2'`
 
-- [ ] **Step 3: Implement S2 bucketing — add to calibrate_winrates.py**
+- [ ] **Step 3: Implement S2 bucketing - add to calibrate_winrates.py**
 
 ```python
-# ── S2 bucketing ──────────────────────────────────────────────────────────
+# S2 bucketing
 
-# vel bucket: [1×, 2×), [2×, 4×), [4×+) relative to min_vel_delta
+# vel bucket: [1x, 2x), [2x, 4x), [4x+) relative to min_vel_delta
 S2_VEL_MULTIPLIERS = [2.0, 4.0]   # breakpoints as multipliers of min_vel_delta
 S2_TIME_BOUNDS_S2  = [5.0, 8.0]   # 2-5, 5-8, 8-13 min remaining
 
@@ -1124,7 +1124,7 @@ def _s2_vel_idx(vel_delta: float, min_vel_delta: float) -> int:
     for i, mult in enumerate(S2_VEL_MULTIPLIERS):
         if ratio < mult:
             return i
-    return len(S2_VEL_MULTIPLIERS)  # bucket 2 = >=4×
+    return len(S2_VEL_MULTIPLIERS)  # bucket 2 = >=4x
 
 
 def _s2_time_idx(mins_left: float) -> int:
@@ -1140,7 +1140,7 @@ def bucket_s2(
     min_samples: int = MIN_SAMPLES,
 ) -> dict[tuple[int, int], float | None]:
     """
-    Bucket S2 records into (vel_idx, time_idx) → win_rate table.
+    Bucket S2 records into (vel_idx, time_idx) -> win_rate table.
     Entries with fewer than min_samples records return None.
     """
     counts: dict[tuple[int, int], int] = defaultdict(int)
@@ -1208,7 +1208,7 @@ def run_s1_phase(assets: list[str]) -> dict[str, dict]:
             closes = fetch_binance_1m(symbol, days=90)
             _log(f"[S1] {asset}: {len(closes):,} bars fetched")
         except Exception as exc:
-            _log(f"[S1] {asset}: FETCH FAILED — {exc} — skipping")
+            _log(f"[S1] {asset}: FETCH FAILED - {exc} - skipping")
             result[asset] = {}
             continue
 
@@ -1246,7 +1246,7 @@ def run_s2_phase(assets: list[str], key_id: str, private_key) -> dict[str, dict]
                 continue
 
         if series_ticker is None:
-            _log(f"[S2] {asset}: ERROR — no markets found for any candidate ticker {candidates} — skipping")
+            _log(f"[S2] {asset}: ERROR - no markets found for any candidate ticker {candidates} - skipping")
             result[asset] = {}
             continue
 
@@ -1304,13 +1304,13 @@ def main():
     assets = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
     skip_s2 = os.environ.get("SKIP_S2", "").strip() == "1"
 
-    # ── Phase 1: S1 ──────────────────────────────────────────────────────
+    # Phase 1: S1
     _log("=" * 60)
     _log("PHASE 1: S1 calibration (Binance 1m data)")
     _log("=" * 60)
     s1_tables = run_s1_phase(assets)
 
-    # ── Phase 2: S2 ──────────────────────────────────────────────────────
+    # Phase 2: S2
     s2_tables: dict[str, dict] = {}
     if not skip_s2:
         _log("=" * 60)
@@ -1324,7 +1324,7 @@ def main():
     else:
         _log("S2 phase skipped (SKIP_S2=1)")
 
-    # ── Output ───────────────────────────────────────────────────────────
+    # Output
     print()
     print("# " + "─" * 60)
     print("# PASTE INTO bot_strategy.py (replace existing _S1_WIN_RATE / _S2_WIN_RATE)")
@@ -1354,13 +1354,13 @@ cd C:\Users\alxnt\kalshi-bot
 $env:SKIP_S2="1"; py scripts/calibrate_winrates.py 2>$null | Select-Object -First 20
 ```
 
-Expected: output begins with `# ─────...`, followed by `_S1_WIN_RATE: dict = {` — no traceback. (Actual Binance fetch will run — takes ~2 min. If you want a quick sanity check without fetching, interrupt after the first `[S1]` log line appears on stderr.)
+Expected: output begins with `# ─────...`, followed by `_S1_WIN_RATE: dict = {` - no traceback. (Actual Binance fetch will run - takes ~2 min. If you want a quick sanity check without fetching, interrupt after the first `[S1]` log line appears on stderr.)
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add scripts/calibrate_winrates.py
-git commit -m "feat: wire main() — S1+S2 phases, formatted dict output to stdout"
+git commit -m "feat: wire main() - S1+S2 phases, formatted dict output to stdout"
 ```
 
 ---
@@ -1374,7 +1374,7 @@ git commit -m "feat: wire main() — S1+S2 phases, formatted dict output to stdo
 - [ ] **Step 1: Write a test for the lookup functions (before implementing them)**
 
 ```python
-# tests/test_calibrate_winrates.py — append
+# tests/test_calibrate_winrates.py - append
 # These test the lookup helpers we're about to add to bot_strategy.py.
 # Import them directly once written.
 
@@ -1385,7 +1385,7 @@ def test_s1_lookup_uses_table():
     # For now, just a placeholder that confirms the module loads.
     import bot_strategy as bs
     assert hasattr(bs, "_s1_lookup_win_rate"), \
-        "_s1_lookup_win_rate not found in bot_strategy — add it in Task 10 Step 2"
+        "_s1_lookup_win_rate not found in bot_strategy - add it in Task 10 Step 2"
 
 
 def test_s1_lookup_falls_back_to_tanh():
@@ -1413,11 +1413,9 @@ Expected: `AssertionError: _s1_lookup_win_rate not found in bot_strategy`
 Add the following block immediately after the `_S2_ASSET_CONFIG` dict definition (before `def _s2_contract_direction`):
 
 ```python
-# ---------------------------------------------------------------------------
-# Empirical win-rate tables — populated by scripts/calibrate_winrates.py
+# Empirical win-rate tables - populated by scripts/calibrate_winrates.py
 # Run that script, copy the printed dicts here.
-# None entries → tanh formula fallback (insufficient calibration data).
-# ---------------------------------------------------------------------------
+# None entries -> tanh formula fallback (insufficient calibration data).
 
 _S1_WIN_RATE: dict = {
     "BTC":  {},
@@ -1502,7 +1500,7 @@ def _s2_lookup_win_rate(asset: str, vel_delta: float, mins_left: float) -> float
     if emp_val is not None:
         return float(emp_val)
 
-    # Tanh fallback (uses abs_pct=0 proxy — vel signal doesn't have direct abs_pct)
+    # Tanh fallback (uses abs_pct=0 proxy - vel signal doesn't have direct abs_pct)
     return 0.50 + 0.25 * math.tanh(vel_delta / max(min_vel, 1e-6))
 ```
 
@@ -1611,19 +1609,19 @@ git commit -m "feat: replace S1/S2 strategies, delete all old strategy code, fix
 ## Self-Review
 
 **Spec coverage check:**
-- ✅ `scripts/calibrate_winrates.py` standalone, no bot imports — Task 1
-- ✅ Binance 1m fetch, 90 days, 5 assets — Task 2
-- ✅ S1 EMA simulation + continuation filter — Task 3
-- ✅ S1 bucketing, 4×3=12 buckets, None for sparse — Task 4
-- ✅ Kalshi market listing with pagination — Task 5
-- ✅ Kalshi price history (`yes_ask`) — Task 6
-- ✅ S2 velocity simulation + continuation filter — Task 7
-- ✅ S2 bucketing, 3×3=9 buckets, None for sparse — Task 8
-- ✅ main() + stdout dict output — Task 9
-- ✅ Lookup functions + tanh replacement in bot_strategy.py — Task 10
-- ✅ Commit all session changes — Task 11
-- ✅ Binance retry on 429 — Task 1 `_binance_get`
-- ✅ Kalshi 401 abort with clear error — Task 1 `_load_kalshi_key` / `_kalshi_get`
-- ✅ Wrong series ticker: abort with clear error — Task 9 `run_s2_phase`
-- ✅ Skipped markets reported — Task 9 `run_s2_phase`
-- ✅ Progress to stderr, dicts to stdout — Task 9 `_log` + `main()`
+-  `scripts/calibrate_winrates.py` standalone, no bot imports - Task 1
+-  Binance 1m fetch, 90 days, 5 assets - Task 2
+-  S1 EMA simulation + continuation filter - Task 3
+-  S1 bucketing, 4x3=12 buckets, None for sparse - Task 4
+-  Kalshi market listing with pagination - Task 5
+-  Kalshi price history (`yes_ask`) - Task 6
+-  S2 velocity simulation + continuation filter - Task 7
+-  S2 bucketing, 3x3=9 buckets, None for sparse - Task 8
+-  main() + stdout dict output - Task 9
+-  Lookup functions + tanh replacement in bot_strategy.py - Task 10
+-  Commit all session changes - Task 11
+-  Binance retry on 429 - Task 1 `_binance_get`
+-  Kalshi 401 abort with clear error - Task 1 `_load_kalshi_key` / `_kalshi_get`
+-  Wrong series ticker: abort with clear error - Task 9 `run_s2_phase`
+-  Skipped markets reported - Task 9 `run_s2_phase`
+-  Progress to stderr, dicts to stdout - Task 9 `_log` + `main()`

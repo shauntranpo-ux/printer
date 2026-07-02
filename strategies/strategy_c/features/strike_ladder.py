@@ -112,7 +112,7 @@ def parse_ladder(snapshot: dict) -> pd.DataFrame:
                 f"{bad['strike'].tolist()}"
             )
 
-    # Validate: bids ≤ asks
+    # Validate: bids <= asks
     if (df["yes_bid"] > df["yes_ask"]).any():
         bad_strikes = df[df["yes_bid"] > df["yes_ask"]]["strike"].tolist()
         raise ValueError(f"yes_bid > yes_ask at strikes: {bad_strikes}")
