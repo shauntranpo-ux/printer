@@ -623,6 +623,87 @@ tbody tr:last-child td{border-bottom:none;}
   .mkpi-grid{grid-template-columns:repeat(3,1fr);}
 }
 </style>
+<style id="motion">
+/* MOTION LAYER. Transform/opacity only (GPU-composited); the reduced-motion
+   query at the bottom turns the whole layer off. */
+
+/* ambient drift: two soft palette-tinted blobs behind the content */
+#ambient{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;}
+#ambient::before,#ambient::after{content:'';position:absolute;width:56vw;height:56vw;border-radius:50%;filter:blur(90px);opacity:.55;}
+#ambient::before{left:-14vw;top:-20vw;background:radial-gradient(circle, var(--accent-soft), transparent 65%);animation:blobA 26s ease-in-out infinite;}
+#ambient::after{right:-16vw;bottom:-22vw;background:radial-gradient(circle, var(--up-soft), transparent 65%);animation:blobB 34s ease-in-out infinite;}
+@keyframes blobA{0%,100%{transform:translate(-6%,-4%) scale(1);}50%{transform:translate(7%,9%) scale(1.18);}}
+@keyframes blobB{0%,100%{transform:translate(5%,3%) scale(1.12);}50%{transform:translate(-8%,-10%) scale(0.94);}}
+
+/* entrance choreography: cards cascade in when a panel activates */
+@keyframes cardIn{from{opacity:0;transform:translateY(16px) scale(.985);}to{opacity:1;transform:none;}}
+.panel.active .kpi-strip,.panel.active .card,.panel.active .kpi,.panel.active .mc{
+  animation:cardIn .5s cubic-bezier(.22,.9,.3,1) both;
+}
+.market-strip .mc:nth-child(1){animation-delay:.05s;}
+.market-strip .mc:nth-child(2){animation-delay:.11s;}
+.market-strip .mc:nth-child(3){animation-delay:.17s;}
+.market-strip .mc:nth-child(4){animation-delay:.23s;}
+.market-strip .mc:nth-child(5){animation-delay:.29s;}
+.grid-2 > :nth-child(1),.grid-3 > :nth-child(1){animation-delay:.10s;}
+.grid-2 > :nth-child(2),.grid-3 > :nth-child(2){animation-delay:.18s;}
+.grid-3 > :nth-child(3){animation-delay:.26s;}
+.kpi-row .kpi:nth-child(1){animation-delay:.04s;}
+.kpi-row .kpi:nth-child(2){animation-delay:.10s;}
+.kpi-row .kpi:nth-child(3){animation-delay:.16s;}
+.kpi-row .kpi:nth-child(4){animation-delay:.22s;}
+
+/* live-change pops: numbers flash and swell when they move */
+@keyframes flashUp{0%{background:var(--up-soft);box-shadow:0 0 22px var(--up-line);transform:scale(1.07);}100%{background:transparent;box-shadow:none;transform:none;}}
+@keyframes flashDown{0%{background:var(--down-soft);box-shadow:0 0 22px var(--down-line);transform:scale(1.07);}100%{background:transparent;box-shadow:none;transform:none;}}
+.val-flash-up{animation:flashUp .9s cubic-bezier(.22,.9,.3,1);border-radius:7px;}
+.val-flash-down{animation:flashDown .9s cubic-bezier(.22,.9,.3,1);border-radius:7px;}
+
+/* springy controls */
+.tab,.seg button,.icon-btn,.mode-seg button,.mode-seg-btn{transition:transform .13s cubic-bezier(.34,1.56,.64,1), color .15s, background .15s, border-color .15s, box-shadow .15s;}
+.tab:active,.seg button:active,.icon-btn:active,.mode-seg button:active,.mode-seg-btn:active{transform:scale(.93);}
+
+/* brand sheen */
+.brand-mark{background:linear-gradient(115deg, var(--accent) 35%, oklch(0.72 0.13 250) 48%, var(--up) 52%, var(--accent) 65%);background-size:260% 100%;animation:sheen 5.5s linear infinite;}
+@keyframes sheen{0%{background-position:130% 0;}100%{background-position:-130% 0;}}
+
+/* market cards: 3D tilt driven by pointer (JS sets the transform) */
+.market-strip{perspective:1000px;}
+.mc{transform-style:preserve-3d;}
+.mc .mc-logo,.mc .mc-price-val{transform:translateZ(14px);}
+
+/* donut sweep-in */
+.donut-seg{transform-origin:60px 60px;animation:donutIn .7s cubic-bezier(.22,.9,.3,1) both;}
+@keyframes donutIn{from{opacity:0;transform:scale(.55) rotate(-70deg);}to{opacity:1;transform:none;}}
+
+/* in-trade cards breathe */
+@keyframes tradeGlow{0%,100%{box-shadow:0 0 0 1px oklch(0.78 0.13 85 / 0.4), 0 4px 14px oklch(0.78 0.13 85 / 0.10);}50%{box-shadow:0 0 0 2px oklch(0.78 0.13 85 / 0.6), 0 6px 26px oklch(0.78 0.13 85 / 0.26);}}
+.mc.in-trade{animation:tradeGlow 2.2s ease-in-out infinite;}
+
+/* toasts */
+#toast-wrap{position:fixed;right:18px;bottom:18px;z-index:10000;display:flex;flex-direction:column;gap:8px;pointer-events:none;}
+.toast{
+  display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:11px;
+  background:var(--panel);border:1px solid var(--line-2);box-shadow:var(--shadow-hover);
+  font:700 13px/1.2 'Montserrat',sans-serif;color:var(--ink);
+  animation:toastIn .45s cubic-bezier(.22,1.4,.36,1) both;
+}
+.toast.win{border-color:var(--up-line);}
+.toast.loss{border-color:var(--down-line);}
+.toast .t-amt{font-family:'Montserrat',monospace;font-size:15px;}
+.toast.win .t-amt{color:var(--up);}
+.toast.loss .t-amt{color:var(--down);}
+.toast.gone{animation:toastOut .4s ease-in both;}
+@keyframes toastIn{from{opacity:0;transform:translateX(30px) scale(.92);}to{opacity:1;transform:none;}}
+@keyframes toastOut{to{opacity:0;transform:translateX(30px) scale(.92);}}
+#fx-canvas{position:fixed;inset:0;pointer-events:none;z-index:9999;}
+
+/* the off switch */
+@media (prefers-reduced-motion: reduce){
+  #ambient{display:none;}
+  *,*::before,*::after{animation-duration:.001s !important;animation-iteration-count:1 !important;transition-duration:.001s !important;}
+}
+</style>
 </head>
 <body data-mode="paper">
 
@@ -1390,6 +1471,23 @@ function renderEquity(range, containerId, pts){
     tip.setAttribute('x', tx); tip.setAttribute('y', Math.max(padT+10, py-8)); tip.style.display='';
   });
   hit.addEventListener('mouseleave', () => { cur.style.display='none'; tip.style.display='none'; });
+  // draw-in: the line sweeps left to right, the area fades up behind it
+  const lineEl = svg.querySelectorAll('path')[1];
+  const areaEl = svg.querySelectorAll('path')[0];
+  if (lineEl && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    try {
+      const len = lineEl.getTotalLength();
+      lineEl.style.strokeDasharray = len;
+      lineEl.style.strokeDashoffset = len;
+      areaEl.style.opacity = '0';
+      lineEl.getBoundingClientRect();
+      lineEl.style.transition = 'stroke-dashoffset .9s cubic-bezier(.3,.8,.3,1)';
+      areaEl.style.transition = 'opacity .7s ease .35s';
+      lineEl.style.strokeDashoffset = '0';
+      areaEl.style.opacity = '1';
+      setTimeout(() => { lineEl.style.strokeDasharray = 'none'; }, 1000);
+    } catch(e) {}
+  }
 }
 
 // allocation donut - renders one donut for a given strategy variant.
@@ -1414,18 +1512,20 @@ function renderAllocForStrategy(sv, donutId, listId) {
   }
   const cx=60, cy=60, r=56, hole=36;
   let a0 = -Math.PI/2;
+  let segIdx = 0;
   const segs = data.map(d=>{
     const frac = (d.val/totalPnl) || 0;
     if(frac <= 0) return '';
     const a1 = a0 + frac * Math.PI*2;
     const pct = (frac*100).toFixed(0);
     const tip = `<title>${d.sym} ${pct}% of P&amp;L moved (${d.pos?'+':'-'}$${d.val.toFixed(2)})</title>`;
-    if(frac >= 0.999){ const seg=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colors[d.sym]}">${tip}</circle>`; a0=a1; return seg; }
+    const anim = `class="donut-seg" style="animation-delay:${(segIdx++ * 70)}ms"`;
+    if(frac >= 0.999){ const seg=`<circle ${anim} cx="${cx}" cy="${cy}" r="${r}" fill="${colors[d.sym]}">${tip}</circle>`; a0=a1; return seg; }
     const x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0),x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);
     const large=(a1-a0)>Math.PI?1:0;
     const path=`M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`;
     a0=a1;
-    return `<path d="${path}" fill="${colors[d.sym]}" stroke="var(--panel)" stroke-width="2">${tip}</path>`;
+    return `<path ${anim} d="${path}" fill="${colors[d.sym]}" stroke="var(--panel)" stroke-width="2">${tip}</path>`;
   }).join('');
   // Donut hole with the net total in the center - values wear ink/status tokens,
   // never a series color.
@@ -2465,6 +2565,129 @@ setInterval(fetchEventLog,    30_000);
 setInterval(fetchPnl,         60_000);
 setInterval(fetchPnlS1,       60_000);
 setInterval(()=>{ if(document.getElementById('panel-edge')?.classList.contains('active')) fetchEdge(); }, 60_000);
+
+// ── Motion engine ─────────────────────────────────────────────────────────────
+// Ambient layer, live-change flashes, pointer tilt, and settle celebrations.
+// Everything degrades to nothing under prefers-reduced-motion.
+const MOTION_OK = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+document.body.insertAdjacentHTML('afterbegin', '<div id="ambient"></div>');
+document.body.insertAdjacentHTML('beforeend', '<div id="toast-wrap"></div>');
+
+// live-change flash: poll the headline numbers and pulse them when they move.
+// A scanner survives innerHTML re-renders where element-bound observers die.
+const _valCache = {};
+function _numOf(txt){
+  const m = String(txt).replace(/[,$%\s]/g,'').match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : null;
+}
+function _scanVals(){
+  const targets = [];
+  for (const id of ['kpi-alltime-val','kpi-today-val','kpi-wr-val',
+                    'kpi-s1-alltime-val','kpi-s1-today-val','kpi-s1-wr-val']) {
+    const el = document.getElementById(id);
+    if (el) targets.push([id, el]);
+  }
+  document.querySelectorAll('.mc[data-sym]').forEach(mc => {
+    const el = mc.querySelector('.mc-price-val');
+    if (el) targets.push(['mc-' + mc.dataset.sym, el]);
+  });
+  for (const [key, el] of targets) {
+    const v = _numOf(el.textContent);
+    const prev = _valCache[key];
+    _valCache[key] = v;
+    if (v == null || prev == null || v === prev) continue;
+    const cls = v > prev ? 'val-flash-up' : 'val-flash-down';
+    el.classList.remove('val-flash-up','val-flash-down');
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+}
+if (MOTION_OK) setInterval(_scanVals, 900);
+
+// pointer tilt on the market cards (delegated so re-renders keep working)
+if (MOTION_OK) {
+  const strip = document.querySelector('.market-strip');
+  if (strip) {
+    strip.addEventListener('mousemove', ev => {
+      const mc = ev.target.closest('.mc');
+      if (!mc) return;
+      const r = mc.getBoundingClientRect();
+      const dx = (ev.clientX - r.left) / r.width - 0.5;
+      const dy = (ev.clientY - r.top) / r.height - 0.5;
+      mc.style.transform = `translateY(-2px) rotateY(${(dx*5).toFixed(2)}deg) rotateX(${(-dy*4).toFixed(2)}deg)`;
+    });
+    strip.addEventListener('mouseout', ev => {
+      const mc = ev.target.closest('.mc');
+      if (mc && !mc.contains(ev.relatedTarget)) mc.style.transform = '';
+    });
+  }
+}
+
+// confetti burst on a settled win + toast for every settle
+function _fireConfetti(){
+  if (!MOTION_OK) return;
+  let cv = document.getElementById('fx-canvas');
+  if (!cv) { cv = document.createElement('canvas'); cv.id = 'fx-canvas'; document.body.appendChild(cv); }
+  cv.width = innerWidth; cv.height = innerHeight;
+  const ctx = cv.getContext('2d');
+  const hues = ['#be7200','#4c55bc','#bb4cb5','#00946d','#a0881e','#0077c7'];
+  const parts = [];
+  for (let i=0;i<140;i++){
+    const a = (Math.random()*0.9 + 0.05) * Math.PI;
+    const sp = 7 + Math.random()*9;
+    parts.push({x: cv.width/2, y: cv.height*0.28,
+                vx: Math.cos(a)*sp*(Math.random()<0.5?-1:1), vy: -Math.sin(a)*sp,
+                w: 5+Math.random()*5, h: 3+Math.random()*4,
+                c: hues[i%hues.length], rot: Math.random()*6.28, vr: (Math.random()-0.5)*0.35,
+                life: 90+Math.random()*40});
+  }
+  let frame = 0;
+  (function step(){
+    ctx.clearRect(0,0,cv.width,cv.height);
+    let alive = 0;
+    for (const p of parts){
+      if (frame > p.life) continue;
+      alive++;
+      p.vy += 0.28; p.x += p.vx; p.y += p.vy; p.vx *= 0.985; p.rot += p.vr;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot);
+      ctx.globalAlpha = Math.max(0, 1 - frame/p.life);
+      ctx.fillStyle = p.c; ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h); ctx.restore();
+    }
+    frame++;
+    if (alive) requestAnimationFrame(step);
+    else ctx.clearRect(0,0,cv.width,cv.height);
+  })();
+}
+function _toast(kind, sym, amt){
+  const wrap = document.getElementById('toast-wrap');
+  if (!wrap) return;
+  const t = document.createElement('div');
+  t.className = 'toast ' + kind;
+  const label = kind === 'win' ? 'WIN' : 'LOSS';
+  t.innerHTML = `<div class="alloc-sw" style="width:22px;height:22px;">${cryptoLogo(sym)}</div>` +
+                `<span>${sym} ${label}</span>` +
+                `<span class="t-amt">${amt>=0?'+':'-'}$${Math.abs(amt).toFixed(2)}</span>`;
+  wrap.appendChild(t);
+  setTimeout(()=>t.classList.add('gone'), 4200);
+  setTimeout(()=>t.remove(), 4700);
+}
+const _seenSettles = new Set();
+let _settlesPrimed = false;
+function _watchSettles(){
+  const settled = TRADES.filter(t => t.fill === 'filled');
+  if (!_settlesPrimed) {
+    if (settled.length) { settled.forEach(t => _seenSettles.add(t.ts + t.sym)); _settlesPrimed = true; }
+    return;
+  }
+  for (const t of settled) {
+    const key = t.ts + t.sym;
+    if (_seenSettles.has(key)) continue;
+    _seenSettles.add(key);
+    if ((t.pnl || 0) > 0) { _fireConfetti(); _toast('win', t.sym, t.pnl); }
+    else if ((t.pnl || 0) < 0) { _toast('loss', t.sym, t.pnl); }
+  }
+}
+setInterval(_watchSettles, 3000);
 </script>
 </body>
 </html>
