@@ -394,9 +394,14 @@ async def _execute_s1_trade(
             return
     entry_price_cents = yes_ask if side == "yes" else no_ask
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
-    trade_amount = float(config.get("trade_amount_dollars", 25))
+    # Quarter-Kelly on the shrunk win prob, scaled down from the clip (never above it).
+    from bot_strategy import _kelly_stake
+    trade_amount = _kelly_stake(brain_s1.get("win_prob", 0.5), entry_price_cents, config)
     contracts, dollars_used = calculate_contracts(trade_amount, int(entry_price_cents), avail_liquidity)
-    if contracts == 0 or dollars_used < trade_amount * 0.90:
+    # Apply the 90% fill check only when liquidity capped the size (integer rounding on
+    # a small stake at a high entry price can undershoot 90% with a deep book).
+    _wanted = int(trade_amount * 100 / int(entry_price_cents)) if entry_price_cents else 0
+    if contracts == 0 or (avail_liquidity < _wanted and dollars_used < trade_amount * 0.90):
         return
 
     # Reserve slot BEFORE awaiting place_order - prevents a concurrent loop iteration from

@@ -147,6 +147,48 @@ def _init_config() -> None:
         # maker pricing + maker fee, unfilled trades are voided at $0. Turn on only
         # after the Edge tab's maker-vs-taker delta is positive.
         "maker_execution_enabled": False,
+        # Fair-value gate thresholds (both brains). Previously inline fallbacks only;
+        # surfaced here so they can be tuned from the dashboard without a deploy.
+        "min_ev_anchored": 0.025,
+        "min_market_edge": 0.04,
+        "max_model_edge": 0.08,
+        # Too-good-to-be-true: REJECT (not clamp) any trade whose raw model-vs-market
+        # gap exceeds this. Win rate fell monotonically with the gap in settled data.
+        "max_model_market_gap": 0.15,
+        # Entry band + tail ban. Sub-20c sides are the longshot tail (1W-28L on record;
+        # the Kalshi-wide favorite-longshot study agrees); mids are de-vigged fractions.
+        "fv_min_entry_price_cents": 20.0,
+        "fv_max_entry_price_cents": 85.0,
+        "s2_min_side_price_cents": 20.0,
+        "s1_min_side_price_cents": 25.0,
+        # Staleness gate: trade only when the spot moved toward the side bought within
+        # the window while the tracked contract mid stayed put (a lagging book).
+        "staleness_gate_enabled": True,
+        "staleness_window_secs": 60.0,
+        "staleness_min_spot_sigma": 0.35,
+        "staleness_max_mid_move_cents": 3.0,
+        # Sigma engine: market-implied EWMA anchor blended with live realized vol.
+        "sigma_implied_weight": 0.6,
+        "sigma_live_weight": 0.4,
+        "sigma_implied_halflife_secs": 2700,
+        "sigma_implied_max_age_secs": 900,
+        "sigma_clamp_lo": 0.6,
+        "sigma_clamp_hi": 1.7,
+        # S1 lead-signal gates: BTC must genuinely move; live lead-beta accepted only
+        # within this band around the static file beta (then shrunk halfway toward it).
+        "s1_min_btc_ret": 0.0010,
+        "s1_beta_clamp_lo": 0.5,
+        "s1_beta_clamp_hi": 1.5,
+        # Quarter-Kelly stake sizing: scales stakes DOWN from trade_amount_dollars on
+        # thin edges (never up past the clip). kelly_cap = the quarter-Kelly fraction
+        # that earns the full clip.
+        "kelly_sizing_enabled": True,
+        "kelly_cap": 0.05,
+        "min_stake_dollars": 5.0,
+        # Shadow favorite-bias candidate: logs would-buy-the-favorite decisions to
+        # decision_log (zero capital) so the bias premium can be proven before any
+        # promotion to a live strategy.
+        "shadow_fav_enabled": True,
     }
 
     if os.path.exists(bot_state._CONFIG_FILE):
@@ -369,6 +411,15 @@ def init_db() -> None:
         c.execute("CREATE INDEX IF NOT EXISTS idx_decision_ticker ON decision_log(ticker)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_decision_outcome ON decision_log(outcome)")
 
+        # Sigma observability columns (nullable; ADD COLUMN is metadata-only in SQLite).
+        # spot/strike/sigma_eff/z let the recalibration job refit the vol scale offline
+        # from the survivorship-free decision population.
+        for col in ("spot", "strike", "sigma_eff", "z"):
+            try:
+                c.execute(f"ALTER TABLE decision_log ADD COLUMN {col} REAL")
+            except Exception:
+                pass
+
         # maker_log: per settled trade, the maker-vs-taker counterfactual (measurement only).
         # See bot_loops._record_maker_counterfactual + scripts/maker_report.py.
         c.execute("""
@@ -527,14 +578,17 @@ async def db_write_decision(decision: dict) -> None:
                 INSERT INTO decision_log (
                     ts, ticker, asset, strategy, mode, side,
                     model_p_yes, market_mid_p_yes, market_edge,
-                    entry_price_cents, secs_left, would_trade
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    entry_price_cents, secs_left, would_trade,
+                    spot, strike, sigma_eff, z
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 decision.get("ts"), decision.get("ticker"), decision.get("asset"),
                 decision.get("strategy"), decision.get("mode"), decision.get("side"),
                 decision.get("model_p_yes"), decision.get("market_mid_p_yes"),
                 decision.get("market_edge"), decision.get("entry_price_cents"),
                 decision.get("secs_left"), int(bool(decision.get("would_trade"))),
+                decision.get("spot"), decision.get("strike"),
+                decision.get("sigma_eff"), decision.get("z"),
             ))
             await db.commit()
     except Exception as exc:
@@ -614,6 +668,24 @@ async def db_settled_decision_probs(strategy: str, limit: int = 5000) -> list:
             return list(await cur.fetchall())
     except Exception as exc:
         log.debug("db_settled_decision_probs skipped: %s", exc)
+        return []
+
+
+async def db_settled_decision_zs(strategy: str = "strategy2", limit: int = 20000) -> list:
+    """(asset, z, outcome) for one strategy's settled decision_log rows with a recorded z.
+    Input to the per-asset sigma_scale fit (strategy2 by default: its z comes from the
+    actual spot, not a predicted one, and carries no shadow-strategy selection bias)."""
+    try:
+        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+            cur = await db.execute(
+                "SELECT asset, z, outcome FROM decision_log "
+                "WHERE strategy = ? AND outcome IN ('yes','no') AND z IS NOT NULL "
+                "ORDER BY id DESC LIMIT ?",
+                (strategy, limit),
+            )
+            return list(await cur.fetchall())
+    except Exception as exc:
+        log.debug("db_settled_decision_zs skipped: %s", exc)
         return []
 
 

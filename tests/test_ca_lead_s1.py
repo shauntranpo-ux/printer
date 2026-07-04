@@ -21,6 +21,10 @@ def _clean_state():
     bot_state._s1_pending_trades.clear()
     bot_state._s1_asset_trade_times.clear()
     bot_state._s1_cooldown_until.clear()
+    bot_state._sigma_scale.clear()
+    bot_state._implied_sigma.clear()
+    bot_state._live_betas.clear()
+    bot_state._contract_mid_history.clear()
     yield
     for a, dq in saved.items():
         if dq is not None:
@@ -28,6 +32,10 @@ def _clean_state():
     bot_state._s1_pending_trades.clear()
     bot_state._s1_asset_trade_times.clear()
     bot_state._s1_cooldown_until.clear()
+    bot_state._sigma_scale.clear()
+    bot_state._implied_sigma.clear()
+    bot_state._live_betas.clear()
+    bot_state._contract_mid_history.clear()
 
 
 def _seed(asset, last, ret_over_window, n=40, span=78.0):
@@ -42,11 +50,14 @@ def _seed(asset, last, ret_over_window, n=40, span=78.0):
     return dq
 
 
-def _run_s1(asset, spot, strike, yes_ask, no_ask, secs_left=600.0, cfg_extra=None):
+def _run_s1(asset, spot, strike, yes_ask, no_ask, secs_left=480.0, cfg_extra=None):
     config = {"mode": "paper", "quiet_hours_enabled": False}
     if cfg_extra:
         config.update(cfg_extra)
-    with patch("bot_strategy.read_config", return_value=config):
+    # Pin the ToD multiplier so the sigma fallback (and every z-derived gate) is
+    # deterministic regardless of the wall clock the suite runs at.
+    with patch("bot_strategy.read_config", return_value=config), \
+         patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
         return strategy_brain_s1(
             btc_price=spot, strike=strike, yes_ask=yes_ask, no_ask=no_ask,
             elapsed_seconds=900.0 - secs_left, secs_left=secs_left,
@@ -97,15 +108,20 @@ def test_sigma_eff_within_static_clamp():
 # --------------------------------------------------------------------------- S1 fires / skips
 
 def test_s1_fires_on_btc_lead_dislocation():
-    """BTC jumped, SOL lagged -> positive residual -> predicted SOL up -> YES cheap -> trade."""
+    """BTC jumped, SOL lagged -> positive residual -> predicted SOL up -> YES cheap -> trade.
+
+    Asks sit near fair (gap under the TGTBT cap): fair ~0.86 vs de-vigged mid 0.77.
+    """
     _seed("BTC", last=60000.0, ret_over_window=0.008)   # BTC +~0.8%
     _seed("SOL", last=150.03, ret_over_window=0.0001)    # SOL nearly flat
-    r = _run_s1("SOL", spot=150.03, strike=149.9, yes_ask=46.0, no_ask=54.0)
+    r = _run_s1("SOL", spot=150.03, strike=149.9, yes_ask=78.0, no_ask=24.0)
     assert r["action"] == "trade", f"S1 should fire: {r['reasoning']}"
     assert r["side"] == "yes"
     assert r["signals"]["residual"] > 0
-    assert r["signals"]["market_edge"] >= 0.035
+    assert r["signals"]["market_edge"] >= 0.04
+    assert r["signals"]["gap"] <= 0.15
     assert "model_raw_p_yes" in r["signals"]
+    assert "sigma_eff" in r["signals"] and "z" in r["signals"]
 
 
 def test_s1_skips_when_btc_flat():
@@ -124,6 +140,54 @@ def test_s1_skips_when_alt_already_followed():
     r = _run_s1("SOL", spot=150.0, strike=149.5, yes_ask=46.0, no_ask=54.0)
     assert r["action"] == "skip"
     assert "s1_ca_resid_flat" in r["reasoning"]
+
+
+def test_s1_fade_mode_is_gated():
+    """SOL OVERSHOT BTC's lead (residual sign opposite the BTC move) -> s1_ca_fade skip
+    with full signals so the shadow measurement still reaches the harness."""
+    _seed("BTC", last=60000.0, ret_over_window=0.008)
+    _seed("SOL", last=150.03, ret_over_window=0.008)   # alt moved MORE than beta*btc
+    r = _run_s1("SOL", spot=150.03, strike=149.9, yes_ask=46.0, no_ask=54.0)
+    assert r["action"] == "skip"
+    assert "s1_ca_fade" in r["reasoning"], f"expected fade gate: {r['reasoning']}"
+    assert "model_raw_p_yes" in r["signals"]
+
+
+def test_s1_tgtbt_rejects_extreme_gap():
+    """Same dislocation but asks far below fair (gap ~0.40) -> reject, don't clamp."""
+    _seed("BTC", last=60000.0, ret_over_window=0.008)
+    _seed("SOL", last=150.03, ret_over_window=0.0001)
+    r = _run_s1("SOL", spot=150.03, strike=149.9, yes_ask=46.0, no_ask=54.0)
+    assert r["action"] == "skip"
+    assert "s1_tgtbt" in r["reasoning"], f"expected tgtbt gate: {r['reasoning']}"
+    assert r["signals"]["gap"] > 0.15
+
+
+def test_s1_tail_ban_blocks_longshot_side():
+    """Side priced under 25c on the de-vigged mid -> tail ban."""
+    _seed("BTC", last=60000.0, ret_over_window=0.008)
+    _seed("SOL", last=150.03, ret_over_window=0.0001)
+    r = _run_s1("SOL", spot=150.03, strike=149.9, yes_ask=22.0, no_ask=80.0)
+    assert r["action"] == "skip"
+    assert "s1_tail_ban" in r["reasoning"], f"expected tail ban: {r['reasoning']}"
+
+
+def test_s1_min_btc_ret_raised():
+    """BTC moved 0.05% over the window (below the 0.10% floor) -> btc_flat skip."""
+    _seed("BTC", last=60000.0, ret_over_window=0.0008)   # ~0.06% over the 60s lookback
+    _seed("SOL", last=150.03, ret_over_window=0.0001)
+    r = _run_s1("SOL", spot=150.03, strike=149.9, yes_ask=78.0, no_ask=24.0)
+    assert r["action"] == "skip"
+    assert "s1_ca_btc_flat" in r["reasoning"]
+
+
+def test_asset_beta_shrinks_live_toward_static():
+    """Live lead beta accepted only near the static value, then shrunk halfway to it."""
+    static = bs._load_betas()["SOL"]
+    bot_state._live_betas["SOL"] = 1.4   # contemporaneous-style overwrite: rejected
+    assert bs._asset_beta("SOL") == pytest.approx(static)
+    bot_state._live_betas["SOL"] = 0.6   # inside [0.5x, 1.5x] of static: shrunk
+    assert bs._asset_beta("SOL") == pytest.approx(0.5 * static + 0.5 * 0.6)
 
 
 def test_s1_btc_disabled_by_default():

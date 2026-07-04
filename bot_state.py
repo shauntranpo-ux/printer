@@ -23,6 +23,7 @@ __all__ = [
     "_asset_eval", "_contract_price_history",
     "_CAL_DEFAULTS", "_brain_cal_s1", "_brain_cal_s2", "_basis_offsets",
     "_live_betas", "_auto_blocked_sessions", "_auto_blocked_assets",
+    "_implied_sigma", "_sigma_scale", "_contract_mid_history",
     "_last_good_config", "_consecutive_losses", "_s1_consecutive_losses", "_s2_consecutive_losses", "_consecutive_price_skips",
     "_s1_consec_losses_by_asset", "_s1_cooldown_until",
     "_S1_VERSION", "_S2_VERSION", "_S1_ASSET_VOL_RATIO",
@@ -108,6 +109,19 @@ _basis_offsets: dict = {}
 # preferred over data/betas.json when present. asset -> beta.
 _live_betas: dict = {}
 
+# Market-implied 15-min sigma EWMA per asset, folded in from orderbook fetches the loop
+# already makes. asset -> {"sigma": float, "ts": epoch, "n": obs count}. Persisted to
+# data/calibration.json each recalibration cycle so redeploys don't cold-start vol.
+_implied_sigma: dict = {}
+
+# Per-asset sigma multiplier fitted from settled decision_log z/outcome pairs by the
+# recalibration job. Applied on top of _sigma_eff's blend; 1.0/absent = no-op.
+_sigma_scale: dict = {}
+
+# De-vigged YES-mid history per ticker (cents) for the staleness gate.
+# ticker -> deque[(ts, mid_cents)]. Separate from _contract_price_history (legacy shape).
+_contract_mid_history: dict = {}
+
 # Auto-gate blocks (GATE-1 per bucket): recomputed by the recalibration job from
 # settled decision_log picks. Sessions by ET label; assets as (strategy, asset) pairs.
 _auto_blocked_sessions: set = set()
@@ -121,8 +135,8 @@ _s1_cooldown_until: dict = {}          # asset -> epoch timestamp when cooldown 
 _s2_consecutive_losses: int   = 0
 _consecutive_price_skips: int  = 0
 
-_S1_VERSION = "ca-lead-cross-asset-2026-07-02"
-_S2_VERSION = "spot-fair-value-2026-07-02"
+_S1_VERSION = "ca-lead-lag-only-2026-07-04"
+_S2_VERSION = "spot-fv-implied-sigma-2026-07-04"
 
 kalshi_clock_skew_ms: int = 0       # corrected by _maybe_adjust_clock_skew at startup
 demo_fallback_alert: bool = False    # set when demo creds missing; Telegram fired async

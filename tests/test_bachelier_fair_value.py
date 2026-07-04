@@ -129,8 +129,10 @@ def test_live_sigma_no_tod_double_count(monkeypatch):
 def test_s1_dicts_carry_model_raw_p_yes():
     import inspect
     src = inspect.getsource(s.strategy_brain_s1)
-    # both S1 return dicts that reach the model stage (trade, ev-gate skip) expose model_raw_p_yes
-    assert src.count("model_raw_p_yes") >= 2, "S1 must emit model_raw_p_yes for the edge harness"
+    # model-stage dicts share one signals builder; it must carry model_raw_p_yes and be
+    # used by both the full-signal skips and the trade dict
+    assert "model_raw_p_yes" in src, "S1 must emit model_raw_p_yes for the edge harness"
+    assert src.count("_signals()") >= 2, "S1 model-stage dicts must share the signals builder"
 
 
 # settlement basis

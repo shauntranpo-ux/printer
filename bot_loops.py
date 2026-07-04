@@ -16,7 +16,7 @@ import bot_state
 import bot_stats
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
-from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers, db_write_maker_sample, db_write_settlement_basis, db_settled_decision_probs, db_basis_rows, db_settled_picks
+from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers, db_write_maker_sample, db_write_settlement_basis, db_settled_decision_probs, db_settled_decision_zs, db_basis_rows, db_settled_picks
 from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
@@ -26,8 +26,8 @@ from bot_market import (
 )
 from bot_strategy import (
     strategy_brain_s1, strategy_brain_s2,
-    track_contract_price,
-    _is_quiet_hours, _market_implied_p_yes,
+    track_contract_price, track_contract_mid, update_implied_sigma,
+    _is_quiet_hours, _market_implied_p_yes, _kelly_stake, shadow_fav_candidate,
 )
 from bot_risk import (
     check_daily_limits, midnight_reset, write_state_file, _log_entry,
@@ -52,7 +52,11 @@ _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 
 # Edge-measurement: dedup so we log at most one decision_log row per (ticker, strategy)
 # per window (each 15-min window has a unique ticker). Bounded to avoid unbounded growth.
+# _logged_trade_decisions grants one EXTRA row when the brain later says trade: the
+# full-signal skip gates (tgtbt/tail/fade/stale) almost always log a skip first, and
+# without the second slot no would_trade=1 row would ever reach the edge harness.
 _logged_decisions: set = set()
+_logged_trade_decisions: set = set()
 
 # Throttle the maker held-book fetch: {ticker: last_fetch_ts}. ~25s sampling of the ask path
 # is plenty for the counterfactual - avoids an extra orderbook fetch on every ~10s hold cycle.
@@ -73,12 +77,22 @@ async def _log_decision(brain: dict, ticker: str, asset: str, secs_left: float,
         sig = brain.get("signals") or {}
         if "model_raw_p_yes" not in sig:
             return  # gate-stage skip (time/dist/etc.) - no model opinion to score
+        is_trade = brain.get("action") == "trade"
         key = (ticker, strategy)
         if key in _logged_decisions:
-            return
-        if len(_logged_decisions) > 5000:
-            _logged_decisions.clear()
-        _logged_decisions.add(key)
+            if not is_trade or key in _logged_trade_decisions:
+                return
+            if len(_logged_trade_decisions) > 5000:
+                _logged_trade_decisions.clear()
+            _logged_trade_decisions.add(key)
+        else:
+            if len(_logged_decisions) > 5000:
+                _logged_decisions.clear()
+            _logged_decisions.add(key)
+            if is_trade:
+                if len(_logged_trade_decisions) > 5000:
+                    _logged_trade_decisions.clear()
+                _logged_trade_decisions.add(key)
 
         side = brain.get("side")
         mkt_p_side = sig.get("mkt_p")
@@ -93,7 +107,12 @@ async def _log_decision(brain: dict, ticker: str, asset: str, secs_left: float,
             "market_edge": sig.get("market_edge"),
             "entry_price_cents": entry_price,
             "secs_left": secs_left,
-            "would_trade": brain.get("action") == "trade",
+            "would_trade": is_trade,
+            "spot": sig.get("spot"), "strike": sig.get("strike"),
+            "sigma_eff": sig.get("sigma_eff"),
+            # Prefer the de-scaled z: the sigma_scale refit needs a target that does
+            # not move when the applied scale changes.
+            "z": sig.get("z_raw", sig.get("z")),
         })
     except Exception as exc:
         log.debug("_log_decision skipped (%s/%s): %s", ticker, strategy, exc)
@@ -160,6 +179,28 @@ def _record_settlement_basis(ticker: str, asset: str, strike: float, our_spot: f
         log.debug("_record_settlement_basis skipped for %s: %s", ticker, exc)
 
 
+def _prune_tracking_state(max_age_secs: float = 1800.0) -> None:
+    """
+    Drop per-ticker tracking state for windows long settled. Every 15-min window mints
+    a fresh ticker, so these dicts grow forever on a weeks-long process without a
+    sweep. Runs on the recalibration cadence; never raises.
+    """
+    try:
+        now = time.time()
+        for d in (bot_state._contract_mid_history, bot_state._contract_price_history,
+                  bot_state._maker_track):
+            stale = [t for t, dq in list(d.items())
+                     if not dq or (now - dq[-1][0]) > max_age_secs]
+            for t in stale:
+                d.pop(t, None)
+        stale = [t for t, ts in list(_maker_track_last_fetch.items())
+                 if now - ts > max_age_secs]
+        for t in stale:
+            _maker_track_last_fetch.pop(t, None)
+    except Exception as exc:
+        log.debug("_prune_tracking_state skipped: %s", exc)
+
+
 async def _recalibrate_model(config: dict) -> None:
     """
     Periodic self-calibration: fit prob_scale per strategy from settled decision_log
@@ -167,11 +208,28 @@ async def _recalibrate_model(config: dict) -> None:
     state slots, and persist to data/calibration.json. Fail-open: any error leaves
     the current calibration untouched.
     """
+    _prune_tracking_state()
     try:
-        from scripts.calibration import (fit_prob_scale, fit_basis_offset, fit_rolling_beta,
-                                         compute_auto_blocks, save_calibration)
-        cal = {"prob_scale": {}, "basis_offset": {}, "live_beta": {}, "auto_blocked": {},
+        from scripts.calibration import (fit_prob_scale, fit_sigma_scale, fit_basis_offset,
+                                         fit_lead_beta, compute_auto_blocks, save_calibration)
+        cal = {"prob_scale": {}, "sigma_scale": {}, "basis_offset": {}, "live_beta": {},
+               "implied_sigma": {}, "auto_blocked": {},
                "updated_at": datetime.now(timezone.utc).isoformat()}
+
+        # Sigma scale FIRST (vol space is where the 2026-07 failure lived), then
+        # prob_scale mops up whatever shape error remains. Fit only strategy2 rows:
+        # S1's z is computed from the beta-shifted predicted spot (lead-signal error
+        # would leak into the vol scale) and s_fav rows are selection-biased favorites.
+        # The logged z is de-scaled, so replacing the scale here is stationary.
+        z_rows = await db_settled_decision_zs(strategy="strategy2")
+        z_by_asset: dict = {}
+        for asset, z, outcome in z_rows:
+            z_by_asset.setdefault(asset, []).append((z, outcome))
+        for asset, rows in z_by_asset.items():
+            s = fit_sigma_scale(rows)
+            bot_state._sigma_scale[asset] = s
+            cal["sigma_scale"][asset] = s
+
         for strategy, slot in (("strategy1", bot_state._brain_cal_s1),
                                ("strategy2", bot_state._brain_cal_s2)):
             rows = await db_settled_decision_probs(strategy)
@@ -188,13 +246,24 @@ async def _recalibrate_model(config: dict) -> None:
             bot_state._basis_offsets[asset] = offset
             cal["basis_offset"][asset] = offset
 
-        # Rolling BTC-lead betas from the live price deques (S1's lead signal).
+        # BTC-LEAD betas (alt return on the PRIOR BTC grid return - the quantity S1
+        # uses). The contemporaneous fit_rolling_beta slope must not write _live_betas:
+        # it runs 3-4x the lead value and inflated every S1 prediction.
         btc_pts = list(asset_manager._prices.get("BTC") or [])
         for asset in ("ETH", "SOL", "XRP", "DOGE"):
-            beta, n = fit_rolling_beta(btc_pts, list(asset_manager._prices.get(asset) or []))
+            beta, n = fit_lead_beta(btc_pts, list(asset_manager._prices.get(asset) or []))
             if beta is not None:
                 bot_state._live_betas[asset] = beta
                 cal["live_beta"][asset] = beta
+
+        # Persist the implied-sigma EWMA so a redeploy does not cold-start vol back
+        # onto the static table.
+        for asset, entry in bot_state._implied_sigma.items():
+            if isinstance(entry, dict) and entry.get("sigma"):
+                cal["implied_sigma"][asset] = {
+                    "sigma": float(entry["sigma"]), "ts": float(entry.get("ts", 0.0)),
+                    "n": int(entry.get("n", 0)),
+                }
 
         # Auto-gate: recompute blocked buckets fresh each cycle (GATE-1 per bucket).
         from scripts.edge_report import _pnl_stats
@@ -207,8 +276,9 @@ async def _recalibrate_model(config: dict) -> None:
                                "strategy_assets": blocks["strategy_assets"]}
 
         save_calibration(cal)
-        log.info("Recalibration: prob_scale=%s basis_offset=%s live_beta=%s auto_blocked=%s",
-                 cal["prob_scale"], cal["basis_offset"], cal["live_beta"], cal["auto_blocked"])
+        log.info("Recalibration: sigma_scale=%s prob_scale=%s basis_offset=%s live_beta=%s auto_blocked=%s",
+                 cal["sigma_scale"], cal["prob_scale"], cal["basis_offset"], cal["live_beta"],
+                 cal["auto_blocked"])
     except Exception as exc:
         log.debug("_recalibrate_model skipped: %s", exc)
 
@@ -226,9 +296,29 @@ def _load_saved_calibration() -> None:
         for asset, off in (cal.get("basis_offset") or {}).items():
             if isinstance(off, (int, float)) and abs(off) <= 0.0010:
                 bot_state._basis_offsets[asset] = float(off)
+        for asset, s in (cal.get("sigma_scale") or {}).items():
+            if isinstance(s, (int, float)) and 0.5 <= s <= 2.0:
+                bot_state._sigma_scale[asset] = float(s)
+        # Accept a persisted live beta only within the same relative-to-static band
+        # _asset_beta enforces (kills a stale absolute-range value from old deploys).
+        from bot_strategy import _load_betas as _static_betas
+        statics = _static_betas()
         for asset, beta in (cal.get("live_beta") or {}).items():
-            if isinstance(beta, (int, float)) and 0.05 <= beta <= 1.5:
+            st = float(statics.get(asset, 0.4) or 0.4)
+            if isinstance(beta, (int, float)) and 0.5 * st <= beta <= 1.5 * st:
                 bot_state._live_betas[asset] = float(beta)
+        # Implied-sigma EWMA survives a restart only while reasonably fresh (2h).
+        now_ts = time.time()
+        for asset, entry in (cal.get("implied_sigma") or {}).items():
+            try:
+                sig = float(entry.get("sigma", 0.0))
+                ts = float(entry.get("ts", 0.0))
+                if sig > 0 and (now_ts - ts) <= 7200.0:
+                    bot_state._implied_sigma[asset] = {
+                        "sigma": sig, "ts": ts, "n": int(entry.get("n", 0)),
+                    }
+            except (TypeError, ValueError, AttributeError):
+                continue
         blocked = cal.get("auto_blocked") or {}
         bot_state._auto_blocked_sessions = {s for s in (blocked.get("sessions") or [])
                                             if isinstance(s, str)}
@@ -451,6 +541,10 @@ async def handle_ready_phase(
                         if c_ob is None:
                             continue
                         bot_state._ticker_obi[c_ticker] = c_ob["obi"]
+                        track_contract_mid(c_ticker, c_ob["best_yes_ask"], c_ob["best_no_ask"])
+                        update_implied_sigma(asset, btc_price, c_strike,
+                                             c_ob["best_yes_ask"], c_ob["best_no_ask"],
+                                             c_secs_left, config)
                         c_brain = strategy_brain_s2(
                             btc_price, c_strike,
                             c_ob["best_yes_ask"], c_ob["best_no_ask"],
@@ -528,8 +622,13 @@ async def handle_ready_phase(
     yes_ask = ob["best_yes_ask"]
     no_ask  = ob["best_no_ask"]   # fetched directly from no_ask_dollars, not derived
 
-    # Track YES price for velocity signal
+    # Track YES price for velocity signal + de-vigged mid for the staleness gate, and
+    # fold the quote into the implied-sigma anchor (no extra API calls - the book is
+    # already in hand).
     track_contract_price(ticker, yes_ask)
+    track_contract_mid(ticker, yes_ask, no_ask)
+    # btc_price holds THIS asset's spot (the non-BTC loop passes the asset price).
+    update_implied_sigma(asset, btc_price, strike, yes_ask, no_ask, secs_left, config)
 
     # Daily drawdown kill switch - only active when a positive limit is configured.
     # Default 0 = no daily loss cap (the bot keeps trading; bleed control is the EV gate).
@@ -552,6 +651,25 @@ async def handle_ready_phase(
     # Edge-measurement: log both brains' decisions (once per ticker) for offline scoring.
     await _log_decision(brain, ticker, asset, secs_left, yes_ask, no_ask, config, "strategy2")
     await _log_decision(brain_s1, ticker, asset, secs_left, yes_ask, no_ask, config, "strategy1")
+
+    # Shadow favorite-bias candidate (zero capital): one decision_log row per ticker so
+    # the settlement backfill scores the buy-the-favorite idea alongside the live brains.
+    if config.get("measurement_enabled", True) and config.get("shadow_fav_enabled", True):
+        try:
+            _fav_key = (ticker, "s_fav")
+            if _fav_key not in _logged_decisions:
+                _fav = shadow_fav_candidate(asset, btc_price, strike, yes_ask, no_ask,
+                                            secs_left, config)
+                if _fav is not None:
+                    if len(_logged_decisions) > 5000:
+                        _logged_decisions.clear()
+                    _logged_decisions.add(_fav_key)
+                    _fav["ticker"] = ticker
+                    _fav["ts"] = datetime.now(timezone.utc).isoformat()
+                    _fav["mode"] = config.get("mode", "paper")
+                    await db_write_decision(_fav)
+        except Exception as _fexc:
+            log.debug("shadow_fav skipped for %s: %s", ticker, _fexc)
 
     await _execute_s1_trade(
         session, brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
@@ -703,14 +821,19 @@ async def handle_ready_phase(
 
     # Cooldown disabled - trade every session regardless of prior outcome
 
-    # Position sizing - flat fixed amount
-    # Reversal trades use 50% of configured amount (contrarian = smaller size)
-    trade_amount = config.get("trade_amount_dollars", 25)
+    # Position sizing: quarter-Kelly on the shrunk win prob, scaled DOWN from the
+    # configured clip (never up). Thin edges risk less; the clip stays the ceiling.
+    trade_amount = _kelly_stake(brain.get("win_prob", 0.5), entry_price_cents, config)
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
     contracts, dollars_used = calculate_contracts(
         trade_amount, int(entry_price_cents), avail_liquidity,
     )
-    if contracts == 0 or dollars_used < float(trade_amount) * 0.90:
+    # The 90% fill check guards against thin books, not integer rounding: a small Kelly
+    # stake at a 70c+ entry can only round to ~85% of target even with deep liquidity,
+    # so apply the check only when liquidity actually capped the size.
+    _wanted = int(float(trade_amount) * 100 / int(entry_price_cents)) if entry_price_cents else 0
+    _liq_capped = avail_liquidity < _wanted
+    if contracts == 0 or (_liq_capped and dollars_used < float(trade_amount) * 0.90):
         if contracts > 0:
             reason = (
                 f"insufficient_liquidity: only {avail_liquidity} contracts available "
@@ -1043,6 +1166,9 @@ async def handle_locked_phase(
                     if _ya is not None and _na is not None:
                         bot_state._maker_track.setdefault(ticker, deque(maxlen=120)).append(
                             (_now_mt, float(_ya), float(_na)))
+                        track_contract_mid(ticker, _ya, _na)
+                        update_implied_sigma(asset, btc_price, pos.get("strike"),
+                                             _ya, _na, secs_left, config)
             except Exception as _mexc:
                 log.debug("maker-track fetch failed for %s: %s", ticker, _mexc)
 
@@ -1065,8 +1191,12 @@ async def _pick_best_strike(session, config: dict, asset: str, price: float,
     """
     Evaluate up to ladder_max_strikes candidate markets (sibling strikes in the
     current window plus the next window) with the S2 brain and return the one with
-    the highest anchored EV among trade signals. Falls back to default_market when
-    no candidate fires or on any error. Bounded: caller throttles to every 30s.
+    the SMALLEST raw model-vs-market gap among trade signals. Win rate falls
+    monotonically with the gap in the settled data, so maximizing EV inside the
+    allowed band would re-create exactly the anti-predictive ordering that used to
+    walk the ladder out to the cheapest strike. Ties break to the tighter spread.
+    Falls back to default_market when no candidate fires or on any error. Bounded:
+    caller throttles to every 30s.
     """
     try:
         max_n = int(config.get("ladder_max_strikes", 3))
@@ -1075,7 +1205,7 @@ async def _pick_best_strike(session, config: dict, asset: str, price: float,
         candidates = await fetch_market_for_asset(session, asset, return_all=True)
         if not candidates or len(candidates) < 2:
             return default_market
-        best, best_ev = None, None
+        best, best_key = None, None
         for cand in candidates[:max_n]:
             c_ticker = cand.get("ticker")
             c_strike = parse_strike(cand)
@@ -1086,18 +1216,28 @@ async def _pick_best_strike(session, config: dict, asset: str, price: float,
             c_ob = await fetch_orderbook(session, c_ticker, cand)
             if not c_ob:
                 continue
+            # Free observations from a book already in hand: mid history for the
+            # staleness gate and a quote for the implied-sigma anchor.
+            track_contract_mid(c_ticker, c_ob["best_yes_ask"], c_ob["best_no_ask"])
+            update_implied_sigma(asset, price, c_strike, c_ob["best_yes_ask"],
+                                 c_ob["best_no_ask"], c_secs, config)
             c_brain = strategy_brain_s2(
                 price, c_strike, c_ob["best_yes_ask"], c_ob["best_no_ask"],
                 c_elapsed, c_secs, c_ticker, asset=asset,
             )
             if c_brain.get("action") != "trade":
                 continue
-            c_ev = c_brain.get("signals", {}).get("ev")
-            if c_ev is not None and (best_ev is None or c_ev > best_ev):
-                best, best_ev = cand, c_ev
+            c_sig = c_brain.get("signals", {})
+            c_gap = c_sig.get("gap")
+            if c_gap is None:
+                continue
+            c_key = (float(c_gap), float(c_sig.get("spread_cents", 0.0) or 0.0))
+            if best_key is None or c_key < best_key:
+                best, best_key = cand, c_key
         if best is not None and best.get("ticker") != default_market.get("ticker"):
-            log.info("[%s] ladder pick: %s (ev=%.3f) over %s",
-                     asset, best.get("ticker"), best_ev, default_market.get("ticker"))
+            log.info("[%s] ladder pick: %s (gap=%.3f spread=%.0fc) over %s",
+                     asset, best.get("ticker"), best_key[0], best_key[1],
+                     default_market.get("ticker"))
             return best
     except Exception as exc:
         log.debug("[%s] ladder pick skipped: %s", asset, exc)

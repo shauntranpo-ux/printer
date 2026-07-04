@@ -104,7 +104,7 @@ def test_s2_skips_low_z_no_dislocation():
                    return_value={"mode": "paper", "quiet_hours_enabled": False}):
             result = strategy_brain_s2(
                 btc_price=150.001, strike=150.0, yes_ask=50, no_ask=51,
-                elapsed_seconds=300, secs_left=600, ticker="KXSOL-LOWZ", asset="SOL",
+                elapsed_seconds=420, secs_left=480, ticker="KXSOL-LOWZ", asset="SOL",
             )
     finally:
         if saved is not None:

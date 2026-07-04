@@ -60,7 +60,7 @@ def _run_s2(ticker: str, vel_ratio: float, btc_price: float = 2800.0, strike: fl
         )
 
 
-def _run_s2_fv(asset, spot, strike, secs_left=600.0):
+def _run_s2_fv(asset, spot, strike, secs_left=480.0):
     """Run the new spot_fv_disloc S2 with a seeded, sign-consistent spot deque."""
     from collections import deque
     now = time.time()
@@ -75,7 +75,8 @@ def _run_s2_fv(asset, spot, strike, secs_left=600.0):
     try:
         asset_manager._prices[asset] = dq
         with patch("bot_strategy.read_config",
-                   return_value={"mode": "paper", "quiet_hours_enabled": False}):
+                   return_value={"mode": "paper", "quiet_hours_enabled": False}), \
+             patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
             return strategy_brain_s2(
                 btc_price=spot, strike=strike, yes_ask=40.0, no_ask=58.0,
                 elapsed_seconds=900.0 - secs_left, secs_left=secs_left,
