@@ -10,42 +10,50 @@
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
 <style>
 :root{
-  --bg:        oklch(0.97 0.005 250);
-  --bg-2:      oklch(0.94 0.006 250);
-  --panel:     oklch(1 0 0);
-  --panel-2:   oklch(0.96 0.005 250);
-  --line:      oklch(0.88 0.008 250);
-  --line-2:    oklch(0.78 0.01 250);
-  --ink:       oklch(0.22 0.01 250);
-  --ink-2:     oklch(0.4 0.012 250);
-  --ink-3:     oklch(0.55 0.01 250);
-  --ink-4:     oklch(0.7 0.008 250);
-  --up:        oklch(0.55 0.16 245);
-  --up-soft:   oklch(0.55 0.16 245 / 0.10);
-  --up-line:   oklch(0.55 0.16 245 / 0.30);
-  --down:      oklch(0.55 0.20 20);
-  --down-soft: oklch(0.55 0.20 20 / 0.10);
-  --down-line: oklch(0.55 0.20 20 / 0.30);
-  --amber:     oklch(0.78 0.17 72);
-  --amber-soft:oklch(0.78 0.17 72 / 0.12);
-  --accent:    oklch(0.45 0.15 255);
-  --accent-soft:oklch(0.45 0.15 255 / 0.10);
-  --shadow:    0 1px 0 oklch(1 0 0 / 0.7) inset, 0 1px 2px oklch(0 0 0 / 0.05), 0 4px 12px oklch(0 0 0 / 0.04);
-  --shadow-hover: 0 1px 0 oklch(1 0 0 / 0.7) inset, 0 2px 4px oklch(0 0 0 / 0.06), 0 8px 20px oklch(0 0 0 / 0.07);
+  --bg:        oklch(0.145 0.02 265);
+  --bg-2:      oklch(0.185 0.022 265);
+  --panel:     oklch(0.205 0.024 265);
+  --panel-2:   oklch(0.25 0.026 265);
+  --line:      oklch(1 0 0 / 0.09);
+  --line-2:    oklch(1 0 0 / 0.18);
+  --ink:       oklch(0.95 0.01 260);
+  --ink-2:     oklch(0.80 0.014 260);
+  --ink-3:     oklch(0.62 0.014 260);
+  --ink-4:     oklch(0.45 0.012 260);
+  --up:        oklch(0.75 0.17 160);
+  --up-soft:   oklch(0.75 0.17 160 / 0.13);
+  --up-line:   oklch(0.75 0.17 160 / 0.40);
+  --down:      oklch(0.66 0.21 15);
+  --down-soft: oklch(0.66 0.21 15 / 0.13);
+  --down-line: oklch(0.66 0.21 15 / 0.40);
+  --amber:     oklch(0.80 0.16 80);
+  --amber-soft:oklch(0.80 0.16 80 / 0.15);
+  --accent:    oklch(0.66 0.19 285);
+  --accent-soft:oklch(0.66 0.19 285 / 0.16);
+  --accent-2:  oklch(0.78 0.14 210);
+  --accent-2-soft:oklch(0.78 0.14 210 / 0.14);
+  --shadow:    0 1px 0 oklch(1 0 0 / 0.05) inset, 0 8px 24px oklch(0 0 0 / 0.45);
+  --shadow-hover: 0 1px 0 oklch(1 0 0 / 0.08) inset, 0 14px 38px oklch(0 0 0 / 0.60), 0 0 26px oklch(0.66 0.19 285 / 0.14);
 
   /* Asset identity hues. Validated as a categorical set (lightness band, chroma
      floor, adjacent-pair CVD separation, 3:1 contrast on the panel surface) -
      the old set failed all four (ETH/SOL near-identical under deuteranopia,
      XRP read as gray). Fixed assignment per asset; never reordered. */
-  --btc: oklch(0.62 0.15 70);
-  --eth: oklch(0.50 0.16 275);
-  --sol: oklch(0.60 0.19 330);
-  --xrp: oklch(0.58 0.14 170);
-  --doge: oklch(0.63 0.12 95);
+  --btc: oklch(0.66 0.15 70);
+  --eth: oklch(0.58 0.19 285);
+  --sol: oklch(0.66 0.19 335);
+  --xrp: oklch(0.64 0.13 170);
+  --doge: oklch(0.66 0.12 95);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{background:var(--bg);color:var(--ink);font-family:'Montserrat',ui-sans-serif,system-ui,-apple-system,sans-serif;font-size:13px;-webkit-font-smoothing:antialiased;letter-spacing:-0.01em;}
-body{min-height:100vh;background:var(--bg);}
+body{min-height:100vh;background:
+  radial-gradient(1100px 620px at 12% -6%, oklch(0.66 0.19 285 / 0.12), transparent 62%),
+  radial-gradient(950px 560px at 92% -2%, oklch(0.78 0.14 210 / 0.09), transparent 60%),
+  linear-gradient(oklch(1 0 0 / 0.022) 1px, transparent 1px),
+  linear-gradient(90deg, oklch(1 0 0 / 0.022) 1px, transparent 1px),
+  var(--bg);
+  background-size:auto,auto,44px 44px,44px 44px,auto;background-attachment:fixed;}
 ::selection{background:var(--accent-soft);color:var(--ink);}
 ::-webkit-scrollbar{width:8px;height:8px;}
 ::-webkit-scrollbar-track{background:transparent;}
@@ -57,7 +65,7 @@ body{min-height:100vh;background:var(--bg);}
 /* ─── TOPBAR ─── */
 #topbar{
   position:sticky;top:0;z-index:50;
-  background:oklch(0.97 0.005 250 / 0.9);
+  background:oklch(0.15 0.02 265 / 0.72);
   backdrop-filter:blur(16px);
   border-bottom:1px solid var(--line);
 }
@@ -140,7 +148,7 @@ body{min-height:100vh;background:var(--bg);}
 .mode-seg button.active.demo{color:var(--accent);}
 .mode-seg-btn{padding:4px 10px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);color:var(--ink-3);font:600 10px/1 'Montserrat',sans-serif;letter-spacing:0.06em;cursor:pointer;transition:background 0.15s,color 0.15s,border-color 0.15s;}
 .mode-seg-btn.active-paper{background:var(--panel);color:var(--ink);border-color:var(--ink-3);box-shadow:inset 0 0 0 1px var(--ink-3);}
-.mode-seg-btn.active-live{background:oklch(0.42 0.13 155 / 0.18);color:oklch(0.42 0.13 155);border-color:oklch(0.42 0.13 155 / 0.6);box-shadow:inset 0 0 0 1px oklch(0.42 0.13 155 / 0.3);}
+.mode-seg-btn.active-live{background:oklch(0.75 0.17 160 / 0.18);color:oklch(0.75 0.17 160);border-color:oklch(0.75 0.17 160 / 0.6);box-shadow:inset 0 0 0 1px oklch(0.75 0.17 160 / 0.3);}
 
 .clock{
   font:600 11px/1 'Montserrat',monospace;
@@ -175,19 +183,19 @@ main{padding:18px;max-width:1600px;margin:0 auto;}
   background:var(--ink-3);transition:left .2s, background .2s;
 }
 .bot-toggle input:checked + .bot-toggle-track{
-  background:oklch(0.55 0.13 155 / 0.15);
-  border-color:oklch(0.45 0.13 155 / 0.5);
+  background:oklch(0.75 0.17 160 / 0.15);
+  border-color:oklch(0.75 0.17 160 / 0.5);
 }
 .bot-toggle input:checked + .bot-toggle-track .bot-toggle-thumb{
-  left:18px;background:oklch(0.42 0.13 155);
+  left:18px;background:oklch(0.75 0.17 160);
 }
 /* dark green for net-pnl */
-.kpi-cell-v.up{color:oklch(0.42 0.13 155);}
-.kpi-trend.up{color:oklch(0.42 0.13 155);background:oklch(0.42 0.13 155 / 0.10);}
+.kpi-cell-v.up{color:oklch(0.75 0.17 160);}
+.kpi-trend.up{color:oklch(0.75 0.17 160);background:oklch(0.75 0.17 160 / 0.10);}
 
 /* mode badge color cycling */
 .mode-badge{transition:color .2s, background .2s, border-color .2s;}
-body[data-mode="live"] .mode-badge{color:oklch(0.42 0.13 155);background:oklch(0.42 0.13 155 / 0.10);border-color:oklch(0.42 0.13 155 / 0.4);}
+body[data-mode="live"] .mode-badge{color:oklch(0.75 0.17 160);background:oklch(0.75 0.17 160 / 0.10);border-color:oklch(0.75 0.17 160 / 0.4);}
 body[data-mode="demo"] .mode-badge{color:var(--accent);background:var(--accent-soft);border-color:oklch(0.45 0.15 255 / 0.35);}
 body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2);border-color:var(--line);}
 
@@ -252,16 +260,16 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
 .mc:hover{border-color:var(--line);}
 .mc.selected{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent), 0 4px 16px oklch(0.45 0.15 255 / 0.18);}
 .mc.in-trade{
-  border-color:oklch(0.78 0.13 85);
-  box-shadow:0 0 0 1px oklch(0.78 0.13 85 / 0.4), 0 4px 14px oklch(0.78 0.13 85 / 0.12);
+  border-color:oklch(0.82 0.14 85);
+  box-shadow:0 0 0 1px oklch(0.82 0.14 85 / 0.4), 0 4px 14px oklch(0.82 0.14 85 / 0.12);
 }
 .mc-glow{position:absolute;inset:0;opacity:0;transition:opacity .3s;pointer-events:none;}
 .mc:hover .mc-glow{opacity:1;}
-.mc-glow.btc{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.62 0.15 70 / 0.09), transparent 70%);}
-.mc-glow.eth{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.50 0.16 275 / 0.09), transparent 70%);}
-.mc-glow.sol{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.60 0.19 330 / 0.09), transparent 70%);}
-.mc-glow.xrp{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.58 0.14 170 / 0.09), transparent 70%);}
-.mc-glow.doge{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.63 0.12 95 / 0.09), transparent 70%);}
+.mc-glow.btc{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.66 0.15 70 / 0.16), transparent 70%);}
+.mc-glow.eth{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.58 0.19 285 / 0.16), transparent 70%);}
+.mc-glow.sol{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.66 0.19 335 / 0.16), transparent 70%);}
+.mc-glow.xrp{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.64 0.13 170 / 0.16), transparent 70%);}
+.mc-glow.doge{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.66 0.12 95 / 0.16), transparent 70%);}
 
 .mc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .mc-asset{display:flex;align-items:center;gap:10px;}
@@ -277,9 +285,9 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
 }
 /* phase: WATCH (waiting) -> READY (signal qualified) -> LOCKED (in trade) -> DONE (resolved) -> OFFLINE */
 .mc-status.watch  {background:var(--bg-2);color:var(--ink-3);}
-.mc-status.ready  {background:oklch(0.55 0.16 245 / 0.12);color:oklch(0.5 0.16 245);}
-.mc-status.locked {background:oklch(0.78 0.13 85 / 0.18);color:oklch(0.5 0.13 85);}
-.mc-status.done   {background:oklch(0.65 0.13 155 / 0.14);color:oklch(0.42 0.13 155);}
+.mc-status.ready  {background:var(--accent-2-soft);color:var(--accent-2);}
+.mc-status.locked {background:oklch(0.82 0.14 85 / 0.18);color:oklch(0.85 0.12 85);}
+.mc-status.done   {background:oklch(0.75 0.17 160 / 0.14);color:oklch(0.75 0.17 160);}
 .mc-status.offline{background:var(--panel-2);color:var(--ink-4);}
 
 .mc-body{display:flex;align-items:center;justify-content:space-between;gap:10px;}
@@ -291,11 +299,11 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
   position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);
   height:4px;border-radius:2px;
   background:linear-gradient(to right,
-    oklch(0.55 0.20 25 / 0.20) 0%,
-    oklch(0.55 0.20 25 / 0.06) 30%,
-    oklch(0.6 0.005 250 / 0.18) 50%,
-    oklch(0.55 0.18 150 / 0.06) 70%,
-    oklch(0.55 0.18 150 / 0.20) 100%);
+    oklch(0.66 0.21 15 / 0.20) 0%,
+    oklch(0.66 0.21 15 / 0.06) 30%,
+    oklch(0.7 0.012 260 / 0.28) 50%,
+    oklch(0.75 0.17 160 / 0.06) 70%,
+    oklch(0.75 0.17 160 / 0.20) 100%);
 }
 .mc-battle-track::before{
   content:'';position:absolute;left:50%;top:50%;width:1px;height:8px;
@@ -305,30 +313,30 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
   position:absolute;top:50%;width:10px;height:10px;border-radius:50%;
   background:#888;transform:translate(-50%,-50%);
   transition:left 400ms cubic-bezier(.32,.72,.32,1), background-color 400ms ease-out;
-  box-shadow:0 0 0 2px var(--panel), 0 1px 4px oklch(0 0 0 / 0.18);
+  box-shadow:0 0 0 2px var(--panel), 0 1px 4px oklch(0 0 0 / 0.5);
   z-index:2;
 }
-.mc:not(.in-trade) .mc-battle-marker{box-shadow:0 0 0 2px var(--panel), 0 1px 4px oklch(0 0 0 / 0.18);}
-.mc.in-trade .mc-battle-marker{box-shadow:0 0 0 2px oklch(0.97 0.04 85), 0 1px 4px oklch(0 0 0 / 0.18);}
+.mc:not(.in-trade) .mc-battle-marker{box-shadow:0 0 0 2px var(--panel), 0 1px 4px oklch(0 0 0 / 0.5);}
+.mc.in-trade .mc-battle-marker{box-shadow:0 0 0 2px oklch(0.32 0.05 85), 0 1px 4px oklch(0 0 0 / 0.5);}
 .mc-battle-foot{
   margin-top:6px;display:flex;align-items:center;justify-content:space-between;
   font:500 10px/1 'Montserrat','Montserrat',monospace;letter-spacing:0.02em;
   font-variant-numeric:tabular-nums;color:var(--ink-3);
 }
-.mc-battle-foot .yes{color:oklch(0.5 0.18 150);font-weight:600;}
-.mc-battle-foot .no{color:oklch(0.5 0.20 25);font-weight:600;}
+.mc-battle-foot .yes{color:var(--up);font-weight:600;}
+.mc-battle-foot .no{color:var(--down);font-weight:600;}
 .mc-battle-foot .sep{color:var(--line-2);}
 .mc-battle-foot .timer{display:inline-flex;align-items:center;gap:3px;color:var(--ink-2);}
-.mc-battle-foot .timer.warn{color:oklch(0.55 0.16 60);}
+.mc-battle-foot .timer.warn{color:var(--amber);}
 .mc-battle-foot .result{font-weight:700;font-size:12px;}
-.mc-battle-foot .result.win{color:oklch(0.5 0.18 150);}
-.mc-battle-foot .result.loss{color:oklch(0.5 0.20 25);}
+.mc-battle-foot .result.win{color:var(--up);}
+.mc-battle-foot .result.loss{color:var(--down);}
 .mc-battle-foot .locked-tag{
-  font-weight:700;letter-spacing:0.1em;color:oklch(0.5 0.13 85);
+  font-weight:700;letter-spacing:0.1em;color:oklch(0.85 0.12 85);
   display:inline-flex;align-items:center;gap:4px;
 }
 .mc-battle-foot .locked-tag::before{
-  content:'';width:5px;height:5px;border-radius:50%;background:oklch(0.6 0.18 60);
+  content:'';width:5px;height:5px;border-radius:50%;background:oklch(0.82 0.15 70);
   animation:livepulse 1.4s ease-in-out infinite;
 }
 @keyframes livepulse{0%,100%{opacity:0.4;}50%{opacity:1;}}
@@ -339,8 +347,8 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
 .mc-trend{
   width:36px;height:36px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;
 }
-.mc-trend.up{background:oklch(0.55 0.16 245 / 0.12);color:oklch(0.55 0.16 245);}
-.mc-trend.down{background:oklch(0.6 0.20 25 / 0.12);color:oklch(0.55 0.20 25);}
+.mc-trend.up{background:var(--accent-2-soft);color:var(--up);}
+.mc-trend.down{background:oklch(0.66 0.21 15 / 0.12);color:oklch(0.66 0.21 15);}
 .mc-trend.flat{background:var(--bg-2);color:var(--ink-3);}
 .mc-trend svg{width:18px;height:18px;display:block;}
 
@@ -565,7 +573,7 @@ tbody tr:last-child td{border-bottom:none;}
 
 .ds-votes{display:flex;gap:3px;align-items:center;}
 .ds-votes .pip{width:8px;height:8px;border-radius:50%;background:var(--bg-2);border:1px solid var(--line-2);}
-.ds-votes .pip.on{background:oklch(0.55 0.16 245);border-color:oklch(0.55 0.16 245);}
+.ds-votes .pip.on{background:var(--up);border-color:var(--up);}
 .ds-votes .pip.short{background:transparent;border-color:var(--line-2);}
 .ds-votes-num{font:600 10px/1 'Montserrat',monospace;color:var(--ink-2);margin-left:6px;font-variant-numeric:tabular-nums;}
 
@@ -574,12 +582,12 @@ tbody tr:last-child td{border-bottom:none;}
   padding:4px 7px;border-radius:4px;
   display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
 }
-.ds-gate.pass{background:oklch(0.65 0.13 155 / 0.14);color:oklch(0.4 0.13 155);}
+.ds-gate.pass{background:oklch(0.75 0.17 160 / 0.14);color:oklch(0.75 0.17 160);}
 .ds-gate.fail{background:var(--down-soft);color:var(--down);}
 .ds-gate.idle{background:var(--bg-2);color:var(--ink-4);}
 
 .ds-ev{font:600 12px/1 'Montserrat',monospace;font-variant-numeric:tabular-nums;min-width:54px;text-align:right;}
-.ds-ev.up{color:oklch(0.5 0.16 245);}
+.ds-ev.up{color:var(--accent-2);}
 .ds-ev.down{color:var(--down);}
 .ds-ev.idle{color:var(--ink-3);}
 
@@ -587,7 +595,7 @@ tbody tr:last-child td{border-bottom:none;}
   font:600 9px/1 'Montserrat',sans-serif;letter-spacing:0.1em;text-transform:uppercase;
   padding:5px 10px;border-radius:5px;min-width:60px;text-align:center;
 }
-.ds-decision.trade{background:oklch(0.65 0.13 155 / 0.16);color:oklch(0.4 0.13 155);}
+.ds-decision.trade{background:oklch(0.75 0.17 160 / 0.16);color:oklch(0.75 0.17 160);}
 .ds-decision.skip{background:var(--bg-2);color:var(--ink-3);}
 
 .ds-caret{width:14px;height:14px;color:var(--ink-3);transition:transform .2s;flex-shrink:0;}
@@ -601,7 +609,7 @@ tbody tr:last-child td{border-bottom:none;}
 .ds-field{display:flex;align-items:center;gap:10px;font-size:11px;}
 .ds-field .l{color:var(--ink-3);text-transform:uppercase;letter-spacing:0.06em;font-size:9px;font-weight:600;width:104px;flex-shrink:0;}
 .ds-field .v{font-family:'Montserrat',monospace;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;}
-.ds-field .v.up{color:oklch(0.5 0.16 245);}
+.ds-field .v.up{color:var(--accent-2);}
 .ds-field .v.down{color:var(--down);}
 .ds-field .v.muted{color:var(--ink-3);font-weight:500;}
 
@@ -629,7 +637,7 @@ tbody tr:last-child td{border-bottom:none;}
 
 /* ambient drift: two soft palette-tinted blobs behind the content */
 #ambient{position:fixed;inset:0;z-index:-1;overflow:hidden;pointer-events:none;}
-#ambient::before,#ambient::after{content:'';position:absolute;width:56vw;height:56vw;border-radius:50%;filter:blur(90px);opacity:.55;}
+#ambient::before,#ambient::after{content:'';position:absolute;width:60vw;height:60vw;border-radius:50%;filter:blur(100px);opacity:.9;}
 #ambient::before{left:-14vw;top:-20vw;background:radial-gradient(circle, var(--accent-soft), transparent 65%);animation:blobA 26s ease-in-out infinite;}
 #ambient::after{right:-16vw;bottom:-22vw;background:radial-gradient(circle, var(--up-soft), transparent 65%);animation:blobB 34s ease-in-out infinite;}
 @keyframes blobA{0%,100%{transform:translate(-6%,-4%) scale(1);}50%{transform:translate(7%,9%) scale(1.18);}}
@@ -677,7 +685,7 @@ tbody tr:last-child td{border-bottom:none;}
 @keyframes donutIn{from{opacity:0;transform:scale(.55) rotate(-70deg);}to{opacity:1;transform:none;}}
 
 /* in-trade cards breathe */
-@keyframes tradeGlow{0%,100%{box-shadow:0 0 0 1px oklch(0.78 0.13 85 / 0.4), 0 4px 14px oklch(0.78 0.13 85 / 0.10);}50%{box-shadow:0 0 0 2px oklch(0.78 0.13 85 / 0.6), 0 6px 26px oklch(0.78 0.13 85 / 0.26);}}
+@keyframes tradeGlow{0%,100%{box-shadow:0 0 0 1px oklch(0.82 0.14 85 / 0.4), 0 4px 14px oklch(0.82 0.14 85 / 0.10);}50%{box-shadow:0 0 0 2px oklch(0.82 0.14 85 / 0.6), 0 6px 26px oklch(0.82 0.14 85 / 0.26);}}
 .mc.in-trade{animation:tradeGlow 2.2s ease-in-out infinite;}
 
 /* toasts */
@@ -697,6 +705,20 @@ tbody tr:last-child td{border-bottom:none;}
 @keyframes toastIn{from{opacity:0;transform:translateX(30px) scale(.92);}to{opacity:1;transform:none;}}
 @keyframes toastOut{to{opacity:0;transform:translateX(30px) scale(.92);}}
 #fx-canvas{position:fixed;inset:0;pointer-events:none;z-index:9999;}
+
+/* dark glass surfaces + neon accents */
+.card,.kpi,.mc,.kpi-strip{background:oklch(0.205 0.024 265 / 0.72);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);}
+.kpi-cell-v.up,.kpi-value.up{text-shadow:0 0 16px var(--up-line);}
+.kpi-cell-v.down,.kpi-value.down{text-shadow:0 0 16px var(--down-line);}
+.card-title .accent{background:linear-gradient(180deg, var(--accent-2), var(--accent));box-shadow:0 0 9px var(--accent-soft);}
+.tab.active{box-shadow:inset 0 0 0 1px var(--line-2), 0 0 18px var(--accent-soft);}
+.status-pill{box-shadow:0 0 16px var(--up-soft);}
+.status-pill.off{box-shadow:0 0 16px var(--down-soft);}
+.brand-mark{box-shadow:0 0 14px var(--accent-soft), 0 1px 3px oklch(0 0 0 / 0.4);}
+.mc-battle-track{filter:saturate(1.3);}
+.kpi-strip-label{border-bottom-color:var(--line-2);}
+::-webkit-scrollbar-thumb{background:oklch(1 0 0 / 0.14);}
+::-webkit-scrollbar-thumb:hover{background:oklch(1 0 0 / 0.24);}
 
 /* the off switch */
 @media (prefers-reduced-motion: reduce){
@@ -1021,8 +1043,8 @@ tbody tr:last-child td{border-bottom:none;}
       <div style="display:flex;flex-direction:column;gap:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S1 - EMA Momentum</div>
-            <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">3-min vs N-min EMA crossover</div>
+            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S1 - BTC-Lead Catch-Up</div>
+            <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Alt lags a fresh BTC move; fair value on the catch-up spot</div>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
             <button id="s1-paper-btn" class="mode-seg-btn" onclick="setStrategyMode('s1','paper')">PAPER</button>
@@ -1032,8 +1054,8 @@ tbody tr:last-child td{border-bottom:none;}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S2 - Velocity + OBI</div>
-            <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Contract velocity + orderbook imbalance</div>
+            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S2 - Spot Fair Value</div>
+            <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Bachelier fair value vs a market mid lagging the spot</div>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
             <button id="s2-paper-btn" class="mode-seg-btn" onclick="setStrategyMode('s2','paper')">PAPER</button>
@@ -1235,7 +1257,8 @@ const MARKET_DATA = {
 //  RENDERERS
 // ════════════════════════════════════════════════════
 const fmtMoney = n => (n>=0?'+$':'-$')+Math.abs(n).toFixed(2);
-const fmtPx = (sym,px) => sym==='DOGE'?'$'+px.toFixed(4):sym==='XRP'?'$'+px.toFixed(3):sym==='SOL'?'$'+px.toFixed(2):'$'+Math.round(px).toLocaleString();
+const fmtPx = (sym,px) => px==null||isNaN(px) ? '-' :
+  sym==='DOGE'?'$'+px.toFixed(4):sym==='XRP'?'$'+px.toFixed(3):sym==='SOL'?'$'+px.toFixed(2):'$'+Math.round(px).toLocaleString();
 
 function genSpark(seed, n=24){
   let r=seed; const pts=[];
@@ -1279,7 +1302,7 @@ function renderMarketStrip(){
     const _skipLabel = _fmtSkip(_skip);
     const s1ArrowHtml = (() => {
       const _d = (d, l) => {
-        const c = d==='UP'?'oklch(0.55 0.16 245)':d==='DOWN'?'oklch(0.55 0.20 25)':'var(--ink-3)';
+        const c = d==='UP'?'var(--up)':d==='DOWN'?'oklch(0.66 0.21 15)':'var(--ink-3)';
         const s = d==='UP'
           ? `<svg viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M12 4L12 20M5 11L12 4L19 11"/></svg>`
           : d==='DOWN'
@@ -1288,7 +1311,7 @@ function renderMarketStrip(){
         return `<div style="display:flex;flex-direction:column;align-items:center;gap:1px">${s}<span style="font-size:7px;font-weight:700;letter-spacing:0.06em;color:var(--ink-3)">${l}</span></div>`;
       };
       const gp = g => g ? Math.round(g.passed / g.total * 100) : null;
-      const gc = p => p >= 70 ? 'oklch(0.5 0.18 150)' : p >= 40 ? 'oklch(0.6 0.16 60)' : 'oklch(0.5 0.20 25)';
+      const gc = p => p >= 70 ? 'var(--up)' : p >= 40 ? 'var(--amber)' : 'var(--down)';
       const s1p = gp(m.s1_gates), s2p = gp(m.s2_gates);
       const badges = (s1p != null || s2p != null)
         ? `<div style="display:flex;gap:4px;justify-content:center">${s1p != null ? `<span style="font-size:8px;font-weight:700;color:${gc(s1p)}">S1 ${s1p}%</span>` : ''}${s2p != null ? `<span style="font-size:8px;font-weight:700;color:${gc(s2p)}">S2 ${s2p}%</span>` : ''}</div>`
@@ -1351,8 +1374,8 @@ function renderMarketStrip(){
       </div>
       <div class="mc-body">
         <div class="mc-price">
-          <span class="mc-price-label" style="color:${_evVal>0?'oklch(0.5 0.18 150)':_evVal<-0.01?'oklch(0.5 0.20 25)':'var(--ink-3)'}">EV</span>
-          <span class="mc-price-val" style="color:${_evVal>0?'oklch(0.5 0.18 150)':_evVal<-0.01?'oklch(0.5 0.20 25)':'var(--ink-2)'}">
+          <span class="mc-price-label" style="color:${_evVal>0?'var(--up)':_evVal<-0.01?'var(--down)':'var(--ink-3)'}">EV</span>
+          <span class="mc-price-val" style="color:${_evVal>0?'var(--up)':_evVal<-0.01?'var(--down)':'var(--ink-2)'}">
             ${_evVal!=null&&Math.abs(_evVal)<=200?((_evVal>0?'+':'')+_evVal.toFixed(1)+'%'):_evVal!=null?'-*':'-'}
           </span>
           ${_skipLabel?`<span style="font-size:9px;color:var(--ink-3);font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100px;display:block">${_skipLabel}</span>`:''}
@@ -1428,21 +1451,21 @@ function renderEquity(range, containerId, pts){
   const lastPt = xy[xy.length-1];
   const lastV  = data[data.length-1];
   const isUp   = lastV>=0;
-  const lineColor = isUp ? 'oklch(0.55 0.16 245)' : 'oklch(0.55 0.20 20)';
-  const fillColor = isUp ? 'oklch(0.55 0.16 245 / 0.16)' : 'oklch(0.55 0.20 20 / 0.16)';
+  const lineColor = isUp ? 'oklch(0.78 0.17 160)' : 'oklch(0.70 0.21 15)';
+  const fillColor = isUp ? 'oklch(0.78 0.17 160 / 0.22)' : 'oklch(0.70 0.21 15 / 0.22)';
   const lastTxt = (lastV>=0?'+':'-') + '$' + Math.abs(lastV).toFixed(Math.abs(lastV)>=100?0:2);
   wrap.innerHTML = `
     <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
       <defs>
         <linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stop-color="${fillColor}"/>
-          <stop offset="100%" stop-color="${fillColor.replace('0.16','0.0')}"/>
+          <stop offset="100%" stop-color="${fillColor.replace('0.22','0.0')}"/>
         </linearGradient>
       </defs>
       ${gridY.join('')}
       ${zeroLine}
       <path d="${areaPath}" fill="url(#${gradId})"/>
-      <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" style="filter:drop-shadow(0 0 6px ${lineColor})"/>
       <circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="3.5" fill="${lineColor}" stroke="var(--panel)" stroke-width="2"/>
       <circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="6" fill="${lineColor}" opacity="0.25">
         <animate attributeName="r" from="3" to="9" dur="1.4s" repeatCount="indefinite"/>
@@ -1677,7 +1700,7 @@ function renderMarketPanel(sym){
 
   // hero spark
   const sparkPts = genSpark(sym.charCodeAt(0)+sym.charCodeAt(1)*7, 60);
-  const sparkColor = m.ch24>=0?'oklch(0.55 0.16 245)':'oklch(0.55 0.20 20)';
+  const sparkColor = m.ch24>=0?'var(--up)':'oklch(0.66 0.21 15)';
   const sparkFill = sparkColor.replace(')',' / 0.12)');
 
 
@@ -1686,11 +1709,11 @@ function renderMarketPanel(sym){
   const gAngle = (_score/100)*Math.PI;
   const gx = 80 + 70*Math.cos(Math.PI - gAngle);
   const gy = 80 - 70*Math.sin(Math.PI - gAngle);
-  const gColor = _score>=70?'oklch(0.55 0.16 245)':_score>=50?'oklch(0.82 0.16 75)':'oklch(0.55 0.20 20)';
+  const gColor = _score>=70?'var(--up)':_score>=50?'oklch(0.82 0.16 75)':'oklch(0.66 0.21 15)';
   const gaugeHTML = `
     <div class="gauge-wrap">
       <svg class="gauge-svg" viewBox="0 0 160 90">
-        <path d="M 10,80 A 70,70 0 0 1 150,80" fill="none" stroke="oklch(0.88 0.008 250)" stroke-width="10" stroke-linecap="round"/>
+        <path d="M 10,80 A 70,70 0 0 1 150,80" fill="none" stroke="oklch(1 0 0 / 0.14)" stroke-width="10" stroke-linecap="round"/>
         <path d="M 10,80 A 70,70 0 0 1 ${gx.toFixed(1)},${gy.toFixed(1)}" fill="none" stroke="${gColor}" stroke-width="10" stroke-linecap="round"/>
         <circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="5" fill="${gColor}"/>
       </svg>
@@ -1720,17 +1743,17 @@ function renderMarketPanel(sym){
   const _outcomes = MARKET_DATA[sym]?.outcomes;
   const heat = (_outcomes && _outcomes.length > 0)
     ? [..._outcomes].reverse().map(o => {
-        if(o === 'win')    return 'oklch(0.55 0.16 245)';
-        if(o === 'loss')   return 'oklch(0.65 0.20 20)';
-        return 'oklch(0.82 0 0)';
+        if(o === 'win')    return 'var(--up)';
+        if(o === 'loss')   return 'var(--down)';
+        return 'oklch(0.5 0.012 260)';
       })
     : genSpark(sym.charCodeAt(0)*3, 60).map(v=>{
     const norm=(v+0.5);
-    if(norm>0.62) return 'oklch(0.55 0.16 245)';
-    if(norm>0.5) return 'oklch(0.78 0.18 145 / 0.4)';
-    if(norm>0.4) return 'oklch(0.88 0.008 250)';
-    if(norm>0.3) return 'oklch(0.68 0.21 25 / 0.4)';
-    return 'oklch(0.55 0.20 20)';
+    if(norm>0.62) return 'var(--up)';
+    if(norm>0.5) return 'oklch(0.75 0.17 160 / 0.4)';
+    if(norm>0.4) return 'oklch(1 0 0 / 0.14)';
+    if(norm>0.3) return 'oklch(0.66 0.21 15 / 0.4)';
+    return 'oklch(0.66 0.21 15)';
   });
 
   // session tabs (only for multi-session)
@@ -1906,7 +1929,7 @@ function renderMarketPanel(sym){
 // ════════════════════════════════════════════════════
 function renderTrades(filter='all'){
   const tbody = document.querySelector('#trades-table tbody');
-  const colors = {BTC:'oklch(0.72 0.16 60)', ETH:'oklch(0.55 0.12 270)', SOL:'oklch(0.42 0.22 300)', XRP:'oklch(0.6 0.012 250)', DOGE:'oklch(0.72 0.13 85)'};
+  const colors = {BTC:'var(--amber)', ETH:'oklch(0.55 0.12 270)', SOL:'oklch(0.42 0.22 300)', XRP:'var(--ink-3)', DOGE:'var(--amber)'};
   const rows = TRADES.filter(t=>filter==='all'||t.sym===filter).slice(0,80);
   tbody.innerHTML = rows.map(t=>{
     const d = new Date(t.ts);
@@ -2630,7 +2653,7 @@ function _fireConfetti(){
   if (!cv) { cv = document.createElement('canvas'); cv.id = 'fx-canvas'; document.body.appendChild(cv); }
   cv.width = innerWidth; cv.height = innerHeight;
   const ctx = cv.getContext('2d');
-  const hues = ['#be7200','#4c55bc','#bb4cb5','#00946d','#a0881e','#0077c7'];
+  const hues = ['#cb7f00','#7361e4','#d55cbf','#00a580','#00ce88','#5ad7ff'];
   const parts = [];
   for (let i=0;i<140;i++){
     const a = (Math.random()*0.9 + 0.05) * Math.PI;
