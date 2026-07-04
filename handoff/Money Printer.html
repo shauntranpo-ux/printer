@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>Printr * Trading Desk</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230053a5'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='sans-serif' font-size='17' font-weight='900' fill='white'%3EP%3C/text%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -29,13 +30,18 @@
   --amber-soft:oklch(0.78 0.17 72 / 0.12);
   --accent:    oklch(0.45 0.15 255);
   --accent-soft:oklch(0.45 0.15 255 / 0.10);
-  --shadow:    0 1px 0 oklch(1 0 0 / 0.6) inset, 0 1px 2px oklch(0 0 0 / 0.06);
+  --shadow:    0 1px 0 oklch(1 0 0 / 0.7) inset, 0 1px 2px oklch(0 0 0 / 0.05), 0 4px 12px oklch(0 0 0 / 0.04);
+  --shadow-hover: 0 1px 0 oklch(1 0 0 / 0.7) inset, 0 2px 4px oklch(0 0 0 / 0.06), 0 8px 20px oklch(0 0 0 / 0.07);
 
-  --btc: oklch(0.78 0.16 70);
-  --eth: oklch(0.74 0.10 270);
-  --sol: oklch(0.78 0.16 320);
-  --xrp: oklch(0.6 0.012 250);
-  --doge: oklch(0.82 0.13 90);
+  /* Asset identity hues. Validated as a categorical set (lightness band, chroma
+     floor, adjacent-pair CVD separation, 3:1 contrast on the panel surface) -
+     the old set failed all four (ETH/SOL near-identical under deuteranopia,
+     XRP read as gray). Fixed assignment per asset; never reordered. */
+  --btc: oklch(0.62 0.15 70);
+  --eth: oklch(0.50 0.16 275);
+  --sol: oklch(0.60 0.19 330);
+  --xrp: oklch(0.58 0.14 170);
+  --doge: oklch(0.63 0.12 95);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{background:var(--bg);color:var(--ink);font-family:'Montserrat',ui-sans-serif,system-ui,-apple-system,sans-serif;font-size:13px;-webkit-font-smoothing:antialiased;letter-spacing:-0.01em;}
@@ -251,11 +257,11 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
 }
 .mc-glow{position:absolute;inset:0;opacity:0;transition:opacity .3s;pointer-events:none;}
 .mc:hover .mc-glow{opacity:1;}
-.mc-glow.btc{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.78 0.16 70 / 0.08), transparent 70%);}
-.mc-glow.eth{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.74 0.10 270 / 0.08), transparent 70%);}
-.mc-glow.sol{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.78 0.16 320 / 0.08), transparent 70%);}
-.mc-glow.xrp{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.85 0.02 250 / 0.08), transparent 70%);}
-.mc-glow.doge{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.72 0.13 85 / 0.08), transparent 70%);}
+.mc-glow.btc{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.62 0.15 70 / 0.09), transparent 70%);}
+.mc-glow.eth{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.50 0.16 275 / 0.09), transparent 70%);}
+.mc-glow.sol{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.60 0.19 330 / 0.09), transparent 70%);}
+.mc-glow.xrp{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.58 0.14 170 / 0.09), transparent 70%);}
+.mc-glow.doge{background:radial-gradient(ellipse 100% 80% at 50% 0%, oklch(0.63 0.12 95 / 0.09), transparent 70%);}
 
 .mc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .mc-asset{display:flex;align-items:center;gap:10px;}
@@ -346,6 +352,12 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
   background:var(--panel);border:1px solid var(--line);border-radius:11px;
   padding:16px;box-shadow:var(--shadow);
 }
+/* definition + motion: cards lift subtly on hover, borders sharpen, focus is visible */
+.card,.kpi,.mc,.kpi-strip{transition:box-shadow .2s ease, border-color .2s ease, transform .2s ease;}
+.card:hover,.kpi:hover{border-color:var(--line-2);box-shadow:var(--shadow-hover);}
+.mc:hover{box-shadow:var(--shadow-hover);transform:translateY(-1px);}
+button:focus-visible,.tab:focus-visible,.icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px;}
+html{scroll-behavior:smooth;}
 .card-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .card-title{font-size:11px;font-weight:700;color:var(--ink-2);letter-spacing:0.08em;text-transform:uppercase;display:flex;align-items:center;gap:8px;}
 .card-title .accent{width:3px;height:12px;background:var(--accent);border-radius:1px;}
@@ -663,7 +675,7 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- KPI STRIP - Strategy 2 (D3 Hybrid) -->
   <div class="kpi-strip" id="kpi-strip-s2">
-    <div class="kpi-strip-label">S2 * Velocity + OBI</div>
+    <div class="kpi-strip-label">S2 * Spot Fair Value</div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-alltime-val" class="kpi-cell-v up mono">+$1,847.20</div>
@@ -685,7 +697,7 @@ tbody tr:last-child td{border-bottom:none;}
 
   <!-- KPI STRIP - Strategy 1 (Original) -->
   <div class="kpi-strip" id="kpi-strip-s1">
-    <div class="kpi-strip-label s1">S1 * EMA Momentum</div>
+    <div class="kpi-strip-label s1">S1 * BTC-Lead Catch-Up</div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
@@ -712,7 +724,7 @@ tbody tr:last-child td{border-bottom:none;}
   <div class="grid-2" style="margin-bottom:8px;">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * vel+OBI</span></div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * fair value</span></div>
         <div class="seg" id="equity-seg">
           <button class="active" data-range="1d">1D</button>
           <button data-range="1w">1W</button>
@@ -724,7 +736,7 @@ tbody tr:last-child td{border-bottom:none;}
     </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * vel+OBI</span></div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * fair value</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
@@ -738,13 +750,13 @@ tbody tr:last-child td{border-bottom:none;}
   <div class="grid-2">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * EMA</span></div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * BTC-lead</span></div>
       </div>
       <div class="chart-wrap" id="equity-chart-s1"></div>
     </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * EMA</span></div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * BTC-lead</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
@@ -910,8 +922,12 @@ tbody tr:last-child td{border-bottom:none;}
       <div style="overflow-x:auto;margin-top:10px;"><table style="width:100%;"><thead><tr>
         <th>Settlement basis (asset)</th><th>n</th><th>Agree%</th><th>Mean dist @ disagree</th>
       </tr></thead><tbody id="edge-basis"></tbody></table></div>
+      <div style="overflow-x:auto;margin-top:10px;"><table style="width:100%;"><thead><tr>
+        <th>Sigma (asset)</th><th>Static</th><th>Implied EWMA</th><th>Obs</th><th>Fitted scale</th>
+      </tr></thead><tbody id="edge-sigma"></tbody></table></div>
+      <div id="edge-shadow" style="font-size:11px;margin-top:8px;"></div>
       <div id="edge-autoblock" style="font-size:11px;margin-top:8px;"></div>
-      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">prob_scale 1.0 = neutral (&lt;1 means the model was overconfident and is being shrunk). Live betas replace the static betas file. Auto-blocked buckets have 150+ settled picks with a non-positive Wilson-LB net-$.</div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">prob_scale 1.0 = neutral (&lt;1 means the model was overconfident and is being shrunk). Live betas replace the static betas file. Sigma: pricing anchors to the market-implied EWMA when fresh; the fitted scale multiplies it (1.0 = calibrated). The shadow favorite line is the promotion test for buying 70-88c favorites - it risks nothing until its Wilson-LB is positive at 200+ samples. Auto-blocked buckets have 150+ settled picks with a non-positive Wilson-LB net-$.</div>
     </div>
   </div>
 </div>
@@ -990,6 +1006,11 @@ function cryptoLogo(sym){
     default: return '<svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="#888"/></svg>';
   }
 }
+// Fill the per-asset tab dots with the real coin marks (they render as empty
+// gray circles otherwise).
+document.querySelectorAll('.tab .dot[data-sym]').forEach(el => {
+  el.innerHTML = cryptoLogo(el.dataset.sym);
+});
 
 // ════════════════════════════════════════════════════
 //  MOCK DATA  (representative - wire to real bot API)
@@ -1279,6 +1300,19 @@ function buildStrategyEquity(sv, range) {
 }
 
 // equity chart - renders to containerId using provided pts array
+function _smoothPath(xy){
+  // Catmull-Rom through the points, emitted as cubic beziers - reads as one
+  // continuous move instead of a jagged polyline.
+  if(xy.length < 3) return xy.map((p,i)=>(i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  let d = 'M'+xy[0][0].toFixed(1)+','+xy[0][1].toFixed(1);
+  for(let i=0;i<xy.length-1;i++){
+    const p0=xy[Math.max(0,i-1)], p1=xy[i], p2=xy[i+1], p3=xy[Math.min(xy.length-1,i+2)];
+    const c1=[p1[0]+(p2[0]-p0[0])/6, p1[1]+(p2[1]-p0[1])/6];
+    const c2=[p2[0]-(p3[0]-p1[0])/6, p2[1]-(p3[1]-p1[1])/6];
+    d += ` C${c1[0].toFixed(1)},${c1[1].toFixed(1)} ${c2[0].toFixed(1)},${c2[1].toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+  }
+  return d;
+}
 function renderEquity(range, containerId, pts){
   const wrap = document.getElementById(containerId);
   if (!wrap) return;
@@ -1289,14 +1323,14 @@ function renderEquity(range, containerId, pts){
   }
   const gradId = 'cgrad-' + containerId;
   const w = wrap.clientWidth || 800, h = 200;
-  const padL=44, padR=12, padT=18, padB=22;
+  const padL=44, padR=54, padT=18, padB=22;
   const max = Math.max(...data, 0), min = Math.min(...data, 0), rng = Math.max(1, max-min);
   const xy = data.map((v,i)=>{
     const x = padL + (i/(data.length-1))*(w-padL-padR);
     const y = padT + (1-((v-min)/rng))*(h-padT-padB);
     return [x,y];
   });
-  const linePath = xy.map((p,i)=>(i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+  const linePath = _smoothPath(xy);
   const areaPath = linePath+` L${xy[xy.length-1][0].toFixed(1)},${h-padB} L${xy[0][0].toFixed(1)},${h-padB} Z`;
   const gridY=[];
   for(let i=0;i<5;i++){
@@ -1304,44 +1338,72 @@ function renderEquity(range, containerId, pts){
     const v = max - (i/4)*rng;
     gridY.push(`<line class="chart-grid" x1="${padL}" x2="${w-padR}" y1="${y}" y2="${y}"/><text class="chart-axis" x="${padL-6}" y="${y+3}" text-anchor="end">${v>=0?'+':''}$${v.toFixed(0)}</text>`);
   }
-  const xLabels = ['09:30','11:00','12:30','14:00','15:30'];
-  const xTicks = xLabels.map((l,i)=>{
-    const x = padL + (i/(xLabels.length-1))*(w-padL-padR);
-    return `<text class="chart-axis" x="${x}" y="${h-6}" text-anchor="middle">${l}</text>`;
-  }).join('');
+  // Zero line, when it sits inside the plot - polarity needs an anchor.
+  let zeroLine = '';
+  if (min < 0 && max > 0) {
+    const zy = padT + (1-((0-min)/rng))*(h-padT-padB);
+    zeroLine = `<line x1="${padL}" x2="${w-padR}" y1="${zy.toFixed(1)}" y2="${zy.toFixed(1)}" stroke="var(--line-2)" stroke-width="1"/>`;
+  }
   const lastPt = xy[xy.length-1];
   const lastV  = data[data.length-1];
   const isUp   = lastV>=0;
   const lineColor = isUp ? 'oklch(0.55 0.16 245)' : 'oklch(0.55 0.20 20)';
-  const fillColor = isUp ? 'oklch(0.55 0.16 245 / 0.18)' : 'oklch(0.55 0.20 20 / 0.18)';
+  const fillColor = isUp ? 'oklch(0.55 0.16 245 / 0.16)' : 'oklch(0.55 0.20 20 / 0.16)';
+  const lastTxt = (lastV>=0?'+':'-') + '$' + Math.abs(lastV).toFixed(Math.abs(lastV)>=100?0:2);
   wrap.innerHTML = `
-    <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}" preserveAspectRatio="none">
+    <svg viewBox="0 0 ${w} ${h}" width="100%" height="${h}">
       <defs>
         <linearGradient id="${gradId}" x1="0" x2="0" y1="0" y2="1">
           <stop offset="0%" stop-color="${fillColor}"/>
-          <stop offset="100%" stop-color="${fillColor.replace('0.18','0.0')}"/>
+          <stop offset="100%" stop-color="${fillColor.replace('0.16','0.0')}"/>
         </linearGradient>
       </defs>
       ${gridY.join('')}
-      ${xTicks}
+      ${zeroLine}
       <path d="${areaPath}" fill="url(#${gradId})"/>
-      <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="1.75"/>
-      <circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="3" fill="${lineColor}"/>
+      <path d="${linePath}" fill="none" stroke="${lineColor}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      <circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="3.5" fill="${lineColor}" stroke="var(--panel)" stroke-width="2"/>
       <circle cx="${lastPt[0]}" cy="${lastPt[1]}" r="6" fill="${lineColor}" opacity="0.25">
         <animate attributeName="r" from="3" to="9" dur="1.4s" repeatCount="indefinite"/>
         <animate attributeName="opacity" from="0.4" to="0" dur="1.4s" repeatCount="indefinite"/>
       </circle>
+      <text x="${(lastPt[0]+8).toFixed(1)}" y="${(lastPt[1]+3.5).toFixed(1)}" font-family="Montserrat,monospace" font-size="11" font-weight="700" fill="${lineColor}" paint-order="stroke" stroke="var(--panel)" stroke-width="3">${lastTxt}</text>
+      <rect x="${padL}" y="${padT}" width="${w-padL-padR}" height="${h-padT-padB}" fill="transparent" class="eq-hit" data-eq="${containerId}"/>
+      <circle class="eq-cursor" r="3" fill="${lineColor}" stroke="var(--panel)" stroke-width="1.5" style="display:none;"/>
+      <text class="eq-tip" font-family="Montserrat,monospace" font-size="10" font-weight="700" fill="var(--ink)" paint-order="stroke" stroke="var(--panel)" stroke-width="3" style="display:none;"></text>
     </svg>`;
+  // hover layer: nearest settled trade under the pointer
+  const svg = wrap.querySelector('svg');
+  const hit = svg.querySelector('.eq-hit');
+  const cur = svg.querySelector('.eq-cursor');
+  const tip = svg.querySelector('.eq-tip');
+  hit.addEventListener('mousemove', ev => {
+    const box = svg.getBoundingClientRect();
+    const mx = (ev.clientX - box.left) * (w / box.width);
+    let idx = Math.round((mx - padL) / Math.max(1e-6, (w-padL-padR)) * (data.length-1));
+    idx = Math.max(0, Math.min(data.length-1, idx));
+    const [px, py] = xy[idx];
+    cur.setAttribute('cx', px); cur.setAttribute('cy', py); cur.style.display='';
+    const v = data[idx];
+    tip.textContent = `#${idx+1}  ${(v>=0?'+':'-')}$${Math.abs(v).toFixed(2)}`;
+    const tx = Math.min(px + 8, w - padR - 60);
+    tip.setAttribute('x', tx); tip.setAttribute('y', Math.max(padT+10, py-8)); tip.style.display='';
+  });
+  hit.addEventListener('mouseleave', () => { cur.style.display='none'; tip.style.display='none'; });
 }
 
-// allocation donut - renders one donut for a given strategy variant
+// allocation donut - renders one donut for a given strategy variant.
+// Identity colors come from the :root asset variables (one validated set,
+// fixed per asset) so the donut, bars, and swatches can never disagree.
+const ASSET_COLOR = {BTC:'var(--btc)', ETH:'var(--eth)', SOL:'var(--sol)', XRP:'var(--xrp)', DOGE:'var(--doge)'};
 function renderAllocForStrategy(sv, donutId, listId) {
-  const colors = {BTC:'oklch(0.72 0.16 60)', ETH:'oklch(0.55 0.12 270)', SOL:'oklch(0.42 0.22 300)', XRP:'oklch(0.6 0.012 250)', DOGE:'oklch(0.72 0.13 85)'};
+  const colors = ASSET_COLOR;
   const pool = sv ? TRADES.filter(t => t.sv === sv) : TRADES;
   const pnlByAsset = {};
   pool.forEach(t => { pnlByAsset[t.sym] = (pnlByAsset[t.sym] || 0) + (t.pnl || 0); });
   const data = MARKETS.map(m => { const v = pnlByAsset[m.sym] || 0; return {sym:m.sym, val:Math.abs(v), pos:v>=0}; });
   const totalPnl = data.reduce((s,d)=>s+d.val,0);
+  const netPnl = data.reduce((s,d)=>s+(d.pos?d.val:-d.val),0);
   const donutEl = document.getElementById(donutId);
   const listEl  = document.getElementById(listId);
   if (!donutEl || !listEl) return;
@@ -1350,20 +1412,29 @@ function renderAllocForStrategy(sv, donutId, listId) {
     listEl.innerHTML = '<div style="color:var(--ink-4);font-size:11px;padding:12px 0;text-align:center;">No trades yet</div>';
     return;
   }
-  const cx=60, cy=60, r=56;
+  const cx=60, cy=60, r=56, hole=36;
   let a0 = -Math.PI/2;
   const segs = data.map(d=>{
     const frac = (d.val/totalPnl) || 0;
     if(frac <= 0) return '';
     const a1 = a0 + frac * Math.PI*2;
-    if(frac >= 0.999){ const seg=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colors[d.sym]}"/>`; a0=a1; return seg; }
+    const pct = (frac*100).toFixed(0);
+    const tip = `<title>${d.sym} ${pct}% of P&amp;L moved (${d.pos?'+':'-'}$${d.val.toFixed(2)})</title>`;
+    if(frac >= 0.999){ const seg=`<circle cx="${cx}" cy="${cy}" r="${r}" fill="${colors[d.sym]}">${tip}</circle>`; a0=a1; return seg; }
     const x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0),x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);
     const large=(a1-a0)>Math.PI?1:0;
     const path=`M${cx},${cy} L${x0.toFixed(2)},${y0.toFixed(2)} A${r},${r} 0 ${large} 1 ${x1.toFixed(2)},${y1.toFixed(2)} Z`;
     a0=a1;
-    return `<path d="${path}" fill="${colors[d.sym]}" stroke="var(--panel)" stroke-width="1.25"/>`;
+    return `<path d="${path}" fill="${colors[d.sym]}" stroke="var(--panel)" stroke-width="2">${tip}</path>`;
   }).join('');
-  donutEl.innerHTML = segs;
+  // Donut hole with the net total in the center - values wear ink/status tokens,
+  // never a series color.
+  const netCls = netPnl >= 0 ? 'var(--up)' : 'var(--down)';
+  const netTxt = (netPnl>=0?'+':'-') + '$' + Math.abs(netPnl).toFixed(Math.abs(netPnl)>=100?0:2);
+  donutEl.innerHTML = segs +
+    `<circle cx="${cx}" cy="${cy}" r="${hole}" fill="var(--panel)"/>` +
+    `<text x="${cx}" y="${cy-1}" text-anchor="middle" font-family="Montserrat,monospace" font-size="14" font-weight="700" fill="${netCls}">${netTxt}</text>` +
+    `<text x="${cx}" y="${cy+13}" text-anchor="middle" font-family="Montserrat,sans-serif" font-size="7" letter-spacing="1.2" fill="var(--ink-3)">NET P&amp;L</text>`;
   listEl.innerHTML = data.filter(d=>d.val>0).map(d=>{
     const pct=(d.val/totalPnl*100).toFixed(0);
     return `<div class="alloc-row"><div class="alloc-sw">${cryptoLogo(d.sym)}</div><div class="alloc-name">${d.sym}</div><div class="alloc-bar"><div style="width:${pct}%;background:${colors[d.sym]};"></div></div><div class="alloc-pct">${pct}%</div></div>`;
@@ -1488,7 +1559,7 @@ function brainStatsHTML(stats) {
       '</div>' +
     '</div>';
   }
-  return '<div style="padding:0 2px;">' + row('s1', 'S1 * EMA Momentum') + row('s2', 'S2 * vel+OBI') + '</div>';
+  return '<div style="padding:0 2px;">' + row('s1', 'S1 * BTC-Lead Catch-Up') + row('s2', 'S2 * fair value') + '</div>';
 }
 // ════════════════════════════════════════════════════
 //  PER-MARKET PANEL
@@ -1901,6 +1972,31 @@ function renderEdge(d){
   }
   document.getElementById('edge-basis').innerHTML = brows.join('') ||
     '<tr><td colspan="4" class="muted">No official settles recorded yet.</td></tr>';
+  // sigma engine state: static base vs implied anchor vs fitted scale, per asset
+  const sg = (d&&d.sigma)||{};
+  const srows = [];
+  for(const k of Object.keys(sg).sort()){
+    const g = sg[k];
+    const scCls = g.sigma_scale==null?'muted':Math.abs(g.sigma_scale-1.0)<0.001?'muted':(g.sigma_scale<1?'amber':'up');
+    srows.push(`<tr><td>${k}</td>
+      <td>${g.static==null?'-':(g.static*100).toFixed(2)+'%'}</td>
+      <td>${g.implied==null?'-':(g.implied*100).toFixed(2)+'%'}</td>
+      <td>${g.implied_n==null?'-':g.implied_n}</td>
+      <td class="${scCls}">${g.sigma_scale==null?'-':g.sigma_scale}</td></tr>`);
+  }
+  document.getElementById('edge-sigma').innerHTML = srows.join('') ||
+    '<tr><td colspan="5" class="muted">No sigma state persisted yet (first recalibration pending).</td></tr>';
+  // shadow favorite scoreboard: the promotion test for the buy-the-favorite play
+  const sh = (d&&d.shadow)||{};
+  const shEl = document.getElementById('edge-shadow');
+  const sf = sh&&sh.s_fav;
+  if(sf&&sf.n){
+    const pCls = (sf.premium||0)>0?'up':'down';
+    const prem = sf.premium==null?'-':((sf.premium*100).toFixed(1)+'pts');
+    shEl.innerHTML = `<b>Shadow buy-the-favorite:</b> n=${sf.n} settled, won ${(sf.win_rate*100).toFixed(1)}% vs market-priced ${(sf.mean_market_p*100).toFixed(1)}% (<span class="${pCls}">premium ${prem}</span>), net/ct ${sf.net_pnl_per_contract==null?'-':'$'+sf.net_pnl_per_contract} | ${sh.verdict||''}`;
+  } else {
+    shEl.innerHTML = '<span class="muted">Shadow buy-the-favorite: no settled samples yet (logs at zero capital, last 3-6 min of each window).</span>';
+  }
   const ab = cal.auto_blocked||{};
   const abParts = [];
   for(const s of (ab.sessions||[])) abParts.push(`session:${s}`);

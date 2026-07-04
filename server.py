@@ -1237,6 +1237,8 @@ def api_edge():
         "decisions": {"by_strategy": {}, "by_session": {}, "by_daytype": {},
                       "overall": None, "verdict": "insufficient data"},
         "maker": {"by_strategy": {}, "overall": None, "verdict": "insufficient data"},
+        "shadow": {"s_fav": None, "verdict": "insufficient data"},
+        "sigma": {},
         "calibration": {},
         "basis": {},
         "counts": {"logged": 0, "settled": 0, "pending": 0},
@@ -1294,6 +1296,8 @@ def api_edge():
         "decisions": {"by_strategy": {}, "by_session": {}, "by_daytype": {},
                       "overall": None, "verdict": "insufficient data"},
         "maker": {"by_strategy": {}, "overall": None, "verdict": "insufficient data"},
+        "shadow": {"s_fav": None, "verdict": "insufficient data"},
+        "sigma": {},
         "calibration": {},
         "basis": {},
         "counts": {"logged": 0, "settled": 0, "pending": 0},
@@ -1352,12 +1356,58 @@ def api_edge():
         result["decisions"]["by_session"] = _bucketed(sessions.session_for_iso)
         result["decisions"]["by_daytype"] = _bucketed(sessions.day_type_for_iso)
 
+        # Shadow strategy scoreboard: s_fav rows are logged with would_trade=0 (zero
+        # capital), so the picks-based stats above never see them. This block is the
+        # promotion criterion for the buy-the-favorite play.
+        try:
+            srows = conn.execute(
+                "SELECT ts, strategy, side, model_p_yes, market_mid_p_yes, "
+                "entry_price_cents, outcome FROM decision_log "
+                "WHERE strategy='s_fav' AND outcome IN ('yes','no') "
+                "AND side IS NOT NULL AND entry_price_cents IS NOT NULL").fetchall()
+        except sqlite3.OperationalError:
+            srows = []
+        sg = _decision_group(srows)
+        if sg:
+            # The bias premium: realized win rate minus the market's own price of the side.
+            if sg["win_rate"] is not None and sg["mean_market_p"] is not None:
+                sg["premium"] = _safe(sg["win_rate"] - sg["mean_market_p"], 3)
+            result["shadow"]["s_fav"] = sg
+            n, lb = sg["n"], sg["wilson_lb_pnl"]
+            if n < 200:
+                result["shadow"]["verdict"] = f"collecting ({n}/200 settled)"
+            elif lb is not None and lb > 0:
+                result["shadow"]["verdict"] = "promotion candidate: Wilson LB > 0 at n>=200"
+            else:
+                result["shadow"]["verdict"] = "no premium: Wilson LB <= 0"
+
         # Fitted model calibration (written by the bot's recalibration job).
         try:
             from scripts.calibration import load_calibration
             result["calibration"] = load_calibration()
         except Exception:
             pass
+
+        # Sigma engine state per asset: fitted scale + market-implied EWMA vs the
+        # static cold-start base. Server and bot are separate processes, so the
+        # persisted calibration.json is the channel for the live values.
+        try:
+            from bot_strategy import _ASSET_VOL_15M as _static_vol
+        except Exception:
+            _static_vol = {}
+        cal = result["calibration"] or {}
+        _scales = cal.get("sigma_scale") or {}
+        _imp = cal.get("implied_sigma") or {}
+        for asset in sorted(set(_scales) | set(_imp) | set(_static_vol)):
+            entry = {"static": _safe(_static_vol.get(asset), 5)}
+            if asset in _scales:
+                entry["sigma_scale"] = _safe(_scales.get(asset), 3)
+            ie = _imp.get(asset)
+            if isinstance(ie, dict) and ie.get("sigma"):
+                entry["implied"] = _safe(ie.get("sigma"), 5)
+                entry["implied_n"] = ie.get("n")
+                entry["implied_ts"] = ie.get("ts")
+            result["sigma"][asset] = entry
 
         # Settlement basis: per-asset agreement between our spot-implied side and
         # Kalshi's official result, from the settlement_basis table.
