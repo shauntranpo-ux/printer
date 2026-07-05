@@ -39,8 +39,25 @@ POLL_INTERVAL        = 5         # seconds between health-check loops
 MAX_CRASHES_PER_HOUR = 5         # halt permanently after this many crashes/hour
 
 
+def _now_str() -> str:
+    """Current time in the configured display timezone (config.json: display_timezone)."""
+    tz_name = "America/New_York"
+    try:
+        with open(os.path.join(BASE_DIR, "config.json"), encoding="utf-8") as fh:
+            tz_name = json.load(fh).get("display_timezone", tz_name) or tz_name
+    except Exception:
+        pass
+    try:
+        from zoneinfo import ZoneInfo
+        import datetime as _dt
+        return _dt.datetime.now(ZoneInfo(tz_name)).strftime("%b %-d, %-I:%M %p %Z")
+    except Exception:
+        return ""
+
+
 def _send_telegram_sync(text: str) -> None:
-    notify.send_alert("INFO", text)
+    _ts = _now_str()
+    notify.send_alert("INFO", f"{text}\n{_ts}" if _ts else text)
 
 
 # Process registry

@@ -16,7 +16,7 @@ import bot_state
 import bot_stats
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
-from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers, db_write_maker_sample, db_write_settlement_basis, db_settled_decision_probs, db_settled_decision_zs, db_basis_rows, db_settled_picks
+from bot_infra import read_config, write_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, fmt_ts, display_tz, et_day_bounds_utc, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers, db_write_maker_sample, db_write_settlement_basis, db_settled_decision_probs, db_settled_decision_zs, db_basis_rows, db_settled_picks
 from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
@@ -38,15 +38,12 @@ from reconcile import fetch_open_positions
 
 log = logging.getLogger("bot")
 
-_last_stats_date: str = ""
-_last_scorecard_date: str = ""
-
-_LV_TZ = ZoneInfo("America/Los_Angeles")
-# Daily reports anchor to Eastern Time - the same timezone the markets, settlement
-# and quiet-hours logic use - so the report "day" matches the trading day and the
-# scorecard fires at one consistent market-aligned instant (17:00 ET == 14:00 PT).
+# The daily summary covers the previous full ET calendar day - the same timezone
+# the markets, sessions and quiet-hours logic use - so no evening trade is ever
+# missing from its day's report. Sent-state persists in config so restarts don't
+# resend it.
+_last_summary_sent_for: str = ""
 _ET_TZ = ZoneInfo("America/New_York")
-_DAILY_REPORT_HOUR_ET = 17
 
 _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 
@@ -380,9 +377,6 @@ async def _record_maker_counterfactual(pos: dict, asset: str, outcome: str, conf
         _maker_track_last_fetch.pop(ticker, None)
     return sample
 
-_prev_quiet_nb: bool = False
-_prev_quiet_main: bool = False
-
 _last_orphan_settle_ts: float = 0.0
 
 
@@ -434,39 +428,42 @@ def _format_scorecard_message(data: dict) -> str:
     return "\n".join(lines)
 
 
-async def _send_brain_scorecard() -> None:
-    """Query DB and send daily brain scorecard via Telegram. Non-fatal on error."""
-    global _last_scorecard_date
+async def _maybe_send_daily_summary() -> None:
+    """Send ONE end-of-day summary covering the previous full ET calendar day.
+
+    Fires at/after daily_summary_hour_et (default 0 = just after ET midnight).
+    Replaces the old pair of 5pm-ET messages (scorecard + stats), which covered
+    only part of the day and could be consumed early by a quiet-hours trigger.
+    The sent marker persists in config so a restart never resends the summary.
+    """
+    global _last_summary_sent_for
     try:
+        config = read_config()
         now_et = datetime.now(_ET_TZ)
-        if now_et.hour != _DAILY_REPORT_HOUR_ET:
+        if now_et.hour < int(config.get("daily_summary_hour_et", 0)):
             return
-        today = now_et.strftime("%Y-%m-%d")
-        if today == _last_scorecard_date:
+        day = (now_et - timedelta(days=1)).date()
+        key = day.isoformat()
+        already = str(config.get("_last_daily_summary_for", ""))
+        if key == _last_summary_sent_for or (already and key <= already):
+            _last_summary_sent_for = key
             return
-        data = await db_brain_scorecard(today)
-        has_trades = any(data["daily"].get(b) for b in ("s1", "s2"))
-        if not has_trades:
-            return
-        _last_scorecard_date = today
-        msg = _format_scorecard_message(data)
-        await send_telegram(msg)
+        stats = bot_stats.query_stats(
+            bot_state._DB_FILE, today_date=key, day_bounds=et_day_bounds_utc(day))
+        stats["consecutive_losses"] = bot_state._s2_consecutive_losses
+        stats["mode"] = config.get("mode", "paper").upper()
+        stats["as_of"] = fmt_ts(config=config)
+        stats["display_tz"] = display_tz(config)
+        await send_telegram(bot_stats.format_telegram(stats))
+        _last_summary_sent_for = key
+        try:
+            cfg = read_config()
+            cfg["_last_daily_summary_for"] = key
+            write_config(cfg)
+        except Exception as _persist_exc:
+            log.warning("Daily summary marker persist failed: %s", _persist_exc)
     except Exception as exc:
-        log.warning("Brain scorecard send failed (non-fatal): %s", exc)
-
-
-async def _check_daily_stats(today: str) -> None:
-    global _last_stats_date
-    if today == _last_stats_date:
-        return
-    _last_stats_date = today
-    try:
-        _stats = bot_stats.query_stats(bot_state._DB_FILE, today_date=today)
-        _stats["consecutive_losses"] = bot_state._s2_consecutive_losses
-        _stats["mode"] = read_config().get("mode", "paper").upper()
-        await send_telegram(bot_stats.format_telegram(_stats))
-    except Exception as _e:
-        log.warning("Daily stats send failed (non-fatal): %s", _e)
+        log.warning("Daily summary send failed (non-fatal): %s", exc)
 
 
 async def handle_ready_phase(
@@ -936,6 +933,15 @@ async def handle_ready_phase(
     if trade_id is None:
         log.critical("[S2] %s: DB write failed - position tracked in-memory only; reconcile manually", ticker)
 
+    if config.get("notify_on_entry", False):
+        try:
+            _ends = datetime.now(timezone.utc) + timedelta(seconds=float(secs_left or 0))
+            await send_telegram(bot_stats.format_entry_message(
+                asset, "s2", side, fill_price, contracts, dollars_used,
+                fmt_ts(_ends, config=config), mode))
+        except Exception as _notify_exc:
+            log.warning("Entry notification failed (non-fatal): %s", _notify_exc)
+
     _entry_ts = time.time()
     _abs_pct_at_entry = abs(btc_price - strike) / strike if strike else 0.0
     _mins_left_at_entry = secs_left / 60
@@ -1141,6 +1147,16 @@ async def handle_locked_phase(
             # Alert once on the exact crossing - re-fires only after a win resets the streak.
             if bot_state._s2_consecutive_losses == max_cl:
                 await send_telegram(f"S2: {bot_state._s2_consecutive_losses} consecutive losses (threshold {max_cl})")
+
+        if outcome in ("win", "loss") and config.get("notify_on_settle", True):
+            try:
+                _today_pnl = await db_get_today_pnl(config.get("mode", "paper"))
+                await send_telegram(bot_stats.format_settle_message(
+                    outcome, pnl, asset, "s2", pos["side"], pos["entry_price_cents"],
+                    exit_price, pos["contracts"], fmt_ts(config=config), _today_pnl,
+                    config.get("mode", "paper")))
+            except Exception as _notify_exc:
+                log.warning("Settle notification failed (non-fatal): %s", _notify_exc)
 
         await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
         return
@@ -1417,14 +1433,9 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
     Independent 10-second loop processing all non-BTC enabled assets.
     Runs as a background asyncio task alongside main_loop (which handles BTC).
     """
-    global _prev_quiet_nb
     while True:
         try:
             config = read_config()
-            _now_q_nb = _is_quiet_hours(config)
-            if _now_q_nb and not _prev_quiet_nb:
-                asyncio.create_task(_check_daily_stats(datetime.now(_ET_TZ).strftime("%Y-%m-%d")))
-            _prev_quiet_nb = _now_q_nb
             if not config.get("bot_enabled", False):
                 # Populate PAUSED state so dashboard shows prices instead of OFFLINE.
                 # Don't clobber LOCKED - those positions must still settle.
@@ -1660,7 +1671,6 @@ async def main_loop() -> None:
         # gated by the BTC state machine's continue/sleep cycle.
         asyncio.create_task(_non_btc_asset_loop(session))
 
-        global _prev_quiet_main
         while True:
             try:
                 midnight_reset()
@@ -1693,10 +1703,7 @@ async def main_loop() -> None:
                         await _recalibrate_model(_recal_cfg)
                     _last_recalibration_ts = time.time()
 
-                await _send_brain_scorecard()
-                _now_et = datetime.now(_ET_TZ)
-                if _now_et.hour == _DAILY_REPORT_HOUR_ET:
-                    await _check_daily_stats(_now_et.strftime("%Y-%m-%d"))
+                await _maybe_send_daily_summary()
 
                 # Fresh config read
                 try:
@@ -1705,11 +1712,6 @@ async def main_loop() -> None:
                     log.error(f"Config read error: {exc}")
                     await asyncio.sleep(10)
                     continue
-
-                _now_q_main = _is_quiet_hours(config)
-                if _now_q_main and not _prev_quiet_main:
-                    asyncio.create_task(_check_daily_stats(datetime.now(_ET_TZ).strftime("%Y-%m-%d")))
-                _prev_quiet_main = _now_q_main
 
                 if not config.get("bot_enabled", False) and bot_state.current_phase != "LOCKED":
                     await write_state_file(config, bot_state.current_market, "PAUSED", 0,

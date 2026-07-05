@@ -19,10 +19,17 @@ def test_bot_market_fstring_no_nested_comprehension():
         "parse_strike warning log must use _diag variable"
 
 
-def test_db_get_today_pnl_uses_date_function():
-    """db_get_today_pnl must use DATE(ts) = ? not ts LIKE for date filtering."""
+def test_db_get_today_pnl_uses_et_day_bounds():
+    """db_get_today_pnl must bucket by the ET trading day via explicit UTC bounds.
+
+    DATE(ts) buckets by UTC date and misfiles every trade after 8pm ET; ts LIKE
+    was the even older bug. The contract is now a half-open ts range from
+    et_day_bounds_utc.
+    """
     src = inspect.getsource(bot_infra.db_get_today_pnl)
-    assert "DATE(ts)" in src, "db_get_today_pnl must use DATE(ts) = ?"
+    assert "et_day_bounds_utc" in src, "db_get_today_pnl must use et_day_bounds_utc"
+    assert "ts >= ? AND ts < ?" in src, "db_get_today_pnl must filter by ts range"
+    assert "DATE(ts)" not in src, "DATE(ts) buckets by UTC date - wrong trading day"
     assert "ts LIKE" not in src, "db_get_today_pnl must not use ts LIKE"
 
 

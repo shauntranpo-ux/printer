@@ -6,17 +6,24 @@ import sqlite3
 log = logging.getLogger(__name__)
 
 _STRATEGY_LABELS = {
-    "strategy1": "S1 · EMA Momentum",
-    "strategy2": "S2 · Contract Velocity",
+    "strategy1": "S1 · BTC-Lead Catch-Up",
+    "strategy2": "S2 · Spot Fair Value",
 }
+_STRATEGY_SHORT = {"strategy1": "S1", "strategy2": "S2"}
 
 _ASSETS = ("BTC", "ETH", "SOL", "XRP", "DOGE")
 
 _SEP = "-" * 31
 
 
-def query_stats(db_path: str, today_date: str | None = None) -> dict:
-    """Query trade stats from DB. Returns zero-filled dict on DB error."""
+def query_stats(db_path: str, today_date: str | None = None,
+                day_bounds: tuple[str, str] | None = None) -> dict:
+    """Query trade stats from DB. Returns zero-filled dict on DB error.
+
+    day_bounds: optional (start_utc_iso, end_utc_iso) window for the "today"
+    numbers - pass bot_infra.et_day_bounds_utc(...) so the day matches the ET
+    trading day. Without it, falls back to the legacy UTC DATE(ts) bucket.
+    """
     today = today_date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     empty = {
         "date": today,
@@ -36,7 +43,7 @@ def query_stats(db_path: str, today_date: str | None = None) -> dict:
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         try:
-            return _run_queries(conn, today, empty)
+            return _run_queries(conn, today, empty, day_bounds)
         finally:
             conn.close()
     except Exception as e:
@@ -44,21 +51,26 @@ def query_stats(db_path: str, today_date: str | None = None) -> dict:
         return empty
 
 
-def _run_queries(conn: sqlite3.Connection, today: str, base: dict) -> dict:
+def _run_queries(conn: sqlite3.Connection, today: str, base: dict,
+                 day_bounds: tuple[str, str] | None = None) -> dict:
     # Today breakdown by strategy + asset
     by_sa: dict = {}
     today_wins = 0
     today_losses = 0
     today_pnl = 0.0
 
+    if day_bounds:
+        _day_where, _day_params = "ts >= ? AND ts < ?", day_bounds
+    else:
+        _day_where, _day_params = "DATE(ts) = ?", (today,)
     rows = conn.execute(
-        """
+        f"""
         SELECT strategy_variant, asset, outcome, COUNT(1) as n, SUM(pnl_dollars) as pnl
         FROM trades
-        WHERE DATE(ts) = ? AND outcome IN ('win', 'loss')
+        WHERE {_day_where} AND outcome IN ('win', 'loss')
         GROUP BY strategy_variant, asset, outcome
         """,
-        (today,),
+        _day_params,
     ).fetchall()
 
     for row in rows:
@@ -110,23 +122,27 @@ def _run_queries(conn: sqlite3.Connection, today: str, base: dict) -> dict:
     }
 
 
-def _last_trade_str(ts: str | None) -> str:
+def _last_trade_str(ts: str | None, tz=None) -> str:
     if ts is None:
         return "never"
     try:
         # Parse both Z and +00:00 suffixes
         ts_clean = ts.replace("Z", "+00:00")
         trade_dt = datetime.datetime.fromisoformat(ts_clean)
+        if trade_dt.tzinfo is None:
+            trade_dt = trade_dt.replace(tzinfo=datetime.timezone.utc)
         now = datetime.datetime.now(datetime.timezone.utc)
         diff = now - trade_dt
         total_seconds = diff.total_seconds()
         if total_seconds < 0:
-            return "just now"
-        mins = int(total_seconds // 60)
-        if mins < 60:
-            return f"{mins} min ago"
-        hours = int(total_seconds // 3600)
-        return f"{hours} hr ago"
+            rel = "just now"
+        elif total_seconds < 3600:
+            rel = f"{int(total_seconds // 60)} min ago"
+        else:
+            rel = f"{int(total_seconds // 3600)} hr ago"
+        if tz is not None:
+            return trade_dt.astimezone(tz).strftime("%b %-d, %-I:%M %p %Z") + f" ({rel})"
+        return rel
     except Exception:
         return ts
 
@@ -174,9 +190,11 @@ def format_telegram(stats: dict) -> str:
     by_sa = stats["by_strategy_asset"]
 
     lines = [
-        f"<b>Daily Summary - {date}</b>",
-        _SEP,
+        f"<b>Daily Summary - {date}</b>  (ET trading day)",
     ]
+    if stats.get("as_of"):
+        lines.append(f"Sent {stats['as_of']}")
+    lines.append(_SEP)
 
     if trades == 0:
         wr_str = "N/A"
@@ -195,8 +213,23 @@ def format_telegram(stats: dict) -> str:
                 lines.append(f"<b>{label}</b>")
                 lines.extend(_strategy_rows(by_sa, sv_key, html=True))
 
+        _totals: dict = {}
+        for (_sv, _a), _row in by_sa.items():
+            _t = _totals.setdefault(_sv, {"wins": 0, "losses": 0, "pnl": 0.0})
+            _t["wins"] += _row["wins"]
+            _t["losses"] += _row["losses"]
+            _t["pnl"] += _row["pnl"]
+        if _totals:
+            lines.append(_SEP)
+            lines.append("  |  ".join(
+                f"{_STRATEGY_SHORT.get(k, k)}: {_fmt_pnl(v['pnl'])} ({v['wins']}W/{v['losses']}L)"
+                for k, v in sorted(_totals.items())))
+            if len(_totals) >= 2:
+                _best = max(_totals.items(), key=lambda kv: kv[1]["pnl"])
+                lines.append(f"Day winner: <b>{_STRATEGY_SHORT.get(_best[0], _best[0])}</b>")
+
     lines.append(_SEP)
-    lines.append(f"Last trade: {_last_trade_str(stats['last_trade_ts'])}")
+    lines.append(f"Last trade: {_last_trade_str(stats['last_trade_ts'], stats.get('display_tz'))}")
     lines.append(f"Consecutive losses: {consec}")
     lines.append(f"Mode: {mode}")
 
@@ -247,3 +280,26 @@ def _fmt_pnl(pnl: float) -> str:
     if pnl >= 0:
         return f"+${pnl:.2f}"
     return f"-${abs(pnl):.2f}"
+
+
+def format_settle_message(outcome: str, pnl: float, asset: str, brain: str, side: str,
+                          entry_c: float, exit_c: float, contracts: int,
+                          when_str: str, today_pnl: float | None, mode: str) -> str:
+    """One-trade settle alert. when_str comes from bot_infra.fmt_ts (display tz)."""
+    head = "WIN" if outcome == "win" else "LOSS"
+    today = _fmt_pnl(today_pnl) if today_pnl is not None else "-"
+    return (
+        f"<b>{head} {_fmt_pnl(pnl)}</b>  {asset} * {brain.upper()} * {side.upper()} "
+        f"{int(round(entry_c))}c -> {int(round(exit_c))}c x{int(contracts)}\n"
+        f"Settled {when_str}  |  Today: {today}  |  {mode}"
+    )
+
+
+def format_entry_message(asset: str, brain: str, side: str, entry_c: float,
+                         contracts: int, cost: float, ends_str: str, mode: str) -> str:
+    """One-trade entry alert (opt-in via notify_on_entry)."""
+    return (
+        f"<b>ENTRY</b>  {asset} * {brain.upper()} * {side.upper()} @ "
+        f"{int(round(entry_c))}c x{int(contracts)} (${cost:.2f})\n"
+        f"Window ends {ends_str}  |  {mode}"
+    )

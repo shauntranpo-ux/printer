@@ -14,7 +14,8 @@ import sqlite3
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import aiohttp
 import aiosqlite
@@ -32,6 +33,7 @@ __all__ = [
     "_update_wr_bucket", "_get_empirical_wr",
     # Notify
     "send_telegram", "_maybe_fill_verification_notify", "_notify_ctx", "_phase_for_eth",
+    "display_tz", "fmt_ts", "et_day_bounds_utc",
 ]
 
 
@@ -121,6 +123,16 @@ def _init_config() -> None:
         "kalshi_fee_per_contract_cents": 7,
         "preflight_override": False,
         "quiet_hours_enabled": True,
+        # Notifications. Every timestamp in a Telegram message uses display_timezone
+        # (an IANA name) with its real abbreviation (EDT/EST/...), never a fixed offset.
+        "display_timezone": "America/New_York",
+        # Per-trade settle alerts on by default; entry alerts are opt-in (2x volume).
+        "notify_on_settle": True,
+        "notify_on_entry": False,
+        # End-of-day summary: sent once per day at/after this ET hour and it always
+        # covers the PREVIOUS full ET calendar day (0 = just after midnight ET), so
+        # no evening trade is ever missing from its day's report.
+        "daily_summary_hour_et": 0,
         # Edge-measurement instrumentation (decision_log / maker_log / settlement basis).
         # Default on; set false to disable all measurement if it ever pressures rate limits.
         "measurement_enabled": True,
@@ -816,15 +828,15 @@ async def db_write_market_log(entry: dict) -> None:
 
 
 async def db_get_today_pnl(mode: str) -> float:
-    """Sum pnl_dollars for completed trades in the given mode today (UTC)."""
+    """Sum pnl_dollars for completed trades in the given mode today (ET calendar day)."""
     try:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        start, end = et_day_bounds_utc(datetime.now(_ET).date())
         async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             async with db.execute(
                 "SELECT COALESCE(SUM(pnl_dollars), 0) FROM trades "
-                "WHERE mode = ? AND DATE(ts) = ? AND outcome != 'pending'",
-                (mode, today),
+                "WHERE mode = ? AND ts >= ? AND ts < ? AND outcome != 'pending'",
+                (mode, start, end),
             ) as cur:
                 row = await cur.fetchone()
         return float(row[0]) if row else 0.0
@@ -946,6 +958,40 @@ def _phase_for_eth(asset, elapsed_seconds):
     if m >= 45:
         return "Late"
     return None
+
+
+_ET = ZoneInfo("America/New_York")
+
+
+def display_tz(config: dict | None = None) -> ZoneInfo:
+    """Timezone every notification timestamp is rendered in (config: display_timezone)."""
+    try:
+        cfg = config if config is not None else read_config()
+        return ZoneInfo(str(cfg.get("display_timezone", "America/New_York")))
+    except Exception:
+        return ZoneInfo("America/New_York")
+
+
+def fmt_ts(dt: datetime | None = None, config: dict | None = None) -> str:
+    """'Jul 5, 2:14 PM EDT' in the display timezone. Naive input is treated as UTC."""
+    d = dt or datetime.now(timezone.utc)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return d.astimezone(display_tz(config)).strftime("%b %-d, %-I:%M %p %Z")
+
+
+def et_day_bounds_utc(day) -> tuple[str, str]:
+    """UTC ISO bounds [start, end) of the given ET calendar day.
+
+    The trading "day" everywhere in this bot is the ET calendar day (sessions,
+    quiet hours, daily reports). Trade rows carry UTC timestamps, so day queries
+    must use these bounds - DATE(ts) buckets by UTC date and misclassifies every
+    trade after 8pm ET.
+    """
+    start = datetime(day.year, day.month, day.day, tzinfo=_ET).astimezone(timezone.utc)
+    nxt = day + timedelta(days=1)
+    end = datetime(nxt.year, nxt.month, nxt.day, tzinfo=_ET).astimezone(timezone.utc)
+    return start.strftime("%Y-%m-%dT%H:%M:%S"), end.strftime("%Y-%m-%dT%H:%M:%S")
 
 
 def _notify_ctx(asset, ticker, duration_min=15.0, phase=None):

@@ -21,6 +21,7 @@ import time
 import urllib.request
 import urllib.parse
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 try:
     from flask import Flask, jsonify, request
@@ -107,6 +108,25 @@ def _safe_json_read(path: str, default):
     except Exception as exc:
         log.warning(f"Could not read {path}: {exc}")
         return default
+
+
+def _display_now_str() -> str:
+    """Current time in the configured display timezone with its real abbreviation.
+
+    Replaces a hard-coded UTC-7 labeled "PST" - wrong label, and wrong offset
+    for half the year.
+    """
+    tz_name = "America/New_York"
+    try:
+        with open("config.json", "r", encoding="utf-8") as fh:
+            tz_name = json.load(fh).get("display_timezone", tz_name) or tz_name
+    except Exception:
+        pass
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("America/New_York")
+    return datetime.now(tz).strftime("%b %-d, %-I:%M %p %Z")
 
 
 def _telegram_notify(text: str) -> None:
@@ -350,7 +370,7 @@ def api_config():
 
     log.info(f"Config updated: {data}")
 
-    now_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+    now_str = _display_now_str()
     new_enabled = config.get("bot_enabled", False)
     new_mode    = config.get("mode", "paper")
 
@@ -366,7 +386,7 @@ def api_config():
 @app.route("/api/test-telegram", methods=["POST"])
 def api_test_telegram():
     """Send a test Telegram message to verify notification config."""
-    now_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+    now_str = _display_now_str()
     try:
         notify.send_alert("INFO", f"\U0001f514 <b>Telegram test</b>  -  {now_str}\nBot notifications are working.")
         return jsonify({"ok": True, "message": "Test message sent"})

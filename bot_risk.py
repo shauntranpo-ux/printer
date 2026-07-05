@@ -23,7 +23,7 @@ import bot_state
 from bot_infra import (
     atomic_write_json, read_config, write_config, get_asset_config,
     db_get_today_pnl, db_write_market_log, db_write_trade, db_update_trade,
-    send_telegram, _phase_for_eth,
+    send_telegram, _phase_for_eth, fmt_ts,
 )
 from bot_market import (
     kalshi_headers, seconds_remaining, seconds_elapsed,
@@ -470,6 +470,16 @@ async def _execute_s1_trade(
 
     _dir = "UP" if side == "yes" else "DOWN"
     log.info(f"[S1] {ticker}: ORDER FILLED -- {side.upper()} {contracts}x @ {fill_price}c")
+    if config.get("notify_on_entry", False):
+        try:
+            import bot_stats as _bs
+            from datetime import timedelta as _td
+            _ends = datetime.now(timezone.utc) + _td(seconds=float(secs_left or 0))
+            await send_telegram(_bs.format_entry_message(
+                asset, "s1", side, fill_price, contracts,
+                contracts * fill_price / 100.0, fmt_ts(_ends, config=config), mode))
+        except Exception as _notify_exc:
+            log.warning("S1 entry notification failed (non-fatal): %s", _notify_exc)
     # Record fill time for per-asset fire rate guard
     if asset not in bot_state._s1_asset_trade_times:
         bot_state._s1_asset_trade_times[asset] = []
@@ -514,6 +524,18 @@ async def _settle_s1_trade(
         "profit_percent":   round(profit_pct, 2),
     })
     log.info(f"[S1] {ticker}: settled -- {outcome}, P&L=${pnl:.2f}")
+
+    if config.get("notify_on_settle", True):
+        try:
+            import bot_stats as _bs
+            _s1_mode = s1_pos.get("mode", config.get("mode", "paper"))
+            _today_pnl = await db_get_today_pnl(_s1_mode)
+            await send_telegram(_bs.format_settle_message(
+                outcome, pnl, asset, "s1", s1_pos["side"], s1_pos["entry_price_cents"],
+                exit_price, s1_pos["contracts"], fmt_ts(config=config), _today_pnl,
+                _s1_mode))
+        except Exception as _notify_exc:
+            log.warning("S1 settle notification failed (non-fatal): %s", _notify_exc)
 
     # Live WR calibration: update empirical win rate bucket for this trade.
     try:

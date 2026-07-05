@@ -28,7 +28,7 @@ import obs
 import bot_state
 import asset_manager
 from asset_manager import get_price as _am_get_price, coinbase_price_task, seed_price_history
-from bot_infra import read_config, _init_config, init_db, test_db_write, send_telegram
+from bot_infra import read_config, _init_config, init_db, test_db_write, send_telegram, fmt_ts
 from bot_market import load_credentials, get_btc_price
 from bot_risk import verify_kalshi_connection, run_preflight_checks
 from bot_loops import main_loop
@@ -212,7 +212,7 @@ async def main() -> None:
         log.info(f"Price feed ready after {waited}s. {_first_asset}: ${_first_price:,.2f}")
     _startup_cfg = read_config()
     _btc_display = f"${get_btc_price():,.2f}" if get_btc_price() is not None else f"{_first_asset}: ${_first_price:,.2f}" if _first_price else "price N/A"
-    await send_telegram(f"<b>Printer bot started</b>\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
+    await send_telegram(f"<b>Printer bot started</b>  -  {fmt_ts(config=_startup_cfg)}\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
 
     # Pre-flight check runs once before trading begins.
     # LIVE mode with unresolved issues -> sys.exit(1). Paper mode -> warn and continue.
