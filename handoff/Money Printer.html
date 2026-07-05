@@ -7,7 +7,7 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230053a5'/%3E%3Ctext x='16' y='22' text-anchor='middle' font-family='sans-serif' font-size='17' font-weight='900' fill='white'%3EP%3C/text%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800;900&family=Geist+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 <style>
 :root{
   --bg:        oklch(0.145 0.02 265);
@@ -44,6 +44,11 @@
   --sol: oklch(0.66 0.19 335);
   --xrp: oklch(0.64 0.13 170);
   --doge: oklch(0.66 0.12 95);
+
+  --font-display:'Space Grotesk','Montserrat',sans-serif;
+  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  --fs-0:12px; --fs-1:14px; --fs-2:18px; --fs-3:28px; --fs-4:48px; --fs-5:72px;
+  --spring:cubic-bezier(.22,1.2,.3,1);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{background:var(--bg);color:var(--ink);font-family:'Montserrat',ui-sans-serif,system-ui,-apple-system,sans-serif;font-size:13px;-webkit-font-smoothing:antialiased;letter-spacing:-0.01em;}
@@ -382,7 +387,7 @@ html{scroll-behavior:smooth;}
 .seg button.active{background:var(--panel);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2);}
 
 /* equity chart */
-.chart-wrap{height:200px;position:relative;}
+.chart-wrap{height:280px;position:relative;}
 .chart-wrap svg{width:100%;height:100%;display:block;}
 .chart-axis{font-family:'Montserrat',monospace;font-size:9px;fill:var(--ink-4);}
 .chart-line{fill:none;stroke:var(--up);stroke-width:1.75;}
@@ -448,7 +453,7 @@ tbody tr:last-child td{border-bottom:none;}
 .market-hero.btc::before{background:linear-gradient(90deg,transparent,var(--btc),transparent);}
 .market-hero.eth::before{background:linear-gradient(90deg,transparent,var(--eth),transparent);}
 .market-hero.sol::before{background:linear-gradient(90deg,transparent,var(--sol),transparent);}
-.market-hero.xrp::before{background:linear-gradient(90deg,transparent,var(--ink-2),transparent);}
+.market-hero.xrp::before{background:linear-gradient(90deg,transparent,var(--xrp),transparent);}
 .market-hero.doge::before{background:linear-gradient(90deg,transparent,var(--doge),transparent);}
 
 .hero-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap;}
@@ -726,6 +731,306 @@ tbody tr:last-child td{border-bottom:none;}
   *,*::before,*::after{animation-duration:.001s !important;animation-iteration-count:1 !important;transition-duration:.001s !important;}
 }
 </style>
+<style id="sig">
+/* ════════════ REACTOR SIGNATURE LAYER ════════════ */
+
+/* ── typography ── */
+.kpi-cell-v,.kpi-value,.kpi-sub,.kpi-cell-s,.mc-price-val,.mkpi-v,.gauge-val,.alloc-pct,
+.sig-val,.clock,.td-pnl,.mono,.hero-px,.timer,tbody td{
+  font-family:var(--font-mono);font-feature-settings:'tnum' 1,'zero' 1;
+}
+.brand-name b,.mc-name,.card-title,.kpi-cell-l,.kpi-label,.mc-status,.tab,
+.kpi-strip-label,.status-pill,.gauge-label,.hero-name,.locked-tag{
+  font-family:var(--font-display);
+}
+.chart-wrap text,#alloc-donut-s1 text,#alloc-donut-s2 text{font-family:var(--font-mono);}
+.kpi-value{font-size:32px;}
+.kpi-cell-v{font-size:var(--fs-3);}
+.mkpi-v{font-size:20px;}
+.hero-px{font-size:36px;}
+
+/* ── composition & rhythm ── */
+.card{padding:20px;position:relative;overflow:hidden;}
+.grid-2{grid-template-columns:minmax(0,2fr) minmax(0,1fr);margin-bottom:16px;}
+.grid-3{margin-bottom:16px;}
+.market-strip{margin-bottom:16px;}
+#alloc-donut-s1,#alloc-donut-s2{width:136px;height:136px;}
+
+/* numbered section headers (CSS counters - zero DOM edits) */
+.panel{counter-reset:sec;}
+.card-title::before{
+  counter-increment:sec;content:counter(sec, decimal-leading-zero);
+  font:700 10px/1 var(--font-mono);color:var(--accent-2);letter-spacing:.08em;opacity:.9;
+}
+.card-title .accent{display:none;}
+
+/* ── HERO COMMAND BAND ── */
+#hero-command{
+  position:relative;isolation:isolate;overflow:hidden;
+  display:flex;gap:26px;align-items:stretch;
+  margin-bottom:16px;padding:26px 30px 24px;
+  background:linear-gradient(180deg, oklch(0.19 0.03 265 / .92), oklch(0.155 0.02 265 / .95)), var(--panel);
+  border:1px solid var(--line-2);
+  clip-path:polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px);
+}
+#hero-command::after{
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:1;
+  background:repeating-linear-gradient(0deg, transparent 0 3px, oklch(1 0 0 / .014) 3px 4px);
+}
+#hero-landscape{
+  position:absolute;left:0;right:0;bottom:0;height:78%;z-index:0;opacity:.55;pointer-events:none;
+  -webkit-mask:linear-gradient(180deg, transparent, #000 45%);
+          mask:linear-gradient(180deg, transparent, #000 45%);
+  transform:translate(calc(var(--px,0) * 8px), calc(var(--py,0) * 4px));
+  transition:transform .6s ease-out;
+}
+#hero-landscape svg{width:100%;height:100%;display:block;}
+.hero-core{position:relative;z-index:2;flex:1.25;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:14px;}
+.hero-eyebrow{display:flex;align-items:center;gap:10px;font:700 11px/1 var(--font-display);letter-spacing:.16em;text-transform:uppercase;color:var(--ink-3);}
+.hero-eyebrow .sec-num{font:700 10px/1 var(--font-mono);color:var(--accent-2);}
+.hero-eyebrow .badge{padding:2px 6px;border-radius:4px;background:var(--panel-2);color:var(--ink-2);font-size:9px;letter-spacing:.06em;}
+.hero-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.hero-chip{
+  font:700 10px/1 var(--font-mono);letter-spacing:.1em;color:var(--ink-2);
+  background:oklch(1 0 0 / .04);border:1px solid var(--line);padding:7px 11px;border-radius:7px;white-space:nowrap;
+}
+.hero-chip.up{color:var(--up);border-color:var(--up-line);background:var(--up-soft);}
+.hero-chip.down{color:var(--down);border-color:var(--down-line);background:var(--down-soft);}
+.hero-mile{display:flex;align-items:center;gap:10px;flex:1;min-width:180px;}
+.hero-mile-track{flex:1;height:6px;border-radius:3px;background:oklch(1 0 0 / .07);overflow:hidden;position:relative;}
+.hero-mile-track::after{
+  content:'';position:absolute;inset:0;
+  background:repeating-linear-gradient(90deg, transparent 0 calc(25% - 1px), oklch(0 0 0 / .55) calc(25% - 1px) 25%);
+}
+.hero-mile-fill{
+  height:100%;border-radius:3px;background:linear-gradient(90deg, var(--accent), var(--accent-2));
+  transform-origin:left;transform:scaleX(var(--m,0));transition:transform .8s var(--spring);
+}
+.hero-mile-l{font:600 10px/1 var(--font-mono);color:var(--ink-3);white-space:nowrap;}
+.hero-satellites{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;gap:10px;justify-content:center;min-width:0;}
+.hero-satellites .kpi-strip{margin:0;padding:10px 14px;}
+.hero-satellites .kpi-cell-v{font-size:20px;}
+
+/* ── odometer ── */
+.odo{
+  font:800 clamp(44px, 5.2vw, 72px)/1 var(--font-mono);letter-spacing:-0.03em;
+  display:flex;align-items:baseline;font-feature-settings:'tnum' 1,'zero' 1;
+}
+.odo{position:relative;}
+.odo::before{content:'';position:absolute;inset:-28px -44px;z-index:-1;pointer-events:none;}
+.odo.up{color:var(--up);}
+.odo.up::before{background:radial-gradient(55% 75% at 32% 55%, oklch(0.75 0.17 160 / .13), transparent 72%);}
+.odo.down{color:var(--down);}
+.odo.down::before{background:radial-gradient(55% 75% at 32% 55%, oklch(0.66 0.21 15 / .11), transparent 72%);}
+.odo-digit{display:inline-block;height:1em;overflow:hidden;line-height:1;vertical-align:baseline;}
+.odo-reel{
+  display:flex;flex-direction:column;will-change:transform;
+  transform:translateY(calc(var(--d,0) * -1em));
+  transition:transform .65s var(--spring);
+}
+.odo-reel span{display:block;height:1em;line-height:1;}
+.odo-ch{display:inline-block;line-height:1;}
+.odo.skel::before{display:none;}
+.odo.skel{
+  min-width:320px;min-height:1em;border-radius:10px;text-shadow:none;color:transparent;
+  background:linear-gradient(100deg, var(--panel-2) 40%, oklch(1 0 0 / .06) 50%, var(--panel-2) 60%);
+  background-size:200% 100%;animation:skelSweep 1.3s linear infinite;
+}
+
+/* ── skeletons & radar empty states ── */
+@keyframes skelSweep{to{background-position:-200% 0;}}
+.skel-block{
+  height:100%;min-height:150px;border-radius:8px;
+  background:linear-gradient(100deg, var(--panel-2) 40%, oklch(1 0 0 / .06) 50%, var(--panel-2) 60%);
+  background-size:200% 100%;animation:skelSweep 1.3s linear infinite;
+}
+.empty-radar{position:relative;height:100%;min-height:150px;display:grid;place-items:center;overflow:hidden;border-radius:8px;}
+.empty-radar::before{
+  content:'';position:absolute;left:50%;top:50%;width:220px;height:220px;transform:translate(-50%,-50%);
+  border-radius:50%;border:1px solid oklch(1 0 0 / .07);
+  background:repeating-radial-gradient(circle at center, transparent 0 34px, oklch(1 0 0 / .05) 34px 35px);
+}
+.radar-sweep{
+  position:absolute;left:50%;top:50%;width:220px;height:220px;margin:-110px 0 0 -110px;border-radius:50%;
+  background:conic-gradient(from 0deg, transparent 0 76%, oklch(0.78 0.14 210 / .22) 96%, oklch(0.78 0.14 210 / .45) 100%);
+  animation:ringSpin 3.2s linear infinite;
+}
+.radar-label{
+  position:relative;z-index:1;font:700 10px/1 var(--font-display);letter-spacing:.18em;text-transform:uppercase;
+  color:var(--ink-3);background:oklch(0.15 0.02 265 / .72);padding:6px 12px;border-radius:6px;border:1px solid var(--line);
+}
+@keyframes ringSpin{to{transform:rotate(360deg);}}
+
+/* ── ticker tape ── */
+#ticker{height:30px;overflow:hidden;position:relative;border-bottom:1px solid var(--line);background:oklch(0.14 0.02 265 / .6);}
+.ticker-track{display:flex;width:max-content;height:100%;align-items:center;animation:tickerScroll 45s linear infinite;will-change:transform;}
+#ticker:hover .ticker-track{animation-play-state:paused;}
+@keyframes tickerScroll{to{transform:translateX(-50%);}}
+.ticker-set{display:flex;align-items:center;}
+.tk-item{
+  display:inline-flex;align-items:center;gap:7px;padding:0 16px;height:30px;border-right:1px solid var(--line);
+  font:600 11px/1 var(--font-mono);color:var(--ink-2);white-space:nowrap;font-feature-settings:'tnum' 1;
+}
+.tk-item .tk-logo{width:14px;height:14px;border-radius:50%;overflow:hidden;display:inline-grid;place-items:center;flex-shrink:0;}
+.tk-item .tk-logo svg{width:100%;height:100%;display:block;}
+.tk-sym{color:var(--ink);font-weight:700;font-family:var(--font-display);}
+.tk-up{color:var(--up);}
+.tk-down{color:var(--down);}
+
+/* ── data heartbeat ── */
+#pulse-line{position:absolute;left:0;right:0;bottom:-1px;height:2px;overflow:hidden;pointer-events:none;}
+.pulse-streak{
+  position:absolute;top:0;left:0;width:220px;height:100%;opacity:0;
+  background:linear-gradient(90deg, transparent, var(--accent-2), transparent);
+}
+.pulse-streak.run{animation:pulseRun 1s cubic-bezier(.4,0,.2,1);}
+@keyframes pulseRun{0%{transform:translateX(-240px);opacity:1;}100%{transform:translateX(100vw);opacity:.55;}}
+
+/* ── sliding tab glider ── */
+.tabs{position:relative;}
+.tab{position:relative;z-index:1;}
+#tab-glider{
+  position:absolute;top:3px;bottom:3px;left:0;width:0;opacity:0;z-index:0;pointer-events:none;
+  background:var(--panel-2);border-radius:6px;
+  box-shadow:inset 0 0 0 1px var(--line-2), 0 0 18px var(--accent-soft);
+  transition:transform .32s var(--spring), width .32s var(--spring), opacity .2s;
+}
+.tab.active{background:transparent;box-shadow:none;}
+
+/* ── HUD silhouette ── */
+.mc,.market-hero{
+  clip-path:polygon(14px 0,100% 0,100% calc(100% - 14px),calc(100% - 14px) 100%,0 100%,0 14px);
+  border-radius:4px;box-shadow:none;isolation:isolate;
+}
+.mc:hover{box-shadow:none;filter:brightness(1.05);}
+.mc.selected{box-shadow:none;}
+.market-hero::after{
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:-1;
+  background:repeating-linear-gradient(0deg, transparent 0 3px, oklch(1 0 0 / .014) 3px 4px);
+}
+.hud-corners{
+  position:absolute;inset:6px;pointer-events:none;opacity:0;transition:opacity .3s;z-index:3;
+  background:
+    linear-gradient(oklch(1 0 0 / .4), oklch(1 0 0 / .4)) left 0 top 0 / 12px 1.5px,
+    linear-gradient(oklch(1 0 0 / .4), oklch(1 0 0 / .4)) left 0 top 0 / 1.5px 12px,
+    linear-gradient(oklch(1 0 0 / .4), oklch(1 0 0 / .4)) right 0 top 0 / 12px 1.5px,
+    linear-gradient(oklch(1 0 0 / .4), oklch(1 0 0 / .4)) right 0 top 0 / 1.5px 12px,
+    linear-gradient(oklch(1 0 0 / .4), oklch(1 0 0 / .4)) left 0 bottom 0 / 12px 1.5px,
+    linear-gradient(oklch(1 0 0 / .4), oklch(1 0 0 / .4)) left 0 bottom 0 / 1.5px 12px,
+    linear-gradient(oklch(1 0 0 / .4), oklch(1 0 0 / .4)) right 0 bottom 0 / 12px 1.5px,
+    linear-gradient(oklch(1 0 0 / .4), oklch(1 0 0 / .4)) right 0 bottom 0 / 1.5px 12px;
+  background-repeat:no-repeat;
+}
+.mc:hover .hud-corners,.mc.selected .hud-corners,.mc.in-trade .hud-corners{opacity:.75;}
+
+/* energy ring replaces the box-shadow tradeGlow (GPU-friendly) */
+.mc.in-trade{animation:none;box-shadow:none;}
+.mc-ring{
+  position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .4s;z-index:2;
+  padding:1.5px;overflow:hidden;
+  -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;
+          mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask-composite:exclude;
+}
+.mc.in-trade .mc-ring{opacity:1;}
+.mc-ring::before{
+  content:'';position:absolute;inset:-60%;
+  background:conic-gradient(from 0deg, transparent 0 68%, oklch(0.85 0.12 85 / .9) 86%, transparent 100%);
+  animation:ringSpin 2.8s linear infinite;
+}
+
+/* window countdown ring on the coin logo */
+.mc-logo{position:relative;}
+.mc-logo::after{
+  content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;
+  background:conic-gradient(oklch(0.82 0.14 85 / .85) calc(var(--frac,0) * 360deg), oklch(1 0 0 / .08) 0);
+  -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+          mask:radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+}
+
+/* ── light model: cursor spotlight + rim light + ambient parallax ── */
+body.spot-on .card::after,body.spot-on .kpi::after{
+  content:'';position:absolute;inset:0;pointer-events:none;z-index:0;opacity:0;transition:opacity .35s;border-radius:inherit;
+  background:
+    radial-gradient(300px circle at var(--mx,50%) var(--my,50%), oklch(1 0 0 / .05), transparent 65%),
+    linear-gradient(180deg, oklch(1 0 0 / .028), transparent 30%);
+}
+body.spot-on .card:hover::after,body.spot-on .kpi:hover::after{opacity:1;}
+#ambient{
+  inset:-40px;
+  transform:translate(calc(var(--px,0) * 22px), calc(var(--py,0) * 22px));
+  transition:transform 1.2s cubic-bezier(.2,.6,.2,1);
+}
+
+/* focus dimming: hovered market card recedes the rest */
+@media (hover:hover){
+  body.spot-on .market-strip:has(.mc:hover) .mc:not(:hover){
+    animation:none;   /* release cardIn's opacity fill so the dim can apply */
+    opacity:.55;filter:saturate(.6) brightness(.85);
+    transition:opacity .35s, filter .35s;
+  }
+}
+
+/* ── motion identity ── */
+.panel.active{animation:panelWipe .38s cubic-bezier(.3,.8,.3,1);}
+@keyframes panelWipe{from{clip-path:inset(0 12% 0 0);opacity:.35;}to{clip-path:inset(0 0 0 0);opacity:1;}}
+.chart-grid{animation:gridPulse .7s ease-out both;}
+@keyframes gridPulse{from{opacity:0;}to{opacity:1;}}
+.mc.in-trade::after{
+  content:'';position:absolute;top:0;bottom:0;left:-52%;width:46%;pointer-events:none;z-index:1;
+  background:linear-gradient(105deg, transparent, oklch(0.85 0.12 85 / .07) 45% 55%, transparent);
+  animation:scanSweep 2.6s linear infinite;
+}
+@keyframes scanSweep{to{transform:translateX(330%);}}
+
+/* ── instruments ── */
+.gauge-arc{animation:gaugeDraw .9s cubic-bezier(.3,.8,.3,1) both;}
+@keyframes gaugeDraw{from{stroke-dashoffset:var(--len);}to{stroke-dashoffset:var(--off);}}
+.gauge-needle{transform-origin:100px 102px;transform-box:view-box;animation:needleSweep .9s cubic-bezier(.34,1.35,.4,1) both;}
+@keyframes needleSweep{from{transform:rotate(-90deg);}to{transform:rotate(var(--rot,0deg));}}
+
+.mc-thrust{position:absolute;top:50%;height:4px;transform:translateY(-50%);border-radius:2px;pointer-events:none;z-index:1;transition:width .4s ease;}
+.mc-thrust.yes{left:0;background:linear-gradient(90deg, transparent, oklch(0.75 0.17 160 / .55));}
+.mc-thrust.no{right:0;background:linear-gradient(270deg, transparent, oklch(0.66 0.21 15 / .5));}
+.mc-battle-marker{z-index:2;}
+.mc.in-trade .mc-battle-marker::after{
+  content:'';position:absolute;inset:-5px;border-radius:50%;
+  background:radial-gradient(circle, oklch(0.85 0.12 85 / .55), transparent 70%);
+  animation:sparkPulse 1.6s ease-in-out infinite;
+}
+@keyframes sparkPulse{0%,100%{opacity:.4;transform:scale(.9);}50%{opacity:1;transform:scale(1.25);}}
+
+.heat-strip > div{transition:transform .18s ease, filter .18s ease;}
+.heat-strip > div:hover{transform:scaleY(1.7);filter:brightness(1.5);}
+
+/* ── dopamine (losses stay calm) ── */
+.hero-chip.streak{color:var(--ink-3);}
+.hero-chip.streak.cold{color:var(--ink-4);}
+.hero-chip.streak.t1{color:var(--up);}
+.hero-chip.streak.t2{color:var(--up);border-color:var(--up-line);background:var(--up-soft);text-shadow:0 0 12px oklch(0.75 0.17 160 / .5);}
+.hero-chip.streak.t3{
+  color:var(--up);border-color:var(--up-line);background:var(--up-soft);
+  text-shadow:0 0 14px oklch(0.75 0.17 160 / .7);animation:streakPulse 1.6s ease-in-out infinite;
+}
+@keyframes streakPulse{0%,100%{transform:scale(1);}50%{transform:scale(1.06);}}
+#edge-flash{position:fixed;inset:0;pointer-events:none;z-index:200;opacity:0;box-shadow:inset 0 0 140px 30px oklch(0.75 0.17 160 / .45);}
+#edge-flash.on{animation:edgeFlash 1.1s ease-out;}
+@keyframes edgeFlash{0%{opacity:0;}18%{opacity:1;}100%{opacity:0;}}
+
+/* ── responsive ── */
+@media (max-width:1200px){
+  #hero-command{flex-direction:column;gap:18px;}
+  .hero-satellites{flex-direction:row;}
+  .hero-satellites .kpi-strip{flex:1;}
+}
+@media (max-width:900px){
+  #hero-landscape,#ticker{display:none;}
+  .hero-satellites{flex-direction:column;}
+  .odo{font-size:44px;}
+  .odo.skel{min-width:220px;}
+}
+</style>
 </head>
 <body data-mode="paper">
 
@@ -747,6 +1052,7 @@ tbody tr:last-child td{border-bottom:none;}
       <button class="tab" data-tab="trades">Trades</button>
       <button class="tab" data-tab="edge">Edge</button>
       <button class="tab" data-tab="settings">Settings</button>
+      <span id="tab-glider" aria-hidden="true"></span>
     </div>
 
     <div class="topbar-right">
@@ -769,32 +1075,46 @@ tbody tr:last-child td{border-bottom:none;}
       </button>
     </div>
   </div>
+  <div id="pulse-line" aria-hidden="true"><div class="pulse-streak"></div></div>
 </div>
+<div id="ticker" aria-hidden="true"><div class="ticker-track" id="ticker-track"></div></div>
 
 <main>
 
 <!-- ═════════════════ OVERVIEW ═════════════════ -->
 <div class="panel active" id="panel-overview">
 
+  <section id="hero-command">
+    <div id="hero-landscape" aria-hidden="true"></div>
+    <div class="hero-core">
+      <div class="hero-eyebrow"><span class="sec-num">00</span> NET P&amp;L * ALL-TIME * S1+S2 <span class="badge mode-badge">PAPER</span></div>
+      <div id="hero-pnl" class="odo up skel" aria-live="polite">&nbsp;</div>
+      <div class="hero-meta">
+        <span id="hero-today-chip" class="hero-chip">TODAY -</span>
+        <span id="hero-streak" class="hero-chip streak">STREAK -</span>
+        <div id="hero-milestone" class="hero-mile"><div class="hero-mile-track"><div class="hero-mile-fill"></div></div><span class="hero-mile-l">- / -</span></div>
+      </div>
+    </div>
+    <div class="hero-satellites">
   <!-- KPI STRIP - Strategy 2 (D3 Hybrid) -->
   <div class="kpi-strip" id="kpi-strip-s2">
     <div class="kpi-strip-label">S2 * Spot Fair Value</div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
-      <div id="kpi-alltime-val" class="kpi-cell-v up mono">+$1,847.20</div>
-      <div id="kpi-alltime-sub" class="kpi-cell-s"><span class="kpi-trend up">▲ 4.2%</span> vs yesterday</div>
+      <div id="kpi-alltime-val" class="kpi-cell-v up mono">-</div>
+      <div id="kpi-alltime-sub" class="kpi-cell-s">-</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Win Rate * All-Time</div>
-      <div id="kpi-wr-val" class="kpi-cell-v mono">62.4<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
-      <div id="kpi-wr-sub" class="kpi-cell-s"><span class="kpi-trend up">▲ 1.8</span> 187 trades</div>
+      <div id="kpi-wr-val" class="kpi-cell-v mono">-<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
+      <div id="kpi-wr-sub" class="kpi-cell-s">-</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Today's P&amp;L<span class="badge mode-badge">PAPER</span></div>
-      <div id="kpi-today-val" class="kpi-cell-v up mono">+$84.60</div>
-      <div id="kpi-today-sub" class="kpi-cell-s"><span class="mono">12 trades</span> * 7W / 5L</div>
+      <div id="kpi-today-val" class="kpi-cell-v up mono">-</div>
+      <div id="kpi-today-sub" class="kpi-cell-s">-</div>
     </div>
   </div>
 
@@ -819,6 +1139,8 @@ tbody tr:last-child td{border-bottom:none;}
       <div id="kpi-s1-today-sub" class="kpi-cell-s">- trades</div>
     </div>
   </div>
+    </div>
+  </section>
 
   <!-- MARKET STRIP -->
   <div class="market-strip" id="market-strip"></div>
@@ -1355,6 +1677,8 @@ function renderMarketStrip(){
       <div class="mc-battle" style="${offline?'opacity:0.5;':''}">
         <div class="mc-battle-track-wrap">
           <div class="mc-battle-track"></div>
+          <div class="mc-thrust yes" style="width:${Math.max(0,yesPct).toFixed(1)}%"></div>
+          <div class="mc-thrust no" style="width:${Math.max(0,100-yesPct).toFixed(1)}%"></div>
           <div class="mc-battle-marker" style="left:${yesPct.toFixed(1)}%;background-color:${dotColor};"></div>
         </div>
         <div class="mc-battle-foot">
@@ -1365,9 +1689,11 @@ function renderMarketStrip(){
     return `
     <div class="mc ${inTrade?'in-trade':''}" data-sym="${m.sym}">
       <div class="mc-glow ${cls}"></div>
+      <div class="hud-corners" aria-hidden="true"></div>
+      <div class="mc-ring" aria-hidden="true"></div>
       <div class="mc-head">
         <div class="mc-asset">
-          <div class="mc-logo">${cryptoLogo(m.sym)}</div>
+          <div class="mc-logo" style="--frac:${(Math.max(0,Math.min(1,(m.secsLeft||0)/900))).toFixed(3)}">${cryptoLogo(m.sym)}</div>
           <div class="mc-name">${m.sym}</div>
         </div>
         <div class="mc-status ${m.phase.toLowerCase()}" title="${PHASE_TIP[m.phase]}">${m.phase}</div>
@@ -1422,11 +1748,11 @@ function renderEquity(range, containerId, pts){
   if (!wrap) return;
   const data = (pts && pts.length >= 2) ? pts : [];
   if (data.length < 2) {
-    wrap.innerHTML = `<div style="height:200px;display:flex;align-items:center;justify-content:center;color:var(--ink-4);font-size:11px;font-family:'Montserrat',monospace;letter-spacing:0.08em;text-transform:uppercase;">No trades yet</div>`;
+    wrap.innerHTML = _emptyState('SCANNING * AWAITING FIRST SETTLE');
     return;
   }
   const gradId = 'cgrad-' + containerId;
-  const w = wrap.clientWidth || 800, h = 200;
+  const w = wrap.clientWidth || 800, h = wrap.clientHeight || 280;
   const padL=44, padR=54, padT=18, padB=22;
   const max = Math.max(...data, 0), min = Math.min(...data, 0), rng = Math.max(1, max-min);
   const xy = data.map((v,i)=>{
@@ -1530,7 +1856,7 @@ function renderAllocForStrategy(sv, donutId, listId) {
   if (!donutEl || !listEl) return;
   if (!totalPnl) {
     donutEl.innerHTML = '';
-    listEl.innerHTML = '<div style="color:var(--ink-4);font-size:11px;padding:12px 0;text-align:center;">No trades yet</div>';
+    listEl.innerHTML = _emptyState('AWAITING FIRST SETTLE');
     return;
   }
   const cx=60, cy=60, r=56, hole=36;
@@ -1710,12 +2036,26 @@ function renderMarketPanel(sym){
   const gx = 80 + 70*Math.cos(Math.PI - gAngle);
   const gy = 80 - 70*Math.sin(Math.PI - gAngle);
   const gColor = _score>=70?'var(--up)':_score>=50?'oklch(0.82 0.16 75)':'oklch(0.66 0.21 15)';
+  let _ticks = '';
+  for (let ti = 0; ti < 41; ti++) {
+    const ta = Math.PI - (ti / 40) * Math.PI;
+    const major = ti % 5 === 0;
+    const r0 = major ? 84 : 88, r1 = 94;
+    _ticks += `<line x1="${(100 + r0 * Math.cos(ta)).toFixed(1)}" y1="${(102 - r0 * Math.sin(ta)).toFixed(1)}" x2="${(100 + r1 * Math.cos(ta)).toFixed(1)}" y2="${(102 - r1 * Math.sin(ta)).toFixed(1)}" stroke="oklch(1 0 0 / ${major ? '0.30' : '0.12'})" stroke-width="${major ? 1.6 : 1}"/>`;
+  }
+  const _arcLen = (Math.PI * 74).toFixed(1);
+  const _gFrac = Math.max(0, Math.min(1, _score / 100));
   const gaugeHTML = `
     <div class="gauge-wrap">
-      <svg class="gauge-svg" viewBox="0 0 160 90">
-        <path d="M 10,80 A 70,70 0 0 1 150,80" fill="none" stroke="oklch(1 0 0 / 0.14)" stroke-width="10" stroke-linecap="round"/>
-        <path d="M 10,80 A 70,70 0 0 1 ${gx.toFixed(1)},${gy.toFixed(1)}" fill="none" stroke="${gColor}" stroke-width="10" stroke-linecap="round"/>
-        <circle cx="${gx.toFixed(1)}" cy="${gy.toFixed(1)}" r="5" fill="${gColor}"/>
+      <svg class="gauge-svg" viewBox="0 0 200 112">
+        ${_ticks}
+        <path d="M 26,102 A 74,74 0 0 1 174,102" fill="none" stroke="oklch(1 0 0 / 0.10)" stroke-width="9" stroke-linecap="round"/>
+        <path class="gauge-arc" d="M 26,102 A 74,74 0 0 1 174,102" fill="none" stroke="${gColor}" stroke-width="9" stroke-linecap="round"
+          stroke-dasharray="${_arcLen}" style="--len:${_arcLen};--off:${(Math.PI * 74 * (1 - _gFrac)).toFixed(1)};filter:drop-shadow(0 0 7px ${gColor})"/>
+        <g class="gauge-needle" style="--rot:${(_gFrac * 180 - 90).toFixed(1)}deg">
+          <line x1="100" y1="102" x2="100" y2="38" stroke="${gColor}" stroke-width="2.5" stroke-linecap="round" style="filter:drop-shadow(0 0 5px ${gColor})"/>
+        </g>
+        <circle cx="100" cy="102" r="6" fill="var(--panel-2)" stroke="${gColor}" stroke-width="2"/>
       </svg>
       <div class="gauge-val" style="color:${gColor};">${session.score ?? '-'}</div>
       <div class="gauge-label">Confidence</div>
@@ -1929,7 +2269,7 @@ function renderMarketPanel(sym){
 // ════════════════════════════════════════════════════
 function renderTrades(filter='all'){
   const tbody = document.querySelector('#trades-table tbody');
-  const colors = {BTC:'var(--amber)', ETH:'oklch(0.55 0.12 270)', SOL:'oklch(0.42 0.22 300)', XRP:'var(--ink-3)', DOGE:'var(--amber)'};
+  const colors = ASSET_COLOR;
   const rows = TRADES.filter(t=>filter==='all'||t.sym===filter).slice(0,80);
   tbody.innerHTML = rows.map(t=>{
     const d = new Date(t.ts);
@@ -2374,6 +2714,7 @@ function mapAssetState(sym, a) {
     dist:     a.distance_pct ?? ex.dist ?? 0,
     strike:   a.strike ?? ex.strike ?? null,
     timer,
+    secsLeft: secs,
     pnlToday: a.daily?.pnl ?? ex.pnlToday ?? 0,
     ev:       a.ev        ?? dec.yes_ev   ?? ex.ev    ?? 0,
     wp:       a.win_prob != null ? a.win_prob / 100 : (dec.win_prob != null ? dec.win_prob / 100 : (ex.wp ?? null)),
@@ -2647,7 +2988,7 @@ if (MOTION_OK) {
 }
 
 // confetti burst on a settled win + toast for every settle
-function _fireConfetti(){
+function _fireConfetti(n = 140, burst = 1){
   if (!MOTION_OK) return;
   let cv = document.getElementById('fx-canvas');
   if (!cv) { cv = document.createElement('canvas'); cv.id = 'fx-canvas'; document.body.appendChild(cv); }
@@ -2655,9 +2996,9 @@ function _fireConfetti(){
   const ctx = cv.getContext('2d');
   const hues = ['#cb7f00','#7361e4','#d55cbf','#00a580','#00ce88','#5ad7ff'];
   const parts = [];
-  for (let i=0;i<140;i++){
+  for (let i=0;i<n;i++){
     const a = (Math.random()*0.9 + 0.05) * Math.PI;
-    const sp = 7 + Math.random()*9;
+    const sp = (7 + Math.random()*9) * (burst > 1 ? 1.55 : 1);
     parts.push({x: cv.width/2, y: cv.height*0.28,
                 vx: Math.cos(a)*sp*(Math.random()<0.5?-1:1), vy: -Math.sin(a)*sp,
                 w: 5+Math.random()*5, h: 3+Math.random()*4,
@@ -2711,6 +3052,246 @@ function _watchSettles(){
   }
 }
 setInterval(_watchSettles, 3000);
+/* ════════════ REACTOR SIGNATURE LAYER ════════════ */
+document.body.insertAdjacentHTML('beforeend', '<div id="edge-flash" aria-hidden="true"></div>');
+
+/* skeleton -> radar empty states (used by renderEquity / renderAllocForStrategy) */
+function _emptyState(label){
+  if (!window._tradesLoaded) return '<div class="skel-block"></div>';
+  return '<div class="empty-radar"><div class="radar-sweep"></div>' +
+         '<div class="radar-label">' + label + '</div></div>';
+}
+
+/* ── data heartbeat: the topbar streak fires on every real /api/ poll ── */
+const _origFetch = window.fetch.bind(window);
+let _lastBeat = 0;
+function _pulseBeat(){
+  if (!MOTION_OK) return;
+  const now = performance.now();
+  if (now - _lastBeat < 900) return;
+  _lastBeat = now;
+  const s = document.querySelector('#pulse-line .pulse-streak');
+  if (!s) return;
+  s.classList.remove('run'); void s.offsetWidth; s.classList.add('run');
+}
+window.fetch = function(input, init){
+  const url = typeof input === 'string' ? input : (input && input.url) || '';
+  const p = _origFetch(input, init);
+  if (url.includes('/api/')) {
+    p.then(r => {
+      if (r && r.ok) {
+        _pulseBeat();
+        if (url.includes('/api/trades')) window._tradesLoaded = true;
+      }
+    }).catch(() => {});
+  }
+  return p;
+};
+
+/* ── hero odometer ── */
+function renderOdometer(el, txt){
+  const shape = txt.replace(/\d/g, '#');
+  if (el._shape !== shape) {
+    el._shape = shape;
+    el.innerHTML = [...txt].map(ch =>
+      /\d/.test(ch)
+        ? '<span class="odo-digit"><span class="odo-reel">' +
+          '0123456789'.split('').map(d => '<span>' + d + '</span>').join('') +
+          '</span></span>'
+        : '<span class="odo-ch">' + (ch === ' ' ? '&nbsp;' : ch) + '</span>'
+    ).join('');
+  }
+  const reels = el.querySelectorAll('.odo-reel');
+  const digits = txt.match(/\d/g) || [];
+  reels.forEach((r, i) => {
+    r.style.setProperty('--d', digits[i] ?? 0);
+    r.style.transitionDelay = ((reels.length - 1 - i) * 40) + 'ms';
+  });
+}
+function _fmtHero(v){
+  return (v < 0 ? '-' : '+') + '$' +
+    Math.abs(v).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
+
+let _mileTier = null;
+function _heroSync(){
+  const el = document.getElementById('hero-pnl');
+  if (!el) return;
+  const a = _numOf(document.getElementById('kpi-alltime-val')?.textContent);
+  const b = _numOf(document.getElementById('kpi-s1-alltime-val')?.textContent);
+  if (a == null && b == null) return;          // still booting - keep the skeleton
+  const total = (a || 0) + (b || 0);
+  el.classList.remove('skel');
+  el.classList.toggle('up', total >= 0);
+  el.classList.toggle('down', total < 0);
+  renderOdometer(el, _fmtHero(total));
+
+  const ta = _numOf(document.getElementById('kpi-today-val')?.textContent);
+  const tb = _numOf(document.getElementById('kpi-s1-today-val')?.textContent);
+  const haveToday = ta != null || tb != null;
+  const today = (ta || 0) + (tb || 0);
+  const chip = document.getElementById('hero-today-chip');
+  if (chip && haveToday) {
+    chip.textContent = 'TODAY ' + _fmtHero(today);
+    chip.classList.toggle('up', today > 0);
+    chip.classList.toggle('down', today < 0);
+  }
+  _renderStreak();
+  _renderMilestone(today, haveToday);
+}
+
+function _renderStreak(){
+  const el = document.getElementById('hero-streak');
+  if (!el) return;
+  const done = TRADES.filter(t => t.fill === 'filled' && t.pnl != null)
+                     .sort((x, y) => (y.ts || '').localeCompare(x.ts || ''));
+  if (!done.length) { el.textContent = 'STREAK -'; return; }
+  const winning = done[0].pnl > 0;
+  let n = 0;
+  for (const t of done) {
+    if (t.pnl !== 0 && (t.pnl > 0) === winning) n++; else break;
+  }
+  el.className = 'hero-chip streak';
+  if (winning) {
+    el.textContent = 'STREAK ' + n + 'W' + (n >= 7 ? ' ⚡' : '');
+    if (n >= 7) el.classList.add('t3');
+    else if (n >= 4) el.classList.add('t2');
+    else if (n >= 2) el.classList.add('t1');
+  } else {
+    el.textContent = 'STREAK ' + n + 'L';
+    el.classList.add('cold');
+  }
+}
+
+function _renderMilestone(today, haveData){
+  const wrap = document.getElementById('hero-milestone');
+  if (!wrap || !haveData) return;
+  let target = 200;
+  const rm = document.getElementById('risk-meters');
+  const m = rm && rm.textContent.match(/Daily Profit Target[^/]*\/\s*\$([\d,]+(?:\.\d+)?)/);
+  if (m) target = parseFloat(m[1].replace(/,/g, '')) || 200;
+  const fill = wrap.querySelector('.hero-mile-fill');
+  const lab = wrap.querySelector('.hero-mile-l');
+  if (fill) fill.style.setProperty('--m', Math.max(0, Math.min(1, today / target)).toFixed(3));
+  if (lab) lab.textContent = _fmtHero(today) + ' / $' + target.toLocaleString('en-US');
+  const tier = today > 0 ? Math.min(4, Math.floor(today / (target * 0.25))) : 0;
+  if (_mileTier === null) { _mileTier = tier; return; }   // prime silently on first load
+  if (tier > _mileTier && MOTION_OK) { _fireConfetti(320, 2); _edgeFlash(); }
+  _mileTier = tier;
+}
+function _edgeFlash(){
+  const el = document.getElementById('edge-flash');
+  if (!el) return;
+  el.classList.remove('on'); void el.offsetWidth; el.classList.add('on');
+}
+setInterval(_heroSync, 1000);
+_heroSync();
+
+/* ── hero landscape: axis-less all-time equity behind the odometer ── */
+let _hlKey = '';
+function renderHeroLandscape(){
+  const host = document.getElementById('hero-landscape');
+  if (!host) return;
+  const pts = buildStrategyEquity(null, 'all');
+  const key = pts.length + ':' + (pts[pts.length - 1] || 0) + ':' + (host.clientWidth || 0);
+  if (key === _hlKey) return;
+  _hlKey = key;
+  if (pts.length < 2) { host.innerHTML = ''; return; }
+  const W = 600, H = 160;
+  const max = Math.max(...pts, 0), min = Math.min(...pts, 0), rng = Math.max(1, max - min);
+  const xy = pts.map((v, i) => [(i / (pts.length - 1)) * W, 8 + (1 - (v - min) / rng) * (H - 16)]);
+  const line = _smoothPath(xy);
+  const col = pts[pts.length - 1] >= 0 ? 'oklch(0.75 0.17 160' : 'oklch(0.66 0.21 15';
+  host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' +
+    '<path d="' + line + ' L' + W + ',' + H + ' L0,' + H + ' Z" fill="' + col + ' / 0.10)"/>' +
+    '<path d="' + line + '" fill="none" stroke="' + col + ' / 0.55)" stroke-width="1.6"/></svg>';
+}
+setInterval(renderHeroLandscape, 3000);
+window.addEventListener('resize', () => { _hlKey = ''; renderHeroLandscape(); });
+
+/* ── ticker tape ── */
+function _tkSettles(){
+  return TRADES.filter(t => t.fill === 'filled' && t.pnl != null)
+               .sort((x, y) => (y.ts || '').localeCompare(x.ts || ''))
+               .slice(0, 5);
+}
+function _tkSetHTML(settles){
+  const px = MARKETS.map(m => {
+    const ch = m.ch24 || 0;
+    const cls = ch > 0 ? 'tk-up' : ch < 0 ? 'tk-down' : '';
+    return '<span class="tk-item"><span class="tk-logo">' + cryptoLogo(m.sym) + '</span>' +
+      '<span class="tk-sym">' + m.sym + '</span>' +
+      '<span data-tk="' + m.sym + '-px">' + fmtPx(m.sym, m.px) + '</span>' +
+      '<span class="' + cls + '" data-tk="' + m.sym + '-ch">' + (ch > 0 ? '+' : '') + ch.toFixed(2) + '%</span></span>';
+  }).join('');
+  const st = settles.map(t => {
+    const win = t.pnl > 0;
+    return '<span class="tk-item"><span class="tk-sym">' + t.sym + '</span>' +
+      '<span class="' + (win ? 'tk-up' : 'tk-down') + '">' + (win ? 'WIN' : 'LOSS') + ' ' + fmtMoney(t.pnl) + '</span></span>';
+  }).join('');
+  return '<span class="ticker-set">' + px + st + '</span>';
+}
+let _tapeKey = '';
+function renderTape(){
+  const track = document.getElementById('ticker-track');
+  if (!track) return;
+  if (!MARKETS.some(m => m.px != null) && !TRADES.length) return;
+  const settles = _tkSettles();
+  const key = settles.map(t => t.ts + t.sym).join('|');
+  if (key !== _tapeKey || !track.firstChild) {
+    _tapeKey = key;
+    const set = _tkSetHTML(settles);
+    track.innerHTML = set + set;   // two copies for the seamless -50% loop
+    return;
+  }
+  MARKETS.forEach(m => {          // in-place refresh - the marquee never restarts
+    track.querySelectorAll('[data-tk="' + m.sym + '-px"]').forEach(s => { s.textContent = fmtPx(m.sym, m.px); });
+    track.querySelectorAll('[data-tk="' + m.sym + '-ch"]').forEach(s => {
+      const ch = m.ch24 || 0;
+      s.textContent = (ch > 0 ? '+' : '') + ch.toFixed(2) + '%';
+      s.className = ch > 0 ? 'tk-up' : ch < 0 ? 'tk-down' : '';
+    });
+  });
+}
+setInterval(renderTape, 3000);
+
+/* ── sliding tab glider ── */
+function positionGlider(){
+  const g = document.getElementById('tab-glider');
+  const active = document.querySelector('.tabs .tab.active');
+  if (!g || !active) return;
+  g.style.transform = 'translateX(' + active.offsetLeft + 'px)';
+  g.style.width = active.offsetWidth + 'px';
+  g.style.opacity = '1';
+}
+document.getElementById('tabs')?.addEventListener('click', () => requestAnimationFrame(positionGlider));
+window.addEventListener('resize', positionGlider);
+window.addEventListener('load', positionGlider);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(positionGlider);
+positionGlider();
+
+/* ── cursor spotlight + pointer parallax (hover-capable pointers only) ── */
+if (MOTION_OK && matchMedia('(hover:hover) and (pointer:fine)').matches) {
+  document.body.classList.add('spot-on');
+  let _pmPending = false, _pmEv = null;
+  document.addEventListener('pointermove', e => {
+    _pmEv = e;
+    if (_pmPending) return;
+    _pmPending = true;
+    requestAnimationFrame(() => {
+      _pmPending = false;
+      const ev = _pmEv;
+      const host = ev.target && ev.target.closest ? ev.target.closest('.card,.kpi') : null;
+      if (host) {
+        const r = host.getBoundingClientRect();
+        host.style.setProperty('--mx', (((ev.clientX - r.left) / r.width) * 100).toFixed(1) + '%');
+        host.style.setProperty('--my', (((ev.clientY - r.top) / r.height) * 100).toFixed(1) + '%');
+      }
+      document.body.style.setProperty('--px', ((ev.clientX / innerWidth) * 2 - 1).toFixed(3));
+      document.body.style.setProperty('--py', ((ev.clientY / innerHeight) * 2 - 1).toFixed(3));
+    });
+  }, {passive: true});
+}
 </script>
 </body>
 </html>
