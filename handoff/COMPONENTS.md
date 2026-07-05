@@ -32,8 +32,11 @@ The centerpiece: combined S1+S2 all-time net P&L as a giant per-digit odometer.
 - **Chips:** today P&L chip, win-streak chip (tiers at 2/4/7 consecutive wins escalate
   mint -> glow -> pulse+bolt; losing streaks render small and gray), and the daily
   milestone bar (today vs the Daily Profit Target parsed from `#risk-meters`; $200
-  fallback). Upward quarter-milestone crossings fire `_fireConfetti(320,2)` + the
+  fallback). Upward quarter-milestone crossings fire the FX milestone wave + the
   `#edge-flash` screen-edge glow; downward crossings fire nothing.
+- **Stage:** the hero is a full-bleed band (viewport-width breakout), not a card. Behind
+  the number: `#hero-rings` (counter-rotating tick rings, JS-generated SVG) and
+  `#hero-horizon` (converging floor grid). Satellites are frameless glass slivers.
 - **Satellites:** BOTH original KPI strips (`#kpi-strip-s2`, `#kpi-strip-s1`) moved
   verbatim inside `.hero-satellites` - every `kpi-*` id intact, `fetchPnl`/`fetchPnlS1`
   untouched.
@@ -189,6 +192,35 @@ effects (confetti, heartbeat, spotlight, parallax, celebrations) check `MOTION_O
 The ticker freezes readable at rest; the odometer still updates content instantly.
 
 ---
+
+## FX Engine (canvas VFX - there is no confetti)
+
+**JS:** `_fx` (IIFE near the end of the script), exposed as `window._fx` for tests.
+
+One rAF loop on `#fx-canvas`: particle pool, additive `lighter` compositing,
+DPR-aware, clears and halts on `visibilitychange`, sleeps when only idle embers
+remain die. Particle modes: spark, ember, streak, ring, front, comet, trace.
+
+- **Settle surge** (`_settleSurge`, wired in `_watchSettles`): a WIN launches an
+  asset-colored comet (colors from `_FX_ASSET` - canvas can't resolve CSS vars) that
+  arcs from the settled `.mc[data-sym]` card to `#hero-pnl`, ending in a shockwave +
+  burst + `.flash` glow on the odometer. A LOSS drips one dim gray ember from the
+  card; nothing travels, nothing at the hero.
+- **`_fireConfetti(n, burst)`** kept as the celebration entry point (call sites
+  unchanged): burst>1 = milestone wave (light front sweeps the viewport spraying
+  sparks) + core shockwave; otherwise a compact shock+burst at the hero.
+- **Equity tracer:** `renderEquity` is wrapped (see end of script) so each freshly
+  drawn curve gets a comet running its path via `getPointAtLength`; the hero
+  landscape does the same.
+- **Ambient embers:** constant-density drifting motes (never data-reactive).
+- Every spawn is `MOTION_OK`-gated; reduced motion = zero particles.
+
+## Circuit Bus
+
+**JS:** `_drawBus` (3s + resize). An SVG layer in `#panel-overview` drawing a dashed
+trace from each market pod's top edge into the hero stage's bottom seam, dash-flow
+animated toward the core; LOCKED pods get the brighter/faster `.hot` trace (amber,
+consistent with LOCKED). Hidden <= 1200px.
 
 ## Crypto Logos
 

@@ -75,7 +75,7 @@ per asset - never reorder. The JS mirror is `ASSET_COLOR`; use it, never a local
 
 | Token | Value | Use |
 |---|---|---|
-| `--font-display` | `'Space Grotesk', 'Montserrat', sans-serif` | Headers, labels, tabs, card titles |
+| `--font-display` | `'Unbounded', 'Montserrat', sans-serif` | Headers, labels, tabs, card titles (wide face - small sizes are refit in the CORE BREACH block) |
 | `--font-mono` | `'JetBrains Mono', ui-monospace, monospace` | EVERY numeral (KPIs, tables, clock, odometer, ticker) |
 | `--fs-0..5` | 12 / 14 / 18 / 28 / 48 / 72 px | Type scale; hero odometer uses `clamp(44px, 5.2vw, 72px)` |
 
@@ -114,3 +114,10 @@ Rules:
   (`--px/--py` on body; ambient + hero landscape drift).
 - HEARTBEAT: `#pulse-line .pulse-streak` sweeps the topbar edge on every successful
   `/api/*` poll (fetch wrapper in the signature JS layer).
+- CORE BREACH (last section of `#sig` + FX engine in the script): full-bleed hero stage
+  with reactor ring assembly (`#hero-rings`) and perspective horizon (`#hero-horizon`),
+  circuit bus traces from the market pods into the core (`#circuit-bus`), frameless
+  overview chart bands with angled seams, gutter guide lines (`body::before`), and the
+  `_fx` canvas particle engine (settle surge / shockwave / milestone wave / equity
+  tracer / ambient embers) that replaced confetti. Canvas colors live in `_FX_ASSET` -
+  keep it in sync with the `:root` asset set.
