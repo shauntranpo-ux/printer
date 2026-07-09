@@ -46,7 +46,7 @@ def _fresh():
 
 def test_summary_covers_previous_et_day():
     _fresh()
-    sent, written = _run({"mode": "paper"}, datetime(2026, 7, 5, 0, 1, tzinfo=_ET))
+    sent, written = _run({"mode": "paper"}, datetime(2026, 7, 5, 0, 25, tzinfo=_ET))
     assert len(sent) == 1
     assert "2026-07-04" in sent[0]           # yesterday's ET day, not today's
     assert written and written[0]["_last_daily_summary_for"] == "2026-07-04"
@@ -55,7 +55,7 @@ def test_summary_covers_previous_et_day():
 def test_summary_dedups_within_process_and_across_restart():
     _fresh()
     cfg = {"mode": "paper"}
-    sent, _ = _run(cfg, datetime(2026, 7, 5, 0, 1, tzinfo=_ET))
+    sent, _ = _run(cfg, datetime(2026, 7, 5, 0, 25, tzinfo=_ET))
     assert len(sent) == 1
     # same process, later the same day: no resend
     sent2, _ = _run(cfg, datetime(2026, 7, 5, 9, 0, tzinfo=_ET), sent=sent)
@@ -73,6 +73,8 @@ def test_summary_respects_configured_hour():
     sent, _ = _run(cfg, datetime(2026, 7, 5, 6, 0, tzinfo=_ET))
     assert sent == []                        # too early
     sent, _ = _run(cfg, datetime(2026, 7, 5, 8, 5, tzinfo=_ET))
+    assert sent == []               # inside the 20-min settle grace
+    sent, _ = _run(cfg, datetime(2026, 7, 5, 8, 25, tzinfo=_ET))
     assert len(sent) == 1
 
 
@@ -82,7 +84,7 @@ def test_summary_queries_et_day_bounds():
     class _FrozenDT(datetime):
         @classmethod
         def now(cls, tz=None):
-            return datetime(2026, 7, 5, 0, 1, tzinfo=_ET)
+            return datetime(2026, 7, 5, 0, 25, tzinfo=_ET)
 
     with patch.object(bot_loops.bot_stats, "query_stats",
                       return_value=dict(_BASE_STATS)) as qs, \

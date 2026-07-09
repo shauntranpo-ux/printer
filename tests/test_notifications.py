@@ -143,3 +143,35 @@ def test_settle_notifications_wired_and_gated():
     for key in ("notify_on_settle", "notify_on_entry", "display_timezone",
                 "daily_summary_hour_et"):
         assert key in isrc
+
+
+def test_midnight_reset_rolls_on_et_day(monkeypatch):
+    """limit state must NOT reset at UTC midnight (8pm ET) - only at ET midnight."""
+    import bot_risk
+
+    class _FrozenDT(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            # 01:00 UTC Jul 5 == 9:00 PM ET Jul 4: UTC date has rolled, ET has not
+            base = datetime(2026, 7, 5, 1, 0, tzinfo=timezone.utc)
+            return base.astimezone(tz) if tz else base.replace(tzinfo=None)
+
+    monkeypatch.setattr(bot_risk, "datetime", _FrozenDT)
+    monkeypatch.setattr(bot_state, "daily_reset_date", date(2026, 7, 4))
+    monkeypatch.setattr(bot_state, "limit_triggered", True)
+    monkeypatch.setattr(bot_state, "limit_reason", "daily profit target reached")
+    bot_risk.midnight_reset()
+    assert bot_state.limit_triggered is True          # ET day hasn't rolled
+    assert bot_state.daily_reset_date == date(2026, 7, 4)
+
+    class _FrozenDT2(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            base = datetime(2026, 7, 5, 5, 0, tzinfo=timezone.utc)  # 1:00 AM ET Jul 5
+            return base.astimezone(tz) if tz else base.replace(tzinfo=None)
+
+    monkeypatch.setattr(bot_risk, "datetime", _FrozenDT2)
+    monkeypatch.setattr(bot_risk, "read_config", lambda: {"mode": "paper"})
+    monkeypatch.setattr(bot_risk, "write_config", lambda cfg: None)
+    bot_risk.midnight_reset()
+    assert bot_state.limit_triggered is False         # ET day rolled - reset fires

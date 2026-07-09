@@ -16,6 +16,7 @@ import sys
 import time
 from collections import deque
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import aiohttp
 
@@ -132,23 +133,27 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
 
 def midnight_reset() -> None:
     """
-    Reset daily-limit state at UTC midnight.
+    Reset daily-limit state when the ET calendar day rolls over.
     Restores the pre-limit mode if limits had previously triggered.
+
+    Must roll on the same ET day db_get_today_pnl buckets by. Resetting at UTC
+    midnight (8pm ET) would clear limit_triggered while the ET-day P&L is still
+    past the limit, re-triggering it: duplicate alert + live/paper mode flap.
     """
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(ZoneInfo("America/New_York")).date()
     if bot_state.daily_reset_date is None:
         bot_state.daily_reset_date = today
         return
 
     if today > bot_state.daily_reset_date:
         bot_state.daily_reset_date = today
-        log.info("Midnight UTC: resetting daily limits.")
+        log.info("ET midnight: resetting daily limits.")
         if bot_state.limit_triggered and bot_state.pre_limit_mode:
             cfg = read_config()
             cfg["mode"] = bot_state.pre_limit_mode
             write_config(cfg)
-            log.info(f"Restored mode to '{bot_state.pre_limit_mode}' after midnight reset.")
+            log.info(f"Restored mode to '{bot_state.pre_limit_mode}' after ET midnight reset.")
         bot_state.limit_triggered = False
         bot_state.limit_reason = ""
         bot_state.pre_limit_mode = None

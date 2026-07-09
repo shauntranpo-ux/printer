@@ -266,9 +266,9 @@ def test_daily_summary_fires_once_per_day():
             asyncio.run(bot_loops._maybe_send_daily_summary())
 
     bot_loops._last_summary_sent_for = ""
-    run_at(datetime(2026, 5, 8, 0, 5, tzinfo=_et))   # fires for May 7
+    run_at(datetime(2026, 5, 8, 0, 25, tzinfo=_et))  # fires for May 7
     run_at(datetime(2026, 5, 8, 12, 0, tzinfo=_et))  # same day - no-op
-    run_at(datetime(2026, 5, 9, 0, 5, tzinfo=_et))   # new day - fires for May 8
+    run_at(datetime(2026, 5, 9, 0, 25, tzinfo=_et))  # new day - fires for May 8
     bot_loops._last_summary_sent_for = ""
     assert len(sent) == 2  # once for each completed ET day
 

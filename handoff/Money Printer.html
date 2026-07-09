@@ -1020,6 +1020,9 @@ body.spot-on .card:hover::after,body.spot-on .kpi:hover::after{opacity:1;}
 
 /* ── responsive ── */
 @media (max-width:1200px){
+  .grid-2{grid-template-columns:1fr;}
+  /* controls must never sit beyond the (now unscrollable) right edge */
+  .topbar-inner{flex-wrap:wrap;row-gap:6px;}
   #hero-command{flex-direction:column;gap:18px;}
   .hero-satellites{flex-direction:row;}
   .hero-satellites .kpi-strip{flex:1;}
@@ -1055,7 +1058,8 @@ body::before{
 
 /* ── hero: full-bleed stage, not a panel ── */
 #hero-command{
-  width:100vw;margin-left:calc(50% - 50vw);margin-bottom:44px;
+  width:calc(100vw - var(--sbw, 0px));
+  margin-left:calc(50% - (100vw - var(--sbw, 0px)) / 2);margin-bottom:44px;
   border:none;border-radius:0;clip-path:none;
   padding:36px max(18px, calc(50vw - 782px)) 32px;
   background:linear-gradient(180deg, oklch(0.165 0.024 265 / 0), oklch(0.19 0.028 268 / .88) 26%, oklch(0.15 0.022 265 / .96));
@@ -1115,19 +1119,19 @@ body::before{
 }
 
 /* ── frameless chart bands (overview only - tables elsewhere stay boxed) ── */
-#panel-overview .grid-2{position:relative;padding:16px 0 26px;margin-bottom:6px;}
-#panel-overview .grid-2 .card{
+#panel-overview .grid-2.chart-band{position:relative;padding:16px 0 26px;margin-bottom:6px;}
+#panel-overview .grid-2.chart-band .card{
   background:transparent;border:none;box-shadow:none;
   backdrop-filter:none;-webkit-backdrop-filter:none;padding:8px 6px;
 }
-#panel-overview .grid-2 .card:hover{border:none;box-shadow:none;}
-body.spot-on #panel-overview .grid-2 .card::after{display:none;}
-#panel-overview .grid-2::after{
+#panel-overview .grid-2.chart-band .card:hover{border:none;box-shadow:none;}
+body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
+#panel-overview .grid-2.chart-band::after{
   content:'';position:absolute;left:-1%;right:-1%;bottom:0;height:1px;
   background:linear-gradient(93deg, transparent, var(--line-2) 18% 82%, transparent);
   transform:rotate(-.35deg);
 }
-#panel-overview .grid-2::before{
+#panel-overview .grid-2.chart-band::before{
   content:'';position:absolute;left:10px;bottom:-2px;width:5px;height:5px;border-radius:50%;
   background:var(--accent-2);box-shadow:0 0 10px var(--accent-2);
 }
@@ -1194,7 +1198,7 @@ body.spot-on #panel-overview .grid-2 .card::after{display:none;}
     <div id="hero-landscape" aria-hidden="true"></div>
     <div class="hero-core">
       <div class="hero-eyebrow"><span class="sec-num">00</span> NET P&amp;L * ALL-TIME * S1+S2 <span class="badge mode-badge">PAPER</span></div>
-      <div id="hero-pnl" class="odo up skel" aria-live="polite">&nbsp;</div>
+      <div id="hero-pnl" class="odo up skel" role="img" aria-label="net P&L loading">&nbsp;</div>
       <div class="hero-meta">
         <span id="hero-today-chip" class="hero-chip">TODAY -</span>
         <span id="hero-streak" class="hero-chip streak">STREAK -</span>
@@ -1252,7 +1256,7 @@ body.spot-on #panel-overview .grid-2 .card::after{display:none;}
   <div class="market-strip" id="market-strip"></div>
 
   <!-- EQUITY + ALLOCATION - Strategy 2 -->
-  <div class="grid-2" style="margin-bottom:8px;">
+  <div class="grid-2 chart-band" style="margin-bottom:8px;">
     <div class="card">
       <div class="card-head">
         <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * fair value</span></div>
@@ -1278,7 +1282,7 @@ body.spot-on #panel-overview .grid-2 .card::after{display:none;}
   </div>
 
   <!-- EQUITY + ALLOCATION - Strategy 1 -->
-  <div class="grid-2">
+  <div class="grid-2 chart-band">
     <div class="card">
       <div class="card-head">
         <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * BTC-lead</span></div>
@@ -3344,6 +3348,7 @@ window.fetch = function(input, init){
 
 /* ── hero odometer ── */
 function renderOdometer(el, txt){
+  el.setAttribute('aria-label', 'net P&L ' + txt);
   const shape = txt.replace(/\d/g, '#');
   if (el._shape !== shape) {
     el._shape = shape;
@@ -3359,7 +3364,7 @@ function renderOdometer(el, txt){
   const digits = txt.match(/\d/g) || [];
   reels.forEach((r, i) => {
     const d = String(digits[i] ?? 0);
-    if (r.style.getPropertyValue('--d') !== d) {
+    if (MOTION_OK && r.style.getPropertyValue('--d') !== d) {
       r.classList.add('rolling');
       setTimeout(() => r.classList.remove('rolling'), 760);
     }
@@ -3477,7 +3482,11 @@ function renderHeroLandscape(){
   }
 }
 setInterval(renderHeroLandscape, 3000);
-window.addEventListener('resize', () => { _hlKey = ''; renderHeroLandscape(); });
+let _hlResizeT = null;
+window.addEventListener('resize', () => {
+  clearTimeout(_hlResizeT);
+  _hlResizeT = setTimeout(() => { _hlKey = ''; renderHeroLandscape(); }, 200);
+});
 
 /* ── ticker tape ── */
 function _tkSettles(){
@@ -3526,6 +3535,13 @@ function renderTape(){
 setInterval(renderTape, 3000);
 
 /* ── sliding tab glider ── */
+function _setSbw(){
+  document.documentElement.style.setProperty(
+    '--sbw', Math.max(0, innerWidth - document.documentElement.clientWidth) + 'px');
+}
+_setSbw();
+window.addEventListener('resize', _setSbw);
+
 function positionGlider(){
   const g = document.getElementById('tab-glider');
   const active = document.querySelector('.tabs .tab.active');

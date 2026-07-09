@@ -63,6 +63,10 @@ _FULL_CONFIG_DEFAULT = {
     "quiet_hours_enabled": True,
     "quiet_start_et": 22,
     "quiet_end_et": 9,
+    "display_timezone": "America/New_York",
+    "notify_on_settle": True,
+    "notify_on_entry": False,
+    "daily_summary_hour_et": 0,
     "enabled_assets": ["ETH", "SOL", "XRP"],
 }
 if not os.path.exists("config.json"):
@@ -508,7 +512,14 @@ def api_pnl():
     strategy = request.args.get("strategy", "")
     strategy_variant = {"1": "strategy1", "2": "strategy2"}.get(strategy)
     try:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        # "Today" is the ET trading day - the same window the bot's daily P&L,
+        # limits and Telegram summary use. Bucketing by UTC date put every
+        # post-8pm-ET trade in tomorrow's tile.
+        _et_now = datetime.now(ZoneInfo("America/New_York"))
+        today = _et_now.strftime("%Y-%m-%d")
+        _day_start = datetime(_et_now.year, _et_now.month, _et_now.day,
+                              tzinfo=ZoneInfo("America/New_York")
+                              ).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
         conn = get_db()
         rows = conn.execute(
             "SELECT * FROM trades ORDER BY ts DESC LIMIT 2000"
@@ -529,7 +540,7 @@ def api_pnl():
             win_rate = round(wins / count * 100, 1) if count else 0.0
             return {"pnl": total, "trades": count, "wins": wins, "win_rate": win_rate}
 
-        today_trades = [t for t in all_trades if (t.get("ts") or "").startswith(today)]
+        today_trades = [t for t in all_trades if (t.get("ts") or "") >= _day_start]
 
         # Per-asset today
         cfg = read_config()

@@ -440,7 +440,10 @@ async def _maybe_send_daily_summary() -> None:
     try:
         config = read_config()
         now_et = datetime.now(_ET_TZ)
-        if now_et.hour < int(config.get("daily_summary_hour_et", 0)):
+        _hour = int(config.get("daily_summary_hour_et", 0))
+        # 20-minute grace past the send hour so 15-min windows that straddled ET
+        # midnight have settled and land in their own day's numbers.
+        if (now_et.hour, now_et.minute) < (_hour, 20):
             return
         day = (now_et - timedelta(days=1)).date()
         key = day.isoformat()
@@ -937,8 +940,8 @@ async def handle_ready_phase(
         try:
             _ends = datetime.now(timezone.utc) + timedelta(seconds=float(secs_left or 0))
             await send_telegram(bot_stats.format_entry_message(
-                asset, "s2", side, fill_price, contracts, dollars_used,
-                fmt_ts(_ends, config=config), mode))
+                asset, "s2", side, fill_price, contracts,
+                contracts * fill_price / 100.0, fmt_ts(_ends, config=config), mode))
         except Exception as _notify_exc:
             log.warning("Entry notification failed (non-fatal): %s", _notify_exc)
 
@@ -1103,9 +1106,11 @@ async def handle_locked_phase(
         # Paper maker execution: re-price the settled trade as the resting maker order
         # the counterfactual tracked. Filled -> maker entry price + maker fee; not
         # filled -> the trade never happened (voided at $0, excluded from streaks).
+        _entry_c_eff = pos["entry_price_cents"]
         if _maker_exec and _maker_cf is not None:
             if _maker_cf.get("filled"):
                 _mp = float(_maker_cf["maker_price_cents"])
+                _entry_c_eff = _mp
                 _mp_frac = _mp / 100.0
                 fee = math.ceil(0.0175 * pos["contracts"] * _mp_frac * (1.0 - _mp_frac) * 100) / 100
                 pnl = (exit_price - _mp) * pos["contracts"] / 100 - fee
@@ -1150,11 +1155,12 @@ async def handle_locked_phase(
 
         if outcome in ("win", "loss") and config.get("notify_on_settle", True):
             try:
-                _today_pnl = await db_get_today_pnl(config.get("mode", "paper"))
+                _pos_mode = pos.get("mode", config.get("mode", "paper"))
+                _today_pnl = await db_get_today_pnl(_pos_mode)
                 await send_telegram(bot_stats.format_settle_message(
-                    outcome, pnl, asset, "s2", pos["side"], pos["entry_price_cents"],
+                    outcome, pnl, asset, "s2", pos["side"], _entry_c_eff,
                     exit_price, pos["contracts"], fmt_ts(config=config), _today_pnl,
-                    config.get("mode", "paper")))
+                    _pos_mode))
             except Exception as _notify_exc:
                 log.warning("Settle notification failed (non-fatal): %s", _notify_exc)
 
