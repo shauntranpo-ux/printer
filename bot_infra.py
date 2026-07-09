@@ -973,11 +973,16 @@ def display_tz(config: dict | None = None) -> ZoneInfo:
 
 
 def fmt_ts(dt: datetime | None = None, config: dict | None = None) -> str:
-    """'Jul 5, 2:14 PM EDT' in the display timezone. Naive input is treated as UTC."""
+    """'Jul 5, 2:14 PM EDT' in the display timezone. Naive input is treated as UTC.
+
+    Built without %-d/%-I - those are glibc extensions that raise on Windows.
+    """
     d = dt or datetime.now(timezone.utc)
     if d.tzinfo is None:
         d = d.replace(tzinfo=timezone.utc)
-    return d.astimezone(display_tz(config)).strftime("%b %-d, %-I:%M %p %Z")
+    d = d.astimezone(display_tz(config))
+    hour12 = d.strftime("%I").lstrip("0") or "12"
+    return f"{d.strftime('%b')} {d.day}, {hour12}:{d.strftime('%M')} {d.strftime('%p')} {d.strftime('%Z')}"
 
 
 def et_day_bounds_utc(day) -> tuple[str, str]:

@@ -50,7 +50,9 @@ def _now_str() -> str:
     try:
         from zoneinfo import ZoneInfo
         import datetime as _dt
-        return _dt.datetime.now(ZoneInfo(tz_name)).strftime("%b %-d, %-I:%M %p %Z")
+        d = _dt.datetime.now(ZoneInfo(tz_name))
+        hour12 = d.strftime("%I").lstrip("0") or "12"
+        return f"{d.strftime('%b')} {d.day}, {hour12}:{d.strftime('%M')} {d.strftime('%p')} {d.strftime('%Z')}"
     except Exception:
         return ""
 

@@ -126,7 +126,9 @@ def _display_now_str() -> str:
         tz = ZoneInfo(tz_name)
     except Exception:
         tz = ZoneInfo("America/New_York")
-    return datetime.now(tz).strftime("%b %-d, %-I:%M %p %Z")
+    d = datetime.now(tz)
+    hour12 = d.strftime("%I").lstrip("0") or "12"
+    return f"{d.strftime('%b')} {d.day}, {hour12}:{d.strftime('%M')} {d.strftime('%p')} {d.strftime('%Z')}"
 
 
 def _telegram_notify(text: str) -> None:

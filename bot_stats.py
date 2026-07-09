@@ -141,7 +141,10 @@ def _last_trade_str(ts: str | None, tz=None) -> str:
         else:
             rel = f"{int(total_seconds // 3600)} hr ago"
         if tz is not None:
-            return trade_dt.astimezone(tz).strftime("%b %-d, %-I:%M %p %Z") + f" ({rel})"
+            _d = trade_dt.astimezone(tz)
+            _h = _d.strftime("%I").lstrip("0") or "12"
+            return (f"{_d.strftime('%b')} {_d.day}, {_h}:{_d.strftime('%M')} "
+                    f"{_d.strftime('%p')} {_d.strftime('%Z')} ({rel})")
         return rel
     except Exception:
         return ts
