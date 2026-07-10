@@ -34,12 +34,14 @@ def _clean():
     bot_state._slot_state.clear()
     bot_state._prev_window_outcome.clear()
     bot_state._maker_track.clear()
+    bot_state._last_window_strike.clear()
     yield
     if saved is not None:
         asset_manager._prices["SOL"] = saved
     bot_state._slot_state.clear()
     bot_state._prev_window_outcome.clear()
     bot_state._maker_track.clear()
+    bot_state._last_window_strike.clear()
 
 
 def _ramp(asset, start, end, n=90, span=150.0):
@@ -129,6 +131,36 @@ def test_s6_carries_prev_window_direction_early_only():
     assert early["strategy_variant"] == "strategy6"
     assert late["action"] == "skip" and "s6_too_late" in late["reasoning"]
     assert no_prev["action"] == "skip" and "s6_no_prev_window" in no_prev["reasoning"]
+
+
+def test_prev_window_estimate_written_at_rollover_and_defers_to_official():
+    """S6 must get window memory even when S2 never traded: the rollover estimate fills
+    it from the remembered strike, and never clobbers an official entry for the ticker."""
+    import bot_loops
+    bot_state._last_window_strike["SOL"] = ("SOL-W1", 150.0)
+    # No official entry yet -> estimate written.
+    bot_loops._record_prev_window_estimate("SOL", "SOL-W1", 150.4)
+    got = bot_state._prev_window_outcome["SOL"]
+    assert got["result"] == "yes" and got["estimated"] is True and got["ticker"] == "SOL-W1"
+    # Official settlement for the SAME window already present -> estimate defers.
+    bot_state._prev_window_outcome["SOL"] = {
+        "result": "no", "strike": 150.0, "spot_at_close": 149.9, "ts": time.time(),
+        "ticker": "SOL-W1", "estimated": False}
+    bot_loops._record_prev_window_estimate("SOL", "SOL-W1", 150.4)
+    assert bot_state._prev_window_outcome["SOL"]["result"] == "no"   # untouched
+    # Strike remembered for a DIFFERENT ticker -> no bogus estimate.
+    bot_loops._record_prev_window_estimate("SOL", "SOL-W2", 150.4)
+    assert bot_state._prev_window_outcome["SOL"]["ticker"] == "SOL-W1"
+
+
+def test_remember_window_strike_pairs_from_market_object():
+    import bot_loops
+    bot_loops._remember_window_strike("SOL", {"ticker": "SOL-W9", "floor_strike": 150.25})
+    tick, strike = bot_state._last_window_strike["SOL"]
+    assert tick == "SOL-W9" and strike == 150.25
+    # Unparseable market leaves the memory unchanged.
+    bot_loops._remember_window_strike("SOL", {"ticker": "SOL-W10", "yes_sub_title": "TBD"})
+    assert bot_state._last_window_strike["SOL"][0] == "SOL-W9"
 
 
 # ------------------------------------------------------------------ executor: paper-only

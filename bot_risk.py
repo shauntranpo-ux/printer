@@ -616,10 +616,15 @@ async def _settle_s1_orphans(
     if not rows:
         return
 
-    btc_price = bot_state.btc_prices[-1][1] if bot_state.btc_prices else 0.0
+    import asset_manager
 
     for row in rows:
         trade_id, ticker, side, contracts, entry_price_cents, mode, asset, db_strike, signals_json = row
+        # THIS asset's spot for the price fallback - the old BTC-price fallback settled
+        # every non-BTC orphan 'yes' (60000 vs a 150 strike).
+        _dq = asset_manager._prices.get(asset)
+        btc_price = _dq[-1][1] if _dq else (
+            bot_state.btc_prices[-1][1] if asset == "BTC" and bot_state.btc_prices else 0.0)
         try:
             strike = float(db_strike or 0)
             if strike == 0.0:
@@ -1033,7 +1038,12 @@ async def _settle_slot_orphans(
         return
     if not rows:
         return
+    import asset_manager
     for trade_id, ticker, side, contracts, entry_cents, asset, strike, slot, brain_tag in rows:
+        # The live path (LOCKED settle / rollover task) still tracks this ticker - let it
+        # settle with full context (maker fill evidence, official result retries).
+        if any(ticker in st.get("pending", {}) for st in bot_state._slot_state.values()):
+            continue
         market_result = None
         market_status = None
         try:
@@ -1054,7 +1064,12 @@ async def _settle_slot_orphans(
         if market_result in ("yes", "no"):
             won = side == market_result
         else:
-            spot = bot_state.btc_prices[-1][1] if bot_state.btc_prices else 0.0
+            # THIS asset's spot, not BTC's - a wrong-asset fallback settles every
+            # non-BTC row 'yes' (spot 60000 vs strike 150).
+            _dq = asset_manager._prices.get(asset)
+            spot = _dq[-1][1] if _dq else 0.0
+            if spot <= 0 or not strike:
+                continue   # no usable reference - retry next sweep
             won = (side == "yes") == (spot > float(strike or 0.0))
         # Maker quotes cannot verify a fill after restart (held-book path lost): void.
         if brain_tag == "s5":

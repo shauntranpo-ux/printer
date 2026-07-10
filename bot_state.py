@@ -143,9 +143,15 @@ _consecutive_price_skips: int  = 0
 _slot_state: dict = {}
 
 # Previous 15-min window outcome per asset, written when handle_locked_phase learns the
-# official result (or the rollover estimate). Consumed by the S6 window-carry brain.
-# asset -> {"result": "yes"/"no", "strike": float, "spot_at_close": float, "ts": epoch}
+# official result AND estimated at every rollover (so S6 gets data even for windows S2
+# never traded). Consumed by the S6 window-carry brain.
+# asset -> {"result", "strike", "spot_at_close", "ts", "ticker", "estimated"}
 _prev_window_outcome: dict = {}
+
+# Latest (ticker, strike) seen per asset - the rollover estimate needs the strike of the
+# window that just CLOSED, which is gone from the market feed by the time we detect the
+# roll. Updated every loop iteration from the live market object.
+_last_window_strike: dict = {}
 
 _S1_VERSION = "momentum-continuation-2026-07-10"
 _S2_VERSION = "favorite-bias-2026-07-10"

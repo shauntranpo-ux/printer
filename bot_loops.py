@@ -64,6 +64,43 @@ _maker_track_last_fetch: dict = {}
 _MAKER_TRACK_MIN_INTERVAL = 25.0
 
 
+def _record_prev_window_estimate(asset: str, prev_ticker: str, spot: float) -> None:
+    """
+    S6 memory for windows S2 never traded: at rollover, estimate the closed window's
+    direction from the current spot vs the remembered strike (_last_window_strike).
+    Defers to the official settlement entry when handle_locked_phase already recorded
+    this ticker. Never raises.
+    """
+    try:
+        lws = bot_state._last_window_strike.get(asset)
+        if not lws or lws[0] != prev_ticker or not lws[1] or spot is None or spot <= 0:
+            return
+        existing = bot_state._prev_window_outcome.get(asset)
+        if existing and existing.get("ticker") == prev_ticker:
+            return   # official (or earlier) entry for this window wins
+        bot_state._prev_window_outcome[asset] = {
+            "result": "yes" if float(spot) > float(lws[1]) else "no",
+            "strike": float(lws[1]), "spot_at_close": float(spot),
+            "ts": time.time(), "ticker": prev_ticker, "estimated": True,
+        }
+    except Exception:
+        pass
+
+
+def _remember_window_strike(asset: str, market: "dict | None") -> None:
+    """Keep _last_window_strike fresh: pair the strike with its OWN market object so a
+    LOCKED-phase rollover (where locals mix old ticker / new strike) cannot mispair."""
+    try:
+        if not market:
+            return
+        _t = market.get("ticker")
+        _s = parse_strike(market)
+        if _t and _s:
+            bot_state._last_window_strike[asset] = (_t, float(_s))
+    except Exception:
+        pass
+
+
 async def _log_decision(brain: dict, ticker: str, asset: str, secs_left: float,
                         yes_ask, no_ask, config: dict, strategy: str) -> None:
     """
@@ -1124,10 +1161,12 @@ async def handle_locked_phase(
         # decision_log rows (the periodic backfill covers skipped/untraded tickers).
         _settle_side = market_result if _settled_official else ("yes" if btc_price > pos["strike"] else "no")
         # Previous-window memory for the S6 window-carry brain: which way this window
-        # resolved, how decisively, and when. Overwritten every settlement.
+        # resolved, how decisively, and when. Overwritten every settlement; the rollover
+        # estimate below defers to this official entry for the same ticker.
         bot_state._prev_window_outcome[asset] = {
             "result": _settle_side, "strike": float(pos.get("strike") or 0.0),
             "spot_at_close": float(btc_price or 0.0), "ts": time.time(),
+            "ticker": ticker, "estimated": not _settled_official,
         }
         _maker_exec = (config.get("maker_execution_enabled", False)
                        and pos.get("mode", config.get("mode", "paper")) == "paper")
@@ -1397,10 +1436,15 @@ async def _process_asset(
             if prev_ticker in bot_state._s1_pending_trades:
                 asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, price, config, asset))
             asyncio.create_task(_settle_slot_rollover(session, prev_ticker, price, config))
+            _record_prev_window_estimate(asset, prev_ticker, price)
             st["phase"] = "WATCH"
             st["position"] = None
             st["order_attempted"].discard(prev_ticker)
             st["prev_ticker"] = ticker
+
+    # Remember this window's (ticker, strike) for the S6 rollover estimate. Paired from
+    # the market object itself so LOCKED-rollover local mixing cannot mispair them.
+    _remember_window_strike(asset, market)
 
     # WATCH
     if st["phase"] == "WATCH":
@@ -1864,6 +1908,7 @@ async def main_loop() -> None:
                         if prev_ticker in bot_state._s1_pending_trades:
                             asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, btc_price, config, "BTC"))
                         asyncio.create_task(_settle_slot_rollover(session, prev_ticker, btc_price, config))
+                        _record_prev_window_estimate("BTC", prev_ticker, btc_price)
                         bot_state.current_phase = "WATCH"
                         bot_state.current_position = None
                         bot_state._s2_attempted_tickers.discard(prev_ticker)
@@ -1893,6 +1938,9 @@ async def main_loop() -> None:
                         log.warning(f"{ticker}: cannot parse strike. Skipping cycle.")
                         await asyncio.sleep(10)
                         continue
+
+                # Remember this window's (ticker, strike) for the S6 rollover estimate.
+                _remember_window_strike("BTC", market)
 
                 # WATCH
                 if bot_state.current_phase == "WATCH":
