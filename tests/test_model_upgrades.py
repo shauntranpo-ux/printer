@@ -274,24 +274,24 @@ def test_auto_gate_blocks_brain_after_ev_pass():
     now = time.time()
     saved = asset_manager._prices.get("SOL")
     try:
-        # z ~ 0.9 at 8 min left under the static sigma; asks 73/29 keep the gap inside
-        # the TGTBT band so the evaluation reaches the auto-gate.
+        # Late window + favorite mid ~0.77: S2 passes every gate and reaches the auto-gate.
         asset_manager._prices["SOL"] = deque(
             [(now - (40 - i) * 2, 150.30 + 0.14 * (i / 39.0)) for i in range(40)], maxlen=2000)
         bot_state._auto_blocked_assets.add(("strategy2", "SOL"))
         with patch("bot_strategy.read_config",
-                   return_value={"mode": "paper", "quiet_hours_enabled": False}), \
+                   return_value={"mode": "paper", "quiet_hours_enabled": False,
+                                 "calibration_enabled": False}), \
              patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
-            r = bs.strategy_brain_s2(150.44, 150.0, 73.0, 29.0, 420.0, 480.0, "KXSOL-AG", asset="SOL")
+            r = bs.strategy_brain_s2(150.44, 150.0, 78.0, 24.0, 660.0, 240.0, "KXSOL-AG", asset="SOL")
         assert r["action"] == "skip"
         assert r["reasoning"] == "s2_auto_gate:SOL"
         assert "model_raw_p_yes" in r["signals"]   # still visible to the harness
         # kill switch restores trading
         with patch("bot_strategy.read_config",
                    return_value={"mode": "paper", "quiet_hours_enabled": False,
-                                 "auto_gate_enabled": False}), \
+                                 "calibration_enabled": False, "auto_gate_enabled": False}), \
              patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
-            r2 = bs.strategy_brain_s2(150.44, 150.0, 73.0, 29.0, 420.0, 480.0, "KXSOL-AG2", asset="SOL")
+            r2 = bs.strategy_brain_s2(150.44, 150.0, 78.0, 24.0, 660.0, 240.0, "KXSOL-AG2", asset="SOL")
         assert r2["action"] == "trade"
     finally:
         if saved is not None:

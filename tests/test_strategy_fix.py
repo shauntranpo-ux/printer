@@ -36,10 +36,11 @@ def test_both_brains_use_per_asset_entry_config():
     """Both brains must source the entry band via get_asset_config (per-asset override)."""
     import inspect
     import bot_strategy as bs
-    for fn in (bs.strategy_brain_s1, bs.strategy_brain_s2):
+    for fn, key in ((bs.strategy_brain_s1, "s1_max_entry_cents"),
+                    (bs.strategy_brain_s2, "s2_fav_max_entry_cents")):
         src = inspect.getsource(fn)
         assert "get_asset_config" in src, f"{fn.__name__} must use get_asset_config for entry band"
-        assert "fv_max_entry_price_cents" in src, f"{fn.__name__} missing fv_max_entry_price_cents key"
+        assert key in src, f"{fn.__name__} missing per-asset entry key {key}"
 
 
 def test_s1_time_bounds_in_range():

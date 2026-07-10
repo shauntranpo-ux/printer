@@ -1208,7 +1208,7 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
     <div class="hero-satellites">
   <!-- KPI STRIP - Strategy 2 (D3 Hybrid) -->
   <div class="kpi-strip" id="kpi-strip-s2">
-    <div class="kpi-strip-label">S2 * Spot Fair Value</div>
+    <div class="kpi-strip-label">S2 * Favorite-Bias</div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-alltime-val" class="kpi-cell-v up mono">-</div>
@@ -1230,7 +1230,7 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
 
   <!-- KPI STRIP - Strategy 1 (Original) -->
   <div class="kpi-strip" id="kpi-strip-s1">
-    <div class="kpi-strip-label s1">S1 * BTC-Lead Catch-Up</div>
+    <div class="kpi-strip-label s1">S1 * Momentum</div>
     <div class="kpi-cell">
       <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
       <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
@@ -1423,6 +1423,13 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
       <div id="edge-counts" style="font-size:11px;color:var(--ink-3);margin-top:6px;">Collecting paper data...</div>
       <div class="meter-bar" style="margin-top:8px;"><div id="edge-progress" class="up" style="width:0%"></div></div>
     </div>
+    <div class="card" id="edge-h2h-card">
+      <div class="card-head"><div class="card-title"><span class="accent"></span>S1 Momentum vs S2 Favorite-Bias &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">WHICH PROFITS MORE * net $/contract</span></div></div>
+      <div id="edge-h2h" style="padding:4px 2px;">
+        <div class="muted" style="font-size:11px;">Collecting settled picks for both strategies...</div>
+      </div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Two opposite bets on the same tape: S1 buys continuation of fresh moves; S2 harvests proven 70-88c favorites. The winner is whichever earns more net $/contract after fees on its settled picks. Net $/ct is scale-free so the two price bands compare fairly. Dollar totals are per 1 contract.</div>
+    </div>
     <div class="card">
       <div class="card-head"><div class="card-title"><span class="accent"></span>Calibration &amp; net edge * per strategy</div></div>
       <div style="overflow-x:auto;"><table style="width:100%;"><thead><tr>
@@ -1475,8 +1482,8 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
       <div style="display:flex;flex-direction:column;gap:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S1 - BTC-Lead Catch-Up</div>
-            <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Alt lags a fresh BTC move; fair value on the catch-up spot</div>
+            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S1 - Momentum</div>
+            <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Buys continuation of a fresh, confirmed spot move</div>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
             <button id="s1-paper-btn" class="mode-seg-btn" onclick="setStrategyMode('s1','paper')">PAPER</button>
@@ -1486,8 +1493,8 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S2 - Spot Fair Value</div>
-            <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Bachelier fair value vs a market mid lagging the spot</div>
+            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S2 - Favorite-Bias</div>
+            <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Harvests underpriced 70-88c favorites late in the window</div>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
             <button id="s2-paper-btn" class="mode-seg-btn" onclick="setStrategyMode('s2','paper')">PAPER</button>
@@ -2118,7 +2125,7 @@ function brainStatsHTML(stats) {
       '</div>' +
     '</div>';
   }
-  return '<div style="padding:0 2px;">' + row('s1', 'S1 * BTC-Lead Catch-Up') + row('s2', 'S2 * fair value') + '</div>';
+  return '<div style="padding:0 2px;">' + row('s1', 'S1 * Momentum') + row('s2', 'S2 * Favorite-Bias') + '</div>';
 }
 // ════════════════════════════════════════════════════
 //  PER-MARKET PANEL
@@ -2466,7 +2473,7 @@ function renderEdge(d){
   for(const k of keys){
     const g = k==='__overall__' ? dec.overall : bs[k];
     if(!g) continue;
-    const lbl = k==='__overall__' ? '<b>ALL</b>' : (k==='strategy1'?'S1':k==='strategy2'?'S2':k);
+    const lbl = k==='__overall__' ? '<b>ALL</b>' : (k==='strategy1'?'S1 Mom':k==='strategy2'?'S2 Fav':k);
     const netCls = g.net_pnl_per_contract>0?'up':g.net_pnl_per_contract<0?'down':'muted';
     const lbCls  = g.wilson_lb_pnl>0?'up':'down';
     rows.push(`<tr><td>${lbl}</td><td>${g.n}</td><td>${_edgeCell(g.win_rate,1,true)}</td>
@@ -2477,6 +2484,34 @@ function renderEdge(d){
   }
   document.getElementById('edge-decisions').innerHTML = rows.join('') ||
     '<tr><td colspan="8" class="muted">No settled picks yet.</td></tr>';
+  // head-to-head: S1 momentum vs S2 favorite-bias (which profits more)
+  const h2hEl = document.getElementById('edge-h2h');
+  if(h2hEl){
+    const h = dec.head_to_head;
+    if(!h){
+      h2hEl.innerHTML = '<div class="muted" style="font-size:11px;">Collecting settled picks for both strategies...</div>';
+    } else {
+      const win = h.winner;
+      const col = s => (s>0?'var(--up)':s<0?'var(--down)':'var(--ink-3)');
+      const cell = (name, g, isWin) => `
+        <div style="flex:1;min-width:130px;padding:10px 12px;border-radius:10px;
+             background:${isWin?'color-mix(in oklab,var(--up) 12%,transparent)':'var(--surface-2,rgba(255,255,255,.03))'};
+             border:1px solid ${isWin?'color-mix(in oklab,var(--up) 45%,transparent)':'var(--line,rgba(255,255,255,.08))'};">
+          <div style="font-size:11px;font-weight:700;letter-spacing:.03em;color:var(--ink-2);">${name}${isWin?' &nbsp;<span style="color:var(--up);">*WINNER</span>':''}</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;margin-top:4px;color:${col(g.net)};">${g.net>=0?'+':''}${(g.net!=null?g.net.toFixed(4):'-')}<span style="font-size:11px;color:var(--ink-3);font-weight:500;"> $/ct</span></div>
+          <div style="font-size:10px;color:var(--ink-3);margin-top:3px;">n=${g.n} * win ${g.win_rate!=null?(g.win_rate*100).toFixed(0):'-'}% * total ${g.total!=null?(g.total>=0?'+':'')+g.total.toFixed(2):'-'}</div>
+        </div>`;
+      const dTxt = h.delta_net_per_contract!=null ? (Math.abs(h.delta_net_per_contract)).toFixed(4) : '-';
+      const lead = win==='tie' ? 'Dead heat so far.'
+        : `${win==='strategy1'?'S1 Momentum':'S2 Favorite-Bias'} leads by ${dTxt} $/ct.`;
+      h2hEl.innerHTML = `
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:stretch;">
+          ${cell('S1 · Momentum', h.s1, win==='strategy1')}
+          ${cell('S2 · Favorite-Bias', h.s2, win==='strategy2')}
+        </div>
+        <div style="font-size:11px;color:var(--ink-2);margin-top:8px;font-weight:600;">${lead}</div>`;
+    }
+  }
   // per-time breakdowns - which ET sessions / days actually pay ("better market times")
   const _timeRows = (obj, order) => {
     const out=[]; const ks = order.filter(k=>obj[k]).concat(Object.keys(obj).filter(k=>!order.includes(k)));

@@ -198,9 +198,41 @@ def _init_config() -> None:
         "kelly_cap": 0.05,
         "min_stake_dollars": 5.0,
         # Shadow favorite-bias candidate: logs would-buy-the-favorite decisions to
-        # decision_log (zero capital) so the bias premium can be proven before any
-        # promotion to a live strategy.
+        # decision_log (zero capital). Now that S2 trades this thesis live, the shadow
+        # runs at a slightly wider band and stays purely for the untraded-extension read.
         "shadow_fav_enabled": True,
+        # Strategy duel (paper): both brains evaluate and trade every market; opposing
+        # positions on the same ticker are allowed so per-strategy P&L is a clean A/B.
+        # False restores the old one-way "S1 blocks S2" dedup.
+        "strategy_duel_mode": True,
+        # S1 MOMENTUM gates. A move counts only when it is real (>= min_sigma window
+        # sigmas) and still underway; the continuation fair value projects the spot
+        # forward by drift_lambda * move. Entry band keeps room to run.
+        "s1_momentum_lookback_secs": 75,
+        "s1_momentum_min_sigma": 1.0,
+        "s1_momentum_drift_lambda": 0.5,
+        "s1_confirm_ticks": 2,
+        "s1_time_min": 3.0,
+        "s1_time_max": 10.0,
+        "s1_min_entry_cents": 30,
+        "s1_max_entry_cents": 75,
+        "s1_min_edge": 0.03,
+        # BTC-lead is a logged confirming input; flip on to hard-require agreement.
+        "s1_require_btc_confirm": False,
+        "s1_btc_enabled": False,
+        "s1_eth_enabled": False,
+        # S2 FAVORITE-BIAS gates. Fire late on a proven favorite (|z| >= min_z) whose
+        # de-vigged mid is in the premium band; buy it. No model-edge requirement - the
+        # premium is realized win-rate > price; max_model_shortfall only vetoes traps.
+        "s2_fav_min_z": 0.8,
+        "s2_fav_mid_lo": 0.70,
+        "s2_fav_mid_hi": 0.88,
+        "s2_fav_confirm_ticks": 2,
+        "s2_fav_time_min": 2.5,
+        "s2_fav_time_max": 6.0,
+        "s2_fav_min_entry_cents": 65,
+        "s2_fav_max_entry_cents": 90,
+        "s2_fav_max_model_shortfall": 0.08,
     }
 
     if os.path.exists(bot_state._CONFIG_FILE):

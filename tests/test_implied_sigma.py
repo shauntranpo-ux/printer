@@ -129,9 +129,11 @@ def test_brains_emit_descaled_z(monkeypatch):
         asset_manager._prices["SOL"] = dq
         bot_state._sigma_scale["SOL"] = 0.8
         with patch("bot_strategy.read_config",
-                   return_value={"mode": "paper", "quiet_hours_enabled": False}), \
+                   return_value={"mode": "paper", "quiet_hours_enabled": False,
+                                 "calibration_enabled": False, "auto_gate_enabled": False}), \
              patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
-            r = bs.strategy_brain_s2(150.44, 150.0, 73.0, 29.0, 420.0, 480.0,
+            # Late window + favorite mid ~0.77 so S2 reaches the model stage and emits z_raw.
+            r = bs.strategy_brain_s2(150.44, 150.0, 78.0, 24.0, 660.0, 240.0,
                                      "KXSOL-ZRAW", asset="SOL")
         sig = r["signals"]
         assert sig["z_raw"] == pytest.approx(sig["z"] * 0.8)

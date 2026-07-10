@@ -68,6 +68,9 @@ _FULL_CONFIG_DEFAULT = {
     "notify_on_entry": False,
     "daily_summary_hour_et": 0,
     "enabled_assets": ["ETH", "SOL", "XRP"],
+    # Paper duel: both brains (S1 momentum / S2 favorite-bias) trade every market so their
+    # per-strategy P&L is a clean head-to-head. bot_infra._init_config fills the rest.
+    "strategy_duel_mode": True,
 }
 if not os.path.exists("config.json"):
     try:
@@ -1315,6 +1318,9 @@ def api_edge():
             "mean_model_p": _safe(mean_model, 3), "mean_market_p": _safe(mean_mkt, 3),
             "brier_model": _safe(brier_m), "brier_market": _safe(brier_k),
             "net_pnl_per_contract": _safe(mean_pnl), "wilson_lb_pnl": _safe(pnl_wlb),
+            # Summed net over all settled picks (units: $ per 1 contract) - the head-to-head
+            # "which profits more" figure. Per-contract so S1/S2 price bands are comparable.
+            "total_pnl": _safe(sum(pnls), 4) if pnls else None,
         }
 
     def _round_maker(st):
@@ -1357,6 +1363,24 @@ def api_edge():
             g = _decision_group(rs)
             if g:
                 result["decisions"]["by_strategy"][strat] = g
+        # Head-to-head: S1 momentum vs S2 favorite-bias. Ranks by net-$/contract (the
+        # scale-free profitability figure) and reports the total and the gap so the
+        # dashboard can name a winner. None until both strategies have settled picks.
+        _bs = result["decisions"]["by_strategy"]
+        _s1, _s2 = _bs.get("strategy1"), _bs.get("strategy2")
+        if (_s1 and _s2 and _s1["net_pnl_per_contract"] is not None
+                and _s2["net_pnl_per_contract"] is not None):
+            _d = _s1["net_pnl_per_contract"] - _s2["net_pnl_per_contract"]
+            result["decisions"]["head_to_head"] = {
+                "winner": "strategy1" if _d > 0 else ("strategy2" if _d < 0 else "tie"),
+                "delta_net_per_contract": _safe(_d),
+                "s1": {"n": _s1["n"], "net": _s1["net_pnl_per_contract"],
+                       "total": _s1.get("total_pnl"), "win_rate": _s1["win_rate"]},
+                "s2": {"n": _s2["n"], "net": _s2["net_pnl_per_contract"],
+                       "total": _s2.get("total_pnl"), "win_rate": _s2["win_rate"]},
+            }
+        else:
+            result["decisions"]["head_to_head"] = None
         overall = _decision_group(picks)
         result["decisions"]["overall"] = overall
         if overall:

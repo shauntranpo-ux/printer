@@ -214,6 +214,40 @@ def main():
                       f"{_fmt(st['net_pnl'],4):>7} {_fmt(st['wlb_pnl'],4):>7}  {note}")
             print()
 
+    # Head-to-head: S1 momentum vs S2 favorite-bias on their PICKS (which profits more).
+    if overall_picks:
+        _labels = {"strategy1": "S1 Momentum", "strategy2": "S2 Favorite-Bias"}
+
+        def _strat_net(strat):
+            subset = [r for r in overall_picks if r["strategy"] == strat and r["entry_price_cents"] is not None]
+            pnls = []
+            for r in subset:
+                entry = r["entry_price_cents"] / 100.0
+                won = _win(r["side"], r["outcome"])
+                pnls.append((1.0 - entry if won else -entry) - _kalshi_fee(entry))
+            if not pnls:
+                return None
+            wins = sum(_win(r["side"], r["outcome"]) for r in subset)
+            return {"n": len(pnls), "mean": sum(pnls) / len(pnls),
+                    "total": sum(pnls), "win_rate": wins / len(subset)}
+
+        s1s, s2s = _strat_net("strategy1"), _strat_net("strategy2")
+        if s1s or s2s:
+            print("=" * 96)
+            print("HEAD-TO-HEAD (PICKS) - which strategy profits more, net $/contract:")
+            for strat in ("strategy1", "strategy2"):
+                g = s1s if strat == "strategy1" else s2s
+                if g is None:
+                    print(f"  {_labels[strat]:<20} no settled picks yet")
+                else:
+                    print(f"  {_labels[strat]:<20} n={g['n']:>4}  win={g['win_rate']:.3f}  "
+                          f"net ${g['mean']:+.4f}/ct  total ${g['total']:+.2f}")
+            if s1s and s2s:
+                d = s1s["mean"] - s2s["mean"]
+                lead = _labels["strategy1"] if d > 0 else (_labels["strategy2"] if d < 0 else "tie")
+                print(f"  -> WINNER: {lead}" + (f" (by ${abs(d):.4f}/ct)" if lead != "tie" else ""))
+            print()
+
     # GATE-1 verdict on the gate's picks overall
     if overall_picks:
         n = len(overall_picks)

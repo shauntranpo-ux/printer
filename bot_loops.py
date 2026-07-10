@@ -680,10 +680,14 @@ async def handle_ready_phase(
     do_trade = brain["action"] == "trade"
     skip_reason_ai = brain["reasoning"]
 
-    # S1+S2 same-ticker dedup: if S1 just reserved this ticker, skip S2 to avoid double entry.
-    if do_trade and ticker in bot_state._s1_pending_trades:
-        skip_reason_ai = "s2_dedup:s1_active"
-        do_trade = False
+    # S1+S2 same-ticker dedup. In duel mode (default) both brains may hold opposing
+    # positions on the same market - it is paper, so there is no capital conflict, and
+    # suppressing S2 whenever S1 is active would poison the head-to-head comparison.
+    # Set strategy_duel_mode=false to restore the old one-way "S1 blocks S2" behavior.
+    if not config.get("strategy_duel_mode", True):
+        if do_trade and ticker in bot_state._s1_pending_trades:
+            skip_reason_ai = "s2_dedup:s1_active"
+            do_trade = False
 
     # allowed_sides gate - disable NO side when model is uncalibrated
     _side_aliases = {"up": "yes", "down": "no"}
@@ -731,12 +735,15 @@ async def handle_ready_phase(
     _s1_dir = _brain_dir(brain_s1)
     _s2_dir = _brain_dir(brain)
     # Gate funnels in the order the current brains check them (substring match below).
-    _S1_GATE_ORD = ["s1_ca_disabled", "s1_quiet_hours", "s1_session_gate", "s1_cooldown",
-                    "s1_cap", "s1_rate_limit", "s1_window_guard", "s1_time_gate", "s1_ca_",
-                    "s1_price_filter", "s1_ev_gate", "s1_auto_gate"]
+    _S1_GATE_ORD = ["s1_disabled", "s1_quiet_hours", "s1_session_gate", "s1_cooldown",
+                    "s1_cap", "s1_rate_limit", "s1_window_guard", "s1_time_gate",
+                    "s1_bad_price", "s1_no_data", "s1_thin_window", "s1_mom_flat",
+                    "s1_no_confirm", "s1_btc_disagree", "s1_price_filter", "s1_ev_gate",
+                    "s1_auto_gate"]
     _S2_GATE_ORD = ["s2_fv_disabled", "s2_quiet_hours", "s2_session_gate", "s2_time_gate",
-                    "s2_fv_bad_price", "s2_fv_degenerate", "s2_fv_lowz", "s2_fv_flicker",
-                    "s2_fv_wide_spread", "s2_price_filter", "s2_ev_gate", "s2_auto_gate"]
+                    "s2_fv_bad_price", "s2_degenerate", "s2_lowz", "s2_flicker",
+                    "s2_wide_spread", "s2_not_favorite", "s2_too_certain", "s2_price_filter",
+                    "s2_model_reject", "s2_auto_gate"]
     def _cnt_gates(gates, reason, traded):
         if traded: return len(gates)
         for i, g in enumerate(gates):

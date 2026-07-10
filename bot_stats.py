@@ -6,8 +6,8 @@ import sqlite3
 log = logging.getLogger(__name__)
 
 _STRATEGY_LABELS = {
-    "strategy1": "S1 · BTC-Lead Catch-Up",
-    "strategy2": "S2 · Spot Fair Value",
+    "strategy1": "S1 · Momentum",
+    "strategy2": "S2 · Favorite-Bias",
 }
 _STRATEGY_SHORT = {"strategy1": "S1", "strategy2": "S2"}
 

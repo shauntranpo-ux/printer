@@ -60,8 +60,9 @@ def _run_s2(ticker: str, vel_ratio: float, btc_price: float = 2800.0, strike: fl
         )
 
 
-def _run_s2_fv(asset, spot, strike, secs_left=480.0):
-    """Run the new spot_fv_disloc S2 with a seeded, sign-consistent spot deque."""
+def _run_s2_fv(asset, spot, strike, secs_left=240.0):
+    """Run the favorite-bias S2 with a seeded, sign-consistent spot deque (late window,
+    favorite mid ~0.77 so the evaluation reaches the model stage and emits signals)."""
     from collections import deque
     now = time.time()
     above = spot >= strike
@@ -75,10 +76,11 @@ def _run_s2_fv(asset, spot, strike, secs_left=480.0):
     try:
         asset_manager._prices[asset] = dq
         with patch("bot_strategy.read_config",
-                   return_value={"mode": "paper", "quiet_hours_enabled": False}), \
+                   return_value={"mode": "paper", "quiet_hours_enabled": False,
+                                 "calibration_enabled": False, "auto_gate_enabled": False}), \
              patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
             return strategy_brain_s2(
-                btc_price=spot, strike=strike, yes_ask=40.0, no_ask=58.0,
+                btc_price=spot, strike=strike, yes_ask=78.0, no_ask=24.0,
                 elapsed_seconds=900.0 - secs_left, secs_left=secs_left,
                 ticker=f"KX{asset}-FV", asset=asset,
             )
@@ -89,9 +91,8 @@ def _run_s2_fv(asset, spot, strike, secs_left=480.0):
 
 def test_s2_raw_prob_increases_with_distance_from_strike():
     """
-    The new S2 raw model prob (Bachelier fair value) must increase as the spot moves
-    farther above the strike - direction/conviction come from the spot dislocation,
-    NOT contract velocity.
+    The S2 raw model prob (Bachelier fair value) must increase as the spot moves farther
+    above the strike - conviction comes from the spot's distance past the strike.
     """
     near = _run_s2_fv("SOL", spot=150.4, strike=150.0)
     far = _run_s2_fv("SOL", spot=151.2, strike=150.0)

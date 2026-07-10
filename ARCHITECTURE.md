@@ -18,7 +18,7 @@ Deployed on Railway. Trades real money via Kalshi's REST API. All production log
 | `bot_loops.py` | Main async market loop. Phase handler: watching -> ready -> trading -> cooldown |
 | `bot_market.py` | Kalshi REST API client. Order placement, OBI calculation, fill polling |
 | `bot_risk.py` | Preflight checks, trade execution, PnL tracking, S1 orphan settlement |
-| `bot_strategy.py` | S1 (CA-LEAD-SLOW: BTC-lead cross-asset dislocation) and S2 (spot_fv_disloc: spot-anchored Bachelier fair-value dislocation) strategy brains |
+| `bot_strategy.py` | S1 (Momentum: buy continuation of a fresh spot move) and S2 (Favorite-Bias: harvest underpriced 70-88c favorites) strategy brains - two opposite bets |
 | `bot_infra.py` | `config.json` read/write, sqlite3 `init_db()`, Telegram async helper |
 | `bot_state.py` | Shared in-memory globals: price deques, API keys, trade state |
 | `sessions.py` | Pure ET time-of-day session + weekday/weekend taxonomy; used by the session gate, `/api/edge`, and `edge_report` |
@@ -34,10 +34,13 @@ Deployed on Railway. Trades real money via Kalshi's REST API. All production log
 
 ### Strategy brains (`bot_strategy.py`)
 
-Both brains compute a **Bachelier fair value** for P(YES) (`_bachelier_p_above`) and trade only
-when the de-vigged market mid lags it, gated by `_anchored_ev` (shrink the model toward the mid,
-cap the deviation at `max_model_edge`, require `ev >= min_ev_anchored` **and**
-`market_edge >= min_market_edge`). Direction comes from the model, not from momentum.
+S1 and S2 are deliberately **opposite bets** so their per-strategy net-$ head-to-head is
+meaningful (the "which profits more" comparison the dashboard Edge tab and the Telegram daily
+"Day winner" surface). Both still price a **Bachelier fair value** for P(YES) (`_bachelier_p_above`)
+off the shared vol engine, but they trade on opposite theses. In paper the **duel** runs both on
+every market (`strategy_duel_mode`, default true) - opposing positions on the same ticker are
+allowed since there is no capital conflict; setting it false restores the one-way "S1 blocks S2"
+dedup in `handle_ready_phase`.
 
 **Vol engine (`_sigma_eff`).** Primary path: a per-asset **market-implied sigma EWMA**
 (`_implied_sigma_from_quote` / `update_implied_sigma`, fed opportunistically from orderbook
@@ -50,39 +53,35 @@ table lives on as the frozen `_LEGACY_VOL_15M` for off-path legacy helpers). A p
 market's own vol means fair value can disagree with the market only through spot freshness,
 never through a vol opinion.
 
-**Shared v3 gates (both brains, all full-signal skips so the harness records them):** entry
-window 2.5-9.0 min; entry band 20-85c; **tail ban** (never buy a side whose de-vigged mid is
-under `s1/s2_min_side_price_cents`); **too-good-to-be-true** (`max_model_market_gap`, default
-0.15 - extreme model-vs-market disagreement is REJECTED, not clamped into a tradable edge);
-**staleness** (`_staleness_check`: the spot must have moved toward the traded side within
-`staleness_window_secs` while the tracked contract mid, `track_contract_mid` /
-`bot_state._contract_mid_history`, moved less than `staleness_max_mid_move_cents`; thin mid
-history passes fail-open with a `freshness: unknown` tag in signals).
-
-- **S1 - CA-LEAD (SOL / XRP / DOGE, catch-up only).** BTC leads the alts intraday. Over a ~60s
-  lookback it computes `residual = beta*btc_ret - alt_ret`, predicts the alt's catch-up spot
-  `alt_now*exp(residual)`, and prices the digital on that. A **sign gate** skips (`s1_ca_fade`)
-  whenever the residual opposes the BTC move - the overshoot-fade regime is shadow-measured, not
-  traded. Beta is the **lead** coefficient: live `fit_lead_beta` refits are accepted only within
-  [0.5x, 1.5x] of the static `data/betas.json` value and shrunk halfway toward it (`_asset_beta`).
-  BTC/ETH disabled by default (`s1_ca_btc_enabled` / `s1_ca_eth_enabled`). Keeps the existing S1
-  caps / rate-limit / cooldown / cross-asset window guard.
-- **S2 - spot_fv_disloc (BTC / SOL / XRP / DOGE).** Prices the digital on the current spot vs
-  strike and trades the lagging side. Extra gates: `|z| >= min_z`, spot-sign confirmation over
-  the last N prints, and a round-trip spread cap. ETH disabled by default (`s2_eth_enabled`).
-- **s_fav (shadow, zero capital).** `shadow_fav_candidate` logs a would-buy-the-favorite
-  decision_log row (strategy `s_fav`, `would_trade=0`) when a 70-88c favorite agrees with
-  `|z| >= 0.8` in the last 3-6 minutes - measuring the documented favorite-longshot premium
-  before any capital touches it (`shadow_fav_enabled`).
+- **S1 - MOMENTUM / CONTINUATION (SOL / XRP / DOGE by default).** `_momentum_signal` measures
+  the spot return over `s1_momentum_lookback_secs` (75s); a move counts only when it is real
+  (`|r| >= s1_momentum_min_sigma` window-sigmas) AND still underway (a shorter sub-window agrees
+  in sign - not reversing). Direction is the move's sign (up->YES, down->NO). It prices a
+  continuation fair value on the spot **projected forward** by `s1_momentum_drift_lambda * r`,
+  then trades the moving side against its own ask when `ev >= s1_min_edge` after fee - it does
+  NOT shrink to the market mid. Entry band 30-75c (room to run). BTC-lead (`_asset_beta`) is a
+  logged confirming input, hard-gated only when `s1_require_btc_confirm`. BTC/ETH off by default
+  (`s1_btc_enabled` / `s1_eth_enabled`). Keeps the S1 caps / rate-limit / cooldown / window guard.
+- **S2 - FAVORITE-BIAS HARVEST (BTC / SOL / XRP / DOGE).** Fires LATE (`s2_fav_time_min/max`,
+  2.5-6 min) when the spot sits decisively past the strike (`|z| >= s2_fav_min_z`) with the last
+  prints confirming it, and the favorite side's de-vigged mid is in the premium band
+  (`s2_fav_mid_lo`..`s2_fav_mid_hi`, 0.70-0.88). It BUYS that favorite. There is **no**
+  fair-value-disagreement gate - the edge is realized win-rate > price, not a model edge; a
+  `s2_fav_max_model_shortfall` guard only vetoes favorites the Bachelier model strongly rejects.
+  Round-trip spread cap and ETH-off (`s2_eth_enabled`) as before. This is the mirror risk
+  profile to S1: high hit-rate, low payout.
+- **s_fav (shadow, zero capital).** `shadow_fav_candidate` still logs a would-buy-the-favorite
+  decision_log row (strategy `s_fav`, `would_trade=0`); now that S2 trades this thesis live the
+  shadow measures a slightly wider untraded extension (`shadow_fav_enabled`).
 
 **Sizing** is quarter-Kelly scaled DOWN from the `trade_amount_dollars` clip (`_kelly_stake`;
 never above the clip, floored at `min_stake_dollars`).
 
-The legacy momentum/velocity helpers (`_s1_multitf_momentum`, `_s2_contract_direction`,
-`_s1_certainty_win_prob`, the `_S1_ASSET_CONFIG` / `_S2_ASSET_CONFIG` dicts and the win-rate
-tables) are retained for tests/offline scripts but are **no longer on the live decision path**.
-Both brains keep the prior return-dict shape (incl. `signals.model_raw_p_yes`) so the loop,
-website, and the `decision_log` harness are unchanged.
+The legacy momentum/velocity/CA-lead helpers (`_s1_multitf_momentum`, `_s2_contract_direction`,
+`_s1_certainty_win_prob`, `_s1_dislocation_check`, the `_S1_ASSET_CONFIG` / `_S2_ASSET_CONFIG`
+dicts and the win-rate tables) are retained for tests/offline scripts but are **not on the live
+decision path**. Both brains keep the prior return-dict shape (incl. `signals.model_raw_p_yes`)
+so the loop, website, and the `decision_log` harness are unchanged.
 
 ---
 
