@@ -5,11 +5,17 @@ import sqlite3
 
 log = logging.getLogger(__name__)
 
+# Kept in sync with bot_strategies.STRATEGY_LABELS (tested); duplicated here so this
+# module stays import-light for the standalone scripts.
 _STRATEGY_LABELS = {
     "strategy1": "S1 · Momentum",
     "strategy2": "S2 · Favorite-Bias",
+    "strategy3": "S3 · Structural Arb",
+    "strategy4": "S4 · Mean-Reversion",
+    "strategy5": "S5 · Maker Capture",
+    "strategy6": "S6 · Window-Carry",
 }
-_STRATEGY_SHORT = {"strategy1": "S1", "strategy2": "S2"}
+_STRATEGY_SHORT = {k: f"S{k[-1]}" for k in _STRATEGY_LABELS}
 
 _ASSETS = ("BTC", "ETH", "SOL", "XRP", "DOGE")
 

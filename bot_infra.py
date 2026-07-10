@@ -233,6 +233,38 @@ def _init_config() -> None:
         "s2_fav_min_entry_cents": 65,
         "s2_fav_max_entry_cents": 90,
         "s2_fav_max_model_shortfall": 0.08,
+        # Test-slot lab strategies (S3-S6): paper-only regardless of global mode, all
+        # tunable from the dashboard. See bot_strategies.STRATEGY_REGISTRY.
+        # S3 structural arb: buy BOTH sides when the combined asks leave a fee-proof profit.
+        "s3_arb_enabled": True,
+        "s3_arb_max_combined_cents": 93,
+        # S4 mean-reversion: fade a >=2-sigma run once the last third shows it stalling.
+        "s4_revert_enabled": True,
+        "s4_min_sigma": 2.0,
+        "s4_lookback_secs": 120,
+        "s4_revert_lambda": 0.5,
+        "s4_time_min": 3.0,
+        "s4_time_max": 10.0,
+        "s4_min_entry_cents": 25,
+        "s4_max_entry_cents": 70,
+        "s4_min_edge": 0.03,
+        # S5 maker spread-capture: passive quote 1c inside the favorite-side ask; settle
+        # via the held-book fill model (unfilled -> $0 no-trade).
+        "s5_maker_enabled": True,
+        "s5_mid_lo": 0.60,
+        "s5_mid_hi": 0.90,
+        "s5_improve_cents": 1,
+        "s5_time_min": 3.0,
+        "s5_time_max": 9.0,
+        # S6 window-carry: first 2 minutes of a window, ride the previous window's
+        # resolved direction at near-coin-flip prices.
+        "s6_carry_enabled": True,
+        "s6_window_secs": 120,
+        "s6_min_prev_move": 0.0008,
+        "s6_min_entry_cents": 40,
+        "s6_max_entry_cents": 60,
+        "s6_carry_premium": 0.05,
+        "s6_min_edge": 0.01,
     }
 
     if os.path.exists(bot_state._CONFIG_FILE):

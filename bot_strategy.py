@@ -1645,3 +1645,332 @@ def strategy_brain_s2(
         "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
         "strategy_variant": "strategy2", "strategy_version": bot_state._S2_VERSION,
     }
+
+
+# Test-slot strategies (S3-S6). Paper-only lab slots dispatched via the
+# bot_strategies.STRATEGY_REGISTRY: each is a thesis this bot has never traded, run in
+# parallel with S1/S2 so the per-strategy scoreboard can pick a winner from real settled
+# data. All share the S1/S2 decision-dict contract; execution goes through the generic
+# slot executor in bot_risk (hard-forced paper).
+
+
+def _slot_trade(variant, version, side, model_p_side, raw_p_yes, ev, reasoning, keys,
+                signals, mins_left, abs_pct, extra=None):
+    """Standard trade-decision dict for a test-slot brain (S1/S2 contract shape)."""
+    out = {
+        "action": "trade", "side": side,
+        "confidence": int(max(0.0, min(1.0, model_p_side)) * 100),
+        "reasoning": reasoning, "key_signals": keys, "signals": signals,
+        "win_prob": float(model_p_side), "mom_label": side, "mom_pct": 0.0,
+        "vel_signal": variant, "raw_p_yes": raw_p_yes,
+        "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
+        "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+        "strategy_variant": variant, "strategy_version": version,
+    }
+    if extra:
+        out.update(extra)
+    return out
+
+
+def strategy_brain_s3_arb(
+    btc_price, strike, yes_ask, no_ask,
+    elapsed_seconds, secs_left, ticker,
+    asset: str = "BTC",
+) -> dict:
+    """
+    S3: STRUCTURAL ARBITRAGE (paper lab slot).
+
+    When YES_ask + NO_ask < threshold, buying BOTH sides guarantees a profit: one side
+    always settles at $1.00, so net = 100 - yes - no - fees > 0 regardless of direction.
+    Zero directional risk - this measures how often Kalshi books dislocate that far and
+    what a scanner would earn. The executor writes two paper trade rows (yes + no).
+    """
+    config = read_config()
+    mins_left = secs_left / 60.0
+    abs_pct = abs(btc_price - strike) / strike if strike > 0 else 0.0
+    if not config.get("s3_arb_enabled", True):
+        return _make_skip("yes", "s3_disabled", abs_pct, mins_left, variant="strategy3")
+    # No quiet-hours/session gates: the bet is direction-free. Final 90s still blocked
+    # (fill reliability collapses into the settlement auction).
+    if secs_left < 90:
+        return _make_skip("yes", f"s3_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy3")
+    _fee_cents = float(config.get("kalshi_fee_per_contract_cents", 7))
+    _threshold = float(config.get("s3_arb_max_combined_cents", 93.0))
+    arb = check_dual_side_arb(yes_ask, no_ask, _fee_cents, _threshold)
+    if not arb["arb"]:
+        return _make_skip("yes", f"s3_no_arb:combined={arb['combined']:.0f}c", abs_pct,
+                          mins_left, variant="strategy3")
+    mid = _market_implied_p_yes(yes_ask, no_ask)
+    signals = {
+        "win_prob": 1.0, "ev": arb["net_edge_cents"] / 100.0, "market_edge": None,
+        "mkt_p": mid, "model_raw_p_yes": mid if mid is not None else 0.5,
+        "combined_cents": arb["combined"], "net_edge_cents": arb["net_edge_cents"],
+        "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
+    }
+    return _slot_trade(
+        "strategy3", bot_state._SLOT_VERSIONS["strategy3"], "yes",
+        1.0, mid if mid is not None else 0.5, arb["net_edge_cents"] / 100.0,
+        f"s3_arb combined={arb['combined']:.0f}c net={arb['net_edge_cents']:.1f}c mins={mins_left:.1f}",
+        [f"combined:{arb['combined']:.0f}c", f"net:{arb['net_edge_cents']:.1f}c"],
+        signals, mins_left, abs_pct,
+        extra={"arb_both_sides": True, "confidence": 99},
+    )
+
+
+def strategy_brain_s4_revert(
+    btc_price, strike, yes_ask, no_ask,
+    elapsed_seconds, secs_left, ticker,
+    asset: str = "BTC",
+) -> dict:
+    """
+    S4: MEAN-REVERSION (paper lab slot) - the exact opposite bet to S1 momentum.
+
+    When the spot ran >= s4_min_sigma window-sigmas over the lookback AND the most
+    recent sub-window shows the move stalling or turning, buy the OPPOSITE side,
+    betting the move snaps back before settlement. S1-vs-S4 on the same tape is the
+    definitive does-15-min-crypto-trend-or-revert experiment.
+    """
+    config = read_config()
+    mins_left = secs_left / 60.0
+    dq = asset_manager._prices.get(asset)
+    pts = [(ts, p) for ts, p in dq if p > 0] if dq else []
+    spot = pts[-1][1] if pts else btc_price
+    abs_pct = abs(spot - strike) / strike if strike > 0 else 0.0
+    if not config.get("s4_revert_enabled", True):
+        return _make_skip("yes", "s4_disabled", abs_pct, mins_left, variant="strategy4")
+    if _is_quiet_hours(config):
+        return _make_skip("yes", "s4_quiet_hours", abs_pct, mins_left, variant="strategy4")
+    _t_min = float(config.get("s4_time_min", 3.0)); _t_max = float(config.get("s4_time_max", 10.0))
+    if mins_left < _t_min or mins_left > _t_max:
+        return _make_skip("yes", f"s4_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy4")
+    if spot <= 0 or strike <= 0 or len(pts) < 5:
+        return _make_skip("yes", "s4_no_data", abs_pct, mins_left, variant="strategy4")
+
+    lb = float(config.get("s4_lookback_secs", 120.0))
+    now_ts = pts[-1][0]
+    anchor = _nearest_price(pts, now_ts - lb)
+    if anchor is None or anchor[1] <= 0:
+        return _make_skip("yes", "s4_no_anchor", abs_pct, mins_left, variant="strategy4")
+    age = now_ts - anchor[0]
+    if not (0.5 * lb <= age <= 1.5 * lb):
+        return _make_skip("yes", "s4_thin_window", abs_pct, mins_left, variant="strategy4")
+    r = math.log(spot / anchor[1])
+    sigma_eff = _sigma_eff(asset, config)
+    sigma_window = sigma_eff * math.sqrt(max(1e-6, lb / 900.0))
+    min_move = float(config.get("s4_min_sigma", 2.0)) * sigma_window
+    if abs(r) < min_move:
+        return _make_skip("yes", f"s4_not_extended:{r:+.4f}<{min_move:.4f}", abs_pct,
+                          mins_left, variant="strategy4")
+    # Stall filter: the last third of the window must NOT still be running with the move
+    # (that is S1's setup, not ours). Stalled = micro move opposite or < 20% of the move's
+    # pro-rata pace.
+    micro = _nearest_price(pts, now_ts - lb / 3.0)
+    if micro is None or micro[1] <= 0:
+        return _make_skip("yes", "s4_no_micro", abs_pct, mins_left, variant="strategy4")
+    micro_r = math.log(spot / micro[1])
+    still_running = (micro_r * r > 0) and (abs(micro_r) > 0.2 * abs(r) / 3.0)
+    if still_running:
+        return _make_skip("yes", f"s4_still_running:micro={micro_r:+.4f}", abs_pct,
+                          mins_left, variant="strategy4")
+
+    # Fade the move: side is OPPOSITE the run direction; fair value prices the spot
+    # snapping back by s4_revert_lambda of the move.
+    side = "no" if r > 0 else "yes"
+    lam = float(config.get("s4_revert_lambda", 0.5))
+    eff_secs = _effective_secs(secs_left, config)
+    predicted_spot = _basis_adjusted_spot(spot * math.exp(-lam * r), asset)
+    fair_p_yes = _bachelier_p_above(predicted_spot, strike, eff_secs, sigma_eff)
+    _raw_p_yes = float(fair_p_yes)
+    model_p_side = _raw_p_yes if side == "yes" else 1.0 - _raw_p_yes
+    entry_price = yes_ask if side == "yes" else no_ask
+    _entry_p = float(entry_price) / 100.0
+    _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
+    ev = model_p_side - _entry_p - _kalshi_fee_frac(_entry_p, _fee_rate)
+
+    _min_p = float(config.get("s4_min_entry_cents", 25.0))
+    _max_p = float(config.get("s4_max_entry_cents", 70.0))
+    if entry_price < _min_p or entry_price > _max_p:
+        return _make_skip(side, f"s4_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
+                          variant="strategy4", price_filter=True)
+    signals = {
+        "win_prob": model_p_side, "ev": ev, "market_edge": None,
+        "mkt_p": _market_implied_p_yes(yes_ask, no_ask),
+        "model_raw_p_yes": _raw_p_yes, "r": r, "micro_r": micro_r,
+        "min_move": min_move, "sigma_eff": sigma_eff, "spot": spot,
+        "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
+    }
+    _min_edge = float(config.get("s4_min_edge", 0.03))
+    if ev < _min_edge:
+        return {
+            "action": "skip", "side": side, "confidence": int(model_p_side * 100),
+            "reasoning": f"s4_ev_gate:ev={ev:.3f}<{_min_edge:.3f}",
+            "key_signals": [f"ev:{ev:.3f}", f"r:{r:+.4f}"], "signals": signals,
+            "win_prob": float(model_p_side), "mom_label": side, "mom_pct": float(r),
+            "vel_signal": "strategy4", "raw_p_yes": _raw_p_yes,
+            "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
+            "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+            "strategy_variant": "strategy4",
+        }
+    brain_log.info("S4 REVERT %s %s | side=%s r=%+.4f ev=%.3f mins=%.1f",
+                   asset, ticker, side, r, ev, mins_left)
+    return _slot_trade(
+        "strategy4", bot_state._SLOT_VERSIONS["strategy4"], side,
+        model_p_side, _raw_p_yes, ev,
+        f"s4_revert r={r:+.4f} fair={fair_p_yes:.3f} side={side} ev={ev:.3f} mins={mins_left:.1f}",
+        [f"r:{r:+.4f}", f"fair:{fair_p_yes:.3f}", f"side:{side}", f"ev:{ev:.3f}"],
+        signals, mins_left, abs_pct,
+    )
+
+
+def strategy_brain_s5_maker(
+    btc_price, strike, yes_ask, no_ask,
+    elapsed_seconds, secs_left, ticker,
+    asset: str = "BTC",
+) -> dict:
+    """
+    S5: MAKER SPREAD-CAPTURE (paper lab slot) - profit from execution, not prediction.
+
+    On a proven favorite (mid in the s5 band, spot confirming), post a passive quote
+    s5_improve_cents inside the entry-side ask instead of paying it. Settlement uses the
+    held-book path (bot_state._maker_track) to decide whether the quote filled: filled ->
+    maker price + maker fee against the real outcome (adverse selection captured);
+    unfilled -> $0 no-trade. Fill rate is half the experiment.
+    """
+    config = read_config()
+    mins_left = secs_left / 60.0
+    dq = asset_manager._prices.get(asset)
+    spot_dq = list(dq) if dq else []
+    spot = spot_dq[-1][1] if spot_dq else btc_price
+    abs_pct = abs(spot - strike) / strike if strike > 0 else 0.0
+    if not config.get("s5_maker_enabled", True):
+        return _make_skip("yes", "s5_disabled", abs_pct, mins_left, variant="strategy5")
+    if _is_quiet_hours(config):
+        return _make_skip("yes", "s5_quiet_hours", abs_pct, mins_left, variant="strategy5")
+    _t_min = float(config.get("s5_time_min", 3.0)); _t_max = float(config.get("s5_time_max", 9.0))
+    if mins_left < _t_min or mins_left > _t_max:
+        return _make_skip("yes", f"s5_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy5")
+    if spot <= 0 or strike <= 0:
+        return _make_skip("yes", "s5_bad_price", abs_pct, mins_left, variant="strategy5")
+    mid_yes = _market_implied_p_yes(yes_ask, no_ask)
+    if mid_yes is None:
+        return _make_skip("yes", "s5_no_market_data", abs_pct, mins_left, variant="strategy5")
+    side = "yes" if mid_yes >= 0.5 else "no"        # quote on the favorite side
+    p_fav = mid_yes if side == "yes" else 1.0 - mid_yes
+    lo = float(config.get("s5_mid_lo", 0.60)); hi = float(config.get("s5_mid_hi", 0.90))
+    if not (lo <= p_fav <= hi):
+        return _make_skip("yes", f"s5_band:mid={p_fav:.2f}", abs_pct, mins_left, variant="strategy5")
+    want_above = side == "yes"
+    if not _spot_confirm(spot_dq, strike, want_above, 2):
+        return _make_skip("yes", f"s5_flicker:want_above={want_above}", abs_pct, mins_left, variant="strategy5")
+    ask = yes_ask if side == "yes" else no_ask
+    improve = float(config.get("s5_improve_cents", 1.0))
+    maker_price = max(1.0, float(ask) - improve)
+    sigma_eff = _sigma_eff(asset, config)
+    eff_secs = _effective_secs(secs_left, config)
+    fair_p_yes = _bachelier_p_above(_basis_adjusted_spot(spot, asset), strike, eff_secs, sigma_eff)
+    _raw_p_yes = float(fair_p_yes)
+    model_p_side = _raw_p_yes if side == "yes" else 1.0 - _raw_p_yes
+    signals = {
+        "win_prob": model_p_side, "ev": None, "market_edge": None,
+        "mkt_p": p_fav, "model_raw_p_yes": _raw_p_yes,
+        "maker_price_cents": maker_price, "ask_cents": float(ask),
+        "sigma_eff": sigma_eff, "spot": spot,
+        "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
+    }
+    brain_log.info("S5 MAKER %s %s | side=%s quote=%dc (ask %dc) p_fav=%.2f mins=%.1f",
+                   asset, ticker, side, int(maker_price), int(ask), p_fav, mins_left)
+    return _slot_trade(
+        "strategy5", bot_state._SLOT_VERSIONS["strategy5"], side,
+        model_p_side, _raw_p_yes, 0.0,
+        f"s5_maker quote={maker_price:.0f}c ask={ask:.0f}c side={side} p_fav={p_fav:.2f} mins={mins_left:.1f}",
+        [f"quote:{maker_price:.0f}c", f"ask:{ask:.0f}c", f"side:{side}", f"p_fav:{p_fav:.2f}"],
+        signals, mins_left, abs_pct,
+        extra={"maker_quote_cents": maker_price},
+    )
+
+
+def strategy_brain_s6_carry(
+    btc_price, strike, yes_ask, no_ask,
+    elapsed_seconds, secs_left, ticker,
+    asset: str = "BTC",
+) -> dict:
+    """
+    S6: WINDOW-CARRY (paper lab slot) - cross-window momentum at the open.
+
+    In the first s6_window_secs of a new window (a time band no strategy here has ever
+    traded; the book still hovers near 50c), buy the direction the PREVIOUS window
+    resolved, provided that window moved decisively and the spot still agrees. Cheap
+    near-coin-flip entries with the whole window to run.
+    """
+    config = read_config()
+    mins_left = secs_left / 60.0
+    dq = asset_manager._prices.get(asset)
+    spot_dq = list(dq) if dq else []
+    spot = spot_dq[-1][1] if spot_dq else btc_price
+    abs_pct = abs(spot - strike) / strike if strike > 0 else 0.0
+    if not config.get("s6_carry_enabled", True):
+        return _make_skip("yes", "s6_disabled", abs_pct, mins_left, variant="strategy6")
+    if _is_quiet_hours(config):
+        return _make_skip("yes", "s6_quiet_hours", abs_pct, mins_left, variant="strategy6")
+    if elapsed_seconds > float(config.get("s6_window_secs", 120.0)):
+        return _make_skip("yes", f"s6_too_late:{elapsed_seconds:.0f}s", abs_pct, mins_left, variant="strategy6")
+    prev = bot_state._prev_window_outcome.get(asset)
+    if not prev or (time.time() - float(prev.get("ts", 0))) > 1500.0:
+        return _make_skip("yes", "s6_no_prev_window", abs_pct, mins_left, variant="strategy6")
+    if prev.get("result") not in ("yes", "no"):
+        return _make_skip("yes", "s6_prev_unresolved", abs_pct, mins_left, variant="strategy6")
+    # The previous window must have moved decisively, not squeaked by.
+    _prev_strike = float(prev.get("strike") or 0.0)
+    _prev_close = float(prev.get("spot_at_close") or 0.0)
+    _min_prev = float(config.get("s6_min_prev_move", 0.0008))
+    if _prev_strike <= 0 or _prev_close <= 0 or abs(_prev_close / _prev_strike - 1.0) < _min_prev:
+        return _make_skip("yes", "s6_prev_too_close", abs_pct, mins_left, variant="strategy6")
+    side = prev["result"]                     # carry the resolved direction
+    # Spot must currently agree with the carried direction relative to the NEW strike.
+    want_above = side == "yes"
+    if not _spot_confirm(spot_dq, strike, want_above, 2):
+        return _make_skip("yes", f"s6_spot_disagrees:want_above={want_above}", abs_pct,
+                          mins_left, variant="strategy6")
+    entry_price = yes_ask if side == "yes" else no_ask
+    _min_p = float(config.get("s6_min_entry_cents", 40.0))
+    _max_p = float(config.get("s6_max_entry_cents", 60.0))
+    if entry_price < _min_p or entry_price > _max_p:
+        return _make_skip(side, f"s6_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
+                          variant="strategy6", price_filter=True)
+    mid_yes = _market_implied_p_yes(yes_ask, no_ask)
+    mkt_p_side = (mid_yes if side == "yes" else 1.0 - mid_yes) if mid_yes is not None else 0.5
+    # Carry prior: a flat premium over the market mid on the carried side - this is an
+    # empirical bet the harness will prove or bury, not a fair-value claim.
+    carry_premium = float(config.get("s6_carry_premium", 0.05))
+    model_p_side = min(0.95, mkt_p_side + carry_premium)
+    _raw_p_yes = model_p_side if side == "yes" else 1.0 - model_p_side
+    _entry_p = float(entry_price) / 100.0
+    _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
+    ev = model_p_side - _entry_p - _kalshi_fee_frac(_entry_p, _fee_rate)
+    signals = {
+        "win_prob": model_p_side, "ev": ev, "market_edge": None,
+        "mkt_p": mkt_p_side, "model_raw_p_yes": _raw_p_yes,
+        "prev_result": prev["result"], "prev_move": abs(_prev_close / _prev_strike - 1.0),
+        "elapsed": elapsed_seconds, "spot": spot,
+        "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
+    }
+    if ev < float(config.get("s6_min_edge", 0.01)):
+        return {
+            "action": "skip", "side": side, "confidence": int(model_p_side * 100),
+            "reasoning": f"s6_ev_gate:ev={ev:.3f}",
+            "key_signals": [f"ev:{ev:.3f}"], "signals": signals,
+            "win_prob": float(model_p_side), "mom_label": side, "mom_pct": 0.0,
+            "vel_signal": "strategy6", "raw_p_yes": _raw_p_yes,
+            "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
+            "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
+            "strategy_variant": "strategy6",
+        }
+    brain_log.info("S6 CARRY %s %s | side=%s prev=%s entry=%dc mins=%.1f",
+                   asset, ticker, side, prev["result"], int(entry_price), mins_left)
+    return _slot_trade(
+        "strategy6", bot_state._SLOT_VERSIONS["strategy6"], side,
+        model_p_side, _raw_p_yes, ev,
+        f"s6_carry prev={prev['result']} side={side} entry={entry_price:.0f}c ev={ev:.3f} mins={mins_left:.1f}",
+        [f"prev:{prev['result']}", f"side:{side}", f"entry:{entry_price:.0f}c", f"ev:{ev:.3f}"],
+        signals, mins_left, abs_pct,
+    )

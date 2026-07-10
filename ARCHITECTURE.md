@@ -18,7 +18,8 @@ Deployed on Railway. Trades real money via Kalshi's REST API. All production log
 | `bot_loops.py` | Main async market loop. Phase handler: watching -> ready -> trading -> cooldown |
 | `bot_market.py` | Kalshi REST API client. Order placement, OBI calculation, fill polling |
 | `bot_risk.py` | Preflight checks, trade execution, PnL tracking, S1 orphan settlement |
-| `bot_strategy.py` | S1 (Momentum: buy continuation of a fresh spot move) and S2 (Favorite-Bias: harvest underpriced 70-88c favorites) strategy brains - two opposite bets |
+| `bot_strategy.py` | All strategy brains: S1 Momentum (main), S2 Favorite-Bias, and the lab slots S3 Structural-Arb / S4 Mean-Reversion / S5 Maker-Capture / S6 Window-Carry |
+| `bot_strategies.py` | Registry for the lab slots (S3+): brain callable, labels, enabled keys. Adding S7/S8 = one brain + one entry here |
 | `bot_infra.py` | `config.json` read/write, sqlite3 `init_db()`, Telegram async helper |
 | `bot_state.py` | Shared in-memory globals: price deques, API keys, trade state |
 | `sessions.py` | Pure ET time-of-day session + weekday/weekend taxonomy; used by the session gate, `/api/edge`, and `edge_report` |
@@ -73,6 +74,38 @@ never through a vol opinion.
 - **s_fav (shadow, zero capital).** `shadow_fav_candidate` still logs a would-buy-the-favorite
   decision_log row (strategy `s_fav`, `would_trade=0`); now that S2 trades this thesis live the
   shadow measures a slightly wider untraded extension (`shadow_fav_enabled`).
+
+### The strategy lab (S3-S6, paper-only)
+
+Registry-driven test slots (`bot_strategies.STRATEGY_REGISTRY`) racing alongside S1/S2 on
+every market, executed through the generic slot engine in `bot_risk`
+(`_execute_slot_trade` / `_settle_slot_trades` / `_settle_slot_orphans` /
+`_settle_slot_rollover`) with per-slot state in `bot_state._slot_state`. Slot trades are
+**hard-forced `mode="paper"` inside the executor** - no code path lets a lab slot place a
+live order. Dispatch happens in `handle_ready_phase` and both LOCKED-phase blocks;
+settlement piggybacks on S2's expiry detection plus a generalized orphan sweep
+(startup/300s/rollover).
+
+- **S3 Structural Arb**: `check_dual_side_arb` fires when YES+NO asks < 93c -> buy BOTH
+  sides (two trade rows, one economic trade sized so the pair outlay respects the clip).
+  Guaranteed profit per pair; measures how often books dislocate that far.
+- **S4 Mean-Reversion**: fade a >= `s4_min_sigma` (2.0) run over `s4_lookback_secs` once
+  the last third shows it stalling (`s4_still_running` guards S1's setup). The mirror
+  bet to S1 - together they answer trend-vs-revert.
+- **S5 Maker Capture**: on a 0.60-0.90 favorite, record a passive quote 1c inside the
+  ask (no order). Settlement scans the held-book path (`bot_state._maker_track`, now
+  also appended during READY) - crossed -> filled at maker price + maker fee (~25% of
+  taker); never crossed -> `outcome="unfilled"`, $0. Profit source is execution, not
+  prediction.
+- **S6 Window-Carry**: first `s6_window_secs` (120s) of a window only, ride the PREVIOUS
+  window's resolved direction (from `bot_state._prev_window_outcome`, written when
+  `handle_locked_phase` learns the result) at 40-60c entries.
+
+Scoreboard: `/api/edge` returns a `leaderboard` (per-strategy net-$/contract, Wilson-LB,
+verdict, and projected weekly $ at $25/$100/$250 clips - projections gated on positive
+net and labeled as unproven below 200 picks; nothing in code ever sizes a strategy up).
+The dashboard Strategy Lab card renders it; `scripts/edge_report.py` prints the same
+ranking; the Telegram daily summary iterates all six labels.
 
 **Sizing** is quarter-Kelly scaled DOWN from the `trade_amount_dollars` clip (`_kelly_stake`;
 never above the clip, floored at `min_stake_dollars`).

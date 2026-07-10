@@ -2,7 +2,12 @@
 The duel: S1 momentum and S2 favorite-bias are opposite bets that diverge on the same
 tape, both trade every market, and their head-to-head is surfaced (labels + edge report).
 """
-import sys, os, time, sqlite3, subprocess, collections
+import sys
+import os
+import time
+import sqlite3
+import subprocess
+import collections
 from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -55,7 +60,8 @@ def test_strategy_labels_are_momentum_and_favorite():
 
 def test_server_edge_exposes_head_to_head():
     """The /api/edge aggregation must compute a per-strategy total and a head-to-head."""
-    import inspect, server
+    import inspect
+    import server
     src = inspect.getsource(server)
     assert "head_to_head" in src, "server /api/edge must build a head_to_head block"
     assert "total_pnl" in src, "per-strategy total_pnl must feed the head-to-head"
@@ -77,10 +83,9 @@ def _seed_decision_db(path, strat, side, outcome, entry_cents, n):
     con.close()
 
 
-def test_edge_report_prints_head_to_head_winner(tmp_path):
-    """edge_report must print a HEAD-TO-HEAD block and name a winner when both strategies
-    have settled picks. S1 here wins every pick (entry 50c, outcome matches side); S2
-    loses every pick, so S1 must be the named winner."""
+def test_edge_report_prints_leaderboard_winner(tmp_path):
+    """edge_report must print a ranked LEADERBOARD and crown the top strategy. S1 wins
+    every pick (entry 50c, outcome matches side); S2 loses every pick -> S1 ranks #1."""
     db = str(tmp_path / "edge.db")
     _seed_decision_db(db, "strategy1", "yes", "yes", 50.0, 20)   # S1 wins all
     _seed_decision_db(db, "strategy2", "yes", "no", 78.0, 20)    # S2 loses all
@@ -88,5 +93,7 @@ def test_edge_report_prints_head_to_head_winner(tmp_path):
         [sys.executable, os.path.join(os.path.dirname(os.path.dirname(__file__)),
                                       "scripts", "edge_report.py"), db],
         capture_output=True, text=True, timeout=60).stdout
-    assert "HEAD-TO-HEAD" in out, out
-    assert "WINNER: S1 Momentum" in out, out
+    assert "LEADERBOARD" in out, out
+    assert "1. S1 Momentum" in out and "WINNER" in out, out
+    # untraded lab slots are listed as collecting, not silently dropped
+    assert "S4 Mean-Reversion" in out, out

@@ -1424,11 +1424,14 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
       <div class="meter-bar" style="margin-top:8px;"><div id="edge-progress" class="up" style="width:0%"></div></div>
     </div>
     <div class="card" id="edge-h2h-card">
-      <div class="card-head"><div class="card-title"><span class="accent"></span>S1 Momentum vs S2 Favorite-Bias &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">WHICH PROFITS MORE * net $/contract</span></div></div>
+      <div class="card-head"><div class="card-title"><span class="accent"></span>Strategy Lab &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">WHICH PROFITS MORE * net $/contract * paper</span></div></div>
       <div id="edge-h2h" style="padding:4px 2px;">
-        <div class="muted" style="font-size:11px;">Collecting settled picks for both strategies...</div>
+        <div class="muted" style="font-size:11px;">Collecting settled picks...</div>
       </div>
-      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Two opposite bets on the same tape: S1 buys continuation of fresh moves; S2 harvests proven 70-88c favorites. The winner is whichever earns more net $/contract after fees on its settled picks. Net $/ct is scale-free so the two price bands compare fairly. Dollar totals are per 1 contract.</div>
+      <div style="overflow-x:auto;margin-top:8px;"><table style="width:100%;"><thead><tr>
+        <th>#</th><th>Strategy</th><th>Picks</th><th>Win%</th><th>Net $/ct</th><th>Wilson LB</th><th>/day</th><th>Wk @$25</th><th>Wk @$100</th><th>Wk @$250</th><th>Verdict</th>
+      </tr></thead><tbody id="edge-leaderboard"></tbody></table></div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Six strategies race on the same tape, all paper: S1 momentum (main), S2 favorite-bias, S3 structural arb, S4 mean-reversion, S5 maker capture, S6 window-carry. "Wk @$X" = what this edge would earn per week at an $X per-trade clip <b>if it survives 200 settled picks with Wilson LB &gt; 0</b> - a projection, never a promise; sizing up is a manual decision after proof. This is the honest path to $1k/wk: find the strategy whose proven row clears it.</div>
     </div>
     <div class="card">
       <div class="card-head"><div class="card-title"><span class="accent"></span>Calibration &amp; net edge * per strategy</div></div>
@@ -2484,7 +2487,34 @@ function renderEdge(d){
   }
   document.getElementById('edge-decisions').innerHTML = rows.join('') ||
     '<tr><td colspan="8" class="muted">No settled picks yet.</td></tr>';
-  // head-to-head: S1 momentum vs S2 favorite-bias (which profits more)
+  // strategy-lab leaderboard: every slot ranked by net $/contract + clip projections
+  const STRAT_NAMES = {strategy1:'S1 · Momentum', strategy2:'S2 · Favorite-Bias',
+    strategy3:'S3 · Structural Arb', strategy4:'S4 · Mean-Reversion',
+    strategy5:'S5 · Maker Capture', strategy6:'S6 · Window-Carry'};
+  const lbEl = document.getElementById('edge-leaderboard');
+  if(lbEl){
+    const board = dec.leaderboard || [];
+    if(!board.length){
+      lbEl.innerHTML = '<tr><td colspan="11" class="muted">No settled picks yet - the lab is collecting.</td></tr>';
+    } else {
+      lbEl.innerHTML = board.map((r,i)=>{
+        const netCls = r.net_per_contract>0?'up':r.net_per_contract<0?'down':'muted';
+        const lbCls = r.wilson_lb_pnl>0?'up':'down';
+        const crown = i===0 && r.net_per_contract>0 ? ' \u{1F451}' : '';
+        const proj = c => (r.projected_weekly_at_clip&&r.projected_weekly_at_clip[c]!=null)
+          ? ('$'+r.projected_weekly_at_clip[c].toFixed(0)) : '-';
+        const vCls = /proven/.test(r.verdict)?'up':/no edge/.test(r.verdict)?'down':'muted';
+        return `<tr><td>${i+1}</td><td>${STRAT_NAMES[r.strategy]||r.strategy}${crown}</td>
+          <td>${r.n}</td><td>${_edgeCell(r.win_rate,1,true)}</td>
+          <td class="${netCls}">${_edgeCell(r.net_per_contract,4)}</td>
+          <td class="${lbCls}">${_edgeCell(r.wilson_lb_pnl,4)}</td>
+          <td>${r.picks_per_day!=null?r.picks_per_day:'-'}</td>
+          <td>${proj('25')}</td><td>${proj('100')}</td><td>${proj('250')}</td>
+          <td class="${vCls}" style="font-size:10px;">${r.verdict}</td></tr>`;
+      }).join('');
+    }
+  }
+  // head-to-head: S1 momentum vs S2 favorite-bias (the main-line duel)
   const h2hEl = document.getElementById('edge-h2h');
   if(h2hEl){
     const h = dec.head_to_head;

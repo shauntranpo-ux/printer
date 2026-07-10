@@ -72,6 +72,11 @@ _FULL_CONFIG_DEFAULT = {
     # per-strategy P&L is a clean head-to-head. bot_infra._init_config fills the rest.
     "strategy_duel_mode": True,
 }
+
+# All strategies the API/dashboard enumerate: S1 momentum (main), S2 favorite-bias,
+# S3-S6 paper lab slots. Kept in sync with bot_strategies.STRATEGY_LABELS (tested).
+_STRATEGY_IDS = ("1", "2", "3", "4", "5", "6")
+_ALL_STRATEGIES = tuple(f"strategy{i}" for i in _STRATEGY_IDS)
 if not os.path.exists("config.json"):
     try:
         with open("config.json", "w", encoding="utf-8") as _f:
@@ -267,7 +272,7 @@ def api_trades():
     mode  = request.args.get("mode")
     asset    = request.args.get("asset", "").upper() or None
     strategy = request.args.get("strategy", "")
-    strategy_variant = {"1": "strategy1", "2": "strategy2"}.get(strategy)
+    strategy_variant = f"strategy{strategy}" if strategy in _STRATEGY_IDS else None
     try:
         conn = get_db()
         clauses, params = [], []
@@ -513,7 +518,7 @@ def api_pnl():
       - win_rate: overall win rate (resolved trades only)
     """
     strategy = request.args.get("strategy", "")
-    strategy_variant = {"1": "strategy1", "2": "strategy2"}.get(strategy)
+    strategy_variant = f"strategy{strategy}" if strategy in _STRATEGY_IDS else None
     try:
         # "Today" is the ET trading day - the same window the bot's daily P&L,
         # limits and Telegram summary use. Bucketing by UTC date put every
@@ -581,9 +586,9 @@ def api_pnl():
         # When no strategy filter, include per-strategy breakdown for dashboard
         if not strategy_variant:
             by_strategy = {}
-            for sv in ("strategy1", "strategy2"):
+            for sv in _ALL_STRATEGIES:
                 sv_trades = [t for t in all_raw if t.get("strategy_variant", "strategy2") == sv]
-                sv_today  = [t for t in sv_trades if (t.get("ts") or "").startswith(today)]
+                sv_today  = [t for t in sv_trades if (t.get("ts") or "") >= _day_start]
                 by_strategy[sv] = {
                     "today":   _pnl(sv_today),
                     "alltime": _pnl(sv_trades),
@@ -598,10 +603,8 @@ def api_pnl():
             return jsonify({
                 "today":   {"live": empty, "paper": empty, "demo": empty, "by_asset": {}, "date": today},
                 "alltime": {"live": empty, "paper": empty, "demo": empty},
-                "by_strategy": {
-                    "strategy1": {"today": empty, "alltime": empty},
-                    "strategy2": {"today": empty, "alltime": empty},
-                },
+                "by_strategy": {sv: {"today": empty, "alltime": empty}
+                                for sv in _ALL_STRATEGIES},
             })
         log.error(f"api_pnl error: {exc}", exc_info=True)
         return jsonify({"error": str(exc)}), 500
@@ -1321,6 +1324,9 @@ def api_edge():
             # Summed net over all settled picks (units: $ per 1 contract) - the head-to-head
             # "which profits more" figure. Per-contract so S1/S2 price bands are comparable.
             "total_pnl": _safe(sum(pnls), 4) if pnls else None,
+            # Mean entry price (fraction) - the leaderboard's clip projections divide the
+            # clip by this to get contracts-per-trade at a hypothetical size.
+            "mean_entry": _safe(mean_entry, 4),
         }
 
     def _round_maker(st):
@@ -1381,6 +1387,40 @@ def api_edge():
             }
         else:
             result["decisions"]["head_to_head"] = None
+        # Leaderboard: every strategy with settled picks, ranked by net-$/contract, with
+        # a per-slot verdict and the HONEST path-to-$1k/wk projection: what this edge
+        # would earn weekly at bigger clips IF it survives the 200-pick proof. Numbers
+        # are projections, not promises - nothing in code ever sizes a strategy up.
+        _lb_rows = []
+        for strat, g in _bs.items():
+            rs = groups.get(strat, [])
+            _days = len({(r["ts"] or "")[:10] for r in rs if r["ts"]}) or 1
+            picks_per_day = g["n"] / _days
+            n, net, wlb = g["n"], g["net_pnl_per_contract"], g["wilson_lb_pnl"]
+            if n < 200:
+                verdict = f"collecting ({n}/200)"
+            elif wlb is not None and wlb > 0:
+                verdict = "proven: Wilson LB > 0"
+            elif net is not None and net > 0:
+                verdict = "positive but unproven (LB <= 0)"
+            else:
+                verdict = "no edge"
+            projections = {}
+            if net is not None and net > 0 and g.get("mean_entry"):
+                # contracts per trade at clip $C = C / (mean entry price in $ per contract)
+                projections = {
+                    str(clip): _safe(net * (clip / g["mean_entry"]) * picks_per_day * 7, 2)
+                    for clip in (25, 100, 250)
+                }
+            _lb_rows.append({
+                "strategy": strat, "n": n, "win_rate": g["win_rate"],
+                "net_per_contract": net, "total_pnl": g.get("total_pnl"),
+                "wilson_lb_pnl": wlb, "picks_per_day": _safe(picks_per_day, 1),
+                "verdict": verdict, "projected_weekly_at_clip": projections,
+            })
+        _lb_rows.sort(key=lambda r: (r["net_per_contract"] is None,
+                                     -(r["net_per_contract"] or 0.0)))
+        result["decisions"]["leaderboard"] = _lb_rows
         overall = _decision_group(picks)
         result["decisions"]["overall"] = overall
         if overall:

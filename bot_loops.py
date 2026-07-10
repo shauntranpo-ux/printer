@@ -33,7 +33,10 @@ from bot_risk import (
     check_daily_limits, midnight_reset, write_state_file, _log_entry,
     _execute_s1_trade, _settle_s1_trade, _try_settle_orphaned_s1,
     _settle_s1_orphans,
+    _execute_slot_trade, _settle_slot_trades, _settle_slot_orphans,
+    _settle_slot_rollover,
 )
+from bot_strategies import STRATEGY_REGISTRY, enabled_slots
 from reconcile import fetch_open_positions
 
 log = logging.getLogger("bot")
@@ -675,6 +678,31 @@ async def handle_ready_phase(
         session, brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
         elapsed, secs_left, asset, config, mode_s1, ob, market,
     )
+
+    # Book tick for the S5 maker fill model: settlement scans this path to decide
+    # whether a passive quote posted during READY would have filled. LOCKED appends
+    # its own ticks; this covers tickers S2 never locks.
+    try:
+        bot_state._maker_track.setdefault(ticker, deque(maxlen=120)).append(
+            (time.time(), float(yes_ask), float(no_ask)))
+    except Exception:
+        pass
+
+    # Test-slot lab dispatch (S3+): every enabled registry brain evaluates this market,
+    # logs its decision (skips included - the harness scores near-misses), and trades
+    # through the generic paper executor. Slots never block each other or S1/S2.
+    for _slot_id in enabled_slots(config):
+        try:
+            _slot_brain = STRATEGY_REGISTRY[_slot_id]["brain"](
+                btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)
+            await _log_decision(_slot_brain, ticker, asset, secs_left, yes_ask, no_ask,
+                                config, _slot_id)
+            await _execute_slot_trade(
+                session, _slot_id, _slot_brain, ticker, btc_price, strike,
+                yes_ask, no_ask, secs_left, asset, config, ob, market)
+        except Exception as _slot_exc:
+            log.debug("[%s] slot eval failed for %s: %s", _slot_id, ticker, _slot_exc)
+
     side     = brain["side"]
     score    = brain["confidence"]
     do_trade = brain["action"] == "trade"
@@ -1095,6 +1123,12 @@ async def handle_locked_phase(
         # Edge-measurement: stamp the absolute YES/NO settlement onto this ticker's
         # decision_log rows (the periodic backfill covers skipped/untraded tickers).
         _settle_side = market_result if _settled_official else ("yes" if btc_price > pos["strike"] else "no")
+        # Previous-window memory for the S6 window-carry brain: which way this window
+        # resolved, how decisively, and when. Overwritten every settlement.
+        bot_state._prev_window_outcome[asset] = {
+            "result": _settle_side, "strike": float(pos.get("strike") or 0.0),
+            "spot_at_close": float(btc_price or 0.0), "ts": time.time(),
+        }
         _maker_exec = (config.get("maker_execution_enabled", False)
                        and pos.get("mode", config.get("mode", "paper")) == "paper")
         _maker_cf = None
@@ -1172,6 +1206,7 @@ async def handle_locked_phase(
                 log.warning("Settle notification failed (non-fatal): %s", _notify_exc)
 
         await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
+        await _settle_slot_trades(ticker, market_result, btc_price, config)
         return
 
     # Still in the market - just hold and log
@@ -1361,6 +1396,7 @@ async def _process_asset(
             log.info(f"[{asset}] New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
             if prev_ticker in bot_state._s1_pending_trades:
                 asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, price, config, asset))
+            asyncio.create_task(_settle_slot_rollover(session, prev_ticker, price, config))
             st["phase"] = "WATCH"
             st["position"] = None
             st["order_attempted"].discard(prev_ticker)
@@ -1399,6 +1435,21 @@ async def _process_asset(
                         ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
                         elapsed, secs_left, asset, config, mode_s1, ob_s1, market,
                     )
+                    # Lab slots also keep evaluating while S2 holds (paper - no conflict).
+                    for _slot_id in enabled_slots(config):
+                        try:
+                            _sb = STRATEGY_REGISTRY[_slot_id]["brain"](
+                                price, strike, ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                elapsed, secs_left, ticker, asset=asset)
+                            await _log_decision(_sb, ticker, asset, secs_left,
+                                                ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                                config, _slot_id)
+                            await _execute_slot_trade(
+                                session, _slot_id, _sb, ticker, price, strike,
+                                ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                secs_left, asset, config, ob_s1, market)
+                        except Exception as _sexc:
+                            log.debug("[%s] slot LOCKED eval failed: %s", _slot_id, _sexc)
             except Exception as exc:
                 log.debug("[%s] S1 LOCKED-phase entry attempt failed: %s", asset, exc)
         return
@@ -1675,9 +1726,10 @@ async def main_loop() -> None:
         # Verify saved positions against Kalshi before trusting the state file.
         await _verify_and_restore_positions(session, _saved_pos, _saved_phase, _non_btc_positions, _mode)
 
-        # Settle any S1 positions that resolved while the bot was offline.
+        # Settle any S1/slot positions that resolved while the bot was offline.
         _startup_config = read_config()
         await _settle_s1_orphans(session, _startup_config)
+        await _settle_slot_orphans(session, _startup_config)
         _last_orphan_settle_ts = time.time()  # periodic timer starts after startup run
 
         # Non-BTC assets run in a separate background task so they aren't
@@ -1695,6 +1747,7 @@ async def main_loop() -> None:
                     if _tick_ts - _last_orphan_settle_ts >= 300:
                         try:
                             await _settle_s1_orphans(session, read_config())
+                            await _settle_slot_orphans(session, read_config())
                         except Exception as _oe:
                             log.error("Periodic orphan settlement error: %s", _oe, exc_info=True)
                         _last_orphan_settle_ts = time.time()
@@ -1810,6 +1863,7 @@ async def main_loop() -> None:
                         log.info(f"New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
                         if prev_ticker in bot_state._s1_pending_trades:
                             asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, btc_price, config, "BTC"))
+                        asyncio.create_task(_settle_slot_rollover(session, prev_ticker, btc_price, config))
                         bot_state.current_phase = "WATCH"
                         bot_state.current_position = None
                         bot_state._s2_attempted_tickers.discard(prev_ticker)
@@ -1880,6 +1934,24 @@ async def main_loop() -> None:
                                     ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
                                     elapsed, secs_left, "BTC", config, mode_s1, ob_s1, market,
                                 )
+                                # Lab slots keep evaluating while S2 holds (paper).
+                                for _slot_id in enabled_slots(config):
+                                    try:
+                                        _sb = STRATEGY_REGISTRY[_slot_id]["brain"](
+                                            btc_price, strike,
+                                            ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                            elapsed, secs_left, ticker, asset="BTC")
+                                        await _log_decision(
+                                            _sb, ticker, "BTC", secs_left,
+                                            ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                            config, _slot_id)
+                                        await _execute_slot_trade(
+                                            session, _slot_id, _sb, ticker, btc_price,
+                                            strike, ob_s1["best_yes_ask"],
+                                            ob_s1["best_no_ask"], secs_left, "BTC",
+                                            config, ob_s1, market)
+                                    except Exception as _sexc:
+                                        log.debug("[%s] slot LOCKED eval failed: %s", _slot_id, _sexc)
                         except Exception as exc:
                             log.debug("S1 LOCKED-phase entry attempt failed: %s", exc)
                     await write_state_file(config, market, bot_state.current_phase, secs_left, btc_price,
