@@ -219,7 +219,8 @@ def main():
         _labels = {
             "strategy1": "S1 Momentum", "strategy2": "S2 Favorite-Bias",
             "strategy3": "S3 Structural Arb", "strategy4": "S4 Mean-Reversion",
-            "strategy5": "S5 Maker Capture", "strategy6": "S6 Window-Carry",
+            "strategy5": "S5 Maker Capture", "strategy6": "S6 Window-Fade",
+            "strategy7": "S7 Vol-Spike", "strategy8": "S8 Calm Favorite",
         }
 
         def _strat_net(strat):

@@ -13,7 +13,9 @@ _STRATEGY_LABELS = {
     "strategy3": "S3 · Structural Arb",
     "strategy4": "S4 · Mean-Reversion",
     "strategy5": "S5 · Maker Capture",
-    "strategy6": "S6 · Window-Carry",
+    "strategy6": "S6 · Window-Fade",
+    "strategy7": "S7 · Vol-Spike",
+    "strategy8": "S8 · Calm Favorite",
 }
 _STRATEGY_SHORT = {k: f"S{k[-1]}" for k in _STRATEGY_LABELS}
 

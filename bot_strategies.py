@@ -14,6 +14,8 @@ from bot_strategy import (
     strategy_brain_s4_revert,
     strategy_brain_s5_maker,
     strategy_brain_s6_carry,
+    strategy_brain_s7_volspike,
+    strategy_brain_s8_calm,
 )
 
 # Labels for ALL strategies (single source; bot_stats/server/dashboard read these).
@@ -23,7 +25,9 @@ STRATEGY_LABELS = {
     "strategy3": "S3 · Structural Arb",
     "strategy4": "S4 · Mean-Reversion",
     "strategy5": "S5 · Maker Capture",
-    "strategy6": "S6 · Window-Carry",
+    "strategy6": "S6 · Window-Fade",
+    "strategy7": "S7 · Vol-Spike",
+    "strategy8": "S8 · Calm Favorite",
 }
 STRATEGY_SHORT = {k: f"S{k[-1]}" for k in STRATEGY_LABELS}
 
@@ -55,6 +59,20 @@ STRATEGY_REGISTRY = {
         "tag": "s6",
         "enabled_key": "s6_carry_enabled",
         "version": bot_state._SLOT_VERSIONS["strategy6"],
+        "max_pending_per_asset": 1,
+    },
+    "strategy7": {
+        "brain": strategy_brain_s7_volspike,
+        "tag": "s7",
+        "enabled_key": "s7_volspike_enabled",
+        "version": bot_state._SLOT_VERSIONS["strategy7"],
+        "max_pending_per_asset": 1,
+    },
+    "strategy8": {
+        "brain": strategy_brain_s8_calm,
+        "tag": "s8",
+        "enabled_key": "s8_calm_enabled",
+        "version": bot_state._SLOT_VERSIONS["strategy8"],
         "max_pending_per_asset": 1,
     },
 }

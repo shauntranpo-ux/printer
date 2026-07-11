@@ -1895,12 +1895,17 @@ def strategy_brain_s6_carry(
     asset: str = "BTC",
 ) -> dict:
     """
-    S6: WINDOW-CARRY (paper lab slot) - cross-window momentum at the open.
+    S6: WINDOW-FADE (paper lab slot) - cross-window mean reversion at the open.
 
-    In the first s6_window_secs of a new window (a time band no strategy here has ever
-    traded; the book still hovers near 50c), buy the direction the PREVIOUS window
-    resolved, provided that window moved decisively and the spot still agrees. Cheap
-    near-coin-flip entries with the whole window to run.
+    In the first s6_window_secs of a new window (book still near 50c), buy the side
+    OPPOSITE the previous window's resolved direction, provided that window moved
+    decisively. Backed by scripts/backtest_carry.py over 25k real Kalshi settlements
+    (Feb-Apr 2026, 4 assets): after a decisive window the next one REVERSES 53.4% of
+    the time (Wilson-LB 52.8% vs the ~51.7% breakeven at 50c) - windows anti-persist,
+    so the fade side is the historically positive bet (~+1.7c/contract after fees).
+    The gate set mirrors the backtest exactly: early entry, decisive previous move,
+    near-coin-flip price band - no spot-side conditioning (the measured edge is
+    unconditional at the open).
     """
     config = read_config()
     mins_left = secs_left / 60.0
@@ -1915,24 +1920,20 @@ def strategy_brain_s6_carry(
     if elapsed_seconds > float(config.get("s6_window_secs", 120.0)):
         return _make_skip("yes", f"s6_too_late:{elapsed_seconds:.0f}s", abs_pct, mins_left, variant="strategy6")
     # 1100s bound = one window + grace. The rollover estimate refreshes this every
-    # window, so anything older means a missed write - never carry a 2-window-old move.
+    # window, so anything older means a missed write - never fade a 2-window-old move.
     prev = bot_state._prev_window_outcome.get(asset)
     if not prev or (time.time() - float(prev.get("ts", 0))) > 1100.0:
         return _make_skip("yes", "s6_no_prev_window", abs_pct, mins_left, variant="strategy6")
     if prev.get("result") not in ("yes", "no"):
         return _make_skip("yes", "s6_prev_unresolved", abs_pct, mins_left, variant="strategy6")
-    # The previous window must have moved decisively, not squeaked by.
+    # The previous window must have moved decisively - the backtest's conditional edge
+    # (fade 53.4%) is measured on exactly this population.
     _prev_strike = float(prev.get("strike") or 0.0)
     _prev_close = float(prev.get("spot_at_close") or 0.0)
     _min_prev = float(config.get("s6_min_prev_move", 0.0008))
     if _prev_strike <= 0 or _prev_close <= 0 or abs(_prev_close / _prev_strike - 1.0) < _min_prev:
         return _make_skip("yes", "s6_prev_too_close", abs_pct, mins_left, variant="strategy6")
-    side = prev["result"]                     # carry the resolved direction
-    # Spot must currently agree with the carried direction relative to the NEW strike.
-    want_above = side == "yes"
-    if not _spot_confirm(spot_dq, strike, want_above, 2):
-        return _make_skip("yes", f"s6_spot_disagrees:want_above={want_above}", abs_pct,
-                          mins_left, variant="strategy6")
+    side = "no" if prev["result"] == "yes" else "yes"   # FADE the resolved direction
     entry_price = yes_ask if side == "yes" else no_ask
     _min_p = float(config.get("s6_min_entry_cents", 40.0))
     _max_p = float(config.get("s6_max_entry_cents", 60.0))
@@ -1941,10 +1942,10 @@ def strategy_brain_s6_carry(
                           variant="strategy6", price_filter=True)
     mid_yes = _market_implied_p_yes(yes_ask, no_ask)
     mkt_p_side = (mid_yes if side == "yes" else 1.0 - mid_yes) if mid_yes is not None else 0.5
-    # Carry prior: a flat premium over the market mid on the carried side - this is an
-    # empirical bet the harness will prove or bury, not a fair-value claim.
-    carry_premium = float(config.get("s6_carry_premium", 0.05))
-    model_p_side = min(0.95, mkt_p_side + carry_premium)
+    # Fade prior: the historically measured premium over the market mid on the fade
+    # side (0.534 - 0.5 from the settlement backtest). Live data proves or buries it.
+    fade_premium = float(config.get("s6_fade_premium", 0.034))
+    model_p_side = min(0.95, mkt_p_side + fade_premium)
     _raw_p_yes = model_p_side if side == "yes" else 1.0 - model_p_side
     _entry_p = float(entry_price) / 100.0
     _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
@@ -1967,12 +1968,228 @@ def strategy_brain_s6_carry(
             "_rv": None, "_vol_ratio": None, "price_filter_skip": False,
             "strategy_variant": "strategy6",
         }
-    brain_log.info("S6 CARRY %s %s | side=%s prev=%s entry=%dc mins=%.1f",
+    brain_log.info("S6 FADE %s %s | side=%s prev=%s entry=%dc mins=%.1f",
                    asset, ticker, side, prev["result"], int(entry_price), mins_left)
     return _slot_trade(
         "strategy6", bot_state._SLOT_VERSIONS["strategy6"], side,
         model_p_side, _raw_p_yes, ev,
-        f"s6_carry prev={prev['result']} side={side} entry={entry_price:.0f}c ev={ev:.3f} mins={mins_left:.1f}",
+        f"s6_fade prev={prev['result']} side={side} entry={entry_price:.0f}c ev={ev:.3f} mins={mins_left:.1f}",
         [f"prev:{prev['result']}", f"side:{side}", f"entry:{entry_price:.0f}c", f"ev:{ev:.3f}"],
+        signals, mins_left, abs_pct,
+    )
+
+
+def _vol_regime(asset: str, config: dict) -> tuple:
+    """
+    (live_sigma, anchor_sigma, ratio) for the S7/S8 regime gates. The anchor is the
+    market-implied EWMA when fresh (the market's own opinion of normal), else the
+    static table x time-of-day - deliberately NOT _sigma_eff, whose clamps would hide
+    exactly the live-vs-anchor divergence these strategies trade. Never raises;
+    degenerate data returns ratio 1.0 (no regime signal -> both brains skip).
+    """
+    try:
+        live = _live_sigma_15m(asset)
+        imp = bot_state._implied_sigma.get(asset)
+        max_age = float(config.get("sigma_implied_max_age_secs", 900) or 900)
+        fresh = (isinstance(imp, dict) and imp.get("sigma")
+                 and int(imp.get("n", 0)) >= 3
+                 and (time.time() - float(imp.get("ts", 0.0))) <= max_age)
+        anchor = float(imp["sigma"]) if fresh else (
+            _ASSET_VOL_15M.get(asset, 0.0023) * _time_of_day_vol_multiplier())
+        if anchor <= 0 or live <= 0:
+            return live, anchor, 1.0
+        return live, anchor, live / anchor
+    except Exception:
+        return 0.0, 0.0, 1.0
+
+
+def strategy_brain_s7_volspike(
+    btc_price, strike, yes_ask, no_ask,
+    elapsed_seconds, secs_left, ticker,
+    asset: str = "BTC",
+) -> dict:
+    """
+    S7: VOL-SPIKE BREAKOUT (paper lab slot) - trade only when volatility is abnormal.
+
+    Every other strategy here is vol-regime-blind. S7 fires ONLY when live realized
+    vol runs >= s7_spike_ratio x its own anchor (the market-implied EWMA / static
+    normal): in a spike, far strikes are genuinely reachable while the book reprices
+    with a lag, so the moving side is underpriced. Buy the direction of the fresh move,
+    fair-valued with the LIVE (spiked) sigma. S8 is the mirror (calm regime).
+    """
+    config = read_config()
+    mins_left = secs_left / 60.0
+    dq = asset_manager._prices.get(asset)
+    pts = [(ts, p) for ts, p in dq if p > 0] if dq else []
+    spot = pts[-1][1] if pts else btc_price
+    abs_pct = abs(spot - strike) / strike if strike > 0 else 0.0
+    if not config.get("s7_volspike_enabled", True):
+        return _make_skip("yes", "s7_disabled", abs_pct, mins_left, variant="strategy7")
+    if _is_quiet_hours(config):
+        return _make_skip("yes", "s7_quiet_hours", abs_pct, mins_left, variant="strategy7")
+    _t_min = float(config.get("s7_time_min", 4.0)); _t_max = float(config.get("s7_time_max", 10.0))
+    if mins_left < _t_min or mins_left > _t_max:
+        return _make_skip("yes", f"s7_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy7")
+    if spot <= 0 or strike <= 0 or len(pts) < 5:
+        return _make_skip("yes", "s7_no_data", abs_pct, mins_left, variant="strategy7")
+
+    live, anchor, ratio = _vol_regime(asset, config)
+    _spike = float(config.get("s7_spike_ratio", 1.6))
+    if ratio < _spike:
+        return _make_skip("yes", f"s7_no_spike:ratio={ratio:.2f}<{_spike:.2f}", abs_pct,
+                          mins_left, variant="strategy7")
+
+    # Direction of the fresh move inside the spike.
+    lb = float(config.get("s7_lookback_secs", 60.0))
+    anchor_pt = _nearest_price(pts, pts[-1][0] - lb)
+    if anchor_pt is None or anchor_pt[1] <= 0:
+        return _make_skip("yes", "s7_no_anchor", abs_pct, mins_left, variant="strategy7")
+    r = math.log(spot / anchor_pt[1])
+    sigma_window = live * math.sqrt(max(1e-6, lb / 900.0))
+    if abs(r) < 0.25 * sigma_window:
+        return _make_skip("yes", f"s7_no_direction:{r:+.4f}", abs_pct, mins_left, variant="strategy7")
+    side = "yes" if r > 0 else "no"
+
+    entry_price = yes_ask if side == "yes" else no_ask
+    _min_p = float(config.get("s7_min_entry_cents", 30.0))
+    _max_p = float(config.get("s7_max_entry_cents", 70.0))
+    if entry_price < _min_p or entry_price > _max_p:
+        return _make_skip(side, f"s7_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
+                          variant="strategy7", price_filter=True)
+
+    # Fair value with the LIVE sigma - the whole thesis is that the book still prices
+    # the calm anchor while realized vol has left it behind.
+    eff_secs = _effective_secs(secs_left, config)
+    fair_p_yes = _bachelier_p_above(_basis_adjusted_spot(spot, asset), strike, eff_secs, live)
+    _raw_p_yes = float(fair_p_yes)
+    model_p_side = _raw_p_yes if side == "yes" else 1.0 - _raw_p_yes
+    _entry_p = float(entry_price) / 100.0
+    _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
+    ev = model_p_side - _entry_p - _kalshi_fee_frac(_entry_p, _fee_rate)
+    mid_yes = _market_implied_p_yes(yes_ask, no_ask)
+    signals = {
+        "win_prob": model_p_side, "ev": ev, "market_edge": None,
+        "mkt_p": (mid_yes if side == "yes" else 1.0 - mid_yes) if mid_yes is not None else None,
+        "model_raw_p_yes": _raw_p_yes, "vol_ratio": ratio, "live_sigma": live,
+        "anchor_sigma": anchor, "r": r, "spot": spot,
+        "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
+    }
+    if ev < float(config.get("s7_min_edge", 0.03)):
+        return {
+            "action": "skip", "side": side, "confidence": int(model_p_side * 100),
+            "reasoning": f"s7_ev_gate:ev={ev:.3f}",
+            "key_signals": [f"ev:{ev:.3f}", f"ratio:{ratio:.2f}"], "signals": signals,
+            "win_prob": float(model_p_side), "mom_label": side, "mom_pct": float(r),
+            "vel_signal": "strategy7", "raw_p_yes": _raw_p_yes,
+            "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
+            "_rv": None, "_vol_ratio": ratio, "price_filter_skip": False,
+            "strategy_variant": "strategy7",
+        }
+    brain_log.info("S7 VOLSPIKE %s %s | side=%s ratio=%.2f r=%+.4f ev=%.3f mins=%.1f",
+                   asset, ticker, side, ratio, r, ev, mins_left)
+    return _slot_trade(
+        "strategy7", bot_state._SLOT_VERSIONS["strategy7"], side,
+        model_p_side, _raw_p_yes, ev,
+        f"s7_volspike ratio={ratio:.2f} side={side} r={r:+.4f} ev={ev:.3f} mins={mins_left:.1f}",
+        [f"ratio:{ratio:.2f}", f"side:{side}", f"r:{r:+.4f}", f"ev:{ev:.3f}"],
+        signals, mins_left, abs_pct,
+    )
+
+
+def strategy_brain_s8_calm(
+    btc_price, strike, yes_ask, no_ask,
+    elapsed_seconds, secs_left, ticker,
+    asset: str = "BTC",
+) -> dict:
+    """
+    S8: CALM-MARKET FAVORITE (paper lab slot) - the mirror regime to S7.
+
+    Fires ONLY when realized vol has COLLAPSED below s8_calm_ratio x its anchor: on a
+    dead tape the current side of the strike holds more often than a normal-vol book
+    implies, so the favorite is underpriced. Buys the favorite (mid 0.55-0.85), fair-
+    valued with the LIVE (collapsed) sigma. Overlaps S2's favorite-bias thesis by
+    construction, but is regime-conditional, earlier (4-10 min vs 2.5-6), and needs
+    far less strike distance (min_z 0.4 vs 0.8) - the edge claim is the vol regime,
+    not the favorite premium.
+    """
+    config = read_config()
+    mins_left = secs_left / 60.0
+    dq = asset_manager._prices.get(asset)
+    pts = [(ts, p) for ts, p in dq if p > 0] if dq else []
+    spot = pts[-1][1] if pts else btc_price
+    abs_pct = abs(spot - strike) / strike if strike > 0 else 0.0
+    if not config.get("s8_calm_enabled", True):
+        return _make_skip("yes", "s8_disabled", abs_pct, mins_left, variant="strategy8")
+    if _is_quiet_hours(config):
+        return _make_skip("yes", "s8_quiet_hours", abs_pct, mins_left, variant="strategy8")
+    _t_min = float(config.get("s8_time_min", 4.0)); _t_max = float(config.get("s8_time_max", 10.0))
+    if mins_left < _t_min or mins_left > _t_max:
+        return _make_skip("yes", f"s8_time_gate:{mins_left:.1f}min", abs_pct, mins_left, variant="strategy8")
+    if spot <= 0 or strike <= 0 or len(pts) < 5:
+        return _make_skip("yes", "s8_no_data", abs_pct, mins_left, variant="strategy8")
+
+    live, anchor, ratio = _vol_regime(asset, config)
+    _calm = float(config.get("s8_calm_ratio", 0.6))
+    if ratio > _calm:
+        return _make_skip("yes", f"s8_not_calm:ratio={ratio:.2f}>{_calm:.2f}", abs_pct,
+                          mins_left, variant="strategy8")
+
+    mid_yes = _market_implied_p_yes(yes_ask, no_ask)
+    if mid_yes is None:
+        return _make_skip("yes", "s8_no_market_data", abs_pct, mins_left, variant="strategy8")
+    side = "yes" if mid_yes >= 0.5 else "no"
+    p_fav = mid_yes if side == "yes" else 1.0 - mid_yes
+    lo = float(config.get("s8_mid_lo", 0.55)); hi = float(config.get("s8_mid_hi", 0.85))
+    if not (lo <= p_fav <= hi):
+        return _make_skip("yes", f"s8_band:mid={p_fav:.2f}", abs_pct, mins_left, variant="strategy8")
+
+    # Modest conviction with the COLLAPSED sigma - the regime does the heavy lifting.
+    eff_secs = _effective_secs(secs_left, config)
+    period_sigma = live * math.sqrt(max(1.0 / 900.0, eff_secs / 900.0))
+    if period_sigma <= _SIGMA_MIN_PERIOD:
+        return _make_skip("yes", "s8_degenerate_sigma", abs_pct, mins_left, variant="strategy8")
+    adj = _basis_adjusted_spot(spot, asset)
+    z = math.log(adj / strike) / period_sigma
+    want_yes = z > 0
+    if (side == "yes") != want_yes or abs(z) < float(config.get("s8_min_z", 0.4)):
+        return _make_skip("yes", f"s8_lowz:{z:+.3f}", abs_pct, mins_left, variant="strategy8")
+
+    entry_price = yes_ask if side == "yes" else no_ask
+    _min_p = float(config.get("s8_min_entry_cents", 50.0))
+    _max_p = float(config.get("s8_max_entry_cents", 88.0))
+    if entry_price < _min_p or entry_price > _max_p:
+        return _make_skip(side, f"s8_price_filter:{entry_price:.0f}c", abs_pct, mins_left,
+                          variant="strategy8", price_filter=True)
+
+    fair_p_yes = _bachelier_p_above(adj, strike, eff_secs, live)
+    _raw_p_yes = float(fair_p_yes)
+    model_p_side = _raw_p_yes if side == "yes" else 1.0 - _raw_p_yes
+    _entry_p = float(entry_price) / 100.0
+    _fee_rate = config.get("kalshi_fee_per_contract_cents", 7) / 100.0
+    ev = model_p_side - _entry_p - _kalshi_fee_frac(_entry_p, _fee_rate)
+    signals = {
+        "win_prob": model_p_side, "ev": ev, "market_edge": None,
+        "mkt_p": p_fav, "model_raw_p_yes": _raw_p_yes, "vol_ratio": ratio,
+        "live_sigma": live, "anchor_sigma": anchor, "z": z, "spot": spot,
+        "abs_pct": abs_pct, "mins_left": mins_left, "strike": strike,
+    }
+    if ev < float(config.get("s8_min_edge", 0.03)):
+        return {
+            "action": "skip", "side": side, "confidence": int(model_p_side * 100),
+            "reasoning": f"s8_ev_gate:ev={ev:.3f}",
+            "key_signals": [f"ev:{ev:.3f}", f"ratio:{ratio:.2f}"], "signals": signals,
+            "win_prob": float(model_p_side), "mom_label": side, "mom_pct": 0.0,
+            "vel_signal": "strategy8", "raw_p_yes": _raw_p_yes,
+            "mins_left": mins_left, "abs_pct": abs_pct, "above": side == "yes",
+            "_rv": None, "_vol_ratio": ratio, "price_filter_skip": False,
+            "strategy_variant": "strategy8",
+        }
+    brain_log.info("S8 CALM %s %s | side=%s ratio=%.2f z=%+.2f ev=%.3f mins=%.1f",
+                   asset, ticker, side, ratio, z, ev, mins_left)
+    return _slot_trade(
+        "strategy8", bot_state._SLOT_VERSIONS["strategy8"], side,
+        model_p_side, _raw_p_yes, ev,
+        f"s8_calm ratio={ratio:.2f} side={side} z={z:+.2f} ev={ev:.3f} mins={mins_left:.1f}",
+        [f"ratio:{ratio:.2f}", f"side:{side}", f"z:{z:+.2f}", f"ev:{ev:.3f}"],
         signals, mins_left, abs_pct,
     )

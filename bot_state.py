@@ -144,7 +144,7 @@ _slot_state: dict = {}
 
 # Previous 15-min window outcome per asset, written when handle_locked_phase learns the
 # official result AND estimated at every rollover (so S6 gets data even for windows S2
-# never traded). Consumed by the S6 window-carry brain.
+# never traded). Consumed by the S6 window-fade brain.
 # asset -> {"result", "strike", "spot_at_close", "ts", "ticker", "estimated"}
 _prev_window_outcome: dict = {}
 
@@ -166,7 +166,9 @@ _SLOT_VERSIONS: dict = {
     "strategy3": "structural-arb-2026-07-10",
     "strategy4": "mean-reversion-2026-07-10",
     "strategy5": "maker-spread-capture-2026-07-10",
-    "strategy6": "window-carry-2026-07-10",
+    "strategy6": "window-fade-2026-07-11",
+    "strategy7": "vol-spike-breakout-2026-07-11",
+    "strategy8": "calm-market-favorite-2026-07-11",
 }
 
 kalshi_clock_skew_ms: int = 0       # corrected by _maybe_adjust_clock_skew at startup

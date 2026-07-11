@@ -18,7 +18,7 @@ Deployed on Railway. Trades real money via Kalshi's REST API. All production log
 | `bot_loops.py` | Main async market loop. Phase handler: watching -> ready -> trading -> cooldown |
 | `bot_market.py` | Kalshi REST API client. Order placement, OBI calculation, fill polling |
 | `bot_risk.py` | Preflight checks, trade execution, PnL tracking, S1 orphan settlement |
-| `bot_strategy.py` | All strategy brains: S1 Momentum (main), S2 Favorite-Bias, and the lab slots S3 Structural-Arb / S4 Mean-Reversion / S5 Maker-Capture / S6 Window-Carry |
+| `bot_strategy.py` | All strategy brains: S1 Momentum (main), S2 Favorite-Bias, and the lab slots S3 Structural-Arb / S4 Mean-Reversion / S5 Maker-Capture / S6 Window-Fade / S7 Vol-Spike / S8 Calm-Favorite |
 | `bot_strategies.py` | Registry for the lab slots (S3+): brain callable, labels, enabled keys. Adding S7/S8 = one brain + one entry here |
 | `bot_infra.py` | `config.json` read/write, sqlite3 `init_db()`, Telegram async helper |
 | `bot_state.py` | Shared in-memory globals: price deques, API keys, trade state |
@@ -75,7 +75,7 @@ never through a vol opinion.
   decision_log row (strategy `s_fav`, `would_trade=0`); now that S2 trades this thesis live the
   shadow measures a slightly wider untraded extension (`shadow_fav_enabled`).
 
-### The strategy lab (S3-S6, paper-only)
+### The strategy lab (S3-S8, paper-only)
 
 Registry-driven test slots (`bot_strategies.STRATEGY_REGISTRY`) racing alongside S1/S2 on
 every market, executed through the generic slot engine in `bot_risk`
@@ -97,9 +97,17 @@ settlement piggybacks on S2's expiry detection plus a generalized orphan sweep
   also appended during READY) - crossed -> filled at maker price + maker fee (~25% of
   taker); never crossed -> `outcome="unfilled"`, $0. Profit source is execution, not
   prediction.
-- **S6 Window-Carry**: first `s6_window_secs` (120s) of a window only, ride the PREVIOUS
-  window's resolved direction (from `bot_state._prev_window_outcome`, written when
-  `handle_locked_phase` learns the result) at 40-60c entries.
+- **S6 Window-Fade**: first `s6_window_secs` (120s) of a window only, FADE the PREVIOUS
+  window's resolved direction (from `bot_state._prev_window_outcome`, written at every
+  settlement AND estimated at every rollover) at 40-60c entries. Thesis validated on
+  25k real Kalshi settlements (`scripts/backtest_carry.py`): windows anti-persist -
+  after a decisive window the next reverses 53.4% (Wilson-LB 52.8% vs ~51.7%
+  breakeven), so the fade side is the historically positive bet.
+- **S7 Vol-Spike / S8 Calm-Favorite**: the volatility-regime mirror pair (`_vol_regime`:
+  live realized sigma vs the implied-EWMA/static anchor). S7 buys the fresh move's
+  direction only when live vol >= 1.6x anchor (spiked tape, book lags); S8 buys the
+  favorite only when live vol <= 0.6x anchor (dead tape, favorite holds). Both fair-
+  value with the LIVE sigma; regimes are mutually exclusive by construction.
 
 Scoreboard: `/api/edge` returns a `leaderboard` (per-strategy net-$/contract, Wilson-LB,
 verdict, and projected weekly $ at $25/$100/$250 clips - projections gated on positive

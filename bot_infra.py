@@ -256,15 +256,37 @@ def _init_config() -> None:
         "s5_improve_cents": 1,
         "s5_time_min": 3.0,
         "s5_time_max": 9.0,
-        # S6 window-carry: first 2 minutes of a window, ride the previous window's
-        # resolved direction at near-coin-flip prices.
+        # S6 window-fade: first 2 minutes of a window, FADE the previous window's
+        # resolved direction at near-coin-flip prices (windows anti-persist: fade rate
+        # 53.4% on 16.5k historical decisive pairs - scripts/backtest_carry.py).
         "s6_carry_enabled": True,
         "s6_window_secs": 120,
         "s6_min_prev_move": 0.0008,
         "s6_min_entry_cents": 40,
         "s6_max_entry_cents": 60,
-        "s6_carry_premium": 0.05,
+        "s6_fade_premium": 0.034,
         "s6_min_edge": 0.01,
+        # S7/S8: the volatility-regime mirror pair (every other strategy is
+        # regime-blind). S7 trades breakouts only when live vol spikes vs its anchor;
+        # S8 buys favorites only when vol has collapsed. See _vol_regime.
+        "s7_volspike_enabled": True,
+        "s7_spike_ratio": 1.6,
+        "s7_lookback_secs": 60,
+        "s7_time_min": 4.0,
+        "s7_time_max": 10.0,
+        "s7_min_entry_cents": 30,
+        "s7_max_entry_cents": 70,
+        "s7_min_edge": 0.03,
+        "s8_calm_enabled": True,
+        "s8_calm_ratio": 0.6,
+        "s8_mid_lo": 0.55,
+        "s8_mid_hi": 0.85,
+        "s8_min_z": 0.4,
+        "s8_time_min": 4.0,
+        "s8_time_max": 10.0,
+        "s8_min_entry_cents": 50,
+        "s8_max_entry_cents": 88,
+        "s8_min_edge": 0.03,
     }
 
     if os.path.exists(bot_state._CONFIG_FILE):

@@ -1288,9 +1288,21 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
     </div>
     <div class="kpi-div"></div>
     <div class="lab-tile" id="lab-tile-s6">
-      <div class="lab-tile-name">S6 * Window-Carry</div>
+      <div class="lab-tile-name">S6 * Window-Fade</div>
       <div id="lab-s6-today" class="lab-tile-v mono">-</div>
       <div id="lab-s6-sub" class="lab-tile-s">0 trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="lab-tile" id="lab-tile-s7">
+      <div class="lab-tile-name">S7 * Vol-Spike</div>
+      <div id="lab-s7-today" class="lab-tile-v mono">-</div>
+      <div id="lab-s7-sub" class="lab-tile-s">0 trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="lab-tile" id="lab-tile-s8">
+      <div class="lab-tile-name">S8 * Calm Favorite</div>
+      <div id="lab-s8-today" class="lab-tile-v mono">-</div>
+      <div id="lab-s8-sub" class="lab-tile-s">0 trades</div>
     </div>
   </div>
 
@@ -1471,7 +1483,7 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
         <th>#</th><th>Strategy</th><th>Picks</th><th>Win%</th><th>Net $/ct</th><th>Wilson LB</th><th>/day</th><th>Wk @$25</th><th>Wk @$100</th><th>Wk @$250</th><th>Verdict</th>
       </tr></thead><tbody id="edge-leaderboard"></tbody></table></div>
       <div id="edge-lab-activity" style="font-size:11px;margin-top:10px;"></div>
-      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Six strategies race on the same tape, all paper: S1 momentum (main), S2 favorite-bias, S3 structural arb, S4 mean-reversion, S5 maker capture, S6 window-carry. "Wk @$X" = what this edge would earn per week at an $X per-trade clip <b>if it survives 200 settled picks with Wilson LB &gt; 0</b> - a projection, never a promise; sizing up is a manual decision after proof. This is the honest path to $1k/wk: find the strategy whose proven row clears it. Lab activity shows every brain evaluation since the bot's last restart - a slot with many evals and zero trades is healthy-but-selective (read its top skip reasons); a slot with zero evals is broken.</div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Eight strategies race on the same tape, all paper: S1 momentum (main), S2 favorite-bias, S3 structural arb, S4 mean-reversion, S5 maker capture, S6 window-fade, S7 vol-spike breakout, S8 calm-market favorite. "Wk @$X" = what this edge would earn per week at an $X per-trade clip <b>if it survives 200 settled picks with Wilson LB &gt; 0</b> - a projection, never a promise; sizing up is a manual decision after proof. This is the honest path to $1k/wk: find the strategy whose proven row clears it. Lab activity shows every brain evaluation since the bot's last restart - a slot with many evals and zero trades is healthy-but-selective (read its top skip reasons); a slot with zero evals is broken.</div>
     </div>
     <div class="card">
       <div class="card-head"><div class="card-title"><span class="accent"></span>Calibration &amp; net edge * per strategy</div></div>
@@ -2530,7 +2542,7 @@ function renderEdge(d){
   // strategy-lab leaderboard: every slot ranked by net $/contract + clip projections
   const STRAT_NAMES = {strategy1:'S1 · Momentum', strategy2:'S2 · Favorite-Bias',
     strategy3:'S3 · Structural Arb', strategy4:'S4 · Mean-Reversion',
-    strategy5:'S5 · Maker Capture', strategy6:'S6 · Window-Carry'};
+    strategy5:'S5 · Maker Capture', strategy6:'S6 · Window-Fade', strategy7:'S7 · Vol-Spike', strategy8:'S8 · Calm Favorite'};
   const lbEl = document.getElementById('edge-leaderboard');
   if(lbEl){
     const board = dec.leaderboard || [];
@@ -3111,7 +3123,7 @@ async function fetchPnlLab() {
   try {
     const d = await fetch('/api/pnl').then(r => r.json());
     const bs = d.by_strategy || {};
-    for (const n of [3, 4, 5, 6]) {
+    for (const n of [3, 4, 5, 6, 7, 8]) {
       const g = bs[`strategy${n}`] || {};
       const today = g.today || {}, at = g.alltime || {};
       const v = document.getElementById(`lab-s${n}-today`);

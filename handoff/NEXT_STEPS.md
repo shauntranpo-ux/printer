@@ -1,9 +1,9 @@
 # Running the Strategy Lab
 
-Operator guide for the six-strategy paper lab. The old contents of this file (the
+Operator guide for the eight-strategy paper lab. The old contents of this file (the
 dashboard wiring punchlist) are obsolete - every endpoint has been wired since.
 
-Six strategies race on the same tape, all paper, all at the $25 clip:
+Eight strategies race on the same tape, all paper, all at the $25 clip:
 
 | Slot | Thesis | Trades when |
 |------|--------|-------------|
@@ -12,7 +12,9 @@ Six strategies race on the same tape, all paper, all at the $25 clip:
 | S3 · Structural Arb | YES+NO asks < 93c = free money | any time a book dislocates (rare) |
 | S4 · Mean-Reversion | Overextended moves snap back | a 2-sigma run that stalled |
 | S5 · Maker Capture | Earn the spread, don't pay it | passive quote on 60-90c favorites |
-| S6 · Window-Carry | Last window's direction persists | first 2 min, ~50c entries |
+| S6 · Window-Fade | Windows anti-persist: fade the last one (53.4% on 16.5k historical pairs) | first 2 min, ~50c entries |
+| S7 · Vol-Spike | Breakouts are underpriced when realized vol spikes | live vol >= 1.6x its anchor |
+| S8 · Calm Favorite | Favorites are underpriced when vol collapses | live vol <= 0.6x its anchor |
 
 ## Daily 30-second check (Overview tab)
 
@@ -63,7 +65,7 @@ Nothing in code ever sizes up on its own - that is an explicit config change you
 ## When a slot flames out
 
 1. `no edge` at ~200 trades -> set its enable key to `false` in config
-   (`s3_arb_enabled` / `s4_revert_enabled` / `s5_maker_enabled` / `s6_carry_enabled`).
+   (`s3_arb_enabled` / `s4_revert_enabled` / `s5_maker_enabled` / `s6_carry_enabled` / `s7_volspike_enabled` / `s8_calm_enabled`).
 2. Slot in a replacement idea: one brain function in `bot_strategy.py` + one entry in
    `bot_strategies.STRATEGY_REGISTRY` (S7/S8 slots are free). Labels, stats, API,
    dashboard, and Telegram pick it up automatically.
@@ -75,9 +77,11 @@ Nothing in code ever sizes up on its own - that is an explicit config change you
   entry band `s4_min/max_entry_cents` (25/70).
 - S5: `s5_mid_lo/hi` (0.60/0.90) favorite band, `s5_improve_cents` (1) quote depth.
 - S6: `s6_window_secs` (120) entry window, `s6_min_prev_move` (0.0008) how decisive
-  the previous window must have been, `s6_carry_premium` (0.05) the assumed edge.
+  the previous window must have been, `s6_fade_premium` (0.034) the historically measured edge.
 - S1: `s1_momentum_min_sigma` (1.0) - lower = more trades, noisier signal.
 - S2: `s2_fav_mid_lo/hi` (0.70/0.88), `s2_fav_min_z` (0.8).
+- S7: `s7_spike_ratio` (1.6) how abnormal vol must be, `s7_min_edge` (0.03).
+- S8: `s8_calm_ratio` (0.6), `s8_mid_lo/hi` (0.55/0.85), `s8_min_z` (0.4).
 - Duel: `strategy_duel_mode` (true) - S1+S2 may hold the same market on paper only.
 
 Loosening gates buys more trades per day (faster to 200) at the cost of signal

@@ -75,7 +75,7 @@ _FULL_CONFIG_DEFAULT = {
 
 # All strategies the API/dashboard enumerate: S1 momentum (main), S2 favorite-bias,
 # S3-S6 paper lab slots. Kept in sync with bot_strategies.STRATEGY_LABELS (tested).
-_STRATEGY_IDS = ("1", "2", "3", "4", "5", "6")
+_STRATEGY_IDS = ("1", "2", "3", "4", "5", "6", "7", "8")
 _ALL_STRATEGIES = tuple(f"strategy{i}" for i in _STRATEGY_IDS)
 if not os.path.exists("config.json"):
     try:

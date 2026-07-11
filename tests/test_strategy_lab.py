@@ -118,17 +118,22 @@ def test_s5_quotes_inside_ask_on_favorite():
     assert toss["action"] == "skip" and "s5_band" in toss["reasoning"]
 
 
-def test_s6_carries_prev_window_direction_early_only():
+def test_s6_fades_prev_window_direction_early_only():
+    """S6 buys the OPPOSITE of the previous window's resolved direction (windows
+    anti-persist: scripts/backtest_carry.py, fade rate 53.4% on 16.5k pairs)."""
     bot_state._prev_window_outcome["SOL"] = {
         "result": "yes", "strike": 150.0, "spot_at_close": 150.35, "ts": time.time() - 60}
     _ramp("SOL", 150.30, 150.42)
     with _cfg_patch(), patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
-        early = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 51, 90, 810, "T", asset="SOL")
-        late = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 51, 400, 500, "T", asset="SOL")
+        early = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 49, 90, 810, "T", asset="SOL")
+        late = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 49, 400, 500, "T", asset="SOL")
+        bot_state._prev_window_outcome["SOL"]["result"] = "no"
+        flipped = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 49, 90, 810, "T", asset="SOL")
         bot_state._prev_window_outcome.pop("SOL")
-        no_prev = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 51, 90, 810, "T", asset="SOL")
-    assert early["action"] == "trade" and early["side"] == "yes"
+        no_prev = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 49, 90, 810, "T", asset="SOL")
+    assert early["action"] == "trade" and early["side"] == "no", early["reasoning"]
     assert early["strategy_variant"] == "strategy6"
+    assert flipped.get("side") == "yes" or flipped["action"] == "skip"  # prev=no -> fade buys yes
     assert late["action"] == "skip" and "s6_too_late" in late["reasoning"]
     assert no_prev["action"] == "skip" and "s6_no_prev_window" in no_prev["reasoning"]
 
@@ -345,15 +350,15 @@ def test_label_dicts_stay_in_sync():
     assert set(server._ALL_STRATEGIES) == set(bot_strategies.STRATEGY_LABELS)
 
 
-def test_registry_covers_s3_to_s6():
+def test_registry_covers_all_lab_slots():
     assert set(bot_strategies.STRATEGY_REGISTRY) == {
-        "strategy3", "strategy4", "strategy5", "strategy6"}
+        "strategy3", "strategy4", "strategy5", "strategy6", "strategy7", "strategy8"}
     for slot, meta in bot_strategies.STRATEGY_REGISTRY.items():
         assert callable(meta["brain"])
         assert meta["enabled_key"]
     assert bot_strategies.enabled_slots({}) == list(bot_strategies.STRATEGY_REGISTRY)
     assert bot_strategies.enabled_slots({"s4_revert_enabled": False}) == [
-        "strategy3", "strategy5", "strategy6"]
+        "strategy3", "strategy5", "strategy6", "strategy7", "strategy8"]
 
 
 # ------------------------------------------------------------------ leaderboard API
@@ -549,3 +554,70 @@ def test_api_edge_exposes_lab_activity(tmp_path, monkeypatch):
     a = d["lab_activity"]["strategy6"]
     assert a["evals"] == 412 and a["trades"] == 3
     assert a["top_skips"] == [["b", 210], ["c", 120], ["d", 64]]
+
+
+# ------------------------------------------------------------------ S7/S8 vol-regime pair
+
+def _jumpy(asset, base=150.0, amp=0.006, n=120, span=600.0):
+    """High realized vol: alternating +/- amp*base steps on a 5s cadence."""
+    now = time.time()
+    dq = deque(maxlen=2000)
+    for i in range(n):
+        p = base * (1 + (amp if i % 2 else -amp)) * (1 + 0.00002 * i)
+        dq.append((now - span * (1 - i / (n - 1)), p))
+    asset_manager._prices[asset] = dq
+
+
+def _dead(asset, base=150.0, n=120, span=600.0):
+    """Collapsed realized vol: essentially flat prints."""
+    now = time.time()
+    dq = deque(maxlen=2000)
+    for i in range(n):
+        dq.append((now - span * (1 - i / (n - 1)), base * (1 + 0.000001 * (i % 3))))
+    asset_manager._prices[asset] = dq
+
+
+def test_s7_fires_on_vol_spike_and_skips_calm():
+    with _cfg_patch(), patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
+        _jumpy("SOL", base=150.0)
+        spot = asset_manager._prices["SOL"][-1][1]
+        spike = bs.strategy_brain_s7_volspike(spot, spot * 0.999, 55, 48, 480, 420, "T", asset="SOL")
+        _dead("SOL", base=150.0)
+        calm = bs.strategy_brain_s7_volspike(150.0, 149.85, 55, 48, 480, 420, "T", asset="SOL")
+    # On the jumpy tape the regime gate opens; direction/EV depend on the tape's last
+    # leg, so accept trade OR a post-regime gate - but NEVER the regime skip itself.
+    assert "s7_no_spike" not in spike["reasoning"], spike["reasoning"]
+    assert spike["strategy_variant"] == "strategy7"
+    assert calm["action"] == "skip" and "s7_no_spike" in calm["reasoning"], calm["reasoning"]
+
+
+def test_s8_fires_on_calm_and_skips_jumpy():
+    with _cfg_patch(), patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
+        _dead("SOL", base=150.0)
+        # Spot decisively above strike for the collapsed sigma (z ~ 0.5); favorite YES
+        # priced 62c - inside S8's 0.55-0.85 band.
+        calm = bs.strategy_brain_s8_calm(150.0, 149.885, 62, 40, 480, 420, "T", asset="SOL")
+        _jumpy("SOL", base=150.0)
+        spot = asset_manager._prices["SOL"][-1][1]
+        jumpy = bs.strategy_brain_s8_calm(spot, spot * 0.9998, 62, 40, 480, 420, "T", asset="SOL")
+    assert calm["action"] == "trade" and calm["side"] == "yes", calm["reasoning"]
+    assert calm["strategy_variant"] == "strategy8"
+    assert jumpy["action"] == "skip" and "s8_not_calm" in jumpy["reasoning"], jumpy["reasoning"]
+
+
+def test_s7_s8_are_mutually_exclusive_regimes():
+    """The same tape can never satisfy both regime gates (spike >= 1.6x vs calm <= 0.6x)."""
+    with _cfg_patch(), patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
+        for mk in (_jumpy, _dead):
+            mk("SOL", base=150.0)
+            spot = asset_manager._prices["SOL"][-1][1]
+            s7 = bs.strategy_brain_s7_volspike(spot, spot * 0.999, 55, 48, 480, 420, "T", asset="SOL")
+            s8 = bs.strategy_brain_s8_calm(spot, spot * 0.999, 62, 40, 480, 420, "T", asset="SOL")
+            s7_regime_open = "s7_no_spike" not in s7["reasoning"]
+            s8_regime_open = "s8_not_calm" not in s8["reasoning"]
+            assert not (s7_regime_open and s8_regime_open)
+
+
+def test_registry_now_covers_s3_to_s8():
+    assert set(bot_strategies.STRATEGY_REGISTRY) == {
+        "strategy3", "strategy4", "strategy5", "strategy6", "strategy7", "strategy8"}
