@@ -1176,8 +1176,13 @@ async def handle_locked_phase(
         # Settle lab-slot positions BEFORE the measurement block: the maker
         # counterfactual below pops _maker_track[ticker], which is the S5 fill
         # evidence the slot settler needs. Settling after it voided every S5 quote
-        # on an S2-traded ticker as "unfilled".
-        await _settle_slot_trades(ticker, market_result, btc_price, config)
+        # on an S2-traded ticker as "unfilled". Guarded so a slot failure can never
+        # block S2's own settlement below (which would leave the asset LOCKED).
+        try:
+            await _settle_slot_trades(ticker, market_result, btc_price, config)
+        except Exception as _slot_exc:
+            log.error("slot settlement failed for %s (S2 settle continues): %s",
+                      ticker, _slot_exc, exc_info=True)
         _maker_exec = (config.get("maker_execution_enabled", False)
                        and pos.get("mode", config.get("mode", "paper")) == "paper")
         _maker_cf = None

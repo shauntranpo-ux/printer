@@ -229,6 +229,17 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
 .kpi-spark-wrap svg{width:180px;height:44px;}
 .kpi-spark-l{font-size:9px;color:var(--ink-3);letter-spacing:0.1em;text-transform:uppercase;font-weight:600;}
 
+/* Strategy Lab strip - four compact tiles for the paper test slots (S3-S6) */
+.lab-strip{padding:12px 20px;gap:0;}
+.lab-strip .kpi-strip-label{color:var(--ink-2);padding-bottom:8px;margin-bottom:10px;}
+.lab-tile{flex:1;min-width:130px;display:flex;flex-direction:column;gap:4px;padding:0 18px 0 0;}
+.lab-tile-name{font-size:9.5px;font-weight:700;color:var(--ink-3);letter-spacing:0.08em;text-transform:uppercase;}
+.lab-tile-v{font:700 20px/1 'Montserrat',monospace;letter-spacing:-0.02em;color:var(--ink-2);}
+.lab-tile-v.up{color:var(--up);}
+.lab-tile-v.down{color:var(--down);}
+.lab-tile-s{font-size:10px;color:var(--ink-3);}
+@media (max-width:900px){.lab-tile{min-width:44%;padding-bottom:8px;}}
+
 /* ─── KPI ROW ─── */
 .kpi-row{
   display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px;
@@ -1254,6 +1265,34 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
 
   <!-- MARKET STRIP -->
   <div class="market-strip" id="market-strip"></div>
+
+  <!-- STRATEGY LAB STRIP - the four paper test slots racing S1/S2 (details: Edge tab) -->
+  <div class="kpi-strip lab-strip" id="lab-strip">
+    <div class="kpi-strip-label">Strategy Lab * paper * ranked on the Edge tab</div>
+    <div class="lab-tile" id="lab-tile-s3">
+      <div class="lab-tile-name">S3 * Structural Arb</div>
+      <div id="lab-s3-today" class="lab-tile-v mono">-</div>
+      <div id="lab-s3-sub" class="lab-tile-s">0 trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="lab-tile" id="lab-tile-s4">
+      <div class="lab-tile-name">S4 * Mean-Reversion</div>
+      <div id="lab-s4-today" class="lab-tile-v mono">-</div>
+      <div id="lab-s4-sub" class="lab-tile-s">0 trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="lab-tile" id="lab-tile-s5">
+      <div class="lab-tile-name">S5 * Maker Capture</div>
+      <div id="lab-s5-today" class="lab-tile-v mono">-</div>
+      <div id="lab-s5-sub" class="lab-tile-s">0 trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="lab-tile" id="lab-tile-s6">
+      <div class="lab-tile-name">S6 * Window-Carry</div>
+      <div id="lab-s6-today" class="lab-tile-v mono">-</div>
+      <div id="lab-s6-sub" class="lab-tile-s">0 trades</div>
+    </div>
+  </div>
 
   <!-- EQUITY + ALLOCATION - Strategy 2 -->
   <div class="grid-2 chart-band" style="margin-bottom:8px;">
@@ -2854,6 +2893,7 @@ window.addEventListener('load', () => {
   fetchTrades();
   fetchPnl();
   fetchPnlS1();
+  fetchPnlLab();
   fetchEventLog();
 });
 window.addEventListener('resize',()=>{
@@ -3044,6 +3084,27 @@ async function fetchPnlS1() {
   } catch(e) {}
 }
 
+// Strategy Lab strip: one unfiltered /api/pnl call carries by_strategy for all six.
+async function fetchPnlLab() {
+  try {
+    const d = await fetch('/api/pnl').then(r => r.json());
+    const bs = d.by_strategy || {};
+    for (const n of [3, 4, 5, 6]) {
+      const g = bs[`strategy${n}`] || {};
+      const today = g.today || {}, at = g.alltime || {};
+      const v = document.getElementById(`lab-s${n}-today`);
+      if (v) {
+        const p = today.pnl ?? 0;
+        const hasTrades = (at.trades ?? 0) > 0 || (today.trades ?? 0) > 0;
+        v.className = `lab-tile-v mono ${hasTrades ? (p >= 0 ? 'up' : 'down') : ''}`;
+        v.textContent = hasTrades ? fmtMoney(p) : '-';
+      }
+      const s = document.getElementById(`lab-s${n}-sub`);
+      if (s) s.innerHTML = `<span class="mono">${at.trades ?? 0} trades</span> * all-time ${fmtMoney(at.pnl ?? 0)}`;
+    }
+  } catch(e) {}
+}
+
 // ── Event log (live fetch, 30s poll) ──────────────────────────────────────
 async function fetchEventLog() {
   try {
@@ -3103,6 +3164,7 @@ setInterval(fetchMarketState, 30_000);
 setInterval(fetchEventLog,    30_000);
 setInterval(fetchPnl,         60_000);
 setInterval(fetchPnlS1,       60_000);
+setInterval(fetchPnlLab,      60_000);
 setInterval(()=>{ if(document.getElementById('panel-edge')?.classList.contains('active')) fetchEdge(); }, 60_000);
 
 // ── Motion engine ─────────────────────────────────────────────────────────────
