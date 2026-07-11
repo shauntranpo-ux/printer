@@ -501,3 +501,51 @@ def test_periodic_tick_sweeps_aged_pendings_and_prunes_maker_track():
     src = inspect.getsource(bot_loops.main_loop)
     assert "_settle_slot_rollover" in src and "18 * 60" in src, "aged pending sweep missing"
     assert "_maker_track.pop" in src and "1800" in src, "maker_track prune missing"
+
+
+# ------------------------------------------------------------------ lab activity telemetry
+
+def test_bump_slot_activity_counts_and_buckets():
+    """Every eval is counted; skip reasons bucket on the prefix before ':'; the skip
+    dict is bounded so a runaway reason set cannot grow without limit."""
+    import bot_loops
+    bot_state._slot_activity.clear()
+    bot_loops._bump_slot_activity("strategy6", {"action": "skip", "reasoning": "s6_no_prev_window"})
+    bot_loops._bump_slot_activity("strategy6", {"action": "skip", "reasoning": "s6_too_late:400s"})
+    bot_loops._bump_slot_activity("strategy6", {"action": "skip", "reasoning": "s6_too_late:501s"})
+    bot_loops._bump_slot_activity("strategy6", {"action": "trade", "reasoning": "s6_carry ..."})
+    act = bot_state._slot_activity["strategy6"]
+    assert act["evals"] == 4 and act["trades"] == 1
+    assert act["skips"] == {"s6_no_prev_window": 1, "s6_too_late": 2}
+    # bounded: 30 distinct reasons -> only 24 keys retained, evals still counted
+    for i in range(30):
+        bot_loops._bump_slot_activity("strategy3", {"action": "skip", "reasoning": f"r{i}:x"})
+    a3 = bot_state._slot_activity["strategy3"]
+    assert a3["evals"] == 30 and len(a3["skips"]) == 24
+    bot_state._slot_activity.clear()
+
+
+def test_api_edge_exposes_lab_activity(tmp_path, monkeypatch):
+    """/api/edge reads the bot-process dump fail-soft: present -> per-slot counters with
+    top-3 skips; absent -> empty dict, never a 500."""
+    import json as _json
+    db = str(tmp_path / "t.db")
+    monkeypatch.setattr(bot_state, "_DB_FILE", db)
+    monkeypatch.setattr(bot_state, "_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("BOT_DB_FILE", db)
+    import bot_infra
+    bot_infra.init_db()
+    import server
+    client = server.app.test_client()
+    # absent file -> empty, 200
+    d = client.get("/api/edge").get_json()
+    assert d["lab_activity"] == {}
+    # seeded file -> counters + top-3 skips sorted by count
+    (tmp_path / "lab_activity.json").write_text(_json.dumps({
+        "strategy6": {"evals": 412, "trades": 3, "since": 1e9,
+                      "skips": {"a": 5, "b": 210, "c": 120, "d": 64, "e": 2}},
+    }))
+    d = client.get("/api/edge").get_json()
+    a = d["lab_activity"]["strategy6"]
+    assert a["evals"] == 412 and a["trades"] == 3
+    assert a["top_skips"] == [["b", 210], ["c", 120], ["d", 64]]

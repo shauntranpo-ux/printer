@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import math
+import os
 import time
 from collections import deque
 from datetime import datetime, timezone, timedelta
@@ -62,6 +63,40 @@ _logged_trade_decisions: set = set()
 # is plenty for the counterfactual - avoids an extra orderbook fetch on every ~10s hold cycle.
 _maker_track_last_fetch: dict = {}
 _MAKER_TRACK_MIN_INTERVAL = 25.0
+
+
+def _bump_slot_activity(slot: str, brain: dict) -> None:
+    """
+    Count every lab-slot brain evaluation: trades and skip reasons (keyed on the
+    reasoning up to the first ':' so parameterized reasons bucket together). This is
+    the "why is a slot quiet?" telemetry - gate-stage skips never reach decision_log,
+    so without it a silent strategy is indistinguishable from a broken one. Never raises.
+    """
+    try:
+        act = bot_state._slot_activity.get(slot)
+        if act is None:
+            act = {"evals": 0, "trades": 0, "skips": {}, "since": time.time()}
+            bot_state._slot_activity[slot] = act
+        act["evals"] += 1
+        if brain.get("action") == "trade":
+            act["trades"] += 1
+            return
+        key = str(brain.get("reasoning") or "unknown").split(":", 1)[0][:48]
+        skips = act["skips"]
+        if key in skips or len(skips) < 24:
+            skips[key] = skips.get(key, 0) + 1
+    except Exception:
+        pass
+
+
+def _dump_slot_activity() -> None:
+    """Persist the counters for the dashboard (separate process). Atomic; never raises."""
+    try:
+        from bot_infra import atomic_write_json
+        path = os.path.join(bot_state._DATA_DIR, "lab_activity.json")
+        atomic_write_json(dict(bot_state._slot_activity), path)
+    except Exception as exc:
+        log.debug("lab activity dump skipped: %s", exc)
 
 
 def _record_prev_window_estimate(asset: str, prev_ticker: str, spot: float) -> None:
@@ -734,6 +769,7 @@ async def handle_ready_phase(
         try:
             _slot_brain = STRATEGY_REGISTRY[_slot_id]["brain"](
                 btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)
+            _bump_slot_activity(_slot_id, _slot_brain)
             await _log_decision(_slot_brain, ticker, asset, secs_left, yes_ask, no_ask,
                                 config, _slot_id)
             await _execute_slot_trade(
@@ -1506,6 +1542,7 @@ async def _process_asset(
                             _sb = STRATEGY_REGISTRY[_slot_id]["brain"](
                                 price, strike, ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
                                 elapsed, secs_left, ticker, asset=asset)
+                            _bump_slot_activity(_slot_id, _sb)
                             await _log_decision(_sb, ticker, asset, secs_left,
                                                 ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
                                                 config, _slot_id)
@@ -1829,6 +1866,8 @@ async def main_loop() -> None:
                             for _tk, _trk in list(bot_state._maker_track.items()):
                                 if _trk and _tick_ts - _trk[-1][0] > 1800:
                                     bot_state._maker_track.pop(_tk, None)
+                            # Publish lab activity counters for the dashboard process.
+                            _dump_slot_activity()
                         except Exception as _oe:
                             log.error("Periodic orphan settlement error: %s", _oe, exc_info=True)
                         _last_orphan_settle_ts = time.time()
@@ -2026,6 +2065,7 @@ async def main_loop() -> None:
                                             btc_price, strike,
                                             ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
                                             elapsed, secs_left, ticker, asset="BTC")
+                                        _bump_slot_activity(_slot_id, _sb)
                                         await _log_decision(
                                             _sb, ticker, "BTC", secs_left,
                                             ob_s1["best_yes_ask"], ob_s1["best_no_ask"],

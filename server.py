@@ -1349,7 +1349,23 @@ def api_edge():
         "calibration": {},
         "basis": {},
         "counts": {"logged": 0, "settled": 0, "pending": 0},
+        "lab_activity": {},
     }
+    # Lab activity counters ("why is a slot quiet?") - dumped by the bot process every
+    # periodic tick; gate-stage skips never reach decision_log so this is the only
+    # place a silent-but-healthy slot is distinguishable from a broken one.
+    try:
+        import bot_state as _bs_mod
+        _act = _safe_json_read(os.path.join(_bs_mod._DATA_DIR, "lab_activity.json"), {})
+        for _slot, _a in (_act or {}).items():
+            _skips = sorted((_a.get("skips") or {}).items(), key=lambda kv: -kv[1])[:3]
+            result["lab_activity"][_slot] = {
+                "evals": int(_a.get("evals", 0)), "trades": int(_a.get("trades", 0)),
+                "top_skips": [[k, v] for k, v in _skips],
+                "since": _a.get("since"),
+            }
+    except Exception as _act_exc:
+        log.debug("lab activity read skipped: %s", _act_exc)
     try:
         conn = get_db()
         try:

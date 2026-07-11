@@ -153,6 +153,13 @@ _prev_window_outcome: dict = {}
 # roll. Updated every loop iteration from the live market object.
 _last_window_strike: dict = {}
 
+# Lab-slot activity counters since process start: slot -> {"evals", "trades",
+# "skips": {reason_key: n}, "since": epoch}. Dumped to <data>/lab_activity.json every
+# periodic tick so the dashboard (separate process) can answer "why is a slot quiet?" -
+# gate-stage skips never reach decision_log, so without this a silent strategy is
+# indistinguishable from a broken one.
+_slot_activity: dict = {}
+
 _S1_VERSION = "momentum-continuation-2026-07-10"
 _S2_VERSION = "favorite-bias-2026-07-10"
 _SLOT_VERSIONS: dict = {
