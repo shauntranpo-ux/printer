@@ -607,8 +607,9 @@ async def db_write_trade(trade: dict) -> int | None:
                     model_prob, implied_prob, btc_price_at_entry, strike,
                     seconds_left_at_entry, fill_confirmed,
                     exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                    order_id, asset, raw_p_yes, entry_signals, strategy_variant, brain
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    order_id, asset, raw_p_yes, entry_signals, strategy_variant, brain,
+                    strategy_version
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
                 trade.get("mode"), trade.get("side"), trade.get("contracts"),
@@ -623,6 +624,7 @@ async def db_write_trade(trade: dict) -> int | None:
                 trade.get("order_id"), trade.get("asset", "BTC"),
                 trade.get("raw_p_yes"), trade.get("entry_signals"),
                 trade.get("strategy_variant", "strategy2"), trade.get("brain"),
+                trade.get("strategy_version"),
             ))
             await db.commit()
             return cur.lastrowid
