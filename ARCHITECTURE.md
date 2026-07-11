@@ -99,10 +99,11 @@ settlement piggybacks on S2's expiry detection plus a generalized orphan sweep
   prediction.
 - **S6 Window-Fade**: first `s6_window_secs` (120s) of a window only, FADE the PREVIOUS
   window's resolved direction (from `bot_state._prev_window_outcome`, written at every
-  settlement AND estimated at every rollover) at 40-60c entries. Thesis validated on
-  25k real Kalshi settlements (`scripts/backtest_carry.py`): windows anti-persist -
-  after a decisive window the next reverses 53.4% (Wilson-LB 52.8% vs ~51.7%
-  breakeven), so the fade side is the historically positive bet.
+  settlement AND estimated at every rollover, carrying a same-direction `streak`
+  counter) at 40-60c entries. Thesis validated AND tuned on 25k real Kalshi
+  settlements (`scripts/backtest_carry.py` + `scripts/tune_fade.py`): the fade rate is
+  monotonic in previous-move size and streak length; the shipped gate (move >= 15bp,
+  streak >= 2) fades 56.4% (Wilson-LB 0.552 vs ~0.517 breakeven, +4.6c/ct).
 - **S7 Vol-Spike / S8 Calm-Favorite**: the volatility-regime mirror pair (`_vol_regime`:
   live realized sigma vs the implied-EWMA/static anchor). S7 buys the fresh move's
   direction only when live vol >= 1.6x anchor (spiked tape, book lags); S8 buys the

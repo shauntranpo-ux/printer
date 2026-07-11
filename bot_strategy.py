@@ -175,7 +175,8 @@ def _grid_resample(pts, t_start: float, t_end: float, step: float) -> list:
     return grid
 
 
-def _live_sigma_15m(asset: str, window_minutes: float = _VOL_WINDOW_MIN) -> float:
+def _live_sigma_15m(asset: str, window_minutes: float = _VOL_WINDOW_MIN,
+                    with_valid: bool = False):
     """
     Live 15-minute 1-sigma fractional move from the price deque.
 
@@ -187,18 +188,26 @@ def _live_sigma_15m(asset: str, window_minutes: float = _VOL_WINDOW_MIN) -> floa
     Winsorizes each pair's per-second variance so one fat-finger print can't inflate
     sigma. Falls back to static _ASSET_VOL_15M x ToD on thin data; the live estimate
     itself omits the ToD multiplier since realized vol already reflects it.
+
+    with_valid=True returns (sigma, valid) where valid=False means the static
+    fallback was used (thin/degenerate data). Callers that compare live vol against
+    an independent anchor (the S7/S8 regime gate) must check validity: a fallback
+    value divided by a differing anchor produces a fake regime ratio.
     """
+    def _out(sigma: float, valid: bool):
+        return (sigma, valid) if with_valid else sigma
+
     base = _ASSET_VOL_15M.get(asset, 0.0023)
     static = base * _time_of_day_vol_multiplier()
     raw = asset_manager._prices.get(asset)
     if not raw or len(raw) < 3:
-        return static
+        return _out(static, False)
     pts = [(ts, p) for ts, p in raw if p > 0]
     if len(pts) < 3:
-        return static
+        return _out(static, False)
     now = pts[-1][0]
     if (pts[-1][0] - pts[0][0]) < _MIN_SPAN_SEC:
-        return static
+        return _out(static, False)
     grid = _grid_resample(pts, now - window_minutes * 60.0, now, _GRID_STEP_SEC)
     var_cap = _WINSOR_K * (base ** 2) / 900.0   # per-second variance cap (3-sigma)
     sum_r2 = 0.0
@@ -218,12 +227,12 @@ def _live_sigma_15m(asset: str, window_minutes: float = _VOL_WINDOW_MIN) -> floa
                 n += 1
         prev = (ts, p)
     if n < _MIN_PAIRS or sum_dt < _MIN_SPAN_SEC:
-        return static
+        return _out(static, False)
     var_per_sec = sum_r2 / sum_dt
     if var_per_sec <= 0:
-        return static
+        return _out(static, False)
     sigma_15m = math.sqrt(var_per_sec * 900.0)
-    return max(_FLOOR_MULT * base, min(_CEIL_MULT * base, sigma_15m))
+    return _out(max(_FLOOR_MULT * base, min(_CEIL_MULT * base, sigma_15m)), True)
 
 
 # Market-anchored EV. Anchor the model probability to the de-vigged market mid and
@@ -1899,13 +1908,13 @@ def strategy_brain_s6_carry(
 
     In the first s6_window_secs of a new window (book still near 50c), buy the side
     OPPOSITE the previous window's resolved direction, provided that window moved
-    decisively. Backed by scripts/backtest_carry.py over 25k real Kalshi settlements
-    (Feb-Apr 2026, 4 assets): after a decisive window the next one REVERSES 53.4% of
-    the time (Wilson-LB 52.8% vs the ~51.7% breakeven at 50c) - windows anti-persist,
-    so the fade side is the historically positive bet (~+1.7c/contract after fees).
-    The gate set mirrors the backtest exactly: early entry, decisive previous move,
-    near-coin-flip price band - no spot-side conditioning (the measured edge is
-    unconditional at the open).
+    decisively. Backed by scripts/backtest_carry.py + scripts/tune_fade.py over 25k
+    real Kalshi settlements (Feb-Apr 2026, 4 assets): windows anti-persist, and the
+    fade rate is monotonic in previous-move size AND streak length. The tuned gate
+    (move >= 15bp and streak >= 2) fades 56.4% (Wilson-LB 0.552 vs ~0.517 breakeven
+    at 50c, ~+4.6c/contract after fees, n=5275). Gates mirror the backtest exactly:
+    early entry, decisive previous move, streak >= 2, near-coin-flip price band -
+    no spot-side conditioning (the measured edge is unconditional at the open).
     """
     config = read_config()
     mins_left = secs_left / 60.0
@@ -1926,13 +1935,19 @@ def strategy_brain_s6_carry(
         return _make_skip("yes", "s6_no_prev_window", abs_pct, mins_left, variant="strategy6")
     if prev.get("result") not in ("yes", "no"):
         return _make_skip("yes", "s6_prev_unresolved", abs_pct, mins_left, variant="strategy6")
-    # The previous window must have moved decisively - the backtest's conditional edge
-    # (fade 53.4%) is measured on exactly this population.
+    # Conditional gates from scripts/tune_fade.py (25k settlement pairs): the fade rate
+    # is monotonic in BOTH previous-move size and streak length. move>=15bp AND
+    # streak>=2 -> fade 56.4% (Wilson-LB 0.552, +4.6c/ct at 50c) vs 53.4% unconditional,
+    # while still passing ~30 live trades/day across three assets.
     _prev_strike = float(prev.get("strike") or 0.0)
     _prev_close = float(prev.get("spot_at_close") or 0.0)
-    _min_prev = float(config.get("s6_min_prev_move", 0.0008))
+    _min_prev = float(config.get("s6_min_prev_move", 0.0015))
     if _prev_strike <= 0 or _prev_close <= 0 or abs(_prev_close / _prev_strike - 1.0) < _min_prev:
         return _make_skip("yes", "s6_prev_too_close", abs_pct, mins_left, variant="strategy6")
+    _min_streak = int(config.get("s6_min_streak", 2))
+    if int(prev.get("streak", 1)) < _min_streak:
+        return _make_skip("yes", f"s6_short_streak:{prev.get('streak', 1)}<{_min_streak}",
+                          abs_pct, mins_left, variant="strategy6")
     side = "no" if prev["result"] == "yes" else "yes"   # FADE the resolved direction
     entry_price = yes_ask if side == "yes" else no_ask
     _min_p = float(config.get("s6_min_entry_cents", 40.0))
@@ -1944,7 +1959,7 @@ def strategy_brain_s6_carry(
     mkt_p_side = (mid_yes if side == "yes" else 1.0 - mid_yes) if mid_yes is not None else 0.5
     # Fade prior: the historically measured premium over the market mid on the fade
     # side (0.534 - 0.5 from the settlement backtest). Live data proves or buries it.
-    fade_premium = float(config.get("s6_fade_premium", 0.034))
+    fade_premium = float(config.get("s6_fade_premium", 0.064))
     model_p_side = min(0.95, mkt_p_side + fade_premium)
     _raw_p_yes = model_p_side if side == "yes" else 1.0 - model_p_side
     _entry_p = float(entry_price) / 100.0
@@ -1986,9 +2001,17 @@ def _vol_regime(asset: str, config: dict) -> tuple:
     static table x time-of-day - deliberately NOT _sigma_eff, whose clamps would hide
     exactly the live-vs-anchor divergence these strategies trade. Never raises;
     degenerate data returns ratio 1.0 (no regime signal -> both brains skip).
+
+    Requires a GENUINE live estimate: when _live_sigma_15m falls back to its static
+    table (thin price deque), ratio is forced to 1.0 - otherwise a static fallback
+    divided by a differing implied-EWMA anchor would cross the spike/calm thresholds
+    with zero actual vol information behind it. Note the estimator's 0.5x-base floor
+    clamp means S8's calm gate (ratio <= 0.6) in practice triggers on live vol pegged
+    at/near half of normal - that is intended: "calm" = the floor of what we can
+    measure, not a finer gradation below it.
     """
     try:
-        live = _live_sigma_15m(asset)
+        live, live_ok = _live_sigma_15m(asset, with_valid=True)
         imp = bot_state._implied_sigma.get(asset)
         max_age = float(config.get("sigma_implied_max_age_secs", 900) or 900)
         fresh = (isinstance(imp, dict) and imp.get("sigma")
@@ -1996,7 +2019,7 @@ def _vol_regime(asset: str, config: dict) -> tuple:
                  and (time.time() - float(imp.get("ts", 0.0))) <= max_age)
         anchor = float(imp["sigma"]) if fresh else (
             _ASSET_VOL_15M.get(asset, 0.0023) * _time_of_day_vol_multiplier())
-        if anchor <= 0 or live <= 0:
+        if not live_ok or anchor <= 0 or live <= 0:
             return live, anchor, 1.0
         return live, anchor, live / anchor
     except Exception:

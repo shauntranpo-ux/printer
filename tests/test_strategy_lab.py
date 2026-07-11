@@ -120,22 +120,45 @@ def test_s5_quotes_inside_ask_on_favorite():
 
 def test_s6_fades_prev_window_direction_early_only():
     """S6 buys the OPPOSITE of the previous window's resolved direction (windows
-    anti-persist: scripts/backtest_carry.py, fade rate 53.4% on 16.5k pairs)."""
+    anti-persist; gates tuned by scripts/tune_fade.py: move>=15bp AND streak>=2 fades
+    56.4% on 5.3k historical pairs)."""
     bot_state._prev_window_outcome["SOL"] = {
-        "result": "yes", "strike": 150.0, "spot_at_close": 150.35, "ts": time.time() - 60}
+        "result": "yes", "strike": 150.0, "spot_at_close": 150.35,
+        "ts": time.time() - 60, "streak": 2}
     _ramp("SOL", 150.30, 150.42)
     with _cfg_patch(), patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
         early = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 49, 90, 810, "T", asset="SOL")
         late = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 49, 400, 500, "T", asset="SOL")
-        bot_state._prev_window_outcome["SOL"]["result"] = "no"
+        bot_state._prev_window_outcome["SOL"]["streak"] = 1
+        short = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 49, 90, 810, "T", asset="SOL")
+        bot_state._prev_window_outcome["SOL"].update({"result": "no", "streak": 3})
         flipped = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 49, 90, 810, "T", asset="SOL")
+        bot_state._prev_window_outcome["SOL"].update(
+            {"result": "yes", "streak": 2, "spot_at_close": 150.01})   # 0.7bp move < 15bp
+        small = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 49, 90, 810, "T", asset="SOL")
         bot_state._prev_window_outcome.pop("SOL")
         no_prev = bs.strategy_brain_s6_carry(150.42, 150.40, 52, 49, 90, 810, "T", asset="SOL")
     assert early["action"] == "trade" and early["side"] == "no", early["reasoning"]
     assert early["strategy_variant"] == "strategy6"
+    assert short["action"] == "skip" and "s6_short_streak" in short["reasoning"]
     assert flipped.get("side") == "yes" or flipped["action"] == "skip"  # prev=no -> fade buys yes
+    assert small["action"] == "skip" and "s6_prev_too_close" in small["reasoning"]
     assert late["action"] == "skip" and "s6_too_late" in late["reasoning"]
     assert no_prev["action"] == "skip" and "s6_no_prev_window" in no_prev["reasoning"]
+
+
+def test_window_streak_counter():
+    """Streak increments on same-result new windows, resets on flips, and an official
+    overwrite of the SAME window keeps (same result) or resets (different result)."""
+    import bot_loops
+    assert bot_loops._window_streak("SOL", "W1", "yes") == 1          # no history
+    bot_state._prev_window_outcome["SOL"] = {"result": "yes", "ticker": "W1", "streak": 1}
+    assert bot_loops._window_streak("SOL", "W2", "yes") == 2          # continuation
+    assert bot_loops._window_streak("SOL", "W2", "no") == 1           # flip
+    assert bot_loops._window_streak("SOL", "W1", "yes") == 1          # same-window agree keeps
+    bot_state._prev_window_outcome["SOL"]["streak"] = 3
+    assert bot_loops._window_streak("SOL", "W1", "yes") == 3
+    assert bot_loops._window_streak("SOL", "W1", "no") == 1           # same-window disagree resets
 
 
 def test_prev_window_estimate_written_at_rollover_and_defers_to_official():
@@ -603,6 +626,44 @@ def test_s8_fires_on_calm_and_skips_jumpy():
     assert calm["action"] == "trade" and calm["side"] == "yes", calm["reasoning"]
     assert calm["strategy_variant"] == "strategy8"
     assert jumpy["action"] == "skip" and "s8_not_calm" in jumpy["reasoning"], jumpy["reasoning"]
+
+
+def _thin(asset, base=150.0, n=8, span=60.0):
+    """Enough prints to pass the brains' len>=5 data gate, but a span under
+    _MIN_SPAN_SEC so _live_sigma_15m must return its static fallback."""
+    now = time.time()
+    dq = deque(maxlen=2000)
+    for i in range(n):
+        dq.append((now - span * (1 - i / (n - 1)), base * (1 + 0.0001 * (i % 2))))
+    asset_manager._prices[asset] = dq
+
+
+def test_regime_gates_need_genuine_live_vol_not_fallback():
+    """When _live_sigma_15m falls back to its static table (thin tape), an implied-
+    EWMA anchor that differs from static would make fallback/anchor cross the S7/S8
+    thresholds with zero real vol information - _vol_regime must force ratio to 1.0."""
+    base = bs._ASSET_VOL_15M["SOL"]
+    with _cfg_patch(), patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
+        try:
+            _thin("SOL", base=150.0)
+            sig, ok = bs._live_sigma_15m("SOL", with_valid=True)
+            assert not ok and sig == base  # fallback, ToD patched to 1.0
+
+            # Anchor 3x static: fallback/anchor = 0.33 <= 0.6 would fake a CALM regime.
+            bot_state._implied_sigma["SOL"] = {"sigma": base * 3, "ts": time.time(), "n": 5}
+            _, _, ratio = bs._vol_regime("SOL", dict(_CFG))
+            assert ratio == 1.0
+            s8 = bs.strategy_brain_s8_calm(150.0, 149.885, 62, 40, 480, 420, "T", asset="SOL")
+            assert s8["action"] == "skip" and "s8_not_calm" in s8["reasoning"], s8["reasoning"]
+
+            # Anchor at a third of static: fallback/anchor = 3.0 >= 1.6 would fake a SPIKE.
+            bot_state._implied_sigma["SOL"] = {"sigma": base / 3, "ts": time.time(), "n": 5}
+            _, _, ratio = bs._vol_regime("SOL", dict(_CFG))
+            assert ratio == 1.0
+            s7 = bs.strategy_brain_s7_volspike(150.0, 149.85, 55, 48, 480, 420, "T", asset="SOL")
+            assert s7["action"] == "skip" and "s7_no_spike" in s7["reasoning"], s7["reasoning"]
+        finally:
+            bot_state._implied_sigma.pop("SOL", None)
 
 
 def test_s7_s8_are_mutually_exclusive_regimes():

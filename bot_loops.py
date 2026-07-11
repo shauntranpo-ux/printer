@@ -99,6 +99,26 @@ def _dump_slot_activity() -> None:
         log.debug("lab activity dump skipped: %s", exc)
 
 
+def _window_streak(asset: str, ticker: str, result: str) -> int:
+    """
+    Same-direction run length ending at this window, maintained across the
+    _prev_window_outcome writes. New window + same result as the previous entry ->
+    streak+1; direction change -> 1. An official write overwriting the SAME window's
+    estimate keeps the streak when the result agrees and conservatively resets to 1
+    when it disagrees (the pre-window history is gone). S6's streak gate reads this -
+    the settlement backtest shows the fade edge concentrates on streaks >= 2.
+    """
+    try:
+        prev = bot_state._prev_window_outcome.get(asset)
+        if not prev:
+            return 1
+        if prev.get("ticker") == ticker:
+            return int(prev.get("streak", 1)) if prev.get("result") == result else 1
+        return int(prev.get("streak", 1)) + 1 if prev.get("result") == result else 1
+    except Exception:
+        return 1
+
+
 def _record_prev_window_estimate(asset: str, prev_ticker: str, spot: float) -> None:
     """
     S6 memory for windows S2 never traded: at rollover, estimate the closed window's
@@ -113,10 +133,11 @@ def _record_prev_window_estimate(asset: str, prev_ticker: str, spot: float) -> N
         existing = bot_state._prev_window_outcome.get(asset)
         if existing and existing.get("ticker") == prev_ticker:
             return   # official (or earlier) entry for this window wins
+        _res = "yes" if float(spot) > float(lws[1]) else "no"
         bot_state._prev_window_outcome[asset] = {
-            "result": "yes" if float(spot) > float(lws[1]) else "no",
-            "strike": float(lws[1]), "spot_at_close": float(spot),
+            "result": _res, "strike": float(lws[1]), "spot_at_close": float(spot),
             "ts": time.time(), "ticker": prev_ticker, "estimated": True,
+            "streak": _window_streak(asset, prev_ticker, _res),
         }
     except Exception:
         pass
@@ -1208,6 +1229,7 @@ async def handle_locked_phase(
             "result": _settle_side, "strike": float(pos.get("strike") or 0.0),
             "spot_at_close": float(btc_price or 0.0), "ts": time.time(),
             "ticker": ticker, "estimated": not _settled_official,
+            "streak": _window_streak(asset, ticker, _settle_side),
         }
         # Settle lab-slot positions BEFORE the measurement block: the maker
         # counterfactual below pops _maker_track[ticker], which is the S5 fill

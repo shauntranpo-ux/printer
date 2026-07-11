@@ -166,7 +166,7 @@ _SLOT_VERSIONS: dict = {
     "strategy3": "structural-arb-2026-07-10",
     "strategy4": "mean-reversion-2026-07-10",
     "strategy5": "maker-spread-capture-2026-07-10",
-    "strategy6": "window-fade-2026-07-11",
+    "strategy6": "window-fade-tuned-2026-07-11",
     "strategy7": "vol-spike-breakout-2026-07-11",
     "strategy8": "calm-market-favorite-2026-07-11",
 }

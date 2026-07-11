@@ -257,14 +257,16 @@ def _init_config() -> None:
         "s5_time_min": 3.0,
         "s5_time_max": 9.0,
         # S6 window-fade: first 2 minutes of a window, FADE the previous window's
-        # resolved direction at near-coin-flip prices (windows anti-persist: fade rate
-        # 53.4% on 16.5k historical decisive pairs - scripts/backtest_carry.py).
+        # resolved direction at near-coin-flip prices. Gates tuned on 25k historical
+        # settlement pairs (scripts/tune_fade.py): move >= 15bp AND streak >= 2 fades
+        # 56.4% (Wilson-LB 0.552, +4.6c/ct at 50c) vs 53.4% unconditional.
         "s6_carry_enabled": True,
         "s6_window_secs": 120,
-        "s6_min_prev_move": 0.0008,
+        "s6_min_prev_move": 0.0015,
+        "s6_min_streak": 2,
         "s6_min_entry_cents": 40,
         "s6_max_entry_cents": 60,
-        "s6_fade_premium": 0.034,
+        "s6_fade_premium": 0.064,
         "s6_min_edge": 0.01,
         # S7/S8: the volatility-regime mirror pair (every other strategy is
         # regime-blind). S7 trades breakouts only when live vol spikes vs its anchor;

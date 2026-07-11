@@ -12,7 +12,7 @@ Eight strategies race on the same tape, all paper, all at the $25 clip:
 | S3 · Structural Arb | YES+NO asks < 93c = free money | any time a book dislocates (rare) |
 | S4 · Mean-Reversion | Overextended moves snap back | a 2-sigma run that stalled |
 | S5 · Maker Capture | Earn the spread, don't pay it | passive quote on 60-90c favorites |
-| S6 · Window-Fade | Windows anti-persist: fade the last one (53.4% on 16.5k historical pairs) | first 2 min, ~50c entries |
+| S6 · Window-Fade | Windows anti-persist: fade a decisive 2+ streak (56.4% on 5.3k historical pairs) | first 2 min, ~50c entries |
 | S7 · Vol-Spike | Breakouts are underpriced when realized vol spikes | live vol >= 1.6x its anchor |
 | S8 · Calm Favorite | Favorites are underpriced when vol collapses | live vol <= 0.6x its anchor |
 
@@ -26,7 +26,7 @@ Eight strategies race on the same tape, all paper, all at the $25 clip:
      (e.g. S3 `s3_no_arb` = no dislocated books appeared, expected most days;
      S6 `s6_no_prev_window` = window memory missing, should fade after the first hour).
    - **zero evals -> the dispatch is broken.** Check Railway logs.
-3. Telegram daily summary lists all six with per-strategy totals and the day winner.
+3. Telegram daily summary lists all eight with per-strategy totals and the day winner.
 
 ## Weekly read (Edge tab leaderboard)
 
@@ -76,8 +76,8 @@ Nothing in code ever sizes up on its own - that is an explicit config change you
 - S4: `s4_min_sigma` (2.0), `s4_lookback_secs` (120), `s4_min_edge` (0.03),
   entry band `s4_min/max_entry_cents` (25/70).
 - S5: `s5_mid_lo/hi` (0.60/0.90) favorite band, `s5_improve_cents` (1) quote depth.
-- S6: `s6_window_secs` (120) entry window, `s6_min_prev_move` (0.0008) how decisive
-  the previous window must have been, `s6_fade_premium` (0.034) the historically measured edge.
+- S6: `s6_window_secs` (120) entry window, `s6_min_prev_move` (0.0015) + `s6_min_streak`
+  (2) the tuned decisive-move/streak gates, `s6_fade_premium` (0.064) the measured edge.
 - S1: `s1_momentum_min_sigma` (1.0) - lower = more trades, noisier signal.
 - S2: `s2_fav_mid_lo/hi` (0.70/0.88), `s2_fav_min_z` (0.8).
 - S7: `s7_spike_ratio` (1.6) how abnormal vol must be, `s7_min_edge` (0.03).
