@@ -86,3 +86,33 @@ Nothing in code ever sizes up on its own - that is an explicit config change you
 
 Loosening gates buys more trades per day (faster to 200) at the cost of signal
 quality; tighten again once a slot has its sample.
+
+## Historical validation status (what the Feb-May settlement data already said)
+
+- **S6 Window-Fade: PROVEN prior.** Fading a decisive (>=15bp) 2+ streak won 56.4%
+  of 5,275 historical pairs, Wilson-LB 0.552 vs the 0.517 breakeven at 50c
+  (`scripts/tune_fade.py`). The shipped gates encode exactly this.
+- **Window-carry (S6's original direction): KILLED** - windows anti-persist
+  (`scripts/backtest_carry.py`).
+- **BTC-confirmation gate for S6: checked and REJECTED** - requiring BTC's
+  same-window move to agree adds nothing (Wilson-LB 0.536 with vs 0.536 without),
+  and BTC's window result does not lead the alts' next window
+  (`scripts/xasset_check.py`).
+- **S1 / S4 / S2-S8 favorite calibration: UNTESTED** - needs price data the
+  settlement parquets don't carry. The two-step below fixes that.
+
+## Validate S1/S4/S2 against history (one-time, run on your PC)
+
+The hosted container cannot reach exchange APIs, so run these two commands from the
+repo on your Windows machine (open internet, no API keys needed):
+
+```
+pip install pandas pyarrow requests
+python scripts/fetch_candles.py     # ~5 min: 1-min candles for the settlement span
+python scripts/backtest_signals.py  # momentum / stall-fade / calibration report
+```
+
+Then commit the new `data/historical/*_candles_1m.parquet` files and push - with the
+candles in the repo, the analysis can be extended and re-run from any session. Read
+the report the same way as the leaderboard: a thesis is real only where LB-excess
+stays positive with n >= 1000.

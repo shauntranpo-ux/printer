@@ -114,7 +114,7 @@ Scoreboard: `/api/edge` returns a `leaderboard` (per-strategy net-$/contract, Wi
 verdict, and projected weekly $ at $25/$100/$250 clips - projections gated on positive
 net and labeled as unproven below 200 picks; nothing in code ever sizes a strategy up).
 The dashboard Strategy Lab card renders it; `scripts/edge_report.py` prints the same
-ranking; the Telegram daily summary iterates all six labels.
+ranking; the Telegram daily summary iterates all eight labels.
 
 **Sizing** is quarter-Kelly scaled DOWN from the `trade_amount_dollars` clip (`_kelly_stake`;
 never above the clip, floored at `min_stake_dollars`).
@@ -264,6 +264,16 @@ agreement stats from `settlement_basis`).
 - `scripts/plot_report.py --csv <export.csv>|--db <bot.db> [--out DIR]` - renders equity-curve,
   calibration, entry-price-bucket, and sigma-check PNGs. matplotlib is a script-only dependency
   (deliberately not in `requirements.txt`).
+- `scripts/backtest_carry.py` / `scripts/tune_fade.py` - the S6 settlement backtests: carry
+  killed, fade proven, then gated to its strongest sub-population (move >= 15bp, streak >= 2).
+- `scripts/xasset_check.py` - cross-asset conditioning of the S6 fade: checked and REJECTED
+  (BTC agreement adds no Wilson-LB lift; no 15-min BTC->alt lead-lag). Kept so the idea isn't
+  re-derived from scratch.
+- `scripts/fetch_candles.py` + `scripts/backtest_signals.py` - 1-min Coinbase candles for the
+  settlement span (fetch must run from an unrestricted network - hosted containers block
+  exchange hosts) and the intra-window signal tests they enable: S1 momentum-vs-model excess,
+  S4 stall-fade, and the favorite-calibration behind S2/S8. pandas/pyarrow/requests are
+  script-only dependencies.
 
 ### Environment Variables (runtime-verified)
 
