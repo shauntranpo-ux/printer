@@ -1439,7 +1439,7 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
         <th>Strategy</th><th>Picks</th><th>Win%</th><th>Model P</th><th>Mkt P</th>
         <th>Brier M/K</th><th>Net $/ct</th><th>Wilson LB</th>
       </tr></thead><tbody id="edge-decisions"></tbody></table></div>
-      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Net $/ct = realized P&amp;L per contract after fees on the gate's picks. Wilson LB &gt; 0 = statistically positive edge.</div>
+      <div style="font-size:10px;color:var(--ink-3);margin-top:8px;">Net $/ct = realized P&amp;L per contract after fees on the gate's picks. Wilson LB &gt; 0 = statistically positive edge. Signal-level stats: S3/S5 rows here price the signal as a taker at the ask - their true executed P&amp;L (fills, voids, maker pricing, arb pairs) is the Strategy Lab leaderboard above, which reads the actual trade rows.</div>
     </div>
     <div class="card">
       <div class="card-head"><div class="card-title"><span class="accent"></span>Better market times &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">ET session * net edge on picks</span></div></div>
@@ -2503,7 +2503,7 @@ function renderEdge(d){
         const crown = i===0 && r.net_per_contract>0 ? ' \u{1F451}' : '';
         const proj = c => (r.projected_weekly_at_clip&&r.projected_weekly_at_clip[c]!=null)
           ? ('$'+r.projected_weekly_at_clip[c].toFixed(0)) : '-';
-        const vCls = /proven/.test(r.verdict)?'up':/no edge/.test(r.verdict)?'down':'muted';
+        const vCls = r.verdict.indexOf('proven')===0?'up':/no edge/.test(r.verdict)?'down':'muted';
         return `<tr><td>${i+1}</td><td>${STRAT_NAMES[r.strategy]||r.strategy}${crown}</td>
           <td>${r.n}</td><td>${_edgeCell(r.win_rate,1,true)}</td>
           <td class="${netCls}">${_edgeCell(r.net_per_contract,4)}</td>

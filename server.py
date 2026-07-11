@@ -541,7 +541,10 @@ def api_pnl():
         )
 
         def _pnl(trades):
-            resolved = [t for t in trades if t.get("outcome") not in ("pending", None) and t.get("pnl_dollars") is not None]
+            # Voided rows (maker quote never filled, reconcile phantoms) are non-events,
+            # not resolved trades - counting their $0 rows deflates win rates.
+            _void = ("pending", None, "unfilled", "expired_unfilled", "phantom")
+            resolved = [t for t in trades if t.get("outcome") not in _void and t.get("pnl_dollars") is not None]
             total = round(sum(t["pnl_dollars"] for t in resolved), 2)
             wins  = sum(1 for t in resolved if t["pnl_dollars"] > 0)
             count = len(resolved)
@@ -1387,16 +1390,61 @@ def api_edge():
             }
         else:
             result["decisions"]["head_to_head"] = None
-        # Leaderboard: every strategy with settled picks, ranked by net-$/contract, with
-        # a per-slot verdict and the HONEST path-to-$1k/wk projection: what this edge
-        # would earn weekly at bigger clips IF it survives the 200-pick proof. Numbers
-        # are projections, not promises - nothing in code ever sizes a strategy up.
+        # Leaderboard: EXECUTED paper trades from the CURRENT strategy versions - the
+        # ground truth for "which strategy profits more" (fills, voided maker quotes,
+        # arb pairs, and maker pricing are all in the trades rows; decision_log would
+        # score S5 as a 100%-filled taker and S3 as a directional coin flip, and would
+        # mix in weeks of retired-brain history). Projections = what this edge would
+        # earn weekly at bigger clips IF it survives the 200-trade Wilson-LB proof;
+        # nothing in code ever sizes a strategy up.
+        import bot_state as _bstate
+        _cur_versions = tuple({_bstate._S1_VERSION, _bstate._S2_VERSION,
+                               *_bstate._SLOT_VERSIONS.values()})
         _lb_rows = []
-        for strat, g in _bs.items():
-            rs = groups.get(strat, [])
-            _days = len({(r["ts"] or "")[:10] for r in rs if r["ts"]}) or 1
-            picks_per_day = g["n"] / _days
-            n, net, wlb = g["n"], g["net_pnl_per_contract"], g["wilson_lb_pnl"]
+        try:
+            _tconn = get_db()
+            _ph = ",".join("?" * len(_cur_versions))
+            trows = _tconn.execute(
+                f"SELECT ts, strategy_variant, outcome, pnl_dollars, contracts, "
+                f"entry_price_cents FROM trades WHERE mode='paper' "
+                f"AND strategy_version IN ({_ph}) AND outcome NOT IN ('pending')",
+                _cur_versions).fetchall()
+            _tconn.close()
+        except sqlite3.OperationalError:
+            trows = []
+        _void = ("unfilled", "expired_unfilled", "phantom")
+        _by_strat: dict = {}
+        for r in trows:
+            _by_strat.setdefault(r["strategy_variant"] or "strategy2", []).append(r)
+        for strat, rs in _by_strat.items():
+            settled = [r for r in rs if r["outcome"] not in _void
+                       and r["pnl_dollars"] is not None and (r["contracts"] or 0) > 0]
+            n = len(settled)
+            if n == 0:
+                continue
+            wins = sum(1 for r in settled if r["outcome"] == "win")
+            win_rate = wins / n
+            tot_pnl = sum(r["pnl_dollars"] for r in settled)
+            tot_contracts = sum(r["contracts"] for r in settled)
+            net = tot_pnl / tot_contracts if tot_contracts else None
+            entries = [r["entry_price_cents"] / 100.0 for r in settled
+                       if r["entry_price_cents"]]
+            mean_entry = sum(entries) / len(entries) if entries else None
+            wlb_rate = wilson_lower(wins, n)
+            wlb = (wlb_rate * (1 - mean_entry) - (1 - wlb_rate) * mean_entry
+                   - _kalshi_fee(mean_entry)) if mean_entry is not None else None
+            # Rate over the SPAN of days from first to last trade (distinct-day counts
+            # floor sparse strategies at 1/day and inflate their projections).
+            _ts = sorted((r["ts"] or "")[:10] for r in rs if r["ts"])
+            if _ts and _ts[0] and _ts[-1]:
+                try:
+                    _span = (datetime.strptime(_ts[-1], "%Y-%m-%d")
+                             - datetime.strptime(_ts[0], "%Y-%m-%d")).days + 1
+                except ValueError:
+                    _span = 1
+            else:
+                _span = 1
+            trades_per_day = n / max(1, _span)
             if n < 200:
                 verdict = f"collecting ({n}/200)"
             elif wlb is not None and wlb > 0:
@@ -1406,16 +1454,15 @@ def api_edge():
             else:
                 verdict = "no edge"
             projections = {}
-            if net is not None and net > 0 and g.get("mean_entry"):
-                # contracts per trade at clip $C = C / (mean entry price in $ per contract)
+            if net is not None and net > 0 and mean_entry:
                 projections = {
-                    str(clip): _safe(net * (clip / g["mean_entry"]) * picks_per_day * 7, 2)
+                    str(clip): _safe(net * (clip / mean_entry) * trades_per_day * 7, 2)
                     for clip in (25, 100, 250)
                 }
             _lb_rows.append({
-                "strategy": strat, "n": n, "win_rate": g["win_rate"],
-                "net_per_contract": net, "total_pnl": g.get("total_pnl"),
-                "wilson_lb_pnl": wlb, "picks_per_day": _safe(picks_per_day, 1),
+                "strategy": strat, "n": n, "win_rate": _safe(win_rate, 3),
+                "net_per_contract": _safe(net), "total_pnl": _safe(tot_pnl, 2),
+                "wilson_lb_pnl": _safe(wlb), "picks_per_day": _safe(trades_per_day, 1),
                 "verdict": verdict, "projected_weekly_at_clip": projections,
             })
         _lb_rows.sort(key=lambda r: (r["net_per_contract"] is None,

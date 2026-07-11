@@ -39,7 +39,8 @@ def _make_row(**overrides):
 # 1. Paper mode -> mark_expired_unfilled, no Kalshi calls
 
 async def test_classify_paper_mode_no_kalshi_calls():
-    """Paper mode returns mark_expired_unfilled with PnL=0; Kalshi must not be called."""
+    """Paper rows are LEFT PENDING (never voided) and Kalshi must not be called - the
+    orphan sweeps settle them at their true outcome."""
     from reconcile import classify_pending_trade
 
     # session.get raises if called - proves no Kalshi call made
@@ -48,9 +49,12 @@ async def test_classify_paper_mode_no_kalshi_calls():
 
     row = _make_row()
     result = await classify_pending_trade(session, row, "paper")
+    assert result["action"] == "leave_pending"
 
-    assert result["action"] == "mark_expired_unfilled"
-    assert result["pnl_dollars"] == 0.0
+    # Row-level paper mode wins even when the global mode is live: lab-slot rows
+    # (always paper) must never be voided by a live-mode reconcile.
+    result2 = await classify_pending_trade(session, _make_row(mode="paper"), "live")
+    assert result2["action"] == "leave_pending"
     session.get.assert_not_called()
 
 

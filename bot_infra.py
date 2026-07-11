@@ -891,17 +891,24 @@ async def db_write_market_log(entry: dict) -> None:
         log.error(f"DB write_market_log error: {exc}")
 
 
-async def db_get_today_pnl(mode: str) -> float:
-    """Sum pnl_dollars for completed trades in the given mode today (ET calendar day)."""
+async def db_get_today_pnl(mode: str, variants: "tuple | None" = None) -> float:
+    """
+    Sum pnl_dollars for completed trades in the given mode today (ET calendar day).
+    `variants` optionally restricts to specific strategy_variant values - the daily
+    limit check passes the main-line pair so the lab slots' paper P&L can't trip the
+    profit target / loss cap on S1/S2's behalf. None = all strategies (notifications).
+    """
     try:
         start, end = et_day_bounds_utc(datetime.now(_ET).date())
+        q = ("SELECT COALESCE(SUM(pnl_dollars), 0) FROM trades "
+             "WHERE mode = ? AND ts >= ? AND ts < ? AND outcome != 'pending'")
+        params: list = [mode, start, end]
+        if variants:
+            q += f" AND COALESCE(strategy_variant, 'strategy2') IN ({','.join('?' * len(variants))})"
+            params.extend(variants)
         async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
-            async with db.execute(
-                "SELECT COALESCE(SUM(pnl_dollars), 0) FROM trades "
-                "WHERE mode = ? AND ts >= ? AND ts < ? AND outcome != 'pending'",
-                (mode, start, end),
-            ) as cur:
+            async with db.execute(q, params) as cur:
                 row = await cur.fetchone()
         return float(row[0]) if row else 0.0
     except Exception as exc:

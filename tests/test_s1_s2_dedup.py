@@ -22,14 +22,17 @@ def test_dedup_fires_only_when_do_trade_true():
     )
 
 
-def test_dedup_is_gated_by_duel_mode():
-    """In duel mode (default) both brains may hold the same ticker; the one-way S1-blocks-S2
-    dedup must be behind the strategy_duel_mode flag so it does not poison the head-to-head."""
+def test_dedup_is_gated_by_duel_mode_and_paper_only():
+    """In duel mode both brains may hold the same ticker - but ONLY on paper. With real
+    capital the dedup must always apply, so the bypass requires duel mode AND both
+    strategies' effective modes to be paper."""
     src = inspect.getsource(bot_loops.handle_ready_phase)
     assert 'strategy_duel_mode' in src, (
         "S1/S2 dedup must be gated on config['strategy_duel_mode']"
     )
-    # The dedup must sit inside the `not ... strategy_duel_mode` branch.
-    assert 'not config.get("strategy_duel_mode"' in src, (
-        "dedup should only apply when strategy_duel_mode is False"
+    assert 'mode == "paper" and mode_s1 == "paper"' in src, (
+        "duel bypass must require both S1 and S2 modes to be paper"
+    )
+    assert "if not _duel_paper:" in src, (
+        "dedup must apply whenever the paper-duel condition does not hold"
     )

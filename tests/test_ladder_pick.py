@@ -1,5 +1,7 @@
 """_pick_best_strike selects the SMALLEST model-vs-market gap among firing candidates."""
-import sys, os, asyncio
+import sys
+import os
+import asyncio
 from unittest.mock import patch, AsyncMock
 
 import pytest
@@ -67,3 +69,22 @@ def test_falls_back_when_no_candidate_fires():
     brains = [_mk_brain("skip"), _mk_brain("skip")]
     got = _run_pick(cands, brains, default)
     assert got["ticker"] == "KX-DEF"
+
+
+def _mk_brain_v3(action, win_prob=None, mkt_p=None, spread=1.0):
+    """New favorite-bias-brain shape: no 'gap' key; gap derives from win_prob vs mkt_p."""
+    b = {"action": action, "side": "yes", "signals": {}}
+    if win_prob is not None:
+        b["signals"] = {"win_prob": win_prob, "mkt_p": mkt_p, "spread_cents": spread}
+    return b
+
+
+def test_picks_from_new_brain_signals_without_gap_key():
+    """The rewritten S2 emits win_prob/mkt_p but no 'gap' - the ladder must derive the
+    gap instead of skipping every candidate (which silently killed the ladder)."""
+    default = _mk_market("KX-DEF", 150.0)
+    cands = [_mk_market("KX-DEF", 150.0), _mk_market("KX-NEAR", 150.2)]
+    brains = [_mk_brain_v3("trade", win_prob=0.85, mkt_p=0.73),   # gap 0.12
+              _mk_brain_v3("trade", win_prob=0.78, mkt_p=0.74)]   # gap 0.04 -> wins
+    got = _run_pick(cands, brains, default)
+    assert got["ticker"] == "KX-NEAR"

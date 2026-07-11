@@ -358,7 +358,17 @@ def test_registry_covers_s3_to_s6():
 
 # ------------------------------------------------------------------ leaderboard API
 
+def _seed_trade(conn, ts, sv, version, outcome, pnl, contracts, entry_cents):
+    conn.execute(
+        "INSERT INTO trades (ts, market_id, mode, side, contracts, entry_price_cents, "
+        "outcome, pnl_dollars, strategy_variant, strategy_version, fill_confirmed) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,1)",
+        (ts, "TK", "paper", "yes", contracts, entry_cents, outcome, pnl, sv, version))
+
+
 def test_api_edge_leaderboard_ranks_and_projects(tmp_path, monkeypatch):
+    """Leaderboard reads EXECUTED paper trades (current versions only): voided maker
+    quotes excluded, retired-version rows excluded, span-day rate, honest projections."""
     db = str(tmp_path / "t.db")
     monkeypatch.setattr(bot_state, "_DB_FILE", db)
     monkeypatch.setenv("BOT_DB_FILE", db)
@@ -367,40 +377,47 @@ def test_api_edge_leaderboard_ranks_and_projects(tmp_path, monkeypatch):
     import server
     client = server.app.test_client()
     conn = sqlite3.connect(db)
-    # strategy4: 30 picks, 80% wins at 50c -> strongly positive
+    v4 = bot_state._SLOT_VERSIONS["strategy4"]
+    v5 = bot_state._SLOT_VERSIONS["strategy5"]
+    v1 = bot_state._S1_VERSION
+    # strategy4: 30 trades over a 3-day span, 80% wins at 50c, +$5 winners/-$5 losers
     for i in range(30):
-        out = "yes" if i % 5 else "no"
-        conn.execute(
-            "INSERT INTO decision_log(ts,ticker,asset,strategy,mode,side,model_p_yes,"
-            "market_mid_p_yes,entry_price_cents,secs_left,would_trade,outcome) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (f"2026-07-0{1 + i % 3}T14:00:00+00:00", f"T{i}", "SOL", "strategy4",
-             "paper", "yes", 0.8, 0.7, 50.0, 300, 1, out))
-    # strategy1: 10 picks, all losses -> negative
+        won = bool(i % 5)
+        _seed_trade(conn, f"2026-07-0{1 + i % 3}T14:00:00Z", "strategy4", v4,
+                    "win" if won else "loss", 5.0 if won else -5.0, 10, 50)
+    # strategy1: 10 losing trades, all on day 1 of the same 3-day window
     for i in range(10):
-        conn.execute(
-            "INSERT INTO decision_log(ts,ticker,asset,strategy,mode,side,model_p_yes,"
-            "market_mid_p_yes,entry_price_cents,secs_left,would_trade,outcome) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (f"2026-07-01T15:00:00+00:00", f"U{i}", "SOL", "strategy1",
-             "paper", "yes", 0.8, 0.7, 60.0, 300, 1, "no"))
+        _seed_trade(conn, "2026-07-01T15:00:00Z", "strategy1", v1,
+                    "loss", -6.0, 10, 60)
+    # strategy5: 2 wins + 3 VOIDED quotes (unfilled) - voids must not count as trades
+    for i in range(2):
+        _seed_trade(conn, "2026-07-01T16:00:00Z", "strategy5", v5, "win", 2.0, 10, 77)
+    for i in range(3):
+        _seed_trade(conn, "2026-07-01T17:00:00Z", "strategy5", v5, "unfilled", 0.0, 10, 77)
+    # retired-version rows must be ignored entirely
+    for i in range(50):
+        _seed_trade(conn, "2026-06-20T14:00:00Z", "strategy1", "old-version",
+                    "win", 99.0, 10, 50)
     conn.commit(); conn.close()
     d = client.get("/api/edge").get_json()
     board = d["decisions"]["leaderboard"]
-    assert [r["strategy"] for r in board] == ["strategy4", "strategy1"]
+    assert [r["strategy"] for r in board] == ["strategy4", "strategy5", "strategy1"]
     top = board[0]
-    assert top["net_per_contract"] > 0
+    # net/ct = sum(pnl)/sum(contracts) = (24*5 - 6*5)/300 = 0.30
+    assert abs(top["net_per_contract"] - 0.30) < 1e-6
     assert "collecting (30/200)" in top["verdict"]
-    # projections exist for the positive strategy and scale linearly with the clip
+    # projections scale linearly and match hand math at the span-day rate (30/3=10/day)
     p = top["projected_weekly_at_clip"]
     assert p and abs(p["250"] / p["25"] - 10.0) < 0.01
-    # hand math: net/ct * (clip/mean_entry) * picks_per_day * 7
-    picks_per_day = 30 / 3
-    expect_25 = top["net_per_contract"] * (25 / 0.50) * picks_per_day * 7
+    expect_25 = 0.30 * (25 / 0.50) * 10 * 7
     assert abs(p["25"] - expect_25) < 0.5
-    # the losing strategy gets no projection - no fantasy numbers on negative edge
-    assert board[1]["projected_weekly_at_clip"] == {}
-    assert board[1]["verdict"].startswith("collecting")
+    # S5: only the 2 filled trades count; win rate 100% of the filled
+    s5 = board[1]
+    assert s5["n"] == 2 and s5["win_rate"] == 1.0
+    # losing strategy: no fantasy projections; the old-version windfall is invisible
+    s1 = board[2]
+    assert s1["projected_weekly_at_clip"] == {}
+    assert s1["n"] == 10 and s1["net_per_contract"] < 0
 
 
 def test_api_pnl_by_strategy_includes_lab_slots(tmp_path, monkeypatch):
@@ -413,3 +430,74 @@ def test_api_pnl_by_strategy_includes_lab_slots(tmp_path, monkeypatch):
     client = server.app.test_client()
     d = client.get("/api/pnl").get_json()
     assert set(d["by_strategy"]) == set(bot_strategies.STRATEGY_LABELS)
+
+
+# ------------------------------------------------------------------ review-fix regressions
+
+class _FakeResp:
+    def __init__(self, payload):
+        self._payload = payload
+        self.status = 200
+
+    async def json(self):
+        return self._payload
+
+    async def text(self):
+        return ""
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+
+class _FakeSession:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def get(self, *a, **k):
+        return _FakeResp(self._payload)
+
+
+def _ob_payload(yes_cents, no_cents):
+    return {"orderbook": {"yes": [[yes_cents, 200]], "no": [[no_cents, 200]]}}
+
+
+def test_fetch_orderbook_passes_arb_book_rejects_broken(monkeypatch):
+    """An arb-qualifying book (combined < $1.00) must reach the brains - the old
+    blanket <100 rejection made S3 permanently unreachable. Truly broken books
+    (combined < 70c) stay rejected."""
+    import bot_market
+    monkeypatch.setattr(bot_state, "api_key", "k")
+    monkeypatch.setattr(bot_market, "kalshi_headers", lambda *a, **k: {})
+    arb = asyncio.run(bot_market.fetch_orderbook(_FakeSession(_ob_payload(45, 43)), "TK"))
+    assert arb is not None and arb["best_yes_ask"] == 45 and arb["best_no_ask"] == 43
+    broken = asyncio.run(bot_market.fetch_orderbook(_FakeSession(_ob_payload(30, 25)), "TK"))
+    assert broken is None
+    normal = asyncio.run(bot_market.fetch_orderbook(_FakeSession(_ob_payload(56, 47)), "TK"))
+    assert normal is not None
+
+
+def test_slot_settle_runs_before_maker_track_pop():
+    """S5's fill evidence lives in _maker_track; _record_maker_counterfactual pops it.
+    The slot settle call must therefore come BEFORE the counterfactual in the expiry
+    block, or every S5 quote on an S2-traded ticker voids as unfilled."""
+    import inspect
+    import bot_loops
+    src = inspect.getsource(bot_loops.handle_locked_phase)
+    i_settle = src.index("_settle_slot_trades")
+    i_cf = src.index("_record_maker_counterfactual")
+    assert i_settle < i_cf, "slot settlement must run before the maker-track pop"
+    assert src.count("_settle_slot_trades") == 1, "single settle call (no late duplicate)"
+
+
+def test_periodic_tick_sweeps_aged_pendings_and_prunes_maker_track():
+    """Ladder-picked tickers never become prev_ticker, so aged in-memory pendings must
+    be swept by the periodic tick (else they deadlock against the orphan-sweep guard);
+    stale _maker_track entries must be pruned."""
+    import inspect
+    import bot_loops
+    src = inspect.getsource(bot_loops.main_loop)
+    assert "_settle_slot_rollover" in src and "18 * 60" in src, "aged pending sweep missing"
+    assert "_maker_track.pop" in src and "1800" in src, "maker_track prune missing"

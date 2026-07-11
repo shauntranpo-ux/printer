@@ -169,9 +169,18 @@ async def classify_pending_trade(
     Gross PnL only (no fee deduction) - consistent with how _settle_s1_orphans works
     for orphan reconcile at startup.
     """
-    # Paper mode: no real money at stake, skip Kalshi entirely.
-    if mode == "paper":
-        return {"action": "mark_expired_unfilled", "pnl_dollars": 0.0}
+    # Paper mode: never void. Paper settlement is deterministic (side vs the official
+    # result), and the startup/periodic orphan sweeps settle these rows at their TRUE
+    # outcome. Voiding here erased real paper P&L after any outage longer than the
+    # 30-minute reconcile threshold. Row-level mode wins over the global mode so lab
+    # slots (always paper) are safe even if the bot runs live.
+    _row_mode = ""
+    try:
+        _row_mode = (trade_row["mode"] or "").lower()
+    except (KeyError, IndexError, TypeError):
+        pass
+    if mode == "paper" or _row_mode == "paper":
+        return {"action": "leave_pending", "reason": "paper trade - orphan sweep settles it"}
 
     ticker = trade_row["market_id"] or ""
     side = trade_row["side"] or "yes"

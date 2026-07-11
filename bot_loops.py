@@ -672,9 +672,11 @@ async def handle_ready_phase(
 
     # Daily drawdown kill switch - only active when a positive limit is configured.
     # Default 0 = no daily loss cap (the bot keeps trading; bleed control is the EV gate).
+    # Scoped to the main-line strategies: the lab slots' paper P&L must not halt S1/S2.
     _daily_limit = float(config.get("daily_loss_limit_dollars", 0))
     if _daily_limit > 0:
-        _today_pnl = await db_get_today_pnl(mode=config.get("mode", "paper"))
+        _today_pnl = await db_get_today_pnl(mode=config.get("mode", "paper"),
+                                            variants=("strategy1", "strategy2"))
         if _today_pnl <= -_daily_limit:
             log.warning(
                 "DAILY LOSS LIMIT HIT: %.2f <= -%.2f - skipping all trades for today",
@@ -748,8 +750,11 @@ async def handle_ready_phase(
     # S1+S2 same-ticker dedup. In duel mode (default) both brains may hold opposing
     # positions on the same market - it is paper, so there is no capital conflict, and
     # suppressing S2 whenever S1 is active would poison the head-to-head comparison.
-    # Set strategy_duel_mode=false to restore the old one-way "S1 blocks S2" behavior.
-    if not config.get("strategy_duel_mode", True):
+    # The bypass applies ONLY when both strategies are on paper: with real capital,
+    # doubled/opposing live positions are never acceptable, duel or not.
+    _duel_paper = (config.get("strategy_duel_mode", True)
+                   and mode == "paper" and mode_s1 == "paper")
+    if not _duel_paper:
         if do_trade and ticker in bot_state._s1_pending_trades:
             skip_reason_ai = "s2_dedup:s1_active"
             do_trade = False
@@ -807,8 +812,8 @@ async def handle_ready_phase(
                     "s1_auto_gate"]
     _S2_GATE_ORD = ["s2_fv_disabled", "s2_quiet_hours", "s2_session_gate", "s2_time_gate",
                     "s2_fv_bad_price", "s2_degenerate", "s2_lowz", "s2_flicker",
-                    "s2_wide_spread", "s2_not_favorite", "s2_too_certain", "s2_price_filter",
-                    "s2_model_reject", "s2_auto_gate"]
+                    "s2_wide_spread", "s2_no_market_data", "s2_not_favorite",
+                    "s2_too_certain", "s2_price_filter", "s2_model_reject", "s2_auto_gate"]
     def _cnt_gates(gates, reason, traded):
         if traded: return len(gates)
         for i, g in enumerate(gates):
@@ -1168,6 +1173,11 @@ async def handle_locked_phase(
             "spot_at_close": float(btc_price or 0.0), "ts": time.time(),
             "ticker": ticker, "estimated": not _settled_official,
         }
+        # Settle lab-slot positions BEFORE the measurement block: the maker
+        # counterfactual below pops _maker_track[ticker], which is the S5 fill
+        # evidence the slot settler needs. Settling after it voided every S5 quote
+        # on an S2-traded ticker as "unfilled".
+        await _settle_slot_trades(ticker, market_result, btc_price, config)
         _maker_exec = (config.get("maker_execution_enabled", False)
                        and pos.get("mode", config.get("mode", "paper")) == "paper")
         _maker_cf = None
@@ -1245,7 +1255,6 @@ async def handle_locked_phase(
                 log.warning("Settle notification failed (non-fatal): %s", _notify_exc)
 
         await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
-        await _settle_slot_trades(ticker, market_result, btc_price, config)
         return
 
     # Still in the market - just hold and log
@@ -1331,7 +1340,14 @@ async def _pick_best_strike(session, config: dict, asset: str, price: float,
             if c_brain.get("action") != "trade":
                 continue
             c_sig = c_brain.get("signals", {})
+            # Smallest model-vs-market disagreement wins. The favorite-bias brain no
+            # longer emits 'gap'; derive it from win_prob vs the market's own price
+            # (the old key is kept as a fallback for any brain that still sends it).
             c_gap = c_sig.get("gap")
+            if c_gap is None:
+                _wp, _mp = c_sig.get("win_prob"), c_sig.get("mkt_p")
+                if _wp is not None and _mp is not None:
+                    c_gap = abs(float(_wp) - float(_mp))
             if c_gap is None:
                 continue
             c_key = (float(c_gap), float(c_sig.get("spread_cents", 0.0) or 0.0))
@@ -1792,6 +1808,22 @@ async def main_loop() -> None:
                         try:
                             await _settle_s1_orphans(session, read_config())
                             await _settle_slot_orphans(session, read_config())
+                            # Aged in-memory slot pendings: ladder-picked tickers never
+                            # become a loop's prev_ticker, so no rollover settle fires
+                            # for them. Anything older than a window + grace settles
+                            # here via the official-result path.
+                            _aged_cfg = read_config()
+                            for _sst in list(bot_state._slot_state.values()):
+                                for _tk, _pd in list(_sst.get("pending", {}).items()):
+                                    if _tick_ts - float(_pd.get("entry_ts", _tick_ts)) > 18 * 60:
+                                        _dq = asset_manager._prices.get(_pd.get("asset", ""))
+                                        _sp = _dq[-1][1] if _dq else 0.0
+                                        await _settle_slot_rollover(session, _tk, _sp, _aged_cfg)
+                            # Prune held-book paths for tickers that never settled
+                            # (READY-phase ticks accumulate for windows S2 skipped).
+                            for _tk, _trk in list(bot_state._maker_track.items()):
+                                if _trk and _tick_ts - _trk[-1][0] > 1800:
+                                    bot_state._maker_track.pop(_tk, None)
                         except Exception as _oe:
                             log.error("Periodic orphan settlement error: %s", _oe, exc_info=True)
                         _last_orphan_settle_ts = time.time()

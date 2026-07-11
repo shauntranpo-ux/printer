@@ -1914,8 +1914,10 @@ def strategy_brain_s6_carry(
         return _make_skip("yes", "s6_quiet_hours", abs_pct, mins_left, variant="strategy6")
     if elapsed_seconds > float(config.get("s6_window_secs", 120.0)):
         return _make_skip("yes", f"s6_too_late:{elapsed_seconds:.0f}s", abs_pct, mins_left, variant="strategy6")
+    # 1100s bound = one window + grace. The rollover estimate refreshes this every
+    # window, so anything older means a missed write - never carry a 2-window-old move.
     prev = bot_state._prev_window_outcome.get(asset)
-    if not prev or (time.time() - float(prev.get("ts", 0))) > 1500.0:
+    if not prev or (time.time() - float(prev.get("ts", 0))) > 1100.0:
         return _make_skip("yes", "s6_no_prev_window", abs_pct, mins_left, variant="strategy6")
     if prev.get("result") not in ("yes", "no"):
         return _make_skip("yes", "s6_prev_unresolved", abs_pct, mins_left, variant="strategy6")

@@ -658,12 +658,21 @@ async def fetch_orderbook(
     if best_yes_ask == 100 and best_no_ask == 100:
         log.debug(f"Both sides at ceiling for {ticker} -- market not ready yet")
         return None
-    if best_yes_ask + best_no_ask < 100:
+    if best_yes_ask + best_no_ask < 70:
+        # Sub-70 combined asks are one-sided/broken data, not a real book.
         log.warning(
-            f"Orderbook sum below 100 for {ticker}: "
+            f"Orderbook sum implausibly low for {ticker}: "
             f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c -- skipping"
         )
         return None
+    if best_yes_ask + best_no_ask < 100:
+        # A genuinely dislocated book: combined asks under $1.00 means buying BOTH sides
+        # locks in a profit. This is exactly what the S3 structural-arb slot trades, so
+        # it must pass through (the old blanket <100 rejection made S3 unreachable).
+        log.info(
+            f"Dislocated book for {ticker}: yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) "
+            f"= {best_yes_ask+best_no_ask}c -- passing through (arb-qualifying)"
+        )
     if best_yes_ask + best_no_ask > 150:
         log.warning(
             f"Orderbook sum very wide for {ticker}: "
