@@ -99,21 +99,32 @@ def _dump_slot_activity() -> None:
         log.debug("lab activity dump skipped: %s", exc)
 
 
+_SAME_WINDOW_SECS = 300.0    # two writes this close = the same 15-min window
+_STREAK_CHAIN_SECS = 1500.0  # consecutive-window entries land ~900s apart; more = a gap
+
+
 def _window_streak(asset: str, ticker: str, result: str) -> int:
     """
     Same-direction run length ending at this window, maintained across the
     _prev_window_outcome writes. New window + same result as the previous entry ->
-    streak+1; direction change -> 1. An official write overwriting the SAME window's
-    estimate keeps the streak when the result agrees and conservatively resets to 1
-    when it disagrees (the pre-window history is gone). S6's streak gate reads this -
-    the settlement backtest shows the fade edge concentrates on streaks >= 2.
+    streak+1; direction change -> 1. Window identity is ticker match OR write
+    freshness (< _SAME_WINDOW_SECS): S2 can settle a ladder-picked sibling ticker of
+    the very window the loop tracks under its primary ticker, and keying by ticker
+    alone double-counted that window. A same-window overwrite keeps the streak when
+    the result agrees and conservatively resets to 1 when it disagrees. An entry
+    older than _STREAK_CHAIN_SECS means a window went unobserved (downtime, quiet
+    hours) - the chain is broken and the run restarts at 1, matching the backtest
+    population (consecutive windows only) the s6_min_streak gate was tuned on.
     """
     try:
         prev = bot_state._prev_window_outcome.get(asset)
         if not prev:
             return 1
-        if prev.get("ticker") == ticker:
+        age = time.time() - float(prev.get("ts", 0.0))
+        if prev.get("ticker") == ticker or age < _SAME_WINDOW_SECS:
             return int(prev.get("streak", 1)) if prev.get("result") == result else 1
+        if age > _STREAK_CHAIN_SECS:
+            return 1
         return int(prev.get("streak", 1)) + 1 if prev.get("result") == result else 1
     except Exception:
         return 1
@@ -131,8 +142,13 @@ def _record_prev_window_estimate(asset: str, prev_ticker: str, spot: float) -> N
         if not lws or lws[0] != prev_ticker or not lws[1] or spot is None or spot <= 0:
             return
         existing = bot_state._prev_window_outcome.get(asset)
-        if existing and existing.get("ticker") == prev_ticker:
-            return   # official (or earlier) entry for this window wins
+        if existing and (existing.get("ticker") == prev_ticker
+                         or time.time() - float(existing.get("ts", 0.0)) < _SAME_WINDOW_SECS):
+            # An entry for this same window already landed - possibly the official
+            # settlement of a ladder-picked SIBLING ticker (same window, different
+            # strike). Ticker equality alone let the estimate clobber that official
+            # result and double-count the window's streak.
+            return
         _res = "yes" if float(spot) > float(lws[1]) else "no"
         bot_state._prev_window_outcome[asset] = {
             "result": _res, "strike": float(lws[1]), "spot_at_close": float(spot),
@@ -290,6 +306,23 @@ def _prune_tracking_state(max_age_secs: float = 1800.0) -> None:
                  if now - ts > max_age_secs]
         for t in stale:
             _maker_track_last_fetch.pop(t, None)
+        # Unbounded per-ticker/set state with no timestamps to age on: cap-and-clear
+        # (the _logged_decisions pattern). _ticker_obi gains an entry per evaluated
+        # ticker and has no live reader; the attempted-ticker sets only need to
+        # cover the current window but ladder-picked tickers are never discarded.
+        if len(bot_state._ticker_obi) > 300:
+            bot_state._ticker_obi.clear()
+        if len(bot_state._s2_attempted_tickers) > 300:
+            bot_state._s2_attempted_tickers.clear()
+        for _ast in bot_state._asset_states.values():
+            _oa = _ast.get("order_attempted")
+            if _oa is not None and len(_oa) > 300:
+                _oa.clear()
+        # Lab-slot fill timestamps: keep the trailing hour (mirrors the S1 list's
+        # recent-only rewrite; these lists otherwise grow one entry per fill forever).
+        for _sst in bot_state._slot_state.values():
+            for _a, _times in list(_sst.get("trade_times", {}).items()):
+                _sst["trade_times"][_a] = [t for t in _times if now - t < 3600.0]
     except Exception as exc:
         log.debug("_prune_tracking_state skipped: %s", exc)
 
@@ -1510,6 +1543,19 @@ async def _process_asset(
             ticker = prev_ticker
             market = _prev_market or market
             st["market"] = market
+            # Re-derive timing and strike from the RESTORED old market: they were
+            # computed from the new window above, and the S1/slot eval block below
+            # would otherwise run the old ticker's book against the new window's
+            # strike with ~900s "left" - opening trades on an expired market. With
+            # the old window's numbers, secs_left <= 0 gates that block off.
+            secs_left = seconds_remaining(market)
+            elapsed = seconds_elapsed(market)
+            try:
+                _old_strike = parse_strike(market)
+            except Exception:
+                _old_strike = None
+            if _old_strike:
+                strike = _old_strike
         else:
             log.info(f"[{asset}] New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
             if prev_ticker in bot_state._s1_pending_trades:
@@ -1548,16 +1594,23 @@ async def _process_asset(
                 ob_s1 = await fetch_orderbook(session, ticker, market)
                 if ob_s1:
                     mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
-                    brain_s1 = strategy_brain_s1(
-                        price, strike,
-                        ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
-                        elapsed, secs_left, ticker, asset=asset,
-                    )
-                    await _execute_s1_trade(
-                        session, brain_s1, ticker, price, strike,
-                        ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
-                        elapsed, secs_left, asset, config, mode_s1, ob_s1, market,
-                    )
+                    _mode_s2 = config.get("s2_mode", config.get("mode", "paper"))
+                    # Same-ticker dual-hold is duel-mode, BOTH-paper only - the READY
+                    # path enforces this on S2; without the mirror check here S1
+                    # could open a live position on the ticker S2 already holds live.
+                    _duel_paper = (config.get("strategy_duel_mode", True)
+                                   and _mode_s2 == "paper" and mode_s1 == "paper")
+                    if _duel_paper:
+                        brain_s1 = strategy_brain_s1(
+                            price, strike,
+                            ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                            elapsed, secs_left, ticker, asset=asset,
+                        )
+                        await _execute_s1_trade(
+                            session, brain_s1, ticker, price, strike,
+                            ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                            elapsed, secs_left, asset, config, mode_s1, ob_s1, market,
+                        )
                     # Lab slots also keep evaluating while S2 holds (paper - no conflict).
                     for _slot_id in enabled_slots(config):
                         try:
@@ -1723,7 +1776,14 @@ async def _verify_and_restore_positions(
     if saved_pos and saved_phase == "LOCKED" and saved_pos.get("trade_id"):
         ticker = saved_pos.get("ticker", "")
         claimed = saved_pos.get("contracts", 0)
-        if ticker in open_pos:
+        if saved_pos.get("mode", mode) == "paper":
+            # A paper position never appears in the Kalshi portfolio - verifying it
+            # there (global mode live) would void a perfectly good paper trade.
+            bot_state.current_position = saved_pos
+            bot_state.current_phase = "LOCKED"
+            log.info("Recovered LOCKED paper position without portfolio check: trade_id=%s",
+                     saved_pos.get("trade_id"))
+        elif ticker in open_pos:
             kalshi_count = open_pos[ticker]["count"]
             if kalshi_count == claimed:
                 bot_state.current_position = saved_pos
@@ -1764,7 +1824,17 @@ async def _verify_and_restore_positions(
         _pos = _apos["position"]
         _ticker = _pos.get("ticker", "")
         _claimed = _pos.get("contracts", 0)
-        if _ticker in open_pos:
+        if _pos.get("mode", mode) == "paper":
+            # Paper positions are invisible to the Kalshi portfolio - restore as-is.
+            if _a not in bot_state._asset_states:
+                bot_state._asset_states[_a] = {}
+            bot_state._asset_states[_a]["phase"] = "LOCKED"
+            bot_state._asset_states[_a]["position"] = _pos
+            bot_state._asset_states[_a].setdefault("order_attempted", set())
+            bot_state._asset_states[_a].setdefault("eval", {})
+            log.info("Recovered LOCKED %s paper position without portfolio check: trade_id=%s",
+                     _a, _pos.get("trade_id"))
+        elif _ticker in open_pos:
             _kcount = open_pos[_ticker]["count"]
             if _a not in bot_state._asset_states:
                 bot_state._asset_states[_a] = {}
@@ -1888,6 +1958,12 @@ async def main_loop() -> None:
                             for _tk, _trk in list(bot_state._maker_track.items()):
                                 if _trk and _tick_ts - _trk[-1][0] > 1800:
                                     bot_state._maker_track.pop(_tk, None)
+                            # Tracking-state prune runs HERE unconditionally: its only
+                            # other caller (_recalibrate_model) is gated behind the
+                            # optional measurement+calibration flags while the writers
+                            # (track_contract_mid/price, every eval) run regardless -
+                            # with those flags off the dicts grew without bound.
+                            _prune_tracking_state()
                             # Publish lab activity counters for the dashboard process.
                             _dump_slot_activity()
                         except Exception as _oe:
@@ -2070,16 +2146,22 @@ async def main_loop() -> None:
                             ob_s1 = await fetch_orderbook(session, ticker, market)
                             if ob_s1:
                                 mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
-                                brain_s1 = strategy_brain_s1(
-                                    btc_price, strike,
-                                    ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
-                                    elapsed, secs_left, ticker, asset="BTC",
-                                )
-                                await _execute_s1_trade(
-                                    session, brain_s1, ticker, btc_price, strike,
-                                    ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
-                                    elapsed, secs_left, "BTC", config, mode_s1, ob_s1, market,
-                                )
+                                _mode_s2 = config.get("s2_mode", config.get("mode", "paper"))
+                                # Dual-hold on the ticker S2 holds: duel-mode,
+                                # BOTH-paper only (mirror of the READY-path guard).
+                                _duel_paper = (config.get("strategy_duel_mode", True)
+                                               and _mode_s2 == "paper" and mode_s1 == "paper")
+                                if _duel_paper:
+                                    brain_s1 = strategy_brain_s1(
+                                        btc_price, strike,
+                                        ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                        elapsed, secs_left, ticker, asset="BTC",
+                                    )
+                                    await _execute_s1_trade(
+                                        session, brain_s1, ticker, btc_price, strike,
+                                        ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                        elapsed, secs_left, "BTC", config, mode_s1, ob_s1, market,
+                                    )
                                 # Lab slots keep evaluating while S2 holds (paper).
                                 for _slot_id in enabled_slots(config):
                                     try:

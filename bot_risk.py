@@ -260,8 +260,10 @@ async def write_state_file(
             "signals":      _ev.get("signals", {}),
             "s1_dir":   _ev.get("s1_dir"),
             "s1_gates": _ev.get("s1_gates"),
+            "s1_skip":  _ev.get("s1_skip"),
             "s2_dir":   _ev.get("s2_dir"),
             "s2_gates": _ev.get("s2_gates"),
+            "s2_skip":  _ev.get("s2_skip"),
             "position":     _st.get("position"),
             "session_type": _a_session_type,
             "strategy_name": _a_strategy_name,
@@ -305,8 +307,10 @@ async def write_state_file(
         "signals":      _btc_ev.get("signals", {}),
         "s1_dir":   _btc_ev.get("s1_dir"),
         "s1_gates": _btc_ev.get("s1_gates"),
+        "s1_skip":  _btc_ev.get("s1_skip"),
         "s2_dir":   _btc_ev.get("s2_dir"),
         "s2_gates": _btc_ev.get("s2_gates"),
+        "s2_skip":  _btc_ev.get("s2_skip"),
         "position":     bot_state.current_position,
         "session_type": _btc_session_type,
         "strategy_name": _btc_strategy_name,
@@ -502,6 +506,14 @@ async def _settle_s1_trade(
     s1_pos = bot_state._s1_pending_trades.pop(ticker, None)
     if s1_pos is None:
         return
+    if market_result not in ("yes", "no") and (
+            btc_price is None or btc_price <= 0 or not s1_pos.get("strike")):
+        # No official result AND no usable spot/strike reference: a 0.0 spot would
+        # settle every YES as a loss. Re-queue; the orphan sweep retries with data.
+        bot_state._s1_pending_trades[ticker] = s1_pos
+        log.warning("[S1] %s: no result and no usable spot (%r) - settle deferred",
+                    ticker, btc_price)
+        return
 
     if market_result == "yes":
         outcome = "win" if s1_pos["side"] == "yes" else "loss"
@@ -620,6 +632,11 @@ async def _settle_s1_orphans(
 
     for row in rows:
         trade_id, ticker, side, contracts, entry_price_cents, mode, asset, db_strike, signals_json = row
+        if ticker in bot_state._s1_pending_trades:
+            # The live path is already tracking this ticker (the DB snapshot predates
+            # its settle-in-flight). Overwriting the pending entry here would plant a
+            # ghost position that settles a second time - let the live path finish.
+            continue
         # THIS asset's spot for the price fallback - the old BTC-price fallback settled
         # every non-BTC orphan 'yes' (60000 vs a 150 strike).
         _dq = asset_manager._prices.get(asset)
@@ -901,6 +918,14 @@ async def _settle_slot_trades(
         strike = float(pos.get("strike") or 0.0)
         if market_result in ("yes", "no"):
             result = market_result
+        elif spot_price is None or spot_price <= 0 or strike <= 0:
+            # No official result AND no usable spot/strike (the aged sweep passes
+            # spot 0.0 when the price deque is empty): a blind fallback settles
+            # every YES as a loss. Re-queue; a later sweep retries with data.
+            st["pending"][ticker] = pos
+            log.warning("[%s] %s: no result and no usable spot (%r) - settle deferred",
+                        slot, ticker, spot_price)
+            continue
         else:
             result = "yes" if spot_price > strike else "no"
 
@@ -1072,11 +1097,13 @@ async def _settle_slot_orphans(
                 continue   # no usable reference - retry next sweep
             won = (side == "yes") == (spot > float(strike or 0.0))
         # Maker quotes cannot verify a fill after restart (held-book path lost): void.
+        # only_if_pending: a live settle that finished after our snapshot must never
+        # be overwritten (this void would replace a real win/loss with $0).
         if brain_tag == "s5":
             await db_update_trade(trade_id, {
                 "exit_price_cents": None, "exit_reason": "maker_unfilled_restart",
                 "outcome": "unfilled", "pnl_dollars": 0.0, "profit_percent": 0.0,
-            })
+            }, only_if_pending=True)
             continue
         exit_price, pnl = _slot_leg_pnl(side, entry_cents, contracts, won, config=config)
         await db_update_trade(trade_id, {
@@ -1084,7 +1111,7 @@ async def _settle_slot_orphans(
             "outcome": "win" if won else "loss",
             "pnl_dollars": round(pnl, 2),
             "profit_percent": round((exit_price - entry_cents) / max(1, entry_cents) * 100, 2),
-        })
+        }, only_if_pending=True)
         log.info("[%s] orphan %s settled %s P&L=$%.2f", slot, ticker,
                  "win" if won else "loss", pnl)
 
@@ -1213,8 +1240,16 @@ async def run_preflight_checks(config: dict) -> None:
             "Set to 7 (Kalshi charges 7c/contract)."
         )
 
-    dll = config.get("daily_loss_limit_dollars", 999999)
-    if dll > 500:
+    # Default 0 matches the bot_infra default (0 = cap disabled); the old inline
+    # 999999 default silently disagreed with it, and _init_config clamps the key
+    # to <=150 so the ">500" branch could never fire from a real config.
+    dll = config.get("daily_loss_limit_dollars", 0)
+    if dll == 0:
+        issues.append(
+            "DAILY LOSS LIMIT DISABLED (0) -- live trading would run with no "
+            "daily loss cap. Deliberate? Set preflight_override to proceed."
+        )
+    elif dll > 500:
         issues.append(
             f"DAILY LOSS LIMIT TOO HIGH -- currently ${dll}. "
             "Set to a realistic value (e.g. $50)."

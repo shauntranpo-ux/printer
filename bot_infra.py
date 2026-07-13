@@ -72,6 +72,17 @@ def read_config() -> dict:
         with open(bot_state._CONFIG_FILE, "r") as fh:
             cfg = json.load(fh)
         cfg.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
+        # Per-strategy modes may only go SAFER than the global mode. Order routing
+        # follows s1_mode/s2_mode while every safety rail (daily limits, preflight,
+        # startup reconcile, restore verification) keys off the global mode - a
+        # per-strategy "live" under a paper/demo global would trade real capital
+        # with zero protections.
+        if cfg.get("mode", "paper") != "live":
+            for _k in ("s1_mode", "s2_mode"):
+                if cfg.get(_k) == "live":
+                    log.warning("%s=live clamped to %s (global mode is not live)",
+                                _k, cfg.get("mode", "paper"))
+                    cfg[_k] = cfg.get("mode", "paper")
         bot_state._last_good_config = cfg
         return cfg
     except json.JSONDecodeError as exc:
@@ -233,6 +244,17 @@ def _init_config() -> None:
         "s2_fav_min_entry_cents": 65,
         "s2_fav_max_entry_cents": 90,
         "s2_fav_max_model_shortfall": 0.08,
+        # S2's ETH kill switch (the brain hard-skips ETH unless true) - mirror of the
+        # s1_*_enabled pair above; previously read with an inline default only, making
+        # it invisible in config.json.
+        "s2_eth_enabled": False,
+        # S1 flow-control knobs, previously inline-default only (invisible/untunable):
+        # per-asset hourly entry cap, cross-asset burst window, and the consecutive-
+        # loss cooldown that benches an asset after N straight losses.
+        "max_s1_per_asset_per_hour": 2,
+        "s1_cross_asset_window_seconds": 300.0,
+        "s1_consec_loss_cooldown_count": 3,
+        "s1_consec_loss_cooldown_secs": 900,
         # Test-slot lab strategies (S3-S6): paper-only regardless of global mode, all
         # tunable from the dashboard. See bot_strategies.STRATEGY_REGISTRY.
         # S3 structural arb: buy BOTH sides when the combined asks leave a fee-proof profit.
@@ -644,8 +666,13 @@ _VALID_TRADE_COLS = frozenset({
 })
 
 
-async def db_update_trade(trade_id: int, fields: dict) -> None:
-    """Update named columns on an existing trade row."""
+async def db_update_trade(trade_id: int, fields: dict, only_if_pending: bool = False) -> None:
+    """Update named columns on an existing trade row.
+
+    only_if_pending=True adds `AND outcome='pending'` - the orphan sweeps use it so a
+    row the live settle path finished between the sweep's snapshot and this write is
+    never overwritten (the S5 maker void would replace a real win/loss with $0).
+    """
     if trade_id is None:
         log.error("db_update_trade called with trade_id=None - trade will stay pending in DB")
         return
@@ -657,8 +684,9 @@ async def db_update_trade(trade_id: int, fields: dict) -> None:
         async with aiosqlite.connect(bot_state._DB_FILE) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             set_clause = ", ".join(f"{k} = ?" for k in fields)
+            guard = " AND outcome = 'pending'" if only_if_pending else ""
             await db.execute(
-                f"UPDATE trades SET {set_clause} WHERE id = ?",
+                f"UPDATE trades SET {set_clause} WHERE id = ?{guard}",
                 list(fields.values()) + [trade_id],
             )
             await db.commit()

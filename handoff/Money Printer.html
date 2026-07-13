@@ -1675,8 +1675,8 @@ let TRADES = [];
 const MARKET_DATA = {
   BTC: {
     sessions: [
-      { type:'15m',  active:true,  expires:'19:15:00 UTC', strike:78250, dist:+0.11, ev:7.6, wp:0.624, yesAsk:54, noAsk:48, qty:5, vol:1.42, score:72 },
-      { type:'h1',   active:false, expires:'20:00:00 UTC', strike:78400, dist:+0.18, ev:5.2, wp:0.581, yesAsk:48, noAsk:54, qty:0, vol:1.42, score:48 },
+      { type:'15m',  active:true,  expires:'19:15:00 UTC', strike:78250, dist:+0.11, ev:7.6, wp:0.624, yesAsk:54, noAsk:48, qty:5, vol:null, score:null },
+      { type:'h1',   active:false, expires:'20:00:00 UTC', strike:78400, dist:+0.18, ev:5.2, wp:0.581, yesAsk:48, noAsk:54, qty:0, vol:null, score:null },
     ],
     ladder:{ asks:[[58,12],[57,18],[56,24],[55,31],[54,46]], bids:[[52,38],[51,29],[50,21],[49,15],[48,9]] },
     log:[
@@ -1691,8 +1691,8 @@ const MARKET_DATA = {
   },
   ETH: {
     sessions: [
-      { type:'15m',  active:false, expires:'19:15:00 UTC', strike:2306,  dist:-0.13, ev:5.1, wp:0.581, yesAsk:46, noAsk:56, qty:0, vol:1.18, score:54 },
-      { type:'h1',   active:true,  expires:'20:00:00 UTC', strike:2310,  dist:-0.26, ev:8.2, wp:0.642, yesAsk:42, noAsk:60, qty:3, vol:1.18, score:81 },
+      { type:'15m',  active:false, expires:'19:15:00 UTC', strike:2306,  dist:-0.13, ev:5.1, wp:0.581, yesAsk:46, noAsk:56, qty:0, vol:null, score:null },
+      { type:'h1',   active:true,  expires:'20:00:00 UTC', strike:2310,  dist:-0.26, ev:8.2, wp:0.642, yesAsk:42, noAsk:60, qty:3, vol:null, score:null },
     ],
     ladder:{ asks:[[62,8],[60,14],[58,22],[57,28],[56,42]], bids:[[44,36],[43,28],[42,20],[41,12],[40,6]] },
     log:[
@@ -1706,7 +1706,7 @@ const MARKET_DATA = {
   },
   SOL: {
     sessions:[
-      { type:'15m',  active:true,  expires:'19:15:00 UTC', strike:83.72, dist:+0.07, ev:9.4, wp:0.667, yesAsk:58, noAsk:44, qty:7, vol:1.74, score:88 },
+      { type:'15m',  active:true,  expires:'19:15:00 UTC', strike:83.72, dist:+0.07, ev:9.4, wp:0.667, yesAsk:58, noAsk:44, qty:7, vol:null, score:null },
     ],
     ladder:{ asks:[[64,4],[62,12],[60,20],[59,28],[58,52]], bids:[[44,48],[43,32],[42,24],[41,14],[40,8]] },
     log:[
@@ -1722,7 +1722,7 @@ const MARKET_DATA = {
   },
   XRP: {
     sessions:[
-      { type:'15m',  active:true,  expires:'19:15:00 UTC', strike:1.388, dist:+0.08, ev:4.2, wp:0.553, yesAsk:51, noAsk:51, qty:0, vol:0.92, score:46 },
+      { type:'15m',  active:true,  expires:'19:15:00 UTC', strike:1.388, dist:+0.08, ev:4.2, wp:0.553, yesAsk:51, noAsk:51, qty:0, vol:null, score:null },
     ],
     ladder:{ asks:[[55,6],[54,11],[53,17],[52,22],[51,34]], bids:[[49,30],[48,18],[47,12],[46,8],[45,4]] },
     log:[
@@ -1735,7 +1735,7 @@ const MARKET_DATA = {
   },
   DOGE: {
     sessions:[
-      { type:'15m',  active:false, expires:'19:15:00 UTC', strike:0.1078, dist:+0.16, ev:3.6, wp:0.541, yesAsk:52, noAsk:50, qty:0, vol:0.78, score:32, skipReason:'no_strategy_signal' },
+      { type:'15m',  active:false, expires:'19:15:00 UTC', strike:0.1078, dist:+0.16, ev:3.6, wp:0.541, yesAsk:52, noAsk:50, qty:0, vol:null, score:null, skipReason:'no_strategy_signal' },
     ],
     ladder:{ asks:[[56,3],[55,7],[54,12],[53,18],[52,26]], bids:[[48,24],[47,16],[46,10],[45,6],[44,3]] },
     log:[
@@ -2450,7 +2450,7 @@ function renderTrades(filter='all'){
     return `<tr>
       <td><div>${time}</div><div style="font-size:9px;color:var(--ink-3);">${date}</div></td>
       <td><span class="td-sym"><span class="swatch" style="background:${colors[t.sym]};"></span>${t.sym}</span></td>
-      <td><span class="badge" style="${(t.brain==='s1'||t.sv==='strategy1')?'background:var(--amber-soft);color:var(--amber);':'background:var(--accent-soft);color:var(--accent);'}border:none;font-size:9px;">${(t.brain==='s1'||t.sv==='strategy1')?'S1':'S2'}</span></td>
+      <td><span class="badge" style="${(t.brain==='s1'||t.sv==='strategy1')?'background:var(--amber-soft);color:var(--amber);':'background:var(--accent-soft);color:var(--accent);'}border:none;font-size:9px;">${(t.brain==='s1'||t.sv==='strategy1')?'S1':(/^strategy[2-8]$/.test(t.sv||'')?'S'+(t.sv||'').slice(8):'S2')}</span></td>
       <td><span class="td-dir ${t.dir==='UP'?'up':'down'}">${t.dir}</span></td>
       <td>${t.qty || '-'}</td>
       <td>${t.entry != null ? t.entry+'¢' : '-'}</td>
@@ -3184,6 +3184,7 @@ async function fetchMarketDetail(sym) {
       log:      data.log?.length      ? data.log      : ex.log,
       stats:    data.stats ? { ...ex.stats, ...data.stats } : ex.stats,
       outcomes: data.outcomes ?? ex.outcomes,
+      brain_stats: data.brain_stats ?? ex.brain_stats,
       ladder:   ex.ladder,  // keep mock until Kalshi orderbook feed is built
     };
     renderMarketPanel(sym);

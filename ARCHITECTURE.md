@@ -235,12 +235,16 @@ Config normalization in `_init_config()` enforces (current behavior):
   `false`) let the operator skip time windows the Edge panel shows losing. Default = no behavior
   change; a blocked window yields an `s{1,2}_session_gate:<label>` skip. The data-driven variant
   is the auto-gate above (`auto_gate_enabled`).
-- EV-gate tuning: `max_model_edge`, `min_market_edge`, `min_ev_anchored` (the market-anchored
-  gate, `bot_strategy._anchored_ev`) are read per-asset from `s1_config`/`s2_config[asset]` and
-  fall back to the top-level config defaults (0.08 / 0.04 / 0.025). All v3 gate thresholds now
-  live in `_init_config` defaults - `max_model_market_gap`, the fv entry band, the tail-ban
-  floors, the staleness and sigma-engine parameters, `s1_min_btc_ret`, the beta clamps, and the
-  Kelly sizing keys - so they are visible in config.json and tunable without a deploy.
+- DORMANT v3-era keys: `max_model_edge`, `min_market_edge`, `min_ev_anchored`,
+  `max_model_market_gap`, the fv entry band (`fv_min/max_entry_price_cents`), the tail-ban
+  floors (`s1_min_side_price_cents`, `s2_min_side_price_cents`), `s1_min_btc_ret` and the
+  `staleness_*` family still sit in `_init_config` defaults but are NOT read by the current
+  momentum/favorite-bias brains, which gate on their own `s1_min_edge`/`s7_min_edge`-style
+  keys instead. They are config-file inertia from the replaced v3 brains - editing them
+  changes nothing. Same for `min_ev_base` and `vol_gate_thresh` (the dashboard Risk card
+  displays them, no live gate reads them) and the `s1_config`/`s2_config[asset]` per-asset
+  override layer, whose mirrored keys are always clobbered by the flat `s1_*`/`s2_fav_*`
+  values `_init_config` materializes.
 
 ### Dashboard API (additions)
 

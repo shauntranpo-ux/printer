@@ -87,6 +87,18 @@ Nothing in code ever sizes up on its own - that is an explicit config change you
 Loosening gates buys more trades per day (faster to 200) at the cost of signal
 quality; tighten again once a slot has its sample.
 
+## Known quirks (verified in the pre-merge audit, deliberately deferred)
+
+- Per-asset "today P&L" on the market tiles buckets by UTC day; the KPI Today tiles
+  use the ET trading day. After 8pm ET the two disagree until midnight UTC.
+- The equity curves / streak chip are built from the newest 500 trades across ALL
+  modes - with the lab running they lean paper. The leaderboard is the honest view.
+- When Kalshi's official result is late (>40s), decision_log outcomes are stamped
+  from the spot estimate without an "estimated" marker (the trades row does carry
+  `exit_reason=expiry_estimated`).
+- Paper S2 rows have no orphan sweep (S1 and the lab slots do): a restart with a
+  lost state file mid-window can leave one S2 row pending in the DB.
+
 ## Historical validation status (what the Feb-May settlement data already said)
 
 - **S6 Window-Fade: PROVEN prior.** Fading a decisive (>=15bp) 2+ streak won 56.4%

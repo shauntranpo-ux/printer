@@ -148,17 +148,31 @@ def test_s6_fades_prev_window_direction_early_only():
 
 
 def test_window_streak_counter():
-    """Streak increments on same-result new windows, resets on flips, and an official
-    overwrite of the SAME window keeps (same result) or resets (different result)."""
+    """Streak increments on same-result consecutive windows, resets on flips, treats a
+    fresh different-ticker write (ladder sibling of the SAME window) as an overwrite,
+    and restarts after a gap in window memory (the backtest population the
+    s6_min_streak gate was tuned on covers consecutive windows only)."""
     import bot_loops
+    now = time.time()
     assert bot_loops._window_streak("SOL", "W1", "yes") == 1          # no history
-    bot_state._prev_window_outcome["SOL"] = {"result": "yes", "ticker": "W1", "streak": 1}
+    # Previous entry one window ago (~900s): the normal consecutive case.
+    bot_state._prev_window_outcome["SOL"] = {
+        "result": "yes", "ticker": "W1", "streak": 1, "ts": now - 900}
     assert bot_loops._window_streak("SOL", "W2", "yes") == 2          # continuation
     assert bot_loops._window_streak("SOL", "W2", "no") == 1           # flip
-    assert bot_loops._window_streak("SOL", "W1", "yes") == 1          # same-window agree keeps
+    assert bot_loops._window_streak("SOL", "W1", "yes") == 1          # same-ticker agree keeps
     bot_state._prev_window_outcome["SOL"]["streak"] = 3
     assert bot_loops._window_streak("SOL", "W1", "yes") == 3
-    assert bot_loops._window_streak("SOL", "W1", "no") == 1           # same-window disagree resets
+    assert bot_loops._window_streak("SOL", "W1", "no") == 1           # same-ticker disagree resets
+    # A FRESH write under a different ticker is the same window settling via a
+    # ladder-picked sibling - overwrite semantics, never +1 (the double-count bug).
+    bot_state._prev_window_outcome["SOL"]["ts"] = now - 30
+    assert bot_loops._window_streak("SOL", "W1-LADDER", "yes") == 3
+    assert bot_loops._window_streak("SOL", "W1-LADDER", "no") == 1
+    # An entry older than a window + grace = unobserved windows in between: the
+    # chain is broken and the run restarts regardless of result agreement.
+    bot_state._prev_window_outcome["SOL"]["ts"] = now - 2000
+    assert bot_loops._window_streak("SOL", "W5", "yes") == 1
 
 
 def test_prev_window_estimate_written_at_rollover_and_defers_to_official():
@@ -179,6 +193,15 @@ def test_prev_window_estimate_written_at_rollover_and_defers_to_official():
     # Strike remembered for a DIFFERENT ticker -> no bogus estimate.
     bot_loops._record_prev_window_estimate("SOL", "SOL-W2", 150.4)
     assert bot_state._prev_window_outcome["SOL"]["ticker"] == "SOL-W1"
+    # Official settlement of a ladder-picked SIBLING (different ticker, seconds old)
+    # is the SAME window -> the estimate defers instead of clobbering it.
+    bot_state._prev_window_outcome["SOL"] = {
+        "result": "no", "strike": 150.5, "spot_at_close": 149.9, "ts": time.time(),
+        "ticker": "SOL-W1-LADDER", "estimated": False, "streak": 2}
+    bot_state._last_window_strike["SOL"] = ("SOL-W1", 150.0)
+    bot_loops._record_prev_window_estimate("SOL", "SOL-W1", 150.4)
+    got = bot_state._prev_window_outcome["SOL"]
+    assert got["ticker"] == "SOL-W1-LADDER" and got["result"] == "no"
 
 
 def test_remember_window_strike_pairs_from_market_object():

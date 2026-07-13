@@ -100,6 +100,12 @@ def test_lab_survives_36_window_replay(tmp_path, monkeypatch):
 
     monkeypatch.setattr(bot_risk, "place_order", _paper_fill)
     monkeypatch.setattr(bot_risk, "kalshi_headers", lambda *a, **k: {})
+    # The replay compresses 36 windows into ~2s of wall time, but the streak
+    # counter's window-identity and chain-gap rules are wall-clock based (entries
+    # land ~900s apart in production). Neutralize them here; their semantics have
+    # dedicated unit tests with explicit timestamps in test_strategy_lab.py.
+    monkeypatch.setattr(bot_loops, "_SAME_WINDOW_SECS", 0.0)
+    monkeypatch.setattr(bot_loops, "_STREAK_CHAIN_SECS", float("inf"))
 
     fake = _FakeSession()
     rng = random.Random(20260711)

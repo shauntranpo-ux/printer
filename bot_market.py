@@ -871,6 +871,19 @@ async def place_order(
             fp = fresh_ob["best_yes_ask"] if side == "yes" else fresh_ob["best_no_ask"]
             if fp is not None and fp != entry_price_cents:
                 log.info(f"Price updated {entry_price_cents}c -> {fp}c for {side.upper()} on {ticker}")
+                if fp > entry_price_cents > 0:
+                    # Re-size for the worse price: the caller sized contracts for the
+                    # ORIGINAL ask; keeping the count at a higher price silently
+                    # spends more than the strategy budgeted (the per-trade clip).
+                    _budget_c = contracts * entry_price_cents
+                    _resized = int(_budget_c / fp)
+                    if _resized <= 0:
+                        log.warning(f"Reprice {entry_price_cents}c -> {fp}c leaves no "
+                                    f"affordable contracts on {ticker} - refusing order")
+                        return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+                    if _resized != contracts:
+                        log.info(f"Re-sized {contracts} -> {_resized} contracts for the higher ask")
+                        contracts = _resized
                 entry_price_cents = fp
     except Exception as _fe:
         log.warning(f"Fresh price fetch failed: {_fe}")

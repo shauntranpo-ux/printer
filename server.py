@@ -529,10 +529,37 @@ def api_pnl():
                               tzinfo=ZoneInfo("America/New_York")
                               ).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
         conn = get_db()
+        # Today: full rows for the ET day (bounded set). All-time: SQL aggregates over
+        # the WHOLE table - the old newest-2000-rows scan silently dropped the oldest
+        # trades from every "all-time" figure once the table outgrew the limit.
         rows = conn.execute(
-            "SELECT * FROM trades ORDER BY ts DESC LIMIT 2000"
+            "SELECT * FROM trades WHERE ts >= ? ORDER BY ts DESC", (_day_start,)
+        ).fetchall()
+        agg_rows = conn.execute(
+            "SELECT mode, COALESCE(strategy_variant, 'strategy2') AS sv, "
+            "COUNT(*) AS n, COALESCE(SUM(pnl_dollars), 0) AS pnl, "
+            "SUM(CASE WHEN pnl_dollars > 0 THEN 1 ELSE 0 END) AS wins "
+            "FROM trades "
+            "WHERE outcome IS NOT NULL "
+            "AND outcome NOT IN ('pending', 'unfilled', 'expired_unfilled', 'phantom') "
+            "AND pnl_dollars IS NOT NULL "
+            "GROUP BY mode, COALESCE(strategy_variant, 'strategy2')"
         ).fetchall()
         conn.close()
+
+        def _agg(mode=None, sv=None):
+            n = wins = 0
+            pnl = 0.0
+            for r in agg_rows:
+                if mode is not None and r["mode"] != mode:
+                    continue
+                if sv is not None and r["sv"] != sv:
+                    continue
+                n += r["n"]
+                wins += r["wins"] or 0
+                pnl += r["pnl"] or 0.0
+            return {"pnl": round(pnl, 2), "trades": n, "wins": wins,
+                    "win_rate": round(wins / n * 100, 1) if n else 0.0}
 
         all_raw    = [dict(r) for r in rows]
         all_trades = (
@@ -566,10 +593,10 @@ def api_pnl():
         today_paper = _pnl([t for t in today_trades if t.get("mode") == "paper"])
         today_demo  = _pnl([t for t in today_trades if t.get("mode") == "demo"])
 
-        # All-time
-        alltime_live  = _pnl([t for t in all_trades if t.get("mode") == "live"])
-        alltime_paper = _pnl([t for t in all_trades if t.get("mode") == "paper"])
-        alltime_demo  = _pnl([t for t in all_trades if t.get("mode") == "demo"])
+        # All-time (SQL aggregates - never truncated)
+        alltime_live  = _agg("live", strategy_variant)
+        alltime_paper = _agg("paper", strategy_variant)
+        alltime_demo  = _agg("demo", strategy_variant)
 
         response = {
             "today": {
@@ -590,11 +617,12 @@ def api_pnl():
         if not strategy_variant:
             by_strategy = {}
             for sv in _ALL_STRATEGIES:
-                sv_trades = [t for t in all_raw if t.get("strategy_variant", "strategy2") == sv]
-                sv_today  = [t for t in sv_trades if (t.get("ts") or "") >= _day_start]
+                sv_today = [t for t in all_raw
+                            if t.get("strategy_variant", "strategy2") == sv
+                            and (t.get("ts") or "") >= _day_start]
                 by_strategy[sv] = {
                     "today":   _pnl(sv_today),
-                    "alltime": _pnl(sv_trades),
+                    "alltime": _agg(sv=sv),
                 }
             response["by_strategy"] = by_strategy
 
@@ -843,7 +871,7 @@ def api_market_sym(sym):
         # Stats
         try:
             all_rows = conn.execute(
-                "SELECT outcome, pnl_dollars, model_prob FROM trades "
+                "SELECT outcome, pnl_dollars, model_prob, implied_prob FROM trades "
                 "WHERE asset=? AND outcome IN ('win','loss') AND pnl_dollars IS NOT NULL",
                 (sym,)
             ).fetchall()
@@ -857,7 +885,10 @@ def api_market_sym(sym):
             losses  = total - wins
             wr      = round(wins / total, 3) if total else 0.0
             today_p = round(sum(r["pnl_dollars"] for r in today_rows), 2)
-            avg_ev  = round(sum((r["model_prob"] or 0) * 100 for r in all_rows) / total, 1) if total else 0.0
+            # Entry edge in prob-pts (model win prob minus price paid) - the old
+            # mean of model_prob*100 was a win PROBABILITY mislabeled as EV.
+            avg_ev  = round(sum(((r["model_prob"] or 0) - (r["implied_prob"] or 0)) * 100
+                                for r in all_rows) / total, 1) if total else 0.0
             best    = round(max((r["pnl_dollars"] for r in all_rows), default=0.0), 2)
             worst   = round(min((r["pnl_dollars"] for r in all_rows), default=0.0), 2)
             stats   = {
@@ -1022,7 +1053,6 @@ def api_risk():
     """
     try:
         cfg = read_config()
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         loss_limit  = cfg.get("daily_loss_limit_dollars", 0.0)
         profit_target = cfg.get("daily_profit_target_dollars", 200.0)
@@ -1035,16 +1065,28 @@ def api_risk():
         streak_count = 0
 
         try:
+            # Meter the SAME population the limits actually enforce: configured mode,
+            # S1/S2 only (never the paper-lab slots), over the ET trading day. UTC-day
+            # all-mode all-variant sums put lab paper P&L on the Daily Loss meter.
+            _et_now = datetime.now(ZoneInfo("America/New_York"))
+            _day_start = datetime(_et_now.year, _et_now.month, _et_now.day,
+                                  tzinfo=ZoneInfo("America/New_York")
+                                  ).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            _mode = cfg.get("mode", "paper")
             conn = get_db()
             rows = conn.execute(
                 "SELECT outcome, pnl_dollars FROM trades "
-                "WHERE ts LIKE ? AND outcome IN ('win','loss') AND pnl_dollars IS NOT NULL "
-                "ORDER BY ts DESC LIMIT 200",
-                (today + "%",),
+                "WHERE ts >= ? AND mode = ? "
+                "AND COALESCE(strategy_variant, 'strategy2') IN ('strategy1','strategy2') "
+                "AND outcome IN ('win','loss') AND pnl_dollars IS NOT NULL "
+                "ORDER BY ts DESC LIMIT 500",
+                (_day_start, _mode),
             ).fetchall()
             recent = conn.execute(
                 "SELECT outcome FROM trades WHERE outcome IN ('win','loss') "
-                "ORDER BY ts DESC LIMIT 50"
+                "AND mode = ? "
+                "AND COALESCE(strategy_variant, 'strategy2') IN ('strategy1','strategy2') "
+                "ORDER BY ts DESC LIMIT 50", (_mode,)
             ).fetchall()
             conn.close()
 
@@ -1104,9 +1146,13 @@ def metrics():
             row = conn.execute("SELECT MAX(ts) AS mx FROM trades").fetchone()
             if row:
                 last_trade_ts = row["mx"]
+            # Python-built cutoff with the writers' 'T'-separator: SQLite's
+            # datetime('now') uses a space, and 'T' > ' ' in TEXT comparison made
+            # this "24h" window span up to 48h.
+            _cut24 = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
             row24 = conn.execute(
                 "SELECT COUNT(*) AS cnt, SUM(fill_confirmed) AS fc "
-                "FROM trades WHERE ts > datetime('now', '-24 hours')"
+                "FROM trades WHERE ts > ?", (_cut24,)
             ).fetchone()
             if row24 and row24["cnt"]:
                 trade_count_24h = row24["cnt"]

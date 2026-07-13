@@ -13,6 +13,7 @@ import asyncio
 import logging
 import os
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import aiohttp
 
@@ -72,6 +73,11 @@ async def _startup_reconcile(session: aiohttp.ClientSession, mode: str) -> None:
     the reconcile action per row, inside individual transactions.
     Sends one Telegram summary. Replaces blind zombie-trade cleanup.
     """
+    # Cutoff built in Python with the same 'T'-separator format the writers use.
+    # SQLite's datetime('now') renders 'YYYY-MM-DD HH:MM:SS' and 'T' > ' ' in a TEXT
+    # comparison, so comparing against it silently skipped every pending row from the
+    # current UTC date - same-day crash recovery never reconciled anything.
+    _cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%S")
     conn = sqlite3.connect(bot_state._DB_FILE)
     conn.row_factory = sqlite3.Row
     try:
@@ -79,7 +85,7 @@ async def _startup_reconcile(session: aiohttp.ClientSession, mode: str) -> None:
             "SELECT id, market_id, side, contracts, entry_price_cents, ts, order_id, mode, asset "
             "FROM trades "
             "WHERE (outcome IN ('pending', '') OR outcome IS NULL) "
-            "AND ts < datetime('now', '-30 minutes')"
+            "AND ts < ?", (_cutoff,)
         ).fetchall()
     finally:
         conn.close()
