@@ -199,7 +199,11 @@ async def _alert_auth_failure(status: int, path: str, response_body: str) -> Non
     if now - _last_auth_alert_ts < _AUTH_ALERT_COOLDOWN:
         return
     _last_auth_alert_ts = now
-    body_preview = (response_body or "")[:200]
+    # Escape the raw API body: an unescaped '<' or '&' makes Telegram reject the
+    # whole message with 400 can't-parse-entities, silently dropping THE alert that
+    # says auth is broken.
+    import html as _html
+    body_preview = _html.escape((response_body or "")[:200])
     await send_telegram(
         f"<b>KALSHI AUTH FAILURE</b>\nHTTP {status} on {path}\n"
         f"Body: <code>{body_preview}</code>\n"

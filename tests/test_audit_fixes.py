@@ -15,6 +15,9 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
+from collections import deque
+
+import asset_manager
 import bot_state
 import bot_infra
 import bot_risk
@@ -29,9 +32,12 @@ def _iso(dt):
 
 @pytest.fixture(autouse=True)
 def _clean():
+    saved_sol = asset_manager._prices.get("SOL")
     bot_state._slot_state.clear()
     bot_state._s1_pending_trades.clear()
     yield
+    if saved_sol is not None:
+        asset_manager._prices["SOL"] = saved_sol
     bot_state._slot_state.clear()
     bot_state._s1_pending_trades.clear()
 
@@ -90,24 +96,39 @@ def test_slot_settle_defers_without_result_or_usable_spot(monkeypatch):
     # No official result AND spot 0.0 (empty price deque case) -> deferred, retained.
     asyncio.run(bot_risk._settle_slot_trades("TKD", None, 0.0, cfg))
     assert st["pending"]["TKD"] is pos and not updates
-    # A usable spot settles it (spot below strike -> YES loses).
+    # Positive spot but a FROZEN feed (last print 10 min old) -> still deferred.
+    asset_manager._prices["SOL"] = deque([(time.time() - 600, 149.0)])
+    asyncio.run(bot_risk._settle_slot_trades("TKD", None, 149.0, cfg))
+    assert st["pending"]["TKD"] is pos and not updates
+    # Fresh feed + usable spot settles it (spot below strike -> YES loses).
+    asset_manager._prices["SOL"] = deque([(time.time(), 149.0)])
     asyncio.run(bot_risk._settle_slot_trades("TKD", None, 149.0, cfg))
     assert "TKD" not in st["pending"] and updates == [7]
 
 
-def test_s1_settle_defers_without_result_or_usable_spot(monkeypatch):
+def test_s1_settle_defers_without_result_or_usable_spot(tmp_path, monkeypatch):
     updates = []
 
     async def _upd(tid, fields, **kw):
         updates.append(fields)
 
     monkeypatch.setattr(bot_risk, "db_update_trade", _upd)
+    # The win path also updates wr_calibration - point it at a scratch DB so test
+    # runs never write fabricated wins into a real kalshi_bot.db in the cwd.
+    db = str(tmp_path / "wr.db")
+    monkeypatch.setattr(bot_state, "_DB_FILE", db)
+    bot_infra.init_db()
     cfg = {"kalshi_fee_per_contract_cents": 7, "notify_on_settle": False}
     pos = {"trade_id": 3, "side": "yes", "entry_price_cents": 50, "contracts": 10,
            "strike": 150.0, "asset": "SOL", "mode": "paper"}
     bot_state._s1_pending_trades["TKS"] = pos
     asyncio.run(bot_risk._settle_s1_trade("TKS", None, 0.0, cfg, "SOL"))
     assert bot_state._s1_pending_trades["TKS"] is pos and not updates
+    # Positive spot from a frozen feed is not trustworthy either.
+    asset_manager._prices["SOL"] = deque([(time.time() - 600, 151.0)])
+    asyncio.run(bot_risk._settle_s1_trade("TKS", None, 151.0, cfg, "SOL"))
+    assert bot_state._s1_pending_trades["TKS"] is pos and not updates
+    asset_manager._prices["SOL"] = deque([(time.time(), 151.0)])
     asyncio.run(bot_risk._settle_s1_trade("TKS", None, 151.0, cfg, "SOL"))
     assert "TKS" not in bot_state._s1_pending_trades
     assert updates and updates[0]["outcome"] == "win"
@@ -137,19 +158,18 @@ def test_db_update_trade_only_if_pending_never_overwrites_settled(tmp_path, monk
 
 # ------------------------------------------------------- mode clamp
 
-def test_read_config_clamps_per_strategy_live_under_paper_global(tmp_path, monkeypatch):
-    cfg_path = str(tmp_path / "config.json")
-    with open(cfg_path, "w") as fh:
-        json.dump({"mode": "paper", "s1_mode": "live", "s2_mode": "demo"}, fh)
-    monkeypatch.setattr(bot_state, "_CONFIG_FILE", cfg_path)
+def test_strategy_mode_ignores_live_under_paper_global_without_persisting():
     bot_infra._mode_clamp_warned.clear()
-    cfg = bot_infra.read_config()
-    assert cfg["s1_mode"] == "paper"   # live clamped to the global mode
-    assert cfg["s2_mode"] == "demo"    # demo is not riskier than paper's rails - kept
-    # Under a live global, per-strategy live passes through.
-    with open(cfg_path, "w") as fh:
-        json.dump({"mode": "live", "s1_mode": "live"}, fh)
-    assert bot_infra.read_config()["s1_mode"] == "live"
+    cfg = {"mode": "paper", "s1_mode": "live", "s2_mode": "demo"}
+    assert bot_infra.strategy_mode(cfg, "s1") == "paper"   # live honored only under live global
+    assert bot_infra.strategy_mode(cfg, "s2") == "demo"    # demo is not riskier - kept
+    # Resolution must NOT mutate the dict: the bot's read-modify-write cycles
+    # (midnight_reset, daily-limit trip) persist it back to config.json, and a
+    # mutating clamp permanently erased the operator's stored live setting.
+    assert cfg["s1_mode"] == "live"
+    # Under a live global, per-strategy live passes through; absent key follows global.
+    assert bot_infra.strategy_mode({"mode": "live", "s1_mode": "live"}, "s1") == "live"
+    assert bot_infra.strategy_mode({"mode": "paper"}, "s1") == "paper"
 
 
 # ------------------------------------------------------- restore respects pos mode

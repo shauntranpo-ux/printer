@@ -65,6 +65,29 @@ def atomic_write_json(data: dict, path: str) -> None:
 _mode_clamp_warned: set = set()
 
 
+def strategy_mode(config: dict, strategy: str) -> str:
+    """
+    Resolve s1_mode/s2_mode with the safety rule: per-strategy modes may only go
+    SAFER than the global mode. Order routing follows these keys while every safety
+    rail (daily limits, preflight, startup reconcile, restore verification) keys off
+    the global mode, so "live" is honored only when the global mode is live.
+    Resolved at READ time rather than by mutating the config dict: the bot's own
+    read-modify-write cycles (midnight_reset, the daily-limit trip) persist that
+    dict back to config.json, and a mutating clamp permanently erased the operator's
+    stored live setting.
+    """
+    mode = config.get("mode", "paper")
+    smode = config.get(f"{strategy}_mode", mode)
+    if smode == "live" and mode != "live":
+        key = f"{strategy}_mode"
+        if key not in _mode_clamp_warned:
+            _mode_clamp_warned.add(key)
+            log.warning("%s=live ignored - global mode is %s (safety rails key off it)",
+                        key, mode)
+        return mode
+    return smode
+
+
 def read_config() -> dict:
     """Read and return the contents of the config file.
     Falls back to bot_state._last_good_config if the file is transiently corrupt
@@ -75,19 +98,6 @@ def read_config() -> dict:
         with open(bot_state._CONFIG_FILE, "r") as fh:
             cfg = json.load(fh)
         cfg.setdefault("enabled_assets", ["ETH", "SOL", "XRP"])
-        # Per-strategy modes may only go SAFER than the global mode. Order routing
-        # follows s1_mode/s2_mode while every safety rail (daily limits, preflight,
-        # startup reconcile, restore verification) keys off the global mode - a
-        # per-strategy "live" under a paper/demo global would trade real capital
-        # with zero protections.
-        if cfg.get("mode", "paper") != "live":
-            for _k in ("s1_mode", "s2_mode"):
-                if cfg.get(_k) == "live":
-                    if _k not in _mode_clamp_warned:   # once, not every 10s read
-                        _mode_clamp_warned.add(_k)
-                        log.warning("%s=live clamped to %s (global mode is not live)",
-                                    _k, cfg.get("mode", "paper"))
-                    cfg[_k] = cfg.get("mode", "paper")
         bot_state._last_good_config = cfg
         return cfg
     except json.JSONDecodeError as exc:
@@ -625,7 +635,7 @@ def test_db_write() -> None:
 async def db_write_trade(trade: dict) -> int | None:
     """Insert a trade record. Returns the new row id."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             cur = await db.execute("""
                 INSERT INTO trades (
@@ -686,7 +696,7 @@ async def db_update_trade(trade_id: int, fields: dict, only_if_pending: bool = F
         log.error("db_update_trade: unknown column(s) %s - skipping update for trade %s", bad_cols, trade_id)
         return
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             set_clause = ", ".join(f"{k} = ?" for k in fields)
             guard = " AND outcome = 'pending'" if only_if_pending else ""
@@ -707,7 +717,7 @@ async def db_write_decision(decision: dict) -> None:
     survivorship bias. outcome stays 'pending' until db_backfill_decision_outcome runs.
     """
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("""
                 INSERT INTO decision_log (
@@ -736,7 +746,7 @@ async def db_backfill_decision_outcome(ticker: str, outcome: str) -> None:
     if outcome not in ("yes", "no"):
         return
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute(
                 "UPDATE decision_log SET outcome = ? WHERE ticker = ? AND outcome = 'pending'",
@@ -750,7 +760,7 @@ async def db_backfill_decision_outcome(ticker: str, outcome: str) -> None:
 async def db_write_maker_sample(sample: dict) -> None:
     """Record one maker-vs-taker counterfactual sample (fire-and-forget; never raises)."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("""
                 INSERT INTO maker_log (
@@ -773,7 +783,7 @@ async def db_write_maker_sample(sample: dict) -> None:
 async def db_write_settlement_basis(sample: dict) -> None:
     """Persist one settlement-basis sample (fire-and-forget; never raises)."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("""
                 INSERT INTO settlement_basis (
@@ -793,7 +803,7 @@ async def db_settled_decision_probs(strategy: str, limit: int = 5000) -> list:
     """(model_p_yes, outcome) pairs for a strategy's settled decisions, newest first.
     Input to the prob_scale calibration fit."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             cur = await db.execute(
                 "SELECT model_p_yes, outcome FROM decision_log "
                 "WHERE strategy = ? AND outcome IN ('yes','no') AND model_p_yes IS NOT NULL "
@@ -811,7 +821,7 @@ async def db_settled_decision_zs(strategy: str = "strategy2", limit: int = 20000
     Input to the per-asset sigma_scale fit (strategy2 by default: its z comes from the
     actual spot, not a predicted one, and carries no shadow-strategy selection bias)."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             cur = await db.execute(
                 "SELECT asset, z, outcome FROM decision_log "
                 "WHERE strategy = ? AND outcome IN ('yes','no') AND z IS NOT NULL "
@@ -827,7 +837,7 @@ async def db_settled_decision_zs(strategy: str = "strategy2", limit: int = 20000
 async def db_settled_picks(limit: int = 10000) -> list:
     """Settled PICKS rows (dicts) from decision_log for the auto-gate computation."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             db.row_factory = aiosqlite.Row
             cur = await db.execute(
                 "SELECT ts, strategy, asset, side, outcome, entry_price_cents "
@@ -846,7 +856,7 @@ async def db_basis_rows(limit: int = 5000) -> list:
     """(asset, signed_dist, kalshi) rows from settlement_basis, newest first.
     Input to the per-asset basis-offset fit."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             cur = await db.execute(
                 "SELECT asset, signed_dist, kalshi FROM settlement_basis "
                 "WHERE kalshi IN ('yes','no') AND signed_dist IS NOT NULL "
@@ -863,7 +873,7 @@ async def db_pending_decision_tickers(older_than_iso: str, limit: int = 30) -> l
     """Distinct tickers in decision_log still 'pending', evaluated before older_than_iso
     (so their window has closed). Used by the periodic settlement backfill."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             cur = await db.execute(
                 "SELECT DISTINCT ticker FROM decision_log "
                 "WHERE outcome = 'pending' AND ts < ? LIMIT ?",
@@ -906,7 +916,7 @@ async def db_brain_scorecard(today: str) -> dict:
         GROUP BY brain, asset
     """
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             for scope, query, params in (
                 ("daily",   _query_daily,   (today,)),
@@ -930,7 +940,7 @@ async def db_brain_scorecard(today: str) -> dict:
 async def db_write_market_log(entry: dict) -> None:
     """Append one row to market_log."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("""
                 INSERT INTO market_log (
@@ -965,7 +975,7 @@ async def db_get_today_pnl(mode: str, variants: "tuple | None" = None) -> float:
         if variants:
             q += f" AND COALESCE(strategy_variant, 'strategy2') IN ({','.join('?' * len(variants))})"
             params.extend(variants)
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             async with db.execute(q, params) as cur:
                 row = await cur.fetchone()
@@ -1171,13 +1181,17 @@ async def _maybe_fill_verification_notify(
 
 
 async def send_telegram(text: str) -> None:
-    """Send a Telegram notification with up to 3 retries on failure."""
+    """Send a Telegram notification with retries. 429s honor the response's
+    retry_after (typically 5-30s at a settle burst across 5 assets) - a fixed 2s
+    backoff landed every retry inside the same rate-limit window and dropped the
+    message."""
     if not bot_state.TELEGRAM_BOT_TOKEN or not bot_state.TELEGRAM_CHAT_ID:
         return
     url = f"https://api.telegram.org/bot{bot_state.TELEGRAM_BOT_TOKEN}/sendMessage"
-    for attempt in range(1, 4):
+    delay = 2.0
+    for attempt in range(1, 5):
         try:
-            log.info(f"Telegram: sending (attempt {attempt}/3)...")
+            log.info(f"Telegram: sending (attempt {attempt}/4)...")
             async with aiohttp.ClientSession() as tg:
                 async with tg.post(
                     url,
@@ -1189,12 +1203,18 @@ async def send_telegram(text: str) -> None:
                         log.info("Telegram: sent OK")
                         return
                     elif resp.status == 429:
-                        log.warning(f"Telegram: rate-limited (429) -- attempt {attempt}/3, retrying...")
+                        try:
+                            delay = min(35.0, float(
+                                json.loads(body).get("parameters", {}).get("retry_after", 5)) + 1.0)
+                        except Exception:
+                            delay = 5.0
+                        log.warning(f"Telegram: rate-limited (429), retry in {delay:.0f}s "
+                                    f"-- attempt {attempt}/4")
                     else:
                         log.warning(f"Telegram: HTTP {resp.status} -- {body}")
                         return
         except Exception as exc:
-            log.warning(f"Telegram: error on attempt {attempt}/3 -- {exc}")
-        if attempt < 3:
-            await asyncio.sleep(2)
-    log.error("Telegram: failed after 3 attempts -- notification dropped")
+            log.warning(f"Telegram: error on attempt {attempt}/4 -- {exc}")
+        if attempt < 4:
+            await asyncio.sleep(delay)
+    log.error("Telegram: failed after 4 attempts -- notification dropped")

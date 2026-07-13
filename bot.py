@@ -193,12 +193,15 @@ async def main() -> None:
         if _mode != "paper":
             await verify_kalshi_connection(_startup_session)
 
-    # Start Coinbase price feed for all assets
+    # Start Coinbase price feed for ALL supported assets, not just the currently
+    # enabled ones: the trading loop re-reads enabled_assets every cycle, so an
+    # asset enabled later from the dashboard starts trading immediately - but the
+    # feed's subscription list is frozen at startup, and without its feed the new
+    # asset would silently never see a price (one extra WS subscription per asset
+    # costs nothing). BTC is always first - correlation signals need its deque.
     _startup_config = read_config()
     _enabled = _startup_config.get("enabled_assets", ["ETH", "SOL", "XRP"])
-    # Always subscribe BTC regardless of enabled_assets - other strategies use
-    # btc_prices_60m for correlation signals and the deque must stay populated.
-    _feed_assets = list(dict.fromkeys(["BTC"] + _enabled))
+    _feed_assets = list(dict.fromkeys(["BTC"] + _enabled + list(asset_manager._prices.keys())))
     await seed_price_history(_feed_assets)
     _spawn_price_feed(_feed_assets)
 

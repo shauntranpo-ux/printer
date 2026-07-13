@@ -17,7 +17,7 @@ import bot_state
 import bot_stats
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
-from bot_infra import read_config, write_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, fmt_ts, display_tz, et_day_bounds_utc, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers, db_write_maker_sample, db_write_settlement_basis, db_settled_decision_probs, db_settled_decision_zs, db_basis_rows, db_settled_picks
+from bot_infra import read_config, write_config, strategy_mode, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, fmt_ts, display_tz, et_day_bounds_utc, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers, db_write_maker_sample, db_write_settlement_basis, db_settled_decision_probs, db_settled_decision_zs, db_basis_rows, db_settled_picks
 from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
@@ -157,6 +157,51 @@ def _record_prev_window_estimate(asset: str, prev_ticker: str, spot: float) -> N
         }
     except Exception:
         pass
+
+
+_AGED_PENDING_SECS = 18 * 60      # a full window + grace: nothing legit is older
+_MAKER_TRACK_MAX_AGE = 1800.0     # held-book paths for tickers that never settled
+
+
+async def _periodic_slot_maintenance(session, config: dict, now: float) -> None:
+    """
+    The 300s tick's lab housekeeping, extracted from main_loop so it is testable
+    (it previously lived inline, and a source-grep 'test' let an inverted age
+    comparison ship green). Settles aged in-memory slot pendings via the official-
+    result path (ladder-picked tickers never become a loop's prev_ticker, so no
+    rollover settle ever fires for them), prunes stale held-book paths, runs the
+    unconditional tracking-state prune (its other caller is gated behind optional
+    calibration flags while the writers run regardless), and publishes the lab
+    activity counters for the dashboard process.
+    """
+    for _sst in list(bot_state._slot_state.values()):
+        for _tk, _pd in list(_sst.get("pending", {}).items()):
+            if now - float(_pd.get("entry_ts", now)) > _AGED_PENDING_SECS:
+                _dq = asset_manager._prices.get(_pd.get("asset", ""))
+                _sp = _dq[-1][1] if _dq else 0.0
+                await _settle_slot_rollover(session, _tk, _sp, config)
+    for _tk, _trk in list(bot_state._maker_track.items()):
+        if _trk and now - _trk[-1][0] > _MAKER_TRACK_MAX_AGE:
+            bot_state._maker_track.pop(_tk, None)
+    _prune_tracking_state()
+    _dump_slot_activity()
+
+
+def _discard_window_attempts(attempted: set, prev_ticker: str) -> None:
+    """
+    Drop duplicate-order guards for a CLOSED window, ladder-picked sibling strikes
+    included - they share the ticker prefix up to the strike suffix (KXETHD-25JUL1314-
+    T3702 vs -T3710). Guards for other windows (different window code) are kept; the
+    sets otherwise grow one entry per ladder pick forever, and wholesale clearing
+    would delete the guard for a window that is still open.
+    """
+    try:
+        prefix = prev_ticker.rsplit("-", 1)[0] + "-"
+        for t in [t for t in attempted if t.startswith(prefix)]:
+            attempted.discard(t)
+        attempted.discard(prev_ticker)
+    except Exception:
+        attempted.discard(prev_ticker)
 
 
 def _remember_window_strike(asset: str, market: "dict | None") -> None:
@@ -306,18 +351,14 @@ def _prune_tracking_state(max_age_secs: float = 1800.0) -> None:
                  if now - ts > max_age_secs]
         for t in stale:
             _maker_track_last_fetch.pop(t, None)
-        # Unbounded per-ticker/set state with no timestamps to age on: cap-and-clear
-        # (the _logged_decisions pattern). _ticker_obi gains an entry per evaluated
-        # ticker and has no live reader; the attempted-ticker sets only need to
-        # cover the current window but ladder-picked tickers are never discarded.
+        # _ticker_obi gains an entry per evaluated ticker and has no live reader:
+        # cap-and-clear is safe for it. The attempted-ticker sets are NOT cleared
+        # here - they are the duplicate-order guard for windows that may still be
+        # open, and wholesale clearing could re-enable an order on a window already
+        # attempted; they are pruned per CLOSED window at each rollover instead
+        # (_discard_window_attempts, ladder siblings included via ticker prefix).
         if len(bot_state._ticker_obi) > 300:
             bot_state._ticker_obi.clear()
-        if len(bot_state._s2_attempted_tickers) > 300:
-            bot_state._s2_attempted_tickers.clear()
-        for _ast in bot_state._asset_states.values():
-            _oa = _ast.get("order_attempted")
-            if _oa is not None and len(_oa) > 300:
-                _oa.clear()
         # Lab-slot fill timestamps: keep the trailing hour (mirrors the S1 list's
         # recent-only rewrite; these lists otherwise grow one entry per fill forever).
         for _sst in bot_state._slot_state.values():
@@ -581,7 +622,8 @@ async def _maybe_send_daily_summary() -> None:
             _last_summary_sent_for = key
             return
         stats = bot_stats.query_stats(
-            bot_state._DB_FILE, today_date=key, day_bounds=et_day_bounds_utc(day))
+            bot_state._DB_FILE, today_date=key, day_bounds=et_day_bounds_utc(day),
+            mode=config.get("mode", "paper"))
         stats["consecutive_losses"] = bot_state._s2_consecutive_losses
         stats["mode"] = config.get("mode", "paper").upper()
         stats["as_of"] = fmt_ts(config=config)
@@ -620,8 +662,8 @@ async def handle_ready_phase(
     """
 
     _use_state = state is not None
-    mode = config.get("s2_mode", config.get("mode", "paper"))
-    mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
+    mode = strategy_mode(config, "s2")
+    mode_s1 = strategy_mode(config, "s1")
 
     # Hard expiry gate - truly nothing to do in the last 90 seconds
     if secs_left < 90:
@@ -1564,7 +1606,7 @@ async def _process_asset(
             _record_prev_window_estimate(asset, prev_ticker, price)
             st["phase"] = "WATCH"
             st["position"] = None
-            st["order_attempted"].discard(prev_ticker)
+            _discard_window_attempts(st["order_attempted"], prev_ticker)
             st["prev_ticker"] = ticker
 
     # Remember this window's (ticker, strike) for the S6 rollover estimate. Paired from
@@ -1593,8 +1635,8 @@ async def _process_asset(
             try:
                 ob_s1 = await fetch_orderbook(session, ticker, market)
                 if ob_s1:
-                    mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
-                    _mode_s2 = config.get("s2_mode", config.get("mode", "paper"))
+                    mode_s1 = strategy_mode(config, "s1")
+                    _mode_s2 = strategy_mode(config, "s2")
                     # Same-ticker dual-hold is duel-mode, BOTH-paper only - the READY
                     # path enforces this on S2; without the mirror check here S1
                     # could open a live position on the ticker S2 already holds live.
@@ -1880,7 +1922,8 @@ async def main_loop() -> None:
 
     global _last_orphan_settle_ts
     prev_ticker: str | None = None
-    _mode = read_config().get("mode", "paper")
+    prev_market_obj: dict | None = None   # last cycle's market - the LOCKED-rollover
+    _mode = read_config().get("mode", "paper")  # restore needs it; _market_cache holds the NEW window by then
 
     # Restore the last persisted model calibration (prob_scale / basis offsets).
     _load_saved_calibration()
@@ -1942,30 +1985,7 @@ async def main_loop() -> None:
                         try:
                             await _settle_s1_orphans(session, read_config())
                             await _settle_slot_orphans(session, read_config())
-                            # Aged in-memory slot pendings: ladder-picked tickers never
-                            # become a loop's prev_ticker, so no rollover settle fires
-                            # for them. Anything older than a window + grace settles
-                            # here via the official-result path.
-                            _aged_cfg = read_config()
-                            for _sst in list(bot_state._slot_state.values()):
-                                for _tk, _pd in list(_sst.get("pending", {}).items()):
-                                    if _tick_ts - float(_pd.get("entry_ts", _tick_ts)) > 18 * 60:
-                                        _dq = asset_manager._prices.get(_pd.get("asset", ""))
-                                        _sp = _dq[-1][1] if _dq else 0.0
-                                        await _settle_slot_rollover(session, _tk, _sp, _aged_cfg)
-                            # Prune held-book paths for tickers that never settled
-                            # (READY-phase ticks accumulate for windows S2 skipped).
-                            for _tk, _trk in list(bot_state._maker_track.items()):
-                                if _trk and _tick_ts - _trk[-1][0] > 1800:
-                                    bot_state._maker_track.pop(_tk, None)
-                            # Tracking-state prune runs HERE unconditionally: its only
-                            # other caller (_recalibrate_model) is gated behind the
-                            # optional measurement+calibration flags while the writers
-                            # (track_contract_mid/price, every eval) run regardless -
-                            # with those flags off the dicts grew without bound.
-                            _prune_tracking_state()
-                            # Publish lab activity counters for the dashboard process.
-                            _dump_slot_activity()
+                            await _periodic_slot_maintenance(session, read_config(), _tick_ts)
                         except Exception as _oe:
                             log.error("Periodic orphan settlement error: %s", _oe, exc_info=True)
                         _last_orphan_settle_ts = time.time()
@@ -2074,9 +2094,17 @@ async def main_loop() -> None:
                         # Never reset a live position when the market rolls over.
                         # The position is on the OLD ticker - keep monitoring it.
                         log.info(f"Market rolled to {ticker} but position still open on {prev_ticker} - staying LOCKED.")
-                        # Keep using the old market object for SL monitoring this cycle
+                        # Restore the old market OBJECT too: _market_cache already holds
+                        # the NEW window (the fetch that detected the roll overwrote it),
+                        # so relying on it left ticker=old while secs_left/strike came
+                        # from the new window - the S1/slot eval block then traded the
+                        # expired book against the wrong strike. With the true old
+                        # market restored, secs_left <= 0 gates that block off.
                         ticker = prev_ticker
-                        market = bot_state._market_cache if bot_state._market_cache and bot_state._market_cache.get("ticker") == prev_ticker else market
+                        if prev_market_obj and prev_market_obj.get("ticker") == prev_ticker:
+                            market = prev_market_obj
+                        elif bot_state._market_cache and bot_state._market_cache.get("ticker") == prev_ticker:
+                            market = bot_state._market_cache
                     else:
                         log.info(f"New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
                         if prev_ticker in bot_state._s1_pending_trades:
@@ -2085,7 +2113,7 @@ async def main_loop() -> None:
                         _record_prev_window_estimate("BTC", prev_ticker, btc_price)
                         bot_state.current_phase = "WATCH"
                         bot_state.current_position = None
-                        bot_state._s2_attempted_tickers.discard(prev_ticker)
+                        _discard_window_attempts(bot_state._s2_attempted_tickers, prev_ticker)
                         prev_ticker = ticker
 
                 secs_left = seconds_remaining(market)
@@ -2115,6 +2143,7 @@ async def main_loop() -> None:
 
                 # Remember this window's (ticker, strike) for the S6 rollover estimate.
                 _remember_window_strike("BTC", market)
+                prev_market_obj = market   # next cycle's LOCKED-rollover restore source
 
                 # WATCH
                 if bot_state.current_phase == "WATCH":
@@ -2145,8 +2174,8 @@ async def main_loop() -> None:
                         try:
                             ob_s1 = await fetch_orderbook(session, ticker, market)
                             if ob_s1:
-                                mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
-                                _mode_s2 = config.get("s2_mode", config.get("mode", "paper"))
+                                mode_s1 = strategy_mode(config, "s1")
+                                _mode_s2 = strategy_mode(config, "s2")
                                 # Dual-hold on the ticker S2 holds: duel-mode,
                                 # BOTH-paper only (mirror of the READY-path guard).
                                 _duel_paper = (config.get("strategy_duel_mode", True)

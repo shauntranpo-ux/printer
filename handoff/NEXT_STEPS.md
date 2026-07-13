@@ -98,6 +98,17 @@ quality; tighten again once a slot has its sample.
   `exit_reason=expiry_estimated`).
 - Paper S2 rows have no orphan sweep (S1 and the lab slots do): a restart with a
   lost state file mid-window can leave one S2 row pending in the DB.
+- `scripts/edge_report.py` ranks decision_log PICKS (all versions, synthetic
+  fills); the dashboard leaderboard ranks executed current-version trades. When
+  they disagree, the dashboard is the promotion authority (the script says so in
+  its output).
+- config.json is read-modify-written by both processes without a lock: a dashboard
+  save landing inside the bot's midnight reset (or vice versa) can lose one side's
+  change. Windows are milliseconds wide; re-apply the setting if it didn't stick.
+- Timing gates use the host clock; only API auth corrects for Kalshi clock skew. A
+  drifted host (rare on Railway) shifts expiry detection by the drift amount.
+- A redeploy spanning the daily-summary window (ET hour `daily_summary_hour_et`)
+  skips that day's Telegram summary; the dashboard still has the numbers.
 
 ## Historical validation status (what the Feb-May settlement data already said)
 

@@ -77,10 +77,21 @@ _FULL_CONFIG_DEFAULT = {
 # S3-S6 paper lab slots. Kept in sync with bot_strategies.STRATEGY_LABELS (tested).
 _STRATEGY_IDS = ("1", "2", "3", "4", "5", "6", "7", "8")
 _ALL_STRATEGIES = tuple(f"strategy{i}" for i in _STRATEGY_IDS)
+def _write_config_atomic(_data: dict) -> None:
+    # Temp + os.replace like every other config writer: a plain truncating write
+    # here races the bot's first read_config on deploy (start.sh launches both
+    # processes together) - a half-written file crashes the bot at startup.
+    _fd, _tmp = tempfile.mkstemp(dir=".", suffix=".json.tmp")
+    with os.fdopen(_fd, "w", encoding="utf-8") as _f:
+        json.dump(_data, _f, indent=2)
+        _f.flush()
+        os.fsync(_f.fileno())
+    os.replace(_tmp, "config.json")
+
+
 if not os.path.exists("config.json"):
     try:
-        with open("config.json", "w", encoding="utf-8") as _f:
-            json.dump(_FULL_CONFIG_DEFAULT, _f, indent=2)
+        _write_config_atomic(_FULL_CONFIG_DEFAULT)
         log.info("Created default config.json")
     except Exception as _cfg_err:
         logging.warning(f"Could not create default config.json: {_cfg_err}")
@@ -93,8 +104,7 @@ try:
             _cfg = json.load(_f)
         if _cfg.get("mode", "paper") == "live":
             _cfg["mode"] = "paper"
-            with open("config.json", "w", encoding="utf-8") as _f:
-                json.dump(_cfg, _f, indent=2)
+            _write_config_atomic(_cfg)
             log.info("Startup safety reset: live -> paper mode")
 except Exception as _rst_err:
     logging.warning(f"Could not apply startup safety reset: {_rst_err}")
@@ -181,7 +191,10 @@ def write_config(data: dict) -> None:
 
 
 def read_state() -> dict:
-    return _safe_json_read("bot_state.json", _STATE_DEFAULT.copy())
+    # Resolve like /healthz and /metrics do - hardcoding the relative path split the
+    # dashboard from the bot when BOT_STATE_FILE points somewhere else (Railway).
+    return _safe_json_read(os.environ.get("BOT_STATE_FILE", "bot_state.json"),
+                           _STATE_DEFAULT.copy())
 
 
 def _load_strategies() -> list[dict]:
@@ -193,9 +206,11 @@ def _read_strategy_state(state_file: str) -> dict | None:
 
 
 def get_db() -> sqlite3.Connection:
-    """Open a WAL-mode SQLite connection with Row factory."""
+    """Open a WAL-mode SQLite connection with Row factory. timeout matches the bot's
+    aiosqlite connections (30s) so neither process drops writes/reads when the other
+    briefly holds the write lock."""
     db_path = os.environ.get("BOT_DB_FILE", "kalshi_bot.db")
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     return conn

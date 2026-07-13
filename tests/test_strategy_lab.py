@@ -363,6 +363,8 @@ def test_settle_normal_slot_and_spot_fallback(monkeypatch):
         "market_close_time": "", "strike": 150.0, "side": "no", "contracts": 10,
         "entry_price_cents": 48, "trade_id": 9,
     }
+    # Price fallback requires a fresh feed for the asset.
+    asset_manager._prices["SOL"] = deque([(time.time(), 149.5)])
     # No official result -> spot 149.5 < strike 150 -> result no -> NO side wins.
     asyncio.run(bot_risk._settle_slot_trades("TKN", None, 149.5, {}))
     assert updates[9]["outcome"] == "win"
@@ -530,28 +532,10 @@ def test_fetch_orderbook_passes_arb_book_rejects_broken(monkeypatch):
     assert normal is not None
 
 
-def test_slot_settle_runs_before_maker_track_pop():
-    """S5's fill evidence lives in _maker_track; _record_maker_counterfactual pops it.
-    The slot settle call must therefore come BEFORE the counterfactual in the expiry
-    block, or every S5 quote on an S2-traded ticker voids as unfilled."""
-    import inspect
-    import bot_loops
-    src = inspect.getsource(bot_loops.handle_locked_phase)
-    i_settle = src.index("_settle_slot_trades")
-    i_cf = src.index("_record_maker_counterfactual")
-    assert i_settle < i_cf, "slot settlement must run before the maker-track pop"
-    assert src.count("_settle_slot_trades") == 1, "single settle call (no late duplicate)"
-
-
-def test_periodic_tick_sweeps_aged_pendings_and_prunes_maker_track():
-    """Ladder-picked tickers never become prev_ticker, so aged in-memory pendings must
-    be swept by the periodic tick (else they deadlock against the orphan-sweep guard);
-    stale _maker_track entries must be pruned."""
-    import inspect
-    import bot_loops
-    src = inspect.getsource(bot_loops.main_loop)
-    assert "_settle_slot_rollover" in src and "18 * 60" in src, "aged pending sweep missing"
-    assert "_maker_track.pop" in src and "1800" in src, "maker_track prune missing"
+# The settle-before-maker-pop ordering and the aged-pending sweep were previously
+# "tested" by source-text greps that mutation testing proved toothless (making the
+# settle unreachable / inverting the age comparison both passed). Their behavioral
+# replacements live in tests/test_behavioral_guards.py.
 
 
 # ------------------------------------------------------------------ lab activity telemetry

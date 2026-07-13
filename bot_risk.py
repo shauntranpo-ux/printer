@@ -507,12 +507,14 @@ async def _settle_s1_trade(
     if s1_pos is None:
         return
     if market_result not in ("yes", "no") and (
-            btc_price is None or btc_price <= 0 or not s1_pos.get("strike")):
-        # No official result AND no usable spot/strike reference: a 0.0 spot would
-        # settle every YES as a loss. Re-queue; the orphan sweep retries with data.
+            btc_price is None or btc_price <= 0 or not s1_pos.get("strike")
+            or not _feed_fresh(asset)):
+        # No official result AND no usable spot/strike reference (missing, zero, or
+        # from a frozen feed): a blind fallback books the wrong side. Re-queue; the
+        # orphan sweep retries with data.
         bot_state._s1_pending_trades[ticker] = s1_pos
-        log.warning("[S1] %s: no result and no usable spot (%r) - settle deferred",
-                    ticker, btc_price)
+        log.warning("[S1] %s: no result and no trustworthy spot (%r, fresh=%s) - settle deferred",
+                    ticker, btc_price, _feed_fresh(asset))
         return
 
     if market_result == "yes":
@@ -632,10 +634,14 @@ async def _settle_s1_orphans(
 
     for row in rows:
         trade_id, ticker, side, contracts, entry_price_cents, mode, asset, db_strike, signals_json = row
-        if ticker in bot_state._s1_pending_trades:
-            # The live path is already tracking this ticker (the DB snapshot predates
-            # its settle-in-flight). Overwriting the pending entry here would plant a
-            # ghost position that settles a second time - let the live path finish.
+        _mem = bot_state._s1_pending_trades.get(ticker)
+        if _mem is not None and time.time() - float(_mem.get("entry_ts") or 0.0) < 25 * 60:
+            # The live path is actively managing this ticker (fresh entry; settles
+            # land within ~16 min of entry). Overwriting it here would plant a ghost
+            # position that settles twice. Entries OLDER than that are stale -
+            # typically a deferred settle re-queue (no result + no usable spot) or a
+            # sweep-created entry (entry_ts 0.0) - and this sweep is their ONLY
+            # retry path: skipping every in-memory ticker deadlocked them forever.
             continue
         # THIS asset's spot for the price fallback - the old BTC-price fallback settled
         # every non-BTC orphan 'yes' (60000 vs a 150 strike).
@@ -726,6 +732,21 @@ async def _try_settle_orphaned_s1(
 # Test-slot strategy engine (S3+): generic executor/settler for the paper lab.
 # Parameterized versions of the S1 pair above; every slot trade is HARD-FORCED paper
 # regardless of the global mode - lab slots never touch live capital.
+
+def _feed_fresh(asset: str, max_age_secs: float = 180.0) -> bool:
+    """True when the asset's price deque has a print newer than max_age_secs.
+    Price-fallback settlement must NOT trust a frozen feed: during a full Coinbase
+    outage the deque's last print can be minutes old, and settling spot-vs-strike
+    against it books the wrong side for any late strike cross."""
+    try:
+        import asset_manager
+        dq = asset_manager._prices.get(asset)
+        if not dq:
+            return False
+        return (time.time() - float(dq[-1][0])) <= max_age_secs
+    except Exception:
+        return False
+
 
 def _slot(slot: str) -> dict:
     """Per-slot execution state (lazily created), mirroring the _s1_* globals."""
@@ -918,12 +939,13 @@ async def _settle_slot_trades(
         strike = float(pos.get("strike") or 0.0)
         if market_result in ("yes", "no"):
             result = market_result
-        elif spot_price is None or spot_price <= 0 or strike <= 0:
-            # No official result AND no usable spot/strike (the aged sweep passes
-            # spot 0.0 when the price deque is empty): a blind fallback settles
-            # every YES as a loss. Re-queue; a later sweep retries with data.
+        elif spot_price is None or spot_price <= 0 or strike <= 0 or not _feed_fresh(asset):
+            # No official result AND no trustworthy spot/strike (missing, zero, or
+            # from a frozen feed - the aged sweep passes the deque's last print
+            # however old): a blind fallback settles the wrong side. Re-queue; a
+            # later sweep retries with data.
             st["pending"][ticker] = pos
-            log.warning("[%s] %s: no result and no usable spot (%r) - settle deferred",
+            log.warning("[%s] %s: no result and no trustworthy spot (%r) - settle deferred",
                         slot, ticker, spot_price)
             continue
         else:
@@ -1090,11 +1112,12 @@ async def _settle_slot_orphans(
             won = side == market_result
         else:
             # THIS asset's spot, not BTC's - a wrong-asset fallback settles every
-            # non-BTC row 'yes' (spot 60000 vs strike 150).
+            # non-BTC row 'yes' (spot 60000 vs strike 150). And only a FRESH print:
+            # a frozen feed's last price books the wrong side on late crosses.
             _dq = asset_manager._prices.get(asset)
             spot = _dq[-1][1] if _dq else 0.0
-            if spot <= 0 or not strike:
-                continue   # no usable reference - retry next sweep
+            if spot <= 0 or not strike or not _feed_fresh(asset):
+                continue   # no trustworthy reference - retry next sweep
             won = (side == "yes") == (spot > float(strike or 0.0))
         # Maker quotes cannot verify a fill after restart (held-book path lost): void.
         # only_if_pending: a live settle that finished after our snapshot must never

@@ -242,6 +242,11 @@ def main():
             board.sort(key=lambda x: -x[1]["mean"])
             print("=" * 96)
             print("LEADERBOARD (PICKS) - which strategy profits more, net $/contract:")
+            print("  NOTE: scored from decision_log PICKS (every brain opinion incl. retired")
+            print("  versions, synthetic taker fills). The dashboard Strategy Lab leaderboard")
+            print("  ranks EXECUTED current-version trades with realized P&L - when the two")
+            print("  disagree, the dashboard is the promotion authority; this view is for")
+            print("  signal quality across the whole pick history.")
             for rank, (strat, g) in enumerate(board, 1):
                 crown = "  <- WINNER" if rank == 1 and g["mean"] > 0 else ""
                 print(f"  {rank}. {_labels[strat]:<20} n={g['n']:>4}  win={g['win_rate']:.3f}  "

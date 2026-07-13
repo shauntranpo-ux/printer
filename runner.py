@@ -99,7 +99,13 @@ def _build_env(strategy: dict) -> dict:
     db_file = strategy["db_file"]
     if "BOT_DB_FILE" not in os.environ or os.path.isabs(db_file):
         env["BOT_DB_FILE"] = db_file
-    env["BOT_STATE_FILE"] = strategy["state_file"]
+    # Same deference as BOT_DB_FILE: a platform-provided path (Railway sets
+    # /app/data/bot_state.json, which /healthz and /metrics resolve from the env)
+    # must not be clobbered by strategies.json's relative default - that split the
+    # writer and the healthcheck onto different files and 503'd every deploy.
+    state_file = strategy["state_file"]
+    if "BOT_STATE_FILE" not in os.environ or os.path.isabs(state_file):
+        env["BOT_STATE_FILE"] = state_file
     return env
 
 

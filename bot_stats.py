@@ -25,12 +25,16 @@ _SEP = "-" * 31
 
 
 def query_stats(db_path: str, today_date: str | None = None,
-                day_bounds: tuple[str, str] | None = None) -> dict:
+                day_bounds: tuple[str, str] | None = None,
+                mode: str | None = None) -> dict:
     """Query trade stats from DB. Returns zero-filled dict on DB error.
 
     day_bounds: optional (start_utc_iso, end_utc_iso) window for the "today"
     numbers - pass bot_infra.et_day_bounds_utc(...) so the day matches the ET
     trading day. Without it, falls back to the legacy UTC DATE(ts) bucket.
+    mode: optional trades.mode filter. The daily summary passes the configured
+    mode so its headline P&L matches the dashboard's per-mode tabs - unfiltered,
+    stale demo/live rows blend into a total stamped with the current mode.
     """
     today = today_date or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     empty = {
@@ -51,7 +55,7 @@ def query_stats(db_path: str, today_date: str | None = None,
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         try:
-            return _run_queries(conn, today, empty, day_bounds)
+            return _run_queries(conn, today, empty, day_bounds, mode)
         finally:
             conn.close()
     except Exception as e:
@@ -60,7 +64,10 @@ def query_stats(db_path: str, today_date: str | None = None,
 
 
 def _run_queries(conn: sqlite3.Connection, today: str, base: dict,
-                 day_bounds: tuple[str, str] | None = None) -> dict:
+                 day_bounds: tuple[str, str] | None = None,
+                 mode: str | None = None) -> dict:
+    _mode_where = " AND mode = ?" if mode else ""
+    _mode_params = (mode,) if mode else ()
     # Today breakdown by strategy + asset
     by_sa: dict = {}
     today_wins = 0
@@ -75,10 +82,10 @@ def _run_queries(conn: sqlite3.Connection, today: str, base: dict,
         f"""
         SELECT strategy_variant, asset, outcome, COUNT(1) as n, SUM(pnl_dollars) as pnl
         FROM trades
-        WHERE {_day_where} AND outcome IN ('win', 'loss')
+        WHERE {_day_where} AND outcome IN ('win', 'loss'){_mode_where}
         GROUP BY strategy_variant, asset, outcome
         """,
-        _day_params,
+        _day_params + _mode_params,
     ).fetchall()
 
     for row in rows:
@@ -100,18 +107,21 @@ def _run_queries(conn: sqlite3.Connection, today: str, base: dict,
 
     # All-time totals
     alltime = conn.execute(
-        """
+        f"""
         SELECT COUNT(1) as n,
                SUM(CASE WHEN outcome='win' THEN 1 ELSE 0 END) as wins,
                SUM(pnl_dollars) as pnl
         FROM trades
-        WHERE outcome IN ('win', 'loss')
+        WHERE outcome IN ('win', 'loss'){_mode_where}
         """,
+        _mode_params,
     ).fetchone()
 
     # Last trade timestamp
     last_row = conn.execute(
-        "SELECT ts FROM trades WHERE outcome IN ('win','loss') ORDER BY ts DESC LIMIT 1"
+        "SELECT ts FROM trades WHERE outcome IN ('win','loss')"
+        f"{_mode_where} ORDER BY ts DESC LIMIT 1",
+        _mode_params,
     ).fetchone()
 
     return {
