@@ -1928,6 +1928,9 @@ async def main_loop() -> None:
     # Restore the last persisted model calibration (prob_scale / basis offsets).
     _load_saved_calibration()
 
+    # Restore the last persisted model calibration (prob_scale / basis offsets).
+    _load_saved_calibration()
+
     # ── Read crash-recovery state (Kalshi verification happens inside session) ─
     _saved_pos: "dict | None" = None
     _saved_phase: str = ""
