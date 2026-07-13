@@ -901,6 +901,10 @@ async def place_order(
         return {
             "fill_confirmed": True,
             "fill_price_cents": paper_fill,
+            # Without this the caller keeps ITS pre-reprice count, so the re-size
+            # above never reached paper accounting and the clip could still be
+            # exceeded on paper rows.
+            "filled_contracts": contracts,
             "order_id": f"paper_{int(time.time() * 1000)}",
         }
 

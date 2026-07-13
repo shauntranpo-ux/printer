@@ -62,6 +62,9 @@ def atomic_write_json(data: dict, path: str) -> None:
         raise
 
 
+_mode_clamp_warned: set = set()
+
+
 def read_config() -> dict:
     """Read and return the contents of the config file.
     Falls back to bot_state._last_good_config if the file is transiently corrupt
@@ -80,8 +83,10 @@ def read_config() -> dict:
         if cfg.get("mode", "paper") != "live":
             for _k in ("s1_mode", "s2_mode"):
                 if cfg.get(_k) == "live":
-                    log.warning("%s=live clamped to %s (global mode is not live)",
-                                _k, cfg.get("mode", "paper"))
+                    if _k not in _mode_clamp_warned:   # once, not every 10s read
+                        _mode_clamp_warned.add(_k)
+                        log.warning("%s=live clamped to %s (global mode is not live)",
+                                    _k, cfg.get("mode", "paper"))
                     cfg[_k] = cfg.get("mode", "paper")
         bot_state._last_good_config = cfg
         return cfg
