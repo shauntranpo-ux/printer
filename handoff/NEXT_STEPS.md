@@ -121,19 +121,48 @@ quality; tighten again once a slot has its sample.
   same-window move to agree adds nothing (Wilson-LB 0.536 with vs 0.536 without),
   and BTC's window result does not lead the alts' next window
   (`scripts/xasset_check.py`).
-- **S1 / S4 / S2-S8 favorite calibration: UNTESTED** - needs price data the
-  settlement parquets don't carry. The two-step below fixes that.
+- **S1 Momentum: real but MARGINAL.** Excess over the drift-free model is
+  positive in all 9 (minutes-left x |mom_z|) cells but clears the Wilson-LB
+  bar (n>=1000, LB-excess>0) in only 3: 7min/z 0.7-1.5 (+0.014, n=7714),
+  7min/z>=1.5 (+0.005, n=3415), 5min/z 0.7-1.5 (+0.006, n=7616). The 10-minute
+  checkpoint is uniformly weak/negative. Far smaller margin than what proved
+  S6 (0.5-1.4 model-probability points here vs. a full 3.5-point margin over
+  breakeven for S6) - may not clear fees, and this offline z-proxy doesn't map
+  1:1 onto the live brain's actual momentum computation, so no gate was
+  retuned from this alone. If curious, `s1_time_max` (10.0, live-editable in
+  config.json, no deploy needed) is the one knob the data weakly supports
+  narrowing toward ~8 - the live paper lab remains the real test either way.
+- **S4 Stall-fade: INCONCLUSIVE.** Every bucket (7/5/3 min) is data-starved
+  (n=211/315/366, all <1000); both actual and model win rates sit near zero,
+  meaning a stalled >=1.5-sigma move this late genuinely has little time to
+  reverse and the model already prices that correctly. Not enough signal to
+  act on - nothing changed.
+- **S2/S8 Favorite calibration: STRONG but UNCONFIRMED as a tradable edge.**
+  Every probability decile from 0.4-1.0 shows empirical beating the drift-free
+  model, with the biggest gaps (+8 to +10 probability points, n=1900-4200)
+  exactly where S2/S8 trade (0.6-0.9). Robust numbers, but this measures
+  against a THEORETICAL model, not real historical Kalshi prices (which this
+  analysis doesn't have) - some of the gap is likely Kalshi's settlement-
+  averaging mechanism (~60s average, not the instant tick), which the live
+  S2/S8 brains already partially correct for via `effective_secs` but this
+  offline model doesn't. Directionally supportive of the favorite-bias thesis;
+  probably overstates the true edge. Live paper lab data is the real test.
 
-## Validate S1/S4/S2 against history (one-time, run on your PC)
+## Re-running or extending the historical analysis (on your PC)
 
-The hosted container cannot reach exchange APIs, so run these two commands from the
-repo on your Windows machine (open internet, no API keys needed):
+The hosted container cannot reach exchange APIs, so run these from the repo on
+your Windows machine (`py`, not `python`, avoids the Microsoft Store redirect
+stub - see below if `python`/`pip` aren't found):
 
 ```
-pip install pandas pyarrow requests
-python scripts/fetch_candles.py     # ~5 min: 1-min candles for the settlement span
-python scripts/backtest_signals.py  # momentum / stall-fade / calibration report
+py -m pip install pandas pyarrow requests
+py scripts/fetch_candles.py     # ~5 min: 1-min candles for the settlement span
+py scripts/backtest_signals.py  # momentum / stall-fade / calibration report
 ```
+
+If you installed Python via `winget install -e --id Python.Python.3.12`, close
+and reopen your terminal first (PATH changes don't apply to an already-open
+window) - otherwise `python`/`pip` resolve to Windows' Store-redirect stub.
 
 Then commit the new `data/historical/*_candles_1m.parquet` files and push - with the
 candles in the repo, the analysis can be extended and re-run from any session. Read
