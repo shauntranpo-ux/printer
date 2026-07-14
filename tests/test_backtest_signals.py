@@ -86,3 +86,31 @@ def test_wilson_lb_bounds():
     assert bt.wilson_lb(0, 0) == 0.0
     assert 0.51 < bt.wilson_lb(5600, 10000) < 0.56
     assert bt.wilson_lb(560, 1000) < bt.wilson_lb(5600, 10000)  # tighter with more n
+
+
+def test_load_closes_survives_a_real_parquet_round_trip(tmp_path):
+    """Regression: load_closes() must derive epoch seconds in a unit-agnostic way.
+    A raw `.astype("int64") // 10**9` conversion silently assumes the column is
+    nanosecond-resolution - true pre-pandas-3.0 (read_parquet always upcast to
+    ns), but pandas >=3.0 preserves the parquet file's native unit (commonly
+    microseconds from pyarrow's default Timestamp precision), which made every
+    epoch key wrong by 1000x and silently zeroed out every decision row. The
+    synthetic-dict tests above never exercise this path - only a real
+    to_parquet/read_parquet round-trip catches a unit regression."""
+    t0 = datetime(2026, 5, 1, tzinfo=timezone.utc)
+    df = pd.DataFrame({
+        "ts": [t0, t0 + timedelta(minutes=1), t0 + timedelta(minutes=2)],
+        "open": [100.0, 101.0, 102.0], "high": [100.0, 101.0, 102.0],
+        "low": [100.0, 101.0, 102.0], "close": [100.0, 101.0, 102.0],
+        "volume": [1.0, 1.0, 1.0],
+    })
+    path = str(tmp_path / "candles.parquet")
+    df.to_parquet(path, index=False)
+    closes = bt.load_closes(path)
+    expected_first = int(t0.timestamp())
+    assert expected_first in closes, (
+        f"epoch key {expected_first} missing - got keys like {sorted(closes)[:3]} "
+        "(a 1000x-off bug produces keys near the 1970 epoch)")
+    assert closes[expected_first] == 100.0
+    assert closes[expected_first + 60] == 101.0
+    assert closes[expected_first + 120] == 102.0

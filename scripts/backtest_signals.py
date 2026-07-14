@@ -55,9 +55,17 @@ def wilson_lb(w, n, z=1.96):
 def load_closes(path):
     """Candle parquet -> {epoch_minute_start: close}. Keyed by the candle's OWN
     start minute; spot_at() shifts back one minute so lookups never see a candle
-    that hadn't closed yet at decision time."""
+    that hadn't closed yet at decision time.
+
+    Epoch conversion via Timestamp subtraction, not `.astype("int64")`: the raw
+    int64 view of a datetime64 column is in whatever unit pandas stored it as
+    (ns pre-3.0, but pandas >=3.0 preserves the parquet file's native unit -
+    typically us here from pyarrow's default Timestamp precision). `.astype
+    int64 // 10**9` silently assumed nanoseconds and was off by 1000x on a
+    microsecond-resolution column. Timestamp subtraction is unit-agnostic."""
     df = pd.read_parquet(path)
-    return dict(zip((df["ts"].astype("int64") // 10**9).tolist(), df["close"].tolist()))
+    epoch = (df["ts"] - pd.Timestamp("1970-01-01", tz="UTC")) // pd.Timedelta(seconds=1)
+    return dict(zip(epoch.tolist(), df["close"].tolist()))
 
 
 def spot_at(closes, epoch):

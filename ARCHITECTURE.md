@@ -277,7 +277,21 @@ agreement stats from `settlement_basis`).
   settlement span (fetch must run from an unrestricted network - hosted containers block
   exchange hosts) and the intra-window signal tests they enable: S1 momentum-vs-model excess,
   S4 stall-fade, and the favorite-calibration behind S2/S8. pandas/pyarrow/requests are
-  script-only dependencies.
+  script-only dependencies. Results (see `handoff/NEXT_STEPS.md` "Historical validation
+  status" for the full numbers): S1 is real but marginal (positive in all cells, clears the
+  n>=1000/Wilson-LB bar in only 3 of 9, concentrated at 7min/z>=0.7) - too small and too
+  loosely mapped onto the live brain's actual signal to retune gates from alone. S4 is
+  data-starved (every bucket n<1000) - inconclusive. The favorite-calibration finding is the
+  strongest of the three (+8-10 model-probability points at n=1900-4200 exactly where S2/S8
+  trade) but is measured against a drift-free theoretical model, not real historical Kalshi
+  prices, and likely partly reflects the settlement-averaging effect `effective_secs` already
+  corrects for live - directionally supportive, not proof. None of the three cleared the bar
+  S6 did (a full 3.5-point margin over breakeven, vs. sub-1.5-point margins here), so no gate
+  changes shipped from this round; the live paper lab remains the authoritative test for all
+  three. `load_closes()`'s epoch conversion must stay unit-agnostic (pandas.Timestamp
+  subtraction, not raw `.astype("int64")`) - pandas >=3.0 preserves the parquet file's native
+  datetime unit instead of always upcasting to nanoseconds, and a naive int64 view silently
+  produced a 1000x-wrong epoch that zeroed out every decision row with no error.
 
 ### Environment Variables (runtime-verified)
 

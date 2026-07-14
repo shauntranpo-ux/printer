@@ -8,7 +8,7 @@ import math
 import os
 import time
 from collections import deque
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 
 import aiohttp
@@ -550,94 +550,93 @@ async def _record_maker_counterfactual(pos: dict, asset: str, outcome: str, conf
 _last_orphan_settle_ts: float = 0.0
 
 
-def _format_scorecard_message(data: dict) -> str:
-    lines = ["<b>Brain Scorecard</b>"]
-
-    for brain_key, label in (("s1", "S1 (BTC-lead cross-asset)"), ("s2", "S2 (spot fair-value)")):
-        lines.append(f"\n<b>{label}</b>")
-        daily = data["daily"].get(brain_key, {})
-        total_pnl = 0.0
-        total_wins = 0
-        total_losses = 0
-        any_trade = False
-        for asset in _ASSETS:
-            row = daily.get(asset)
-            if row:
-                any_trade = True
-                pnl = row["pnl"]
-                total_pnl += pnl
-                total_wins += row["wins"]
-                total_losses += row["losses"]
-                sign = "+" if pnl >= 0 else ""
-                lines.append(f"  {asset:<5} {sign}${pnl:.2f}  {row['wins']}W/{row['losses']}L")
-            else:
-                lines.append(f"  {asset:<5} -")
-        if any_trade:
-            sign = "+" if total_pnl >= 0 else ""
-            lines.append(f"  <b>Total: {sign}${total_pnl:.2f}  {total_wins}W/{total_losses}L</b>")
-        else:
-            lines.append("  (no trades today)")
-
-    at_parts = []
-    for brain_key, label in (("s1", "S1"), ("s2", "S2")):
-        at = data["alltime"].get(brain_key, {})
-        at_pnl = sum(r["pnl"] for r in at.values())
-        at_wins = sum(r["wins"] for r in at.values())
-        at_losses = sum(r["losses"] for r in at.values())
-        sign = "+" if at_pnl >= 0 else ""
-        at_parts.append(f"{label}: {sign}${at_pnl:.2f} {at_wins}W/{at_losses}L")
-    lines.append("\n<b>All-time</b> | " + " | ".join(at_parts))
-
-    s1_daily = sum(r["pnl"] for r in data["daily"].get("s1", {}).values())
-    s2_daily = sum(r["pnl"] for r in data["daily"].get("s2", {}).values())
-    if s1_daily > s2_daily:
-        lines.append("Today's winner: <b>S1</b>")
-    elif s2_daily > s1_daily:
-        lines.append("Today's winner: <b>S2</b>")
-
-    return "\n".join(lines)
+_SUMMARY_BACKFILL_DAYS = 3   # catch up at most this many missed ET days after downtime
 
 
 async def _maybe_send_daily_summary() -> None:
-    """Send ONE end-of-day summary covering the previous full ET calendar day.
+    """Send the end-of-day summary for each fully-elapsed ET calendar day not yet
+    covered, newest-needed logic first-run-safe.
 
-    Fires at/after daily_summary_hour_et (default 0 = just after ET midnight).
-    Replaces the old pair of 5pm-ET messages (scorecard + stats), which covered
-    only part of the day and could be consumed early by a quiet-hours trigger.
-    The sent marker persists in config so a restart never resends the summary.
+    Fires at/after daily_summary_hour_et (default 0 = just after ET midnight) for
+    the just-ended day; the 20-minute grace lets 15-min windows that straddled ET
+    midnight settle into their own day's numbers. Downtime spanning a whole send
+    window used to drop that day's summary FOREVER (the marker then leapt past
+    it) - now the gap is backfilled from the DB, oldest first, capped at
+    _SUMMARY_BACKFILL_DAYS with an explicit skipped-days note beyond the cap.
+    First run ever (no marker): the marker is initialized without sending, so a
+    fresh deploy doesn't emit a spurious "no trades" summary for a day it never
+    traded. The sent marker persists in config so a restart never resends.
     """
     global _last_summary_sent_for
     try:
         config = read_config()
         now_et = datetime.now(_ET_TZ)
         _hour = int(config.get("daily_summary_hour_et", 0))
-        # 20-minute grace past the send hour so 15-min windows that straddled ET
-        # midnight have settled and land in their own day's numbers.
-        if (now_et.hour, now_et.minute) < (_hour, 20):
-            return
         day = (now_et - timedelta(days=1)).date()
         key = day.isoformat()
-        already = str(config.get("_last_daily_summary_for", ""))
+        already = str(config.get("_last_daily_summary_for", "") or "")
         if key == _last_summary_sent_for or (already and key <= already):
             _last_summary_sent_for = key
             return
-        stats = bot_stats.query_stats(
-            bot_state._DB_FILE, today_date=key, day_bounds=et_day_bounds_utc(day),
-            mode=config.get("mode", "paper"))
-        stats["consecutive_losses"] = bot_state._s2_consecutive_losses
-        stats["mode"] = config.get("mode", "paper").upper()
-        stats["as_of"] = fmt_ts(config=config)
-        stats["display_tz"] = display_tz(config)
-        await send_telegram(bot_stats.format_telegram(stats))
-        _last_summary_sent_for = key
+
+        if not already:
+            # First run ever: nothing to catch up on. Claim yesterday silently so
+            # summaries start with the first day this deploy actually traded.
+            _last_summary_sent_for = key
+            _persist_summary_marker(key)
+            return
+
         try:
-            cfg = read_config()
-            cfg["_last_daily_summary_for"] = key
-            write_config(cfg)
-        except Exception as _persist_exc:
-            log.warning("Daily summary marker persist failed: %s", _persist_exc)
+            last_sent = date.fromisoformat(already)
+        except ValueError:
+            last_sent = day - timedelta(days=1)
+
+        # Days older than the backfill cap are skipped (noted, not silently lost).
+        oldest = day - timedelta(days=_SUMMARY_BACKFILL_DAYS - 1)
+        start = max(last_sent + timedelta(days=1), oldest)
+        skipped = (start - (last_sent + timedelta(days=1))).days
+
+        pending_days = []
+        d = start
+        while d <= day:
+            pending_days.append(d)
+            d += timedelta(days=1)
+        # The just-ended day still respects the grace window; older missed days
+        # ended >= 24h ago and are safe to send at any time of day.
+        if pending_days and pending_days[-1] == day \
+                and (now_et.hour, now_et.minute) < (_hour, 20):
+            pending_days.pop()
+        if not pending_days:
+            return
+
+        for d in pending_days:
+            dkey = d.isoformat()
+            stats = bot_stats.query_stats(
+                bot_state._DB_FILE, today_date=dkey, day_bounds=et_day_bounds_utc(d),
+                mode=config.get("mode", "paper"))
+            stats["consecutive_losses"] = bot_state._s2_consecutive_losses
+            stats["mode"] = config.get("mode", "paper").upper()
+            stats["as_of"] = fmt_ts(config=config)
+            stats["display_tz"] = display_tz(config)
+            msg = bot_stats.format_telegram(stats)
+            if d != day:
+                msg = f"(catch-up after downtime)\n{msg}"
+            if skipped > 0 and d == pending_days[0]:
+                msg = f"({skipped} earlier day(s) skipped - beyond backfill window)\n{msg}"
+            await send_telegram(msg)
+            _last_summary_sent_for = dkey
+            _persist_summary_marker(dkey)
     except Exception as exc:
         log.warning("Daily summary send failed (non-fatal): %s", exc)
+
+
+def _persist_summary_marker(key: str) -> None:
+    try:
+        cfg = read_config()
+        cfg["_last_daily_summary_for"] = key
+        write_config(cfg)
+    except Exception as _persist_exc:
+        log.warning("Daily summary marker persist failed: %s", _persist_exc)
 
 
 async def handle_ready_phase(
@@ -1385,10 +1384,11 @@ async def handle_locked_phase(
             try:
                 _pos_mode = pos.get("mode", config.get("mode", "paper"))
                 _today_pnl = await db_get_today_pnl(_pos_mode)
+                _s2_today = await db_get_today_pnl(_pos_mode, variants=("strategy2",))
                 await send_telegram(bot_stats.format_settle_message(
                     outcome, pnl, asset, "s2", pos["side"], _entry_c_eff,
                     exit_price, pos["contracts"], fmt_ts(config=config), _today_pnl,
-                    _pos_mode))
+                    _pos_mode, strat_today=_s2_today))
             except Exception as _notify_exc:
                 log.warning("Settle notification failed (non-fatal): %s", _notify_exc)
 

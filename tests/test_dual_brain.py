@@ -181,29 +181,12 @@ def test_scorecard_returns_per_brain_per_asset():
         os.unlink(db_path)
 
 
-def test_format_scorecard_message():
-    """_format_scorecard_message returns expected Telegram text."""
+def test_scorecard_message_removed():
+    """The old brain-scorecard formatter (stale pre-rebuild labels, no live
+    callers - the daily summary in bot_stats.format_telegram replaced it and
+    covers all 8 strategies) must stay deleted."""
     import bot_loops
-
-    assert hasattr(bot_loops, "_format_scorecard_message"), \
-        "_format_scorecard_message not found in bot_loops"
-
-    data = {
-        "daily": {
-            "s1": {"BTC": {"pnl": 2.50, "wins": 3, "losses": 1, "trades": 4}},
-            "s2": {"ETH": {"pnl": -1.00, "wins": 1, "losses": 2, "trades": 3}},
-        },
-        "alltime": {
-            "s1": {"BTC": {"pnl": 12.50, "wins": 10, "losses": 3, "trades": 13}},
-            "s2": {"ETH": {"pnl": 5.00, "wins": 6, "losses": 4, "trades": 10}},
-        },
-    }
-    msg = bot_loops._format_scorecard_message(data)
-    assert "S1" in msg
-    assert "S2" in msg
-    assert "BTC" in msg
-    assert "ETH" in msg
-    assert "All-time" in msg or "all-time" in msg.lower()
+    assert not hasattr(bot_loops, "_format_scorecard_message")
 
 
 def test_s1_winprob_no_inflation():

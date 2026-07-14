@@ -549,10 +549,11 @@ async def _settle_s1_trade(
             import bot_stats as _bs
             _s1_mode = s1_pos.get("mode", config.get("mode", "paper"))
             _today_pnl = await db_get_today_pnl(_s1_mode)
+            _s1_today = await db_get_today_pnl(_s1_mode, variants=("strategy1",))
             await send_telegram(_bs.format_settle_message(
                 outcome, pnl, asset, "s1", s1_pos["side"], s1_pos["entry_price_cents"],
                 exit_price, s1_pos["contracts"], fmt_ts(config=config), _today_pnl,
-                _s1_mode))
+                _s1_mode, strat_today=_s1_today))
         except Exception as _notify_exc:
             log.warning("S1 settle notification failed (non-fatal): %s", _notify_exc)
 
@@ -848,6 +849,8 @@ async def _execute_slot_trade(
             leg["trade_id"] = await db_write_trade(row)
         log.info("[%s] %s: ARB pair %dx (yes %dc + no %dc = %.0fc)",
                  tag.upper(), ticker, pair_contracts, int(yes_ask), int(no_ask), combined)
+        await _notify_slot_entry(slot, "arb", combined, pair_contracts, dollars,
+                                 secs_left, asset, config)
         st["trade_times"].setdefault(asset, []).append(time.time())
         return
 
@@ -874,6 +877,8 @@ async def _execute_slot_trade(
         }
         log.info("[%s] %s: MAKER quote %s %dx @ %dc (ask %dc)",
                  tag.upper(), ticker, side.upper(), contracts, int(quote), int(entry_price))
+        await _notify_slot_entry(slot, side, quote, contracts,
+                                 contracts * quote / 100.0, secs_left, asset, config)
         st["trade_times"].setdefault(asset, []).append(time.time())
         return
 
@@ -903,6 +908,8 @@ async def _execute_slot_trade(
     row = _trade_row(side, contracts, fill_price, dollars_used, result.get("order_id"))
     st["pending"][ticker]["trade_id"] = await db_write_trade(row)
     log.info("[%s] %s: FILLED %s %dx @ %dc", tag.upper(), ticker, side.upper(), contracts, fill_price)
+    await _notify_slot_entry(slot, side, fill_price, contracts, dollars_used,
+                             secs_left, asset, config)
     st["trade_times"].setdefault(asset, []).append(time.time())
 
 
@@ -918,6 +925,45 @@ def _slot_leg_pnl(side: str, entry_cents: float, contracts: int, won: bool,
         fee = math.ceil(fee_rate * contracts * entry_p * (1.0 - entry_p) * 100) / 100
     pnl = (exit_price - entry_cents) * contracts / 100 - fee
     return exit_price, pnl
+
+
+async def _notify_slot_entry(slot: str, side: str, entry_c: float, contracts: int,
+                             cost: float, secs_left: float, asset: str,
+                             config: dict) -> None:
+    """Opt-in entry alert for a lab-slot fill/quote - same notify_on_entry gate
+    and format as S1/S2. Fail-soft."""
+    if not config.get("notify_on_entry", False):
+        return
+    try:
+        import bot_stats as _bs
+        from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+        tag = "s" + slot.removeprefix("strategy")
+        _ends = _dt.now(_tz.utc) + _td(seconds=float(secs_left or 0))
+        await send_telegram(_bs.format_entry_message(
+            asset, tag, side, entry_c, contracts, cost,
+            fmt_ts(_ends, config=config), "paper"))
+    except Exception as _notify_exc:
+        log.warning("[%s] entry notification failed (non-fatal): %s", slot, _notify_exc)
+
+
+async def _notify_slot_settle(slot: str, side: str, entry_c: float, exit_c: float,
+                              contracts: int, pnl: float, outcome: str, asset: str,
+                              config: dict) -> None:
+    """Per-trade Telegram alert for a resolved lab-slot trade - same format and
+    notify_on_settle gate as S1/S2. Voided quotes never reach here (not resolved
+    trades). Fail-soft: a notify error must never block settlement."""
+    if not config.get("notify_on_settle", True):
+        return
+    try:
+        import bot_stats as _bs
+        tag = "s" + slot.removeprefix("strategy")
+        _today = await db_get_today_pnl("paper")
+        _mine = await db_get_today_pnl("paper", variants=(slot,))
+        await send_telegram(_bs.format_settle_message(
+            outcome, pnl, asset, tag, side, entry_c, exit_c, contracts,
+            fmt_ts(config=config), _today, "paper", strat_today=_mine))
+    except Exception as _notify_exc:
+        log.warning("[%s] settle notification failed (non-fatal): %s", slot, _notify_exc)
 
 
 async def _settle_slot_trades(
@@ -971,6 +1017,13 @@ async def _settle_slot_trades(
                                                 / max(1, leg["entry_price_cents"]) * 100, 2),
                     })
                 log.info("[S3] %s: arb pair settled, net P&L=$%.2f", ticker, total)
+                # One alert for the pair's NET (one economic trade, not two legs).
+                _legs = pos.get("legs", [])
+                _combined = sum(int(_l.get("entry_price_cents", 0)) for _l in _legs)
+                await _notify_slot_settle(
+                    slot, "arb", _combined, 100,
+                    int(_legs[0].get("contracts", 0)) if _legs else 0,
+                    total, "win" if total >= 0 else "loss", asset, config)
                 continue
 
             if pos.get("maker_quote_cents") is not None:
@@ -1005,6 +1058,9 @@ async def _settle_slot_trades(
                 })
                 log.info("[S5] %s: maker settled %s, P&L=$%.2f", ticker,
                          "win" if won else "loss", pnl)
+                await _notify_slot_settle(
+                    slot, pos["side"], quote, exit_price, pos["contracts"], pnl,
+                    "win" if won else "loss", asset, config)
                 continue
 
             won = _won(pos["side"])
@@ -1019,6 +1075,9 @@ async def _settle_slot_trades(
             })
             log.info("[%s] %s: settled %s, P&L=$%.2f", slot, ticker,
                      "win" if won else "loss", pnl)
+            await _notify_slot_settle(
+                slot, pos["side"], pos["entry_price_cents"], exit_price,
+                pos["contracts"], pnl, "win" if won else "loss", asset, config)
             if not won:
                 streak = st["consec_losses"].get(asset, 0) + 1
                 st["consec_losses"][asset] = streak

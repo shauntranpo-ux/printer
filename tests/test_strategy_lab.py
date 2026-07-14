@@ -532,6 +532,117 @@ def test_fetch_orderbook_passes_arb_book_rejects_broken(monkeypatch):
     assert normal is not None
 
 
+# ------------------------------------------------------------------ lab Telegram alerts
+
+def _notify_harness(monkeypatch):
+    sent = []
+
+    async def _capture(msg):
+        sent.append(msg)
+
+    async def _today(mode, variants=None):
+        return 3.5 if variants else 12.4
+
+    async def _upd(tid, fields, **kw):
+        pass
+
+    monkeypatch.setattr(bot_risk, "send_telegram", _capture)
+    monkeypatch.setattr(bot_risk, "db_get_today_pnl", _today)
+    monkeypatch.setattr(bot_risk, "db_update_trade", _upd)
+    return sent
+
+
+def test_slot_settle_sends_one_alert_like_s1_s2(monkeypatch):
+    """Every resolved lab trade alerts with the S1/S2 format: strategy tag, both
+    Today figures (mode total + own share), gated by notify_on_settle."""
+    sent = _notify_harness(monkeypatch)
+    asset_manager._prices["SOL"] = deque([(time.time(), 149.0)])
+    st = bot_risk._slot("strategy4")
+    pos = {"slot": "strategy4", "asset": "SOL", "mode": "paper", "entry_ts": time.time(),
+           "strike": 150.0, "side": "yes", "contracts": 10,
+           "entry_price_cents": 50, "trade_id": 7}
+    st["pending"]["TKN1"] = dict(pos)
+    asyncio.run(bot_risk._settle_slot_trades("TKN1", "no", 149.0, {}))
+    assert len(sent) == 1
+    assert "S4" in sent[0] and "LOSS" in sent[0]
+    assert "Today: +$12.40 (S4 +$3.50)" in sent[0]
+    # notify_on_settle=False silences it
+    st["pending"]["TKN2"] = dict(pos)
+    asyncio.run(bot_risk._settle_slot_trades("TKN2", "no", 149.0,
+                                             {"notify_on_settle": False}))
+    assert len(sent) == 1
+
+
+def test_arb_settle_alerts_once_for_the_pair(monkeypatch):
+    sent = _notify_harness(monkeypatch)
+    st = bot_risk._slot("strategy3")
+    st["pending"]["TKA1"] = {
+        "slot": "strategy3", "asset": "SOL", "mode": "paper", "entry_ts": time.time(),
+        "strike": 150.0, "arb": True,
+        "legs": [{"trade_id": 1, "side": "yes", "entry_price_cents": 45, "contracts": 10},
+                 {"trade_id": 2, "side": "no", "entry_price_cents": 43, "contracts": 10}],
+    }
+    asyncio.run(bot_risk._settle_slot_trades("TKA1", "yes", 150.4, {}))
+    assert len(sent) == 1                      # ONE message for the pair, not two
+    assert "S3" in sent[0] and "ARB" in sent[0] and "WIN" in sent[0]
+
+
+def test_maker_void_stays_silent_but_fill_alerts(monkeypatch):
+    sent = _notify_harness(monkeypatch)
+    st = bot_risk._slot("strategy5")
+    base = {"slot": "strategy5", "asset": "SOL", "mode": "paper",
+            "entry_ts": time.time() - 60, "strike": 150.0,
+            "maker_quote_cents": 45.0, "side": "yes", "contracts": 10,
+            "entry_price_cents": 45, "trade_id": 9}
+    # No crossing tick -> quote voids as unfilled -> NO alert (not a resolved trade).
+    st["pending"]["TKM1"] = dict(base)
+    bot_state._maker_track["TKM1"] = []
+    asyncio.run(bot_risk._settle_slot_trades("TKM1", "yes", 150.4, {}))
+    assert sent == []
+    # Book crossed after entry -> filled -> settles -> alert.
+    st["pending"]["TKM2"] = dict(base)
+    bot_state._maker_track["TKM2"] = [(time.time(), 44.0, 58.0)]
+    asyncio.run(bot_risk._settle_slot_trades("TKM2", "yes", 150.4, {}))
+    assert len(sent) == 1 and "S5" in sent[0] and "WIN" in sent[0]
+
+
+def test_slot_entry_alert_gated_by_notify_on_entry(monkeypatch):
+    sent = _notify_harness(monkeypatch)
+
+    async def _fake_write(row):
+        return 1
+
+    async def _fake_place(session, ticker, side, contracts, price, mode, *a, **kw):
+        return {"fill_confirmed": True, "fill_price_cents": price,
+                "filled_contracts": contracts, "order_id": None}
+
+    monkeypatch.setattr(bot_risk, "db_write_trade", _fake_write)
+    monkeypatch.setattr(bot_risk, "place_order", _fake_place)
+    brain = {"action": "trade", "side": "yes", "win_prob": 0.6, "confidence": 60,
+             "raw_p_yes": 0.6, "signals": {}, "strategy_variant": "strategy4"}
+    asyncio.run(bot_risk._execute_slot_trade(
+        None, "strategy4", brain, "TKE1", 150.0, 149.9, 50, 52, 400, "SOL",
+        {"mode": "paper", "trade_amount_dollars": 25}, _ob()))
+    assert sent == []                          # default off, like S1/S2
+    bot_risk._slot("strategy4")["pending"].clear()   # free the per-asset slot
+    asyncio.run(bot_risk._execute_slot_trade(
+        None, "strategy4", brain, "TKE2", 150.0, 149.9, 50, 52, 400, "SOL",
+        {"mode": "paper", "trade_amount_dollars": 25, "notify_on_entry": True}, _ob()))
+    assert len(sent) == 1 and "ENTRY" in sent[0] and "S4" in sent[0]
+
+
+def test_settle_message_renders_per_strategy_today():
+    msg = bot_stats.format_settle_message(
+        "win", 5.0, "SOL", "s6", "no", 49, 100, 10, "Jul 5, 2:14 PM EDT",
+        12.4, "paper", strat_today=3.5)
+    assert "Today: +$12.40 (S6 +$3.50)" in msg
+    # Backward compatible without the new argument.
+    msg2 = bot_stats.format_settle_message(
+        "loss", -5.0, "SOL", "s1", "yes", 50, 0, 10, "Jul 5, 2:14 PM EDT",
+        12.4, "paper")
+    assert "Today: +$12.40  |" in msg2 and "(S1" not in msg2
+
+
 # The settle-before-maker-pop ordering and the aged-pending sweep were previously
 # "tested" by source-text greps that mutation testing proved toothless (making the
 # settle unreachable / inverting the age comparison both passed). Their behavioral
