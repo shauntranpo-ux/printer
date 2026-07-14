@@ -305,10 +305,19 @@ def _fmt_pnl(pnl: float) -> str:
 
 def format_settle_message(outcome: str, pnl: float, asset: str, brain: str, side: str,
                           entry_c: float, exit_c: float, contracts: int,
-                          when_str: str, today_pnl: float | None, mode: str) -> str:
-    """One-trade settle alert. when_str comes from bot_infra.fmt_ts (display tz)."""
+                          when_str: str, today_pnl: float | None, mode: str,
+                          strat_today: float | None = None) -> str:
+    """One-trade settle alert. when_str comes from bot_infra.fmt_ts (display tz).
+
+    today_pnl is the MODE total for the ET day (all strategies - matches the
+    dashboard TODAY chip); strat_today is this strategy's own share, rendered
+    alongside so the alert's numbers line up with both the dashboard and the
+    per-strategy leaderboard instead of showing one ambiguous blended figure.
+    """
     head = "WIN" if outcome == "win" else "LOSS"
     today = _fmt_pnl(today_pnl) if today_pnl is not None else "-"
+    if strat_today is not None:
+        today = f"{today} ({brain.upper()} {_fmt_pnl(strat_today)})"
     return (
         f"<b>{head} {_fmt_pnl(pnl)}</b>  {asset} * {brain.upper()} * {side.upper()} "
         f"{int(round(entry_c))}c -> {int(round(exit_c))}c x{int(contracts)}\n"

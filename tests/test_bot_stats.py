@@ -241,34 +241,36 @@ def test_format_telegram_hides_zero_strategy_sections():
 # midnight trigger
 
 def test_daily_summary_fires_once_per_day():
-    """_maybe_send_daily_summary sends exactly once per ET day (dedup + rollover)."""
+    """_maybe_send_daily_summary sends exactly once per ET day (dedup + rollover);
+    the persisted marker (mutated via write_config) carries the state between days."""
     import asyncio
-    from datetime import datetime
+    from datetime import datetime as _dt
     from zoneinfo import ZoneInfo
     from unittest.mock import AsyncMock, patch
     import bot_loops
 
     _et = ZoneInfo("America/New_York")
     sent = []
+    cfg = {"mode": "paper", "_last_daily_summary_for": "2026-05-06"}
 
     async def fake_send(msg):
         sent.append(msg)
 
     def run_at(now_et):
-        class _FrozenDT(datetime):
+        class _FrozenDT(_dt):
             @classmethod
             def now(cls, tz=None):
                 return now_et if tz else now_et.replace(tzinfo=None)
         with patch.object(bot_loops, "send_telegram", AsyncMock(side_effect=fake_send)), \
-             patch.object(bot_loops, "read_config", return_value={"mode": "paper"}), \
-             patch.object(bot_loops, "write_config"), \
+             patch.object(bot_loops, "read_config", return_value=cfg), \
+             patch.object(bot_loops, "write_config", side_effect=cfg.update), \
              patch.object(bot_loops, "datetime", _FrozenDT):
             asyncio.run(bot_loops._maybe_send_daily_summary())
 
     bot_loops._last_summary_sent_for = ""
-    run_at(datetime(2026, 5, 8, 0, 25, tzinfo=_et))  # fires for May 7
-    run_at(datetime(2026, 5, 8, 12, 0, tzinfo=_et))  # same day - no-op
-    run_at(datetime(2026, 5, 9, 0, 25, tzinfo=_et))  # new day - fires for May 8
+    run_at(_dt(2026, 5, 8, 0, 25, tzinfo=_et))  # fires for May 7
+    run_at(_dt(2026, 5, 8, 12, 0, tzinfo=_et))  # same day - no-op
+    run_at(_dt(2026, 5, 9, 0, 25, tzinfo=_et))  # new day - fires for May 8
     bot_loops._last_summary_sent_for = ""
     assert len(sent) == 2  # once for each completed ET day
 

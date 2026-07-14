@@ -45,13 +45,15 @@
   --xrp: oklch(0.64 0.13 170);
   --doge: oklch(0.66 0.12 95);
 
-  --font-display:'Unbounded','Montserrat',sans-serif;
-  --font-mono:'JetBrains Mono',ui-monospace,monospace;
+  /* Alma Mono first: it's not on Google Fonts, so it renders when installed
+     locally; JetBrains Mono (loaded webfont) keeps the mono look otherwise. */
+  --font-display:'Alma Mono','Unbounded','Alma Mono','JetBrains Mono',sans-serif;
+  --font-mono:'Alma Mono','JetBrains Mono',ui-monospace,monospace;
   --fs-0:12px; --fs-1:14px; --fs-2:18px; --fs-3:28px; --fs-4:48px; --fs-5:72px;
   --spring:cubic-bezier(.22,1.2,.3,1);
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-html,body{background:var(--bg);color:var(--ink);font-family:'Montserrat',ui-sans-serif,system-ui,-apple-system,sans-serif;font-size:13px;-webkit-font-smoothing:antialiased;letter-spacing:-0.01em;}
+html,body{background:var(--bg);color:var(--ink);font-family:'Alma Mono','JetBrains Mono',ui-monospace,sans-serif;font-size:13px;-webkit-font-smoothing:antialiased;letter-spacing:-0.01em;}
 body{min-height:100vh;background:
   radial-gradient(1100px 620px at 12% -6%, oklch(0.66 0.19 285 / 0.12), transparent 62%),
   radial-gradient(950px 560px at 92% -2%, oklch(0.78 0.14 210 / 0.09), transparent 60%),
@@ -65,7 +67,7 @@ body{min-height:100vh;background:
 ::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px;}
 ::-webkit-scrollbar-thumb:hover{background:var(--line-2);}
 
-.mono{font-family:'Montserrat',ui-monospace,monospace;font-feature-settings:'tnum' 1, 'zero' 1;}
+.mono{font-family:'Alma Mono','JetBrains Mono',ui-monospace,monospace;font-feature-settings:'tnum' 1, 'zero' 1;}
 
 /* ─── TOPBAR ─── */
 #topbar{
@@ -107,7 +109,7 @@ body{min-height:100vh;background:
   border-radius:6px;
   background:transparent;border:none;
   color:var(--ink-3);
-  font:600 12px/1 'Montserrat',sans-serif;letter-spacing:0.01em;
+  font:600 12px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.01em;
   cursor:pointer;
   transition:color .15s, background .15s;
   position:relative;
@@ -129,7 +131,7 @@ body{min-height:100vh;background:
   padding:6px 11px;border-radius:7px;
   background:var(--up-soft);border:1px solid var(--up-line);
   color:var(--up);
-  font:700 10px/1 'Montserrat',sans-serif;letter-spacing:0.1em;text-transform:uppercase;
+  font:700 10px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.1em;text-transform:uppercase;
 }
 .status-pill.off{background:var(--down-soft);border-color:var(--down-line);color:var(--down);}
 .pulse-dot{position:relative;width:7px;height:7px;border-radius:50%;background:currentColor;}
@@ -145,18 +147,18 @@ body{min-height:100vh;background:
 .mode-seg button{
   background:transparent;border:none;color:var(--ink-3);
   padding:5px 10px;border-radius:5px;
-  font:700 10px/1 'Montserrat',sans-serif;letter-spacing:0.08em;
+  font:700 10px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.08em;
   cursor:pointer;
 }
 .mode-seg button.active{background:var(--panel-2);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2);}
 .mode-seg button.active.live{color:var(--up);}
 .mode-seg button.active.demo{color:var(--accent);}
-.mode-seg-btn{padding:4px 10px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);color:var(--ink-3);font:600 10px/1 'Montserrat',sans-serif;letter-spacing:0.06em;cursor:pointer;transition:background 0.15s,color 0.15s,border-color 0.15s;}
+.mode-seg-btn{padding:4px 10px;border:1px solid var(--line);border-radius:5px;background:var(--panel-2);color:var(--ink-3);font:600 10px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.06em;cursor:pointer;transition:background 0.15s,color 0.15s,border-color 0.15s;}
 .mode-seg-btn.active-paper{background:var(--panel);color:var(--ink);border-color:var(--ink-3);box-shadow:inset 0 0 0 1px var(--ink-3);}
 .mode-seg-btn.active-live{background:oklch(0.75 0.17 160 / 0.18);color:oklch(0.75 0.17 160);border-color:oklch(0.75 0.17 160 / 0.6);box-shadow:inset 0 0 0 1px oklch(0.75 0.17 160 / 0.3);}
 
 .clock{
-  font:600 11px/1 'Montserrat',monospace;
+  font:600 11px/1 'Alma Mono','JetBrains Mono',monospace;
   color:var(--ink-2);padding:6px 10px;
   border:1px solid var(--line);border-radius:7px;background:var(--panel);
   font-feature-settings:'tnum' 1;
@@ -220,7 +222,7 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
 .kpi-cell:first-child{padding-left:0;}
 .kpi-cell-l{font-size:10px;font-weight:600;color:var(--ink-3);letter-spacing:0.1em;text-transform:uppercase;display:flex;align-items:center;gap:7px;}
 .kpi-cell-l .badge{padding:2px 6px;border-radius:4px;background:var(--panel-2);color:var(--ink-2);font-size:9px;letter-spacing:0.06em;border:1px solid var(--line);}
-.kpi-cell-v{font:700 28px/1 'Montserrat',monospace;letter-spacing:-0.02em;}
+.kpi-cell-v{font:700 28px/1 'Alma Mono','JetBrains Mono',monospace;letter-spacing:-0.02em;}
 .kpi-cell-v.up{color:var(--up);}
 .kpi-cell-v.down{color:var(--down);}
 .kpi-cell-s{font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:6px;}
@@ -234,7 +236,7 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
 .lab-strip .kpi-strip-label{color:var(--ink-2);padding-bottom:8px;margin-bottom:10px;}
 .lab-tile{flex:1;min-width:130px;display:flex;flex-direction:column;gap:4px;padding:0 18px 0 0;}
 .lab-tile-name{font-size:9.5px;font-weight:700;color:var(--ink-3);letter-spacing:0.08em;text-transform:uppercase;}
-.lab-tile-v{font:700 20px/1 'Montserrat',monospace;letter-spacing:-0.02em;color:var(--ink-2);}
+.lab-tile-v{font:700 20px/1 'Alma Mono','JetBrains Mono',monospace;letter-spacing:-0.02em;color:var(--ink-2);}
 .lab-tile-v.up{color:var(--up);}
 .lab-tile-v.down{color:var(--down);}
 .lab-tile-s{font-size:10px;color:var(--ink-3);}
@@ -255,7 +257,7 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
 }
 .kpi-label{font-size:10px;font-weight:600;color:var(--ink-3);letter-spacing:0.1em;text-transform:uppercase;display:flex;align-items:center;gap:7px;margin-bottom:8px;}
 .kpi-label .badge{padding:2px 6px;border-radius:4px;background:var(--panel-2);color:var(--ink-2);font-size:9px;letter-spacing:0.06em;}
-.kpi-value{font:700 24px/1.1 'Montserrat',monospace;letter-spacing:-0.02em;}
+.kpi-value{font:700 24px/1.1 'Alma Mono','JetBrains Mono',monospace;letter-spacing:-0.02em;}
 .kpi-value.up{color:var(--up);}
 .kpi-value.down{color:var(--down);}
 .kpi-sub{font-size:11px;color:var(--ink-3);margin-top:6px;display:flex;align-items:center;gap:6px;}
@@ -296,7 +298,7 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
 .mc-logo svg{width:100%;height:100%;display:block;}
 .mc-name{font-weight:600;font-size:15px;letter-spacing:-0.01em;}
 .mc-status{
-  font:600 9px/1 'Montserrat',sans-serif;letter-spacing:0.1em;text-transform:uppercase;
+  font:600 9px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.1em;text-transform:uppercase;
   padding:3px 7px;border-radius:4px;
 }
 /* phase: WATCH (waiting) -> READY (signal qualified) -> LOCKED (in trade) -> DONE (resolved) -> OFFLINE */
@@ -336,7 +338,7 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
 .mc.in-trade .mc-battle-marker{box-shadow:0 0 0 2px oklch(0.32 0.05 85), 0 1px 4px oklch(0 0 0 / 0.5);}
 .mc-battle-foot{
   margin-top:6px;display:flex;align-items:center;justify-content:space-between;
-  font:500 10px/1 'Montserrat','Montserrat',monospace;letter-spacing:0.02em;
+  font:500 10px/1 'Alma Mono','JetBrains Mono',monospace;letter-spacing:0.02em;
   font-variant-numeric:tabular-nums;color:var(--ink-3);
 }
 .mc-battle-foot .yes{color:var(--up);font-weight:600;}
@@ -356,9 +358,9 @@ body[data-mode="paper"] .mode-badge{color:var(--ink-2);background:var(--panel-2)
   animation:livepulse 1.4s ease-in-out infinite;
 }
 @keyframes livepulse{0%,100%{opacity:0.4;}50%{opacity:1;}}
-.mc-price{font:500 22px/1 'Montserrat',sans-serif;letter-spacing:-0.02em;color:var(--ink);font-variant-numeric:tabular-nums;display:flex;flex-direction:column;gap:4px;}
-.mc-price-label{font:600 9px/1 'Montserrat',sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);}
-.mc-price-val{font:500 24px/1 'Montserrat',sans-serif;letter-spacing:-0.02em;color:var(--ink);}
+.mc-price{font:500 22px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:-0.02em;color:var(--ink);font-variant-numeric:tabular-nums;display:flex;flex-direction:column;gap:4px;}
+.mc-price-label{font:600 9px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.1em;text-transform:uppercase;color:var(--ink-3);}
+.mc-price-val{font:500 24px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:-0.02em;color:var(--ink);}
 .mc-price-unit{font-size:14px;color:var(--ink-3);margin-left:1px;font-weight:500;}
 .mc-trend{
   width:36px;height:36px;border-radius:50%;display:grid;place-items:center;flex-shrink:0;
@@ -392,7 +394,7 @@ html{scroll-behavior:smooth;}
 .seg button{
   background:transparent;border:none;color:var(--ink-3);
   padding:4px 10px;border-radius:5px;
-  font:600 10px/1 'Montserrat',sans-serif;letter-spacing:0.05em;
+  font:600 10px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.05em;
   cursor:pointer;
 }
 .seg button.active{background:var(--panel);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2);}
@@ -400,7 +402,7 @@ html{scroll-behavior:smooth;}
 /* equity chart */
 .chart-wrap{height:280px;position:relative;}
 .chart-wrap svg{width:100%;height:100%;display:block;}
-.chart-axis{font-family:'Montserrat',monospace;font-size:9px;fill:var(--ink-4);}
+.chart-axis{font-family:'Alma Mono','JetBrains Mono',monospace;font-size:9px;fill:var(--ink-4);}
 .chart-line{fill:none;stroke:var(--up);stroke-width:1.75;}
 .chart-fill{fill:url(#chart-grad);}
 .chart-grid{stroke:var(--line);stroke-width:0.5;stroke-dasharray:2 3;}
@@ -414,7 +416,7 @@ html{scroll-behavior:smooth;}
 .alloc-name{font-weight:600;color:var(--ink-2);width:42px;}
 .alloc-bar{flex:1;height:5px;background:var(--bg-2);border-radius:3px;overflow:hidden;}
 .alloc-bar > div{height:100%;border-radius:3px;transition:width .8s cubic-bezier(.6,.0,.2,1);}
-.alloc-pct{font-family:'Montserrat',monospace;font-weight:600;color:var(--ink);width:36px;text-align:right;font-size:10px;}
+.alloc-pct{font-family:'Alma Mono','JetBrains Mono',monospace;font-weight:600;color:var(--ink);width:36px;text-align:right;font-size:10px;}
 
 /* signals */
 .sig-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line);}
@@ -424,19 +426,19 @@ html{scroll-behavior:smooth;}
 .sig-dot.off{background:var(--down);}
 .sig-dot.warn{background:var(--amber);}
 .sig-name{flex:1;font-size:11px;color:var(--ink-2);}
-.sig-val{font-family:'Montserrat',monospace;font-weight:600;font-size:11px;color:var(--ink);}
+.sig-val{font-family:'Alma Mono','JetBrains Mono',monospace;font-weight:600;font-size:11px;color:var(--ink);}
 
 /* ─── TRADES TABLE ─── */
 table{width:100%;border-collapse:collapse;font-size:11px;}
 thead th{
-  text-align:left;font:700 9px/1 'Montserrat',sans-serif;letter-spacing:0.08em;
+  text-align:left;font:700 9px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.08em;
   text-transform:uppercase;color:var(--ink-3);
   padding:8px 10px;border-bottom:1px solid var(--line);
   position:sticky;top:0;background:var(--panel);
 }
 tbody td{
   padding:9px 10px;border-bottom:1px solid var(--line);
-  color:var(--ink-2);font-family:'Montserrat',monospace;font-size:11px;font-weight:500;
+  color:var(--ink-2);font-family:'Alma Mono','JetBrains Mono',monospace;font-size:11px;font-weight:500;
 }
 tbody tr{transition:background .15s;}
 tbody tr:hover{background:var(--bg-2);}
@@ -474,9 +476,9 @@ tbody tr:last-child td{border-bottom:none;}
 .hero-info{display:flex;flex-direction:column;gap:4px;}
 .hero-name{font-size:24px;font-weight:800;letter-spacing:-0.02em;display:flex;align-items:baseline;gap:10px;}
 .hero-name span{font-size:12px;color:var(--ink-3);font-weight:500;letter-spacing:0;}
-.hero-px{font:700 32px/1 'Montserrat',monospace;letter-spacing:-0.02em;}
+.hero-px{font:700 32px/1 'Alma Mono','JetBrains Mono',monospace;letter-spacing:-0.02em;}
 .hero-sub{font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:8px;}
-.hero-sub .ch{font-family:'Montserrat',monospace;font-weight:700;}
+.hero-sub .ch{font-family:'Alma Mono','JetBrains Mono',monospace;font-weight:700;}
 .hero-sub .ch.up{color:var(--up);}
 .hero-sub .ch.down{color:var(--down);}
 
@@ -484,7 +486,7 @@ tbody tr:last-child td{border-bottom:none;}
 .hero-stats{display:flex;gap:18px;align-items:center;}
 .hero-stat{display:flex;flex-direction:column;align-items:flex-end;}
 .hero-stat-l{font-size:9px;color:var(--ink-3);letter-spacing:0.1em;text-transform:uppercase;font-weight:600;margin-bottom:4px;}
-.hero-stat-v{font:700 16px/1 'Montserrat',monospace;}
+.hero-stat-v{font:700 16px/1 'Alma Mono','JetBrains Mono',monospace;}
 .hero-stat-v.up{color:var(--up);}
 .hero-stat-v.down{color:var(--down);}
 
@@ -497,13 +499,13 @@ tbody tr:last-child td{border-bottom:none;}
   padding:12px 14px;
 }
 .mkpi-l{font-size:9px;color:var(--ink-3);letter-spacing:0.08em;text-transform:uppercase;font-weight:600;margin-bottom:6px;}
-.mkpi-v{font:700 18px/1.1 'Montserrat',monospace;letter-spacing:-0.01em;}
+.mkpi-v{font:700 18px/1.1 'Alma Mono','JetBrains Mono',monospace;letter-spacing:-0.01em;}
 .mkpi-v.up{color:var(--up);}
 .mkpi-v.down{color:var(--down);}
 .mkpi-sub{font-size:10px;color:var(--ink-3);margin-top:4px;}
 
 /* ladder */
-.ladder{display:flex;flex-direction:column;gap:2px;font-family:'Montserrat',monospace;font-size:11px;}
+.ladder{display:flex;flex-direction:column;gap:2px;font-family:'Alma Mono','JetBrains Mono',monospace;font-size:11px;}
 .ladder-row{
   display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:5px 8px;
   border-radius:5px;position:relative;
@@ -518,7 +520,7 @@ tbody tr:last-child td{border-bottom:none;}
 .ladder-spread{
   text-align:center;padding:5px;font-size:10px;color:var(--ink-3);
   border-top:1px dashed var(--line);border-bottom:1px dashed var(--line);
-  margin:4px 0;font-family:'Montserrat',monospace;letter-spacing:0.05em;
+  margin:4px 0;font-family:'Alma Mono','JetBrains Mono',monospace;letter-spacing:0.05em;
 }
 
 /* depth viz */
@@ -526,14 +528,14 @@ tbody tr:last-child td{border-bottom:none;}
 /* signal score gauge */
 .gauge-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:6px 0;}
 .gauge-svg{width:160px;height:90px;}
-.gauge-val{font:800 28px/1 'Montserrat',monospace;letter-spacing:-0.02em;}
+.gauge-val{font:800 28px/1 'Alma Mono','JetBrains Mono',monospace;letter-spacing:-0.02em;}
 .gauge-label{font-size:10px;color:var(--ink-3);letter-spacing:0.1em;text-transform:uppercase;font-weight:700;}
 
 /* event log */
 .log{display:flex;flex-direction:column;gap:0;max-height:280px;overflow-y:auto;}
 .log-row{display:flex;align-items:flex-start;gap:10px;padding:8px 2px;border-bottom:1px dashed var(--line);font-size:11px;}
 .log-row:last-child{border-bottom:none;}
-.log-time{font-family:'Montserrat',monospace;color:var(--ink-3);font-size:10px;flex-shrink:0;width:54px;}
+.log-time{font-family:'Alma Mono','JetBrains Mono',monospace;color:var(--ink-3);font-size:10px;flex-shrink:0;width:54px;}
 .log-tag{font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;padding:1px 6px;border-radius:3px;flex-shrink:0;}
 .log-tag.entry{background:var(--accent-soft);color:var(--accent);}
 .log-tag.exit{background:var(--up-soft);color:var(--up);}
@@ -549,7 +551,7 @@ tbody tr:last-child td{border-bottom:none;}
   display:inline-flex;align-items:center;gap:7px;
   padding:7px 14px;border:1px solid var(--line);border-radius:7px;
   background:var(--panel);color:var(--ink-3);
-  font:600 11px/1 'Montserrat',sans-serif;letter-spacing:0.04em;cursor:pointer;
+  font:600 11px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.04em;cursor:pointer;
 }
 .session-tab.active{color:var(--ink);border-color:var(--line-2);background:var(--panel-2);}
 .session-tab .pip{width:6px;height:6px;border-radius:50%;background:var(--ink-4);}
@@ -561,7 +563,7 @@ tbody tr:last-child td{border-bottom:none;}
 }
 .meter-head{display:flex;justify-content:space-between;align-items:baseline;}
 .meter-name{font-size:11px;color:var(--ink-2);font-weight:600;}
-.meter-val{font-family:'Montserrat',monospace;font-size:11px;font-weight:700;color:var(--ink);}
+.meter-val{font-family:'Alma Mono','JetBrains Mono',monospace;font-size:11px;font-weight:700;color:var(--ink);}
 .meter-bar{height:5px;background:var(--bg-2);border-radius:3px;overflow:hidden;position:relative;}
 .meter-bar > div{height:100%;border-radius:3px;background:var(--accent);transition:width .8s cubic-bezier(.6,0,.2,1);}
 .meter-bar > div.up{background:var(--up);}
@@ -585,16 +587,16 @@ tbody tr:last-child td{border-bottom:none;}
 .ds-asset{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;}
 .ds-asset .logo{width:22px;height:22px;border-radius:50%;overflow:hidden;background:var(--bg-2);display:grid;place-items:center;flex-shrink:0;}
 .ds-asset .logo svg{width:100%;height:100%;display:block;}
-.ds-side{font:500 9px/1 'Montserrat',sans-serif;letter-spacing:0.08em;color:var(--ink-3);text-transform:uppercase;font-variant-numeric:tabular-nums;}
+.ds-side{font:500 9px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.08em;color:var(--ink-3);text-transform:uppercase;font-variant-numeric:tabular-nums;}
 
 .ds-votes{display:flex;gap:3px;align-items:center;}
 .ds-votes .pip{width:8px;height:8px;border-radius:50%;background:var(--bg-2);border:1px solid var(--line-2);}
 .ds-votes .pip.on{background:var(--up);border-color:var(--up);}
 .ds-votes .pip.short{background:transparent;border-color:var(--line-2);}
-.ds-votes-num{font:600 10px/1 'Montserrat',monospace;color:var(--ink-2);margin-left:6px;font-variant-numeric:tabular-nums;}
+.ds-votes-num{font:600 10px/1 'Alma Mono','JetBrains Mono',monospace;color:var(--ink-2);margin-left:6px;font-variant-numeric:tabular-nums;}
 
 .ds-gate{
-  font:600 9px/1 'Montserrat',sans-serif;letter-spacing:0.08em;text-transform:uppercase;
+  font:600 9px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.08em;text-transform:uppercase;
   padding:4px 7px;border-radius:4px;
   display:inline-flex;align-items:center;gap:5px;white-space:nowrap;
 }
@@ -602,13 +604,13 @@ tbody tr:last-child td{border-bottom:none;}
 .ds-gate.fail{background:var(--down-soft);color:var(--down);}
 .ds-gate.idle{background:var(--bg-2);color:var(--ink-4);}
 
-.ds-ev{font:600 12px/1 'Montserrat',monospace;font-variant-numeric:tabular-nums;min-width:54px;text-align:right;}
+.ds-ev{font:600 12px/1 'Alma Mono','JetBrains Mono',monospace;font-variant-numeric:tabular-nums;min-width:54px;text-align:right;}
 .ds-ev.up{color:var(--accent-2);}
 .ds-ev.down{color:var(--down);}
 .ds-ev.idle{color:var(--ink-3);}
 
 .ds-decision{
-  font:600 9px/1 'Montserrat',sans-serif;letter-spacing:0.1em;text-transform:uppercase;
+  font:600 9px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.1em;text-transform:uppercase;
   padding:5px 10px;border-radius:5px;min-width:60px;text-align:center;
 }
 .ds-decision.trade{background:oklch(0.75 0.17 160 / 0.16);color:oklch(0.75 0.17 160);}
@@ -624,7 +626,7 @@ tbody tr:last-child td{border-bottom:none;}
 .ds-row.expanded .ds-detail{display:grid;grid-template-columns:1fr 1fr;gap:9px 24px;}
 .ds-field{display:flex;align-items:center;gap:10px;font-size:11px;}
 .ds-field .l{color:var(--ink-3);text-transform:uppercase;letter-spacing:0.06em;font-size:9px;font-weight:600;width:104px;flex-shrink:0;}
-.ds-field .v{font-family:'Montserrat',monospace;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;}
+.ds-field .v{font-family:'Alma Mono','JetBrains Mono',monospace;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;}
 .ds-field .v.up{color:var(--accent-2);}
 .ds-field .v.down{color:var(--down);}
 .ds-field .v.muted{color:var(--ink-3);font-weight:500;}
@@ -709,12 +711,12 @@ tbody tr:last-child td{border-bottom:none;}
 .toast{
   display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:11px;
   background:var(--panel);border:1px solid var(--line-2);box-shadow:var(--shadow-hover);
-  font:700 13px/1.2 'Montserrat',sans-serif;color:var(--ink);
+  font:700 13px/1.2 'Alma Mono','JetBrains Mono',sans-serif;color:var(--ink);
   animation:toastIn .45s cubic-bezier(.22,1.4,.36,1) both;
 }
 .toast.win{border-color:var(--up-line);}
 .toast.loss{border-color:var(--down-line);}
-.toast .t-amt{font-family:'Montserrat',monospace;font-size:15px;}
+.toast .t-amt{font-family:'Alma Mono','JetBrains Mono',monospace;font-size:15px;}
 .toast.win .t-amt{color:var(--up);}
 .toast.loss .t-amt{color:var(--down);}
 .toast.gone{animation:toastOut .4s ease-in both;}
@@ -818,9 +820,17 @@ tbody tr:last-child td{border-bottom:none;}
   transform-origin:left;transform:scaleX(var(--m,0));transition:transform .8s var(--spring);
 }
 .hero-mile-l{font:600 10px/1 var(--font-mono);color:var(--ink-3);white-space:nowrap;}
-.hero-satellites{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;gap:10px;justify-content:center;min-width:0;}
-.hero-satellites .kpi-strip{margin:0;padding:10px 14px;}
+.hero-satellites{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;gap:10px;justify-content:flex-start;min-width:0;max-height:600px;overflow-y:auto;scrollbar-width:thin;padding-right:3px;}
+.hero-satellites .kpi-strip{margin:0;padding:10px 14px;flex-shrink:0;}
 .hero-satellites .kpi-cell-v{font-size:20px;}
+/* compact variant: the six lab strategies stack below S1/S2 without dwarfing them */
+.hero-satellites .kpi-strip.compact{padding:7px 14px;}
+.hero-satellites .kpi-strip.compact .kpi-strip-label{font-size:9px;padding-bottom:5px;margin-bottom:7px;}
+.hero-satellites .kpi-strip.compact .kpi-cell{gap:3px;}
+.hero-satellites .kpi-strip.compact .kpi-cell-v{font-size:14px;}
+.hero-satellites .kpi-strip.compact .kpi-cell-l{font-size:8.5px;}
+.hero-satellites .kpi-strip.compact .kpi-cell-s{font-size:9.5px;}
+.kpi-strip-label.lab{color:var(--ink-2);}
 
 /* ── odometer ── */
 .odo{
@@ -1035,12 +1045,12 @@ body.spot-on .card:hover::after,body.spot-on .kpi:hover::after{opacity:1;}
   /* controls must never sit beyond the (now unscrollable) right edge */
   .topbar-inner{flex-wrap:wrap;row-gap:6px;}
   #hero-command{flex-direction:column;gap:18px;}
-  .hero-satellites{flex-direction:row;}
-  .hero-satellites .kpi-strip{flex:1;}
+  .hero-satellites{flex-direction:row;flex-wrap:wrap;max-height:none;overflow:visible;}
+  .hero-satellites .kpi-strip{flex:1 1 300px;}
 }
 @media (max-width:900px){
   #hero-landscape,#ticker{display:none;}
-  .hero-satellites{flex-direction:column;}
+  .hero-satellites{flex-direction:column;flex-wrap:nowrap;}
   .odo{font-size:44px;}
   .odo.skel{min-width:220px;}
 }
@@ -1208,16 +1218,39 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
   <section id="hero-command">
     <div id="hero-landscape" aria-hidden="true"></div>
     <div class="hero-core">
-      <div class="hero-eyebrow"><span class="sec-num">00</span> NET P&amp;L * ALL-TIME * S1+S2 <span class="badge mode-badge">PAPER</span></div>
+      <div class="hero-eyebrow"><span class="sec-num">00</span> BEST STRATEGY * <span id="hero-best-label">&mdash;</span> * ALL-TIME <span class="badge mode-badge">PAPER</span></div>
       <div id="hero-pnl" class="odo up skel" role="img" aria-label="net P&L loading">&nbsp;</div>
       <div class="hero-meta">
         <span id="hero-today-chip" class="hero-chip">TODAY -</span>
+        <span id="hero-total-chip" class="hero-chip">TOTAL -</span>
         <span id="hero-streak" class="hero-chip streak">STREAK -</span>
         <div id="hero-milestone" class="hero-mile"><div class="hero-mile-track"><div class="hero-mile-fill"></div></div><span class="hero-mile-l">- / -</span></div>
       </div>
     </div>
     <div class="hero-satellites">
-  <!-- KPI STRIP - Strategy 2 (D3 Hybrid) -->
+  <!-- KPI STRIP - Strategy 1 (numerical order: S1 first) -->
+  <div class="kpi-strip" id="kpi-strip-s1">
+    <div class="kpi-strip-label s1">S1 * Momentum</div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
+      <div id="kpi-s1-alltime-sub" class="kpi-cell-s">-</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Win Rate * All-Time</div>
+      <div id="kpi-s1-wr-val" class="kpi-cell-v mono" style="color:var(--amber);">-<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
+      <div id="kpi-s1-wr-sub" class="kpi-cell-s">- trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Today's P&amp;L<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s1-today-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
+      <div id="kpi-s1-today-sub" class="kpi-cell-s">- trades</div>
+    </div>
+  </div>
+
+  <!-- KPI STRIP - Strategy 2 (legacy un-prefixed ids: kpi-alltime-val etc.) -->
   <div class="kpi-strip" id="kpi-strip-s2">
     <div class="kpi-strip-label">S2 * Favorite-Bias</div>
     <div class="kpi-cell">
@@ -1239,25 +1272,119 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
     </div>
   </div>
 
-  <!-- KPI STRIP - Strategy 1 (Original) -->
-  <div class="kpi-strip" id="kpi-strip-s1">
-    <div class="kpi-strip-label s1">S1 * Momentum</div>
+  <!-- KPI STRIPS - Strategy Lab S3-S8, compact, numerical order -->
+  <div class="kpi-strip compact" id="kpi-strip-s3">
+    <div class="kpi-strip-label lab">S3 * Structural Arb</div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Net P&amp;L * All-Time<span class="badge mode-badge">PAPER</span></div>
-      <div id="kpi-s1-alltime-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
-      <div id="kpi-s1-alltime-sub" class="kpi-cell-s">-</div>
+      <div class="kpi-cell-l">All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s3-alltime-val" class="kpi-cell-v mono">-</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Win Rate * All-Time</div>
-      <div id="kpi-s1-wr-val" class="kpi-cell-v mono" style="color:var(--amber);">-<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span></div>
-      <div id="kpi-s1-wr-sub" class="kpi-cell-s">- trades</div>
+      <div class="kpi-cell-l">Win Rate</div>
+      <div id="kpi-s3-wr-val" class="kpi-cell-v mono">-<span style="color:var(--ink-3);font-size:12px;font-weight:500;">%</span></div>
+      <div id="kpi-s3-wr-sub" class="kpi-cell-s">- trades</div>
     </div>
     <div class="kpi-div"></div>
     <div class="kpi-cell">
-      <div class="kpi-cell-l">Today's P&amp;L<span class="badge mode-badge">PAPER</span></div>
-      <div id="kpi-s1-today-val" class="kpi-cell-v mono" style="color:var(--amber);">-</div>
-      <div id="kpi-s1-today-sub" class="kpi-cell-s">- trades</div>
+      <div class="kpi-cell-l">Today</div>
+      <div id="kpi-s3-today-val" class="kpi-cell-v mono">-</div>
+      <div id="kpi-s3-today-sub" class="kpi-cell-s">- trades</div>
+    </div>
+  </div>
+  <div class="kpi-strip compact" id="kpi-strip-s4">
+    <div class="kpi-strip-label lab">S4 * Mean-Reversion</div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s4-alltime-val" class="kpi-cell-v mono">-</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Win Rate</div>
+      <div id="kpi-s4-wr-val" class="kpi-cell-v mono">-<span style="color:var(--ink-3);font-size:12px;font-weight:500;">%</span></div>
+      <div id="kpi-s4-wr-sub" class="kpi-cell-s">- trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Today</div>
+      <div id="kpi-s4-today-val" class="kpi-cell-v mono">-</div>
+      <div id="kpi-s4-today-sub" class="kpi-cell-s">- trades</div>
+    </div>
+  </div>
+  <div class="kpi-strip compact" id="kpi-strip-s5">
+    <div class="kpi-strip-label lab">S5 * Maker Capture</div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s5-alltime-val" class="kpi-cell-v mono">-</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Win Rate</div>
+      <div id="kpi-s5-wr-val" class="kpi-cell-v mono">-<span style="color:var(--ink-3);font-size:12px;font-weight:500;">%</span></div>
+      <div id="kpi-s5-wr-sub" class="kpi-cell-s">- trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Today</div>
+      <div id="kpi-s5-today-val" class="kpi-cell-v mono">-</div>
+      <div id="kpi-s5-today-sub" class="kpi-cell-s">- trades</div>
+    </div>
+  </div>
+  <div class="kpi-strip compact" id="kpi-strip-s6">
+    <div class="kpi-strip-label lab">S6 * Window-Fade</div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s6-alltime-val" class="kpi-cell-v mono">-</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Win Rate</div>
+      <div id="kpi-s6-wr-val" class="kpi-cell-v mono">-<span style="color:var(--ink-3);font-size:12px;font-weight:500;">%</span></div>
+      <div id="kpi-s6-wr-sub" class="kpi-cell-s">- trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Today</div>
+      <div id="kpi-s6-today-val" class="kpi-cell-v mono">-</div>
+      <div id="kpi-s6-today-sub" class="kpi-cell-s">- trades</div>
+    </div>
+  </div>
+  <div class="kpi-strip compact" id="kpi-strip-s7">
+    <div class="kpi-strip-label lab">S7 * Vol-Spike</div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s7-alltime-val" class="kpi-cell-v mono">-</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Win Rate</div>
+      <div id="kpi-s7-wr-val" class="kpi-cell-v mono">-<span style="color:var(--ink-3);font-size:12px;font-weight:500;">%</span></div>
+      <div id="kpi-s7-wr-sub" class="kpi-cell-s">- trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Today</div>
+      <div id="kpi-s7-today-val" class="kpi-cell-v mono">-</div>
+      <div id="kpi-s7-today-sub" class="kpi-cell-s">- trades</div>
+    </div>
+  </div>
+  <div class="kpi-strip compact" id="kpi-strip-s8">
+    <div class="kpi-strip-label lab">S8 * Calm Favorite</div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">All-Time<span class="badge mode-badge">PAPER</span></div>
+      <div id="kpi-s8-alltime-val" class="kpi-cell-v mono">-</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Win Rate</div>
+      <div id="kpi-s8-wr-val" class="kpi-cell-v mono">-<span style="color:var(--ink-3);font-size:12px;font-weight:500;">%</span></div>
+      <div id="kpi-s8-wr-sub" class="kpi-cell-s">- trades</div>
+    </div>
+    <div class="kpi-div"></div>
+    <div class="kpi-cell">
+      <div class="kpi-cell-l">Today</div>
+      <div id="kpi-s8-today-val" class="kpi-cell-v mono">-</div>
+      <div id="kpi-s8-today-sub" class="kpi-cell-s">- trades</div>
     </div>
   </div>
     </div>
@@ -1310,7 +1437,7 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
   <div class="grid-2 chart-band" style="margin-bottom:8px;">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * fair value</span></div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * Favorite-Bias</span></div>
         <div class="seg" id="equity-seg">
           <button class="active" data-range="1d">1D</button>
           <button data-range="1w">1W</button>
@@ -1322,7 +1449,7 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
     </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * fair value</span></div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--amber);font-size:10px;font-weight:700;letter-spacing:.04em;">S2 * Favorite-Bias</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
@@ -1336,13 +1463,13 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
   <div class="grid-2 chart-band">
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * BTC-lead</span></div>
+        <div class="card-title"><span class="accent"></span>Equity Curve &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * Momentum</span></div>
       </div>
       <div class="chart-wrap" id="equity-chart-s1"></div>
     </div>
     <div class="card">
       <div class="card-head">
-        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * BTC-lead</span></div>
+        <div class="card-title"><span class="accent"></span>Market Allocation &nbsp;<span style="color:var(--accent);font-size:10px;font-weight:700;letter-spacing:.04em;">S1 * Momentum</span></div>
         <span style="font-size:10px;color:var(--ink-3);">by P&amp;L</span>
       </div>
       <div class="alloc-wrap">
@@ -1470,7 +1597,7 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
   <div style="display:flex;flex-direction:column;gap:14px;padding:8px 0;">
     <div class="card" id="edge-verdict-card">
       <div class="card-head"><div class="card-title"><span class="accent"></span>Do we have an edge? &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">GATE&nbsp;1 * decision_log</span></div></div>
-      <div id="edge-verdict" style="font-family:'Montserrat';font-weight:700;font-size:15px;padding:6px 2px;">-</div>
+      <div id="edge-verdict" style="font-family:'Alma Mono','JetBrains Mono',monospace;font-weight:700;font-size:15px;padding:6px 2px;">-</div>
       <div id="edge-counts" style="font-size:11px;color:var(--ink-3);margin-top:6px;">Collecting paper data...</div>
       <div class="meter-bar" style="margin-top:8px;"><div id="edge-progress" class="up" style="width:0%"></div></div>
     </div>
@@ -1505,7 +1632,7 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
     </div>
     <div class="card">
       <div class="card-head"><div class="card-title"><span class="accent"></span>Maker vs taker &nbsp;<span style="color:var(--ink-3);font-size:10px;font-weight:700;letter-spacing:.04em;">maker_log * counterfactual</span></div></div>
-      <div id="edge-maker-verdict" style="font-family:'Montserrat';font-weight:700;font-size:13px;padding:4px 2px;">-</div>
+      <div id="edge-maker-verdict" style="font-family:'Alma Mono','JetBrains Mono',monospace;font-weight:700;font-size:13px;padding:4px 2px;">-</div>
       <div style="overflow-x:auto;margin-top:6px;"><table style="width:100%;"><thead><tr>
         <th>Strategy</th><th>n</th><th>Fill%</th><th>Taker $/ct</th><th>Maker $/ct</th><th>Δ $/ct</th><th>Δ SE</th>
       </tr></thead><tbody id="edge-maker"></tbody></table></div>
@@ -1533,12 +1660,12 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
   <div style="max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:16px;padding:16px 0;">
 
     <div style="background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px;">
-      <div style="font:600 11px/1 'Montserrat',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:16px;">Strategy Modes</div>
+      <div style="font:600 11px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:16px;">Strategy Modes</div>
       <div style="display:flex;flex-direction:column;gap:14px;">
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S1 - Momentum</div>
-            <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Buys continuation of a fresh, confirmed spot move</div>
+            <div style="font:600 13px/1 'Alma Mono','JetBrains Mono',sans-serif;color:var(--ink);">S1 - Momentum</div>
+            <div style="font:400 11px/1 'Alma Mono','JetBrains Mono',sans-serif;color:var(--ink-3);margin-top:4px;">Buys continuation of a fresh, confirmed spot move</div>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
             <button id="s1-paper-btn" class="mode-seg-btn" onclick="setStrategyMode('s1','paper')">PAPER</button>
@@ -1548,8 +1675,8 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
         </div>
         <div style="display:flex;align-items:center;justify-content:space-between;">
           <div>
-            <div style="font:600 13px/1 'Montserrat',sans-serif;color:var(--ink);">S2 - Favorite-Bias</div>
-            <div style="font:400 11px/1 'Montserrat',sans-serif;color:var(--ink-3);margin-top:4px;">Harvests underpriced 70-88c favorites late in the window</div>
+            <div style="font:600 13px/1 'Alma Mono','JetBrains Mono',sans-serif;color:var(--ink);">S2 - Favorite-Bias</div>
+            <div style="font:400 11px/1 'Alma Mono','JetBrains Mono',sans-serif;color:var(--ink-3);margin-top:4px;">Harvests underpriced 70-88c favorites late in the window</div>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
             <button id="s2-paper-btn" class="mode-seg-btn" onclick="setStrategyMode('s2','paper')">PAPER</button>
@@ -1561,13 +1688,13 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
     </div>
 
     <div style="background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px;">
-      <div style="font:600 11px/1 'Montserrat',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:16px;">Trade Amount</div>
+      <div style="font:600 11px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:16px;">Trade Amount</div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <span style="font:400 12px/1 'Montserrat',sans-serif;color:var(--ink-2);">$</span>
+        <span style="font:400 12px/1 'Alma Mono','JetBrains Mono',sans-serif;color:var(--ink-2);">$</span>
         <input id="s-trade-amount" type="number" min="1" max="500" step="1"
-          style="width:90px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--ink);font:600 14px/1 'Montserrat',monospace;outline:none;" />
+          style="width:90px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--ink);font:600 14px/1 'Alma Mono','JetBrains Mono',monospace;outline:none;" />
         <button onclick="saveTradeAmount()"
-          style="padding:6px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--ink-2);font:600 11px/1 'Montserrat',sans-serif;cursor:pointer;letter-spacing:0.06em;">
+          style="padding:6px 14px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--ink-2);font:600 11px/1 'Alma Mono','JetBrains Mono',sans-serif;cursor:pointer;letter-spacing:0.06em;">
           SAVE
         </button>
         <span id="trade-amount-status" style="font-size:10px;color:var(--ink-3);"></span>
@@ -1575,9 +1702,9 @@ body.spot-on #panel-overview .grid-2.chart-band .card::after{display:none;}
     </div>
 
     <div style="background:var(--panel);border:1px solid var(--line);border-radius:11px;padding:20px;">
-      <div style="font:600 11px/1 'Montserrat',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:16px;">Notifications</div>
+      <div style="font:600 11px/1 'Alma Mono','JetBrains Mono',sans-serif;letter-spacing:0.08em;text-transform:uppercase;color:var(--ink-3);margin-bottom:16px;">Notifications</div>
       <button onclick="testTelegram()"
-        style="padding:8px 16px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--ink-2);font:600 11px/1 'Montserrat',sans-serif;cursor:pointer;letter-spacing:0.06em;">
+        style="padding:8px 16px;border:1px solid var(--line);border-radius:6px;background:var(--panel-2);color:var(--ink-2);font:600 11px/1 'Alma Mono','JetBrains Mono',sans-serif;cursor:pointer;letter-spacing:0.06em;">
         Send Test Message
       </button>
       <span id="telegram-status" style="font-size:10px;color:var(--ink-3);margin-left:8px;"></span>
@@ -1969,10 +2096,10 @@ function renderEquity(range, containerId, pts){
         <animate attributeName="r" from="3" to="9" dur="1.4s" repeatCount="indefinite"/>
         <animate attributeName="opacity" from="0.4" to="0" dur="1.4s" repeatCount="indefinite"/>
       </circle>
-      <text x="${(lastPt[0]+8).toFixed(1)}" y="${(lastPt[1]+3.5).toFixed(1)}" font-family="Montserrat,monospace" font-size="11" font-weight="700" fill="${lineColor}" paint-order="stroke" stroke="var(--panel)" stroke-width="3">${lastTxt}</text>
+      <text x="${(lastPt[0]+8).toFixed(1)}" y="${(lastPt[1]+3.5).toFixed(1)}" font-family="Alma Mono,JetBrains Mono,monospace" font-size="11" font-weight="700" fill="${lineColor}" paint-order="stroke" stroke="var(--panel)" stroke-width="3">${lastTxt}</text>
       <rect x="${padL}" y="${padT}" width="${w-padL-padR}" height="${h-padT-padB}" fill="transparent" class="eq-hit" data-eq="${containerId}"/>
       <circle class="eq-cursor" r="3" fill="${lineColor}" stroke="var(--panel)" stroke-width="1.5" style="display:none;"/>
-      <text class="eq-tip" font-family="Montserrat,monospace" font-size="10" font-weight="700" fill="var(--ink)" paint-order="stroke" stroke="var(--panel)" stroke-width="3" style="display:none;"></text>
+      <text class="eq-tip" font-family="Alma Mono,JetBrains Mono,monospace" font-size="10" font-weight="700" fill="var(--ink)" paint-order="stroke" stroke="var(--panel)" stroke-width="3" style="display:none;"></text>
     </svg>`;
   // hover layer: nearest settled trade under the pointer
   const svg = wrap.querySelector('svg');
@@ -2054,8 +2181,8 @@ function renderAllocForStrategy(sv, donutId, listId) {
   const netTxt = (netPnl>=0?'+':'-') + '$' + Math.abs(netPnl).toFixed(Math.abs(netPnl)>=100?0:2);
   donutEl.innerHTML = segs +
     `<circle cx="${cx}" cy="${cy}" r="${hole}" fill="var(--panel)"/>` +
-    `<text x="${cx}" y="${cy-1}" text-anchor="middle" font-family="Montserrat,monospace" font-size="14" font-weight="700" fill="${netCls}">${netTxt}</text>` +
-    `<text x="${cx}" y="${cy+13}" text-anchor="middle" font-family="Montserrat,sans-serif" font-size="7" letter-spacing="1.2" fill="var(--ink-3)">NET P&amp;L</text>`;
+    `<text x="${cx}" y="${cy-1}" text-anchor="middle" font-family="Alma Mono,JetBrains Mono,monospace" font-size="14" font-weight="700" fill="${netCls}">${netTxt}</text>` +
+    `<text x="${cx}" y="${cy+13}" text-anchor="middle" font-family="Alma Mono,JetBrains Mono,sans-serif" font-size="7" letter-spacing="1.2" fill="var(--ink-3)">NET P&amp;L</text>`;
   listEl.innerHTML = data.filter(d=>d.val>0).map(d=>{
     const pct=(d.val/totalPnl*100).toFixed(0);
     return `<div class="alloc-row"><div class="alloc-sw">${cryptoLogo(d.sym)}</div><div class="alloc-name">${d.sym}</div><div class="alloc-bar"><div style="width:${pct}%;background:${colors[d.sym]};"></div></div><div class="alloc-pct">${pct}%</div></div>`;
@@ -2344,7 +2471,7 @@ function renderMarketPanel(sym){
         <div class="card">
           <div class="card-head"><div class="card-title"><span class="accent"></span>15m Win Heatmap * last 60</div></div>
           <div class="heat-strip">${heat.map(c=>`<div style="background:${c};"></div>`).join('')}</div>
-          <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--ink-3);font-family:'Montserrat',monospace;">
+          <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--ink-3);font-family:'Alma Mono','JetBrains Mono',monospace;">
             <span>-15h</span><span>now</span>
           </div>
         </div>
@@ -2418,16 +2545,16 @@ function renderMarketPanel(sym){
       <div class="card">
         <div class="card-head"><div class="card-title"><span class="accent"></span>Quick Actions</div></div>
         <div style="display:flex;flex-direction:column;gap:10px;">
-          <button class="icon-btn" data-action="pause" data-sym="${sym}" style="width:100%;justify-content:flex-start;padding:10px 12px;display:flex;gap:10px;font-family:'Montserrat';font-size:11px;font-weight:600;color:var(--ink-2);">
+          <button class="icon-btn" data-action="pause" data-sym="${sym}" style="width:100%;justify-content:flex-start;padding:10px 12px;display:flex;gap:10px;font-family:'Alma Mono','JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--ink-2);">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             Pause ${sym} only
           </button>
-          <button class="icon-btn" data-action="reset" data-sym="${sym}" style="width:100%;justify-content:flex-start;padding:10px 12px;display:flex;gap:10px;font-family:'Montserrat';font-size:11px;font-weight:600;color:var(--ink-2);">
+          <button class="icon-btn" data-action="reset" data-sym="${sym}" style="width:100%;justify-content:flex-start;padding:10px 12px;display:flex;gap:10px;font-family:'Alma Mono','JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--ink-2);">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/></svg>
             Reset ${sym} P&amp;L
           </button>
           <div style="margin-top:6px;padding-top:10px;border-top:1px dashed var(--line);font-size:10px;color:var(--ink-3);line-height:1.6;">
-            Strategy: <b style="color:var(--ink-2);font-family:'Montserrat';">strategy_${sym}_15m</b><br>
+            Strategy: <b style="color:var(--ink-2);font-family:'Alma Mono','JetBrains Mono',monospace;">strategy_${sym}_15m</b><br>
             Active since: <span class="mono">Mar 14, 2026</span>
           </div>
         </div>
@@ -2601,7 +2728,7 @@ function renderEdge(d){
              background:${isWin?'color-mix(in oklab,var(--up) 12%,transparent)':'var(--surface-2,rgba(255,255,255,.03))'};
              border:1px solid ${isWin?'color-mix(in oklab,var(--up) 45%,transparent)':'var(--line,rgba(255,255,255,.08))'};">
           <div style="font-size:11px;font-weight:700;letter-spacing:.03em;color:var(--ink-2);">${name}${isWin?' &nbsp;<span style="color:var(--up);">*WINNER</span>':''}</div>
-          <div style="font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:700;margin-top:4px;color:${col(g.net)};">${g.net>=0?'+':''}${(g.net!=null?g.net.toFixed(4):'-')}<span style="font-size:11px;color:var(--ink-3);font-weight:500;"> $/ct</span></div>
+          <div style="font-family:'Alma Mono','JetBrains Mono',monospace;font-size:22px;font-weight:700;margin-top:4px;color:${col(g.net)};">${g.net>=0?'+':''}${(g.net!=null?g.net.toFixed(4):'-')}<span style="font-size:11px;color:var(--ink-3);font-weight:500;"> $/ct</span></div>
           <div style="font-size:10px;color:var(--ink-3);margin-top:3px;">n=${g.n} * win ${g.win_rate!=null?(g.win_rate*100).toFixed(0):'-'}% * total ${g.total!=null?(g.total>=0?'+':'')+g.total.toFixed(2):'-'}</div>
         </div>`;
       const dTxt = h.delta_net_per_contract!=null ? (Math.abs(h.delta_net_per_contract)).toFixed(4) : '-';
@@ -2925,8 +3052,7 @@ window.addEventListener('load', () => {
   fetchRisk();
   fetchMarketState();
   fetchTrades();
-  fetchPnl();
-  fetchPnlS1();
+  fetchPnlAll();
   fetchPnlLab();
   fetchEventLog();
 });
@@ -3048,34 +3174,49 @@ async function fetchTrades() {
 }
 
 // ── PnL KPI strips (live fetch, 60s poll) ────────────────────────────────
-async function fetchPnl() {
+// One store feeds all eight S1-S8 strips AND the hero best-strategy pick.
+const STRAT_LABELS = {1:'S1 * Momentum', 2:'S2 * Favorite-Bias',
+  3:'S3 * Structural Arb', 4:'S4 * Mean-Reversion', 5:'S5 * Maker Capture',
+  6:'S6 * Window-Fade', 7:'S7 * Vol-Spike', 8:'S8 * Calm Favorite'};
+const _STRAT_PNL = {};   // n -> {alltime:{pnl,trades,win_rate}, today:{pnl,trades,wins}}
+
+async function fetchPnlStrat(n) {
   try {
-    const d    = await fetch('/api/pnl?strategy=2').then(r => r.json());
+    const d    = await fetch(`/api/pnl?strategy=${n}`).then(r => r.json());
     const mode = document.body.dataset.mode || 'paper';
     const today   = d.today?.[mode]   || {};
     const alltime = d.alltime?.[mode] || {};
+    _STRAT_PNL[n] = { alltime, today };
 
-    const atVal = document.getElementById('kpi-alltime-val');
+    // S2 predates the redesign and kept its original un-prefixed ids;
+    // S1 keeps its amber inline-color styling.
+    const p     = n === 2 ? 'kpi' : `kpi-s${n}`;
+    const amber = n === 1;
+
+    const atVal = document.getElementById(`${p}-alltime-val`);
     if (atVal) {
       const v = alltime.pnl ?? 0;
-      atVal.className   = `kpi-cell-v mono ${v >= 0 ? 'up' : 'down'}`;
+      if (amber) atVal.style.color = v >= 0 ? 'var(--amber)' : 'var(--down)';
+      else atVal.className = `kpi-cell-v mono ${v >= 0 ? 'up' : 'down'}`;
       atVal.textContent = fmtMoney(v);
     }
-    const wrVal = document.getElementById('kpi-wr-val');
+    const wrVal = document.getElementById(`${p}-wr-val`);
     if (wrVal) {
       const wr = alltime.win_rate ?? 0;
-      wrVal.innerHTML = `${wr.toFixed(1)}<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span>`;
+      const pct = n <= 2 ? 16 : 12;
+      wrVal.innerHTML = `${wr.toFixed(1)}<span style="color:var(--ink-3);font-size:${pct}px;font-weight:500;">%</span>`;
     }
-    const wrSub = document.getElementById('kpi-wr-sub');
+    const wrSub = document.getElementById(`${p}-wr-sub`);
     if (wrSub) wrSub.innerHTML = `<span class="mono">${alltime.trades ?? 0} trades</span>`;
 
-    const tdVal = document.getElementById('kpi-today-val');
+    const tdVal = document.getElementById(`${p}-today-val`);
     if (tdVal) {
       const v = today.pnl ?? 0;
-      tdVal.className   = `kpi-cell-v mono ${v >= 0 ? 'up' : 'down'}`;
+      if (amber) tdVal.style.color = v >= 0 ? 'var(--amber)' : 'var(--down)';
+      else tdVal.className = `kpi-cell-v mono ${v >= 0 ? 'up' : 'down'}`;
       tdVal.textContent = fmtMoney(v);
     }
-    const tdSub = document.getElementById('kpi-today-sub');
+    const tdSub = document.getElementById(`${p}-today-sub`);
     if (tdSub) {
       const w = today.wins ?? 0, cnt = today.trades ?? 0, l = cnt - w;
       tdSub.innerHTML = `<span class="mono">${cnt} trades</span> * ${w}W / ${l}L`;
@@ -3083,39 +3224,11 @@ async function fetchPnl() {
   } catch(e) {}
 }
 
-async function fetchPnlS1() {
-  try {
-    const d    = await fetch('/api/pnl?strategy=1').then(r => r.json());
-    const mode = document.body.dataset.mode || 'paper';
-    const today   = d.today?.[mode]   || {};
-    const alltime = d.alltime?.[mode] || {};
-
-    const atVal = document.getElementById('kpi-s1-alltime-val');
-    if (atVal) {
-      const v = alltime.pnl ?? 0;
-      atVal.style.color = v >= 0 ? 'var(--amber)' : 'var(--down)';
-      atVal.textContent = fmtMoney(v);
-    }
-    const wrVal = document.getElementById('kpi-s1-wr-val');
-    if (wrVal) {
-      const wr = alltime.win_rate ?? 0;
-      wrVal.innerHTML = `${wr.toFixed(1)}<span style="color:var(--ink-3);font-size:16px;font-weight:500;">%</span>`;
-    }
-    const wrSub = document.getElementById('kpi-s1-wr-sub');
-    if (wrSub) wrSub.innerHTML = `<span class="mono">${alltime.trades ?? 0} trades</span>`;
-
-    const tdVal = document.getElementById('kpi-s1-today-val');
-    if (tdVal) {
-      const v = today.pnl ?? 0;
-      tdVal.style.color = v >= 0 ? 'var(--amber)' : 'var(--down)';
-      tdVal.textContent = fmtMoney(v);
-    }
-    const tdSub = document.getElementById('kpi-s1-today-sub');
-    if (tdSub) {
-      const w = today.wins ?? 0, cnt = today.trades ?? 0, l = cnt - w;
-      tdSub.innerHTML = `<span class="mono">${cnt} trades</span> * ${w}W / ${l}L`;
-    }
-  } catch(e) {}
+// Legacy names kept: probes and older code call these directly.
+async function fetchPnl()   { return fetchPnlStrat(2); }
+async function fetchPnlS1() { return fetchPnlStrat(1); }
+async function fetchPnlAll() {
+  await Promise.all([1, 2, 3, 4, 5, 6, 7, 8].map(n => fetchPnlStrat(n)));
 }
 
 // Strategy Lab strip: one unfiltered /api/pnl call carries by_strategy for all six.
@@ -3197,8 +3310,7 @@ setInterval(fetchTrades,      120_000);
 setInterval(fetchStatus,      10_000);
 setInterval(fetchMarketState, 30_000);
 setInterval(fetchEventLog,    30_000);
-setInterval(fetchPnl,         60_000);
-setInterval(fetchPnlS1,       60_000);
+setInterval(fetchPnlAll,      60_000);
 setInterval(fetchPnlLab,      60_000);
 setInterval(()=>{ if(document.getElementById('panel-edge')?.classList.contains('active')) fetchEdge(); }, 60_000);
 
@@ -3219,7 +3331,10 @@ function _numOf(txt){
 function _scanVals(){
   const targets = [];
   for (const id of ['kpi-alltime-val','kpi-today-val','kpi-wr-val',
-                    'kpi-s1-alltime-val','kpi-s1-today-val','kpi-s1-wr-val']) {
+                    'kpi-s1-alltime-val','kpi-s1-today-val','kpi-s1-wr-val',
+                    'kpi-s3-alltime-val','kpi-s3-today-val','kpi-s4-alltime-val','kpi-s4-today-val',
+                    'kpi-s5-alltime-val','kpi-s5-today-val','kpi-s6-alltime-val','kpi-s6-today-val',
+                    'kpi-s7-alltime-val','kpi-s7-today-val','kpi-s8-alltime-val','kpi-s8-today-val']) {
     const el = document.getElementById(id);
     if (el) targets.push([id, el]);
   }
@@ -3543,27 +3658,44 @@ let _mileTier = null;
 function _heroSync(){
   const el = document.getElementById('hero-pnl');
   if (!el) return;
-  const a = _numOf(document.getElementById('kpi-alltime-val')?.textContent);
-  const b = _numOf(document.getElementById('kpi-s1-alltime-val')?.textContent);
-  if (a == null && b == null) return;          // still booting - keep the skeleton
-  const total = (a || 0) + (b || 0);
-  el.classList.remove('skel');
-  el.classList.toggle('up', total >= 0);
-  el.classList.toggle('down', total < 0);
-  renderOdometer(el, _fmtHero(total));
+  const rows = Object.entries(_STRAT_PNL);
+  if (!rows.length) return;                    // still booting - keep the skeleton
 
-  const ta = _numOf(document.getElementById('kpi-today-val')?.textContent);
-  const tb = _numOf(document.getElementById('kpi-s1-today-val')?.textContent);
-  const haveToday = ta != null || tb != null;
-  const today = (ta || 0) + (tb || 0);
+  // Hero = the best strategy: highest all-time P&L among those that have
+  // actually traded; ties break to the lower strategy number. If nothing has
+  // traded yet, fall back to the overall total so the hero is never blank.
+  const traded = rows.filter(([, d]) => (d.alltime.trades ?? 0) > 0)
+    .sort((a, b) => ((b[1].alltime.pnl ?? 0) - (a[1].alltime.pnl ?? 0)) || (a[0] - b[0]));
+  const total = rows.reduce((s, [, d]) => s + (d.alltime.pnl ?? 0), 0);
+  const today = rows.reduce((s, [, d]) => s + (d.today.pnl ?? 0), 0);
+
+  const label = document.getElementById('hero-best-label');
+  let heroVal = total;
+  if (traded.length) {
+    heroVal = traded[0][1].alltime.pnl ?? 0;
+    if (label) label.textContent = STRAT_LABELS[traded[0][0]] || `S${traded[0][0]}`;
+  } else if (label) {
+    label.textContent = 'All Strategies';
+  }
+  el.classList.remove('skel');
+  el.classList.toggle('up', heroVal >= 0);
+  el.classList.toggle('down', heroVal < 0);
+  renderOdometer(el, _fmtHero(heroVal));
+
   const chip = document.getElementById('hero-today-chip');
-  if (chip && haveToday) {
-    chip.textContent = 'TODAY ' + _fmtHero(today);
+  if (chip) {
+    chip.textContent = 'TODAY ' + _fmtHero(today);   // all strategies, current mode
     chip.classList.toggle('up', today > 0);
     chip.classList.toggle('down', today < 0);
   }
+  const totChip = document.getElementById('hero-total-chip');
+  if (totChip) {
+    totChip.textContent = 'TOTAL ' + _fmtHero(total);   // the old headline number
+    totChip.classList.toggle('up', total > 0);
+    totChip.classList.toggle('down', total < 0);
+  }
   _renderStreak();
-  _renderMilestone(today, haveToday);
+  _renderMilestone(today, true);
 }
 
 function _renderStreak(){
