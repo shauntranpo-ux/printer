@@ -21,26 +21,26 @@ def test_s2_min_dist_lowered():
         f"XRP S2 min_dist {_S2_ASSET_CONFIG['XRP']['min_dist']} too high"
 
 
-def test_fair_value_entry_band_is_wide():
+def test_fair_value_entry_band_bans_the_tails():
     """
-    The fair-value brains deliberately use a WIDE entry band (the anchored-EV gate does the
-    selectivity, so a stale-cheap 65c ask vs an 0.80 fair value is a valid trade). The old
-    50-60c cap was calibrated for the momentum strategy and does not apply here.
+    The fair-value entry band is 20-85c: sub-20c asks are the longshot tail that went
+    1W-28L in the settled trade log (and stays -EV in the Kalshi-wide bias study), and
+    above 85c fee rounding + fill reliability dominate.
     """
     from bot_strategy import _FV_MIN_ENTRY_CENTS, _FV_MAX_ENTRY_CENTS
-    assert _FV_MIN_ENTRY_CENTS <= 15.0, f"fair-value min entry {_FV_MIN_ENTRY_CENTS} too high"
-    assert 80.0 <= _FV_MAX_ENTRY_CENTS <= 95.0, \
-        f"fair-value max entry {_FV_MAX_ENTRY_CENTS} outside expected wide band"
+    assert _FV_MIN_ENTRY_CENTS == 20.0, f"fair-value min entry {_FV_MIN_ENTRY_CENTS} != 20"
+    assert _FV_MAX_ENTRY_CENTS == 85.0, f"fair-value max entry {_FV_MAX_ENTRY_CENTS} != 85"
 
 
 def test_both_brains_use_per_asset_entry_config():
     """Both brains must source the entry band via get_asset_config (per-asset override)."""
     import inspect
     import bot_strategy as bs
-    for fn in (bs.strategy_brain_s1, bs.strategy_brain_s2):
+    for fn, key in ((bs.strategy_brain_s1, "s1_max_entry_cents"),
+                    (bs.strategy_brain_s2, "s2_fav_max_entry_cents")):
         src = inspect.getsource(fn)
         assert "get_asset_config" in src, f"{fn.__name__} must use get_asset_config for entry band"
-        assert "fv_max_entry_price_cents" in src, f"{fn.__name__} missing fv_max_entry_price_cents key"
+        assert key in src, f"{fn.__name__} missing per-asset entry key {key}"
 
 
 def test_s1_time_bounds_in_range():

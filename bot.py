@@ -13,6 +13,7 @@ import asyncio
 import logging
 import os
 import sqlite3
+from datetime import datetime, timedelta, timezone
 
 import aiohttp
 
@@ -28,7 +29,7 @@ import obs
 import bot_state
 import asset_manager
 from asset_manager import get_price as _am_get_price, coinbase_price_task, seed_price_history
-from bot_infra import read_config, _init_config, init_db, test_db_write, send_telegram
+from bot_infra import read_config, _init_config, init_db, test_db_write, send_telegram, fmt_ts
 from bot_market import load_credentials, get_btc_price
 from bot_risk import verify_kalshi_connection, run_preflight_checks
 from bot_loops import main_loop
@@ -72,6 +73,11 @@ async def _startup_reconcile(session: aiohttp.ClientSession, mode: str) -> None:
     the reconcile action per row, inside individual transactions.
     Sends one Telegram summary. Replaces blind zombie-trade cleanup.
     """
+    # Cutoff built in Python with the same 'T'-separator format the writers use.
+    # SQLite's datetime('now') renders 'YYYY-MM-DD HH:MM:SS' and 'T' > ' ' in a TEXT
+    # comparison, so comparing against it silently skipped every pending row from the
+    # current UTC date - same-day crash recovery never reconciled anything.
+    _cutoff = (datetime.now(timezone.utc) - timedelta(minutes=30)).strftime("%Y-%m-%dT%H:%M:%S")
     conn = sqlite3.connect(bot_state._DB_FILE)
     conn.row_factory = sqlite3.Row
     try:
@@ -79,7 +85,7 @@ async def _startup_reconcile(session: aiohttp.ClientSession, mode: str) -> None:
             "SELECT id, market_id, side, contracts, entry_price_cents, ts, order_id, mode, asset "
             "FROM trades "
             "WHERE (outcome IN ('pending', '') OR outcome IS NULL) "
-            "AND ts < datetime('now', '-30 minutes')"
+            "AND ts < ?", (_cutoff,)
         ).fetchall()
     finally:
         conn.close()
@@ -187,12 +193,15 @@ async def main() -> None:
         if _mode != "paper":
             await verify_kalshi_connection(_startup_session)
 
-    # Start Coinbase price feed for all assets
+    # Start Coinbase price feed for ALL supported assets, not just the currently
+    # enabled ones: the trading loop re-reads enabled_assets every cycle, so an
+    # asset enabled later from the dashboard starts trading immediately - but the
+    # feed's subscription list is frozen at startup, and without its feed the new
+    # asset would silently never see a price (one extra WS subscription per asset
+    # costs nothing). BTC is always first - correlation signals need its deque.
     _startup_config = read_config()
     _enabled = _startup_config.get("enabled_assets", ["ETH", "SOL", "XRP"])
-    # Always subscribe BTC regardless of enabled_assets - other strategies use
-    # btc_prices_60m for correlation signals and the deque must stay populated.
-    _feed_assets = list(dict.fromkeys(["BTC"] + _enabled))
+    _feed_assets = list(dict.fromkeys(["BTC"] + _enabled + list(asset_manager._prices.keys())))
     await seed_price_history(_feed_assets)
     _spawn_price_feed(_feed_assets)
 
@@ -212,7 +221,7 @@ async def main() -> None:
         log.info(f"Price feed ready after {waited}s. {_first_asset}: ${_first_price:,.2f}")
     _startup_cfg = read_config()
     _btc_display = f"${get_btc_price():,.2f}" if get_btc_price() is not None else f"{_first_asset}: ${_first_price:,.2f}" if _first_price else "price N/A"
-    await send_telegram(f"<b>Printer bot started</b>\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
+    await send_telegram(f"<b>Printer bot started</b>  -  {fmt_ts(config=_startup_cfg)}\n{_btc_display}\nMode: {_startup_cfg.get('mode','?').upper()}  |  Bot enabled: {_startup_cfg.get('bot_enabled', False)}")
 
     # Pre-flight check runs once before trading begins.
     # LIVE mode with unresolved issues -> sys.exit(1). Paper mode -> warn and continue.

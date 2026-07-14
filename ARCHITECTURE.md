@@ -18,7 +18,8 @@ Deployed on Railway. Trades real money via Kalshi's REST API. All production log
 | `bot_loops.py` | Main async market loop. Phase handler: watching -> ready -> trading -> cooldown |
 | `bot_market.py` | Kalshi REST API client. Order placement, OBI calculation, fill polling |
 | `bot_risk.py` | Preflight checks, trade execution, PnL tracking, S1 orphan settlement |
-| `bot_strategy.py` | S1 (CA-LEAD-SLOW: BTC-lead cross-asset dislocation) and S2 (spot_fv_disloc: spot-anchored Bachelier fair-value dislocation) strategy brains |
+| `bot_strategy.py` | All strategy brains: S1 Momentum (main), S2 Favorite-Bias, and the lab slots S3 Structural-Arb / S4 Mean-Reversion / S5 Maker-Capture / S6 Window-Fade / S7 Vol-Spike / S8 Calm-Favorite |
+| `bot_strategies.py` | Registry for the lab slots (S3+): brain callable, labels, enabled keys. Adding S7/S8 = one brain + one entry here |
 | `bot_infra.py` | `config.json` read/write, sqlite3 `init_db()`, Telegram async helper |
 | `bot_state.py` | Shared in-memory globals: price deques, API keys, trade state |
 | `sessions.py` | Pure ET time-of-day session + weekday/weekend taxonomy; used by the session gate, `/api/edge`, and `edge_report` |
@@ -34,28 +35,95 @@ Deployed on Railway. Trades real money via Kalshi's REST API. All production log
 
 ### Strategy brains (`bot_strategy.py`)
 
-Both brains compute a **Bachelier fair value** for P(YES) (`_bachelier_p_above`) and trade only
-when the de-vigged market mid is stale-cheap relative to it, gated by `_anchored_ev` (shrink the
-model toward the mid, cap the deviation at `max_model_edge`, require `ev >= min_ev_anchored` **and**
-`market_edge >= min_market_edge`). Direction comes from the model, not from momentum. Vol for the
-digital is `_sigma_eff` - a blend of live realized vol (`_live_sigma_15m`, quadratic-variation) and
-the static per-asset vol, so a co-moving jump does not over-inflate σ right when we act.
+S1 and S2 are deliberately **opposite bets** so their per-strategy net-$ head-to-head is
+meaningful (the "which profits more" comparison the dashboard Edge tab and the Telegram daily
+"Day winner" surface). Both still price a **Bachelier fair value** for P(YES) (`_bachelier_p_above`)
+off the shared vol engine, but they trade on opposite theses. In paper the **duel** runs both on
+every market (`strategy_duel_mode`, default true) - opposing positions on the same ticker are
+allowed since there is no capital conflict; setting it false restores the one-way "S1 blocks S2"
+dedup in `handle_ready_phase`.
 
-- **S1 - CA-LEAD-SLOW (SOL / XRP / DOGE).** BTC leads the alts intraday. Over a ~60s lookback it
-  computes `residual = beta*btc_ret - alt_ret` (beta from `data/betas.json` via the mtime-cached
-  `_load_betas`), predicts the alt's catch-up spot `alt_now*exp(residual)`, and prices the digital
-  on that. BTC/ETH are disabled by default (`s1_ca_btc_enabled` / `s1_ca_eth_enabled`). Keeps the
-  existing S1 caps / rate-limit / cooldown / cross-asset window guard.
-- **S2 - spot_fv_disloc (BTC / SOL / XRP / DOGE).** Prices the digital on the current spot vs strike
-  and trades the stale-cheap side. Gates: `|z| >= min_z`, spot-sign confirmation over the last N
-  prints (no flicker across the strike), and a round-trip spread cap. ETH disabled by default
-  (`s2_eth_enabled`).
+**Vol engine (`_sigma_eff`).** Primary path: a per-asset **market-implied sigma EWMA**
+(`_implied_sigma_from_quote` / `update_implied_sigma`, fed opportunistically from orderbook
+fetches the loop already makes) blended with live realized vol (`_live_sigma_15m`, quadratic
+variation on a 15s resampled grid - the raw 1s feed cadence must be gridded before differencing
+or every pair fails the dt filter) and clamped around the implied anchor. Cold start falls back
+to the static `_ASSET_VOL_15M` table (re-fit 2026-07 to realistic values; the old 2.5-4x-inflated
+table lives on as the frozen `_LEGACY_VOL_15M` for off-path legacy helpers). A per-asset
+`sigma_scale` fitted from settled decisions multiplies the result. Anchoring sigma to the
+market's own vol means fair value can disagree with the market only through spot freshness,
+never through a vol opinion.
 
-The legacy momentum/velocity/OBI helpers (`_s1_multitf_momentum`, `_s2_contract_direction`,
-`_s2_obi_gate`, `_s1_certainty_win_prob`, the `_S1_ASSET_CONFIG` / `_S2_ASSET_CONFIG` dicts and the
-win-rate tables) are retained for other callers/tests but are **no longer on the live decision
-path**. Both brains keep the prior return-dict shape (incl. `signals.model_raw_p_yes`) so the loop,
-website, and the `decision_log` harness are unchanged.
+- **S1 - MOMENTUM / CONTINUATION (SOL / XRP / DOGE by default).** `_momentum_signal` measures
+  the spot return over `s1_momentum_lookback_secs` (75s); a move counts only when it is real
+  (`|r| >= s1_momentum_min_sigma` window-sigmas) AND still underway (a shorter sub-window agrees
+  in sign - not reversing). Direction is the move's sign (up->YES, down->NO). It prices a
+  continuation fair value on the spot **projected forward** by `s1_momentum_drift_lambda * r`,
+  then trades the moving side against its own ask when `ev >= s1_min_edge` after fee - it does
+  NOT shrink to the market mid. Entry band 30-75c (room to run). BTC-lead (`_asset_beta`) is a
+  logged confirming input, hard-gated only when `s1_require_btc_confirm`. BTC/ETH off by default
+  (`s1_btc_enabled` / `s1_eth_enabled`). Keeps the S1 caps / rate-limit / cooldown / window guard.
+- **S2 - FAVORITE-BIAS HARVEST (BTC / SOL / XRP / DOGE).** Fires LATE (`s2_fav_time_min/max`,
+  2.5-6 min) when the spot sits decisively past the strike (`|z| >= s2_fav_min_z`) with the last
+  prints confirming it, and the favorite side's de-vigged mid is in the premium band
+  (`s2_fav_mid_lo`..`s2_fav_mid_hi`, 0.70-0.88). It BUYS that favorite. There is **no**
+  fair-value-disagreement gate - the edge is realized win-rate > price, not a model edge; a
+  `s2_fav_max_model_shortfall` guard only vetoes favorites the Bachelier model strongly rejects.
+  Round-trip spread cap and ETH-off (`s2_eth_enabled`) as before. This is the mirror risk
+  profile to S1: high hit-rate, low payout.
+- **s_fav (shadow, zero capital).** `shadow_fav_candidate` still logs a would-buy-the-favorite
+  decision_log row (strategy `s_fav`, `would_trade=0`); now that S2 trades this thesis live the
+  shadow measures a slightly wider untraded extension (`shadow_fav_enabled`).
+
+### The strategy lab (S3-S8, paper-only)
+
+Registry-driven test slots (`bot_strategies.STRATEGY_REGISTRY`) racing alongside S1/S2 on
+every market, executed through the generic slot engine in `bot_risk`
+(`_execute_slot_trade` / `_settle_slot_trades` / `_settle_slot_orphans` /
+`_settle_slot_rollover`) with per-slot state in `bot_state._slot_state`. Slot trades are
+**hard-forced `mode="paper"` inside the executor** - no code path lets a lab slot place a
+live order. Dispatch happens in `handle_ready_phase` and both LOCKED-phase blocks;
+settlement piggybacks on S2's expiry detection plus a generalized orphan sweep
+(startup/300s/rollover).
+
+- **S3 Structural Arb**: `check_dual_side_arb` fires when YES+NO asks < 93c -> buy BOTH
+  sides (two trade rows, one economic trade sized so the pair outlay respects the clip).
+  Guaranteed profit per pair; measures how often books dislocate that far.
+- **S4 Mean-Reversion**: fade a >= `s4_min_sigma` (2.0) run over `s4_lookback_secs` once
+  the last third shows it stalling (`s4_still_running` guards S1's setup). The mirror
+  bet to S1 - together they answer trend-vs-revert.
+- **S5 Maker Capture**: on a 0.60-0.90 favorite, record a passive quote 1c inside the
+  ask (no order). Settlement scans the held-book path (`bot_state._maker_track`, now
+  also appended during READY) - crossed -> filled at maker price + maker fee (~25% of
+  taker); never crossed -> `outcome="unfilled"`, $0. Profit source is execution, not
+  prediction.
+- **S6 Window-Fade**: first `s6_window_secs` (120s) of a window only, FADE the PREVIOUS
+  window's resolved direction (from `bot_state._prev_window_outcome`, written at every
+  settlement AND estimated at every rollover, carrying a same-direction `streak`
+  counter) at 40-60c entries. Thesis validated AND tuned on 25k real Kalshi
+  settlements (`scripts/backtest_carry.py` + `scripts/tune_fade.py`): the fade rate is
+  monotonic in previous-move size and streak length; the shipped gate (move >= 15bp,
+  streak >= 2) fades 56.4% (Wilson-LB 0.552 vs ~0.517 breakeven, +4.6c/ct).
+- **S7 Vol-Spike / S8 Calm-Favorite**: the volatility-regime mirror pair (`_vol_regime`:
+  live realized sigma vs the implied-EWMA/static anchor). S7 buys the fresh move's
+  direction only when live vol >= 1.6x anchor (spiked tape, book lags); S8 buys the
+  favorite only when live vol <= 0.6x anchor (dead tape, favorite holds). Both fair-
+  value with the LIVE sigma; regimes are mutually exclusive by construction.
+
+Scoreboard: `/api/edge` returns a `leaderboard` (per-strategy net-$/contract, Wilson-LB,
+verdict, and projected weekly $ at $25/$100/$250 clips - projections gated on positive
+net and labeled as unproven below 200 picks; nothing in code ever sizes a strategy up).
+The dashboard Strategy Lab card renders it; `scripts/edge_report.py` prints the same
+ranking; the Telegram daily summary iterates all eight labels.
+
+**Sizing** is quarter-Kelly scaled DOWN from the `trade_amount_dollars` clip (`_kelly_stake`;
+never above the clip, floored at `min_stake_dollars`).
+
+The legacy momentum/velocity/CA-lead helpers (`_s1_multitf_momentum`, `_s2_contract_direction`,
+`_s1_certainty_win_prob`, `_s1_dislocation_check`, the `_S1_ASSET_CONFIG` / `_S2_ASSET_CONFIG`
+dicts and the win-rate tables) are retained for tests/offline scripts but are **not on the live
+decision path**. Both brains keep the prior return-dict shape (incl. `signals.model_raw_p_yes`)
+so the loop, website, and the `decision_log` harness are unchanged.
 
 ---
 
@@ -97,9 +165,12 @@ Raw sqlite3. **No ORM. No Alembic migrations.**
   `decision_log`, `maker_log`, `settlement_basis`
   - **`decision_log`** - the edge-measurement harness. One row per brain evaluation that
     reached the model/EV stage (`would_trade` = whether the gate would trade), with
-    `model_p_yes`, `market_mid_p_yes`, `market_edge`, settlement `outcome` backfilled at
-    expiry. Logs ALL evaluated decisions (not just taken trades) so signal edge is measured
-    free of survivorship bias. Written by `bot_loops._log_decision`; scored by
+    `model_p_yes`, `market_mid_p_yes`, `market_edge`, plus the sigma-observability columns
+    `spot`, `strike`, `sigma_eff`, `z` (nullable, added via the try/except ALTER pattern);
+    settlement `outcome` backfilled at expiry. Logs ALL evaluated decisions (not just taken
+    trades) so signal edge is measured free of survivorship bias; a second dedup slot in
+    `bot_loops._log_decision` guarantees the eventual `would_trade=1` row is recorded even
+    when a full-signal skip logged first. Written by `bot_loops._log_decision`; scored by
     `scripts/edge_report.py` and `GET /api/edge`.
   - **`maker_log`** - the maker-vs-taker counterfactual. Also feeds the paper maker
     execution model when `maker_execution_enabled` is on.
@@ -131,21 +202,28 @@ Config normalization in `_init_config()` enforces (current behavior):
   and the `bot_loops` kill-switch both treat a non-positive limit as disabled.
 - **`measurement_enabled`** (default **true**) gates all edge-measurement instrumentation
   (`decision_log` / `maker_log` writes, held-book tracking, periodic settlement backfill).
-- **Self-calibration** (`calibration_enabled`, default **true**): every 30 min the bot fits a
-  probability scale per strategy from its own settled `decision_log` rows and a per-asset
-  settlement level offset from `settlement_basis` (`scripts/calibration.py`; n-gated, clamped),
-  applies them in the brains (`_calibrated_p`, `_basis_adjusted_spot`), and persists to
-  `data/calibration.json`. `settlement_avg_seconds` (default 60) prices the digital to the
-  effective settlement time `secs_left - avg/2` since Kalshi settles on a window average.
-  The same job also fits **rolling BTC-lead betas** from the live price deques
-  (`fit_rolling_beta`; preferred by `_asset_beta` over `data/betas.json`).
+- **Self-calibration** (`calibration_enabled`, default **true**): every 30 min the bot fits,
+  in order, a per-asset **sigma scale** from settled `decision_log` z/outcome pairs
+  (`fit_sigma_scale` - vol space is where the 2026-07 failure lived), a probability scale per
+  strategy (`fit_prob_scale`), a per-asset settlement level offset from `settlement_basis`
+  (`fit_basis_offset`), and per-asset **lead betas** from the live price deques
+  (`fit_lead_beta` - the contemporaneous `fit_rolling_beta` slope is kept for reporting only
+  and no longer writes `_live_betas`). All fits are n-gated and clamped, applied in the brains
+  (`_sigma_eff`, `_calibrated_p`, `_basis_adjusted_spot`, `_asset_beta`), and persisted to
+  `data/calibration.json` together with the implied-sigma EWMA (restored at startup while
+  fresh, so a redeploy does not cold-start vol). `settlement_avg_seconds` (default 60) prices
+  the digital to the effective settlement time `secs_left - avg/2` since Kalshi settles on a
+  window average.
 - **Auto-gate** (`auto_gate_enabled`, default **true**): the recalibration job blocks any ET
   session or (strategy, asset) bucket whose Wilson-LB net-$/contract is not positive at 150+
   settled picks (GATE-1 per bucket). The gate fires after the EV gate so blocked decisions
   still reach `decision_log`; blocked buckets appear in `data/calibration.json` / `/api/edge`.
 - **Best-strike ladder** (`ladder_max_strikes`, default 3; 1 = off): in READY, non-BTC assets
   evaluate up to N candidate strikes/windows every 30s (`bot_loops._pick_best_strike`) and
-  enter the highest-EV one. (BTC already gets this via the multi-window picker.)
+  enter the one with the SMALLEST model-vs-market gap among firing candidates (tie-break:
+  tighter spread). Win rate falls monotonically with the gap in settled data, so a max-EV pick
+  would walk the ladder out to the worst strike. (BTC already gets this via the multi-window
+  picker.)
 - **Paper maker execution** (`maker_execution_enabled`, default **false**; S2 + paper mode
   only): settles each trade as the resting maker order the counterfactual tracked - filled
   trades get maker pricing + the ~25% maker fee, unfilled trades are voided at $0
@@ -157,9 +235,16 @@ Config normalization in `_init_config()` enforces (current behavior):
   `false`) let the operator skip time windows the Edge panel shows losing. Default = no behavior
   change; a blocked window yields an `s{1,2}_session_gate:<label>` skip. The data-driven variant
   is the auto-gate above (`auto_gate_enabled`).
-- EV-gate tuning: `max_model_edge`, `min_market_edge`, `min_ev_anchored` (the market-anchored
-  gate, `bot_strategy._anchored_ev`) are read per-asset from `s1_config`/`s2_config[asset]` and
-  fall back to a top-level config value, then to conservative defaults (0.08 / 0.035 / 0.025).
+- DORMANT v3-era keys: `max_model_edge`, `min_market_edge`, `min_ev_anchored`,
+  `max_model_market_gap`, the fv entry band (`fv_min/max_entry_price_cents`), the tail-ban
+  floors (`s1_min_side_price_cents`, `s2_min_side_price_cents`), `s1_min_btc_ret` and the
+  `staleness_*` family still sit in `_init_config` defaults but are NOT read by the current
+  momentum/favorite-bias brains, which gate on their own `s1_min_edge`/`s7_min_edge`-style
+  keys instead. They are config-file inertia from the replaced v3 brains - editing them
+  changes nothing. Same for `min_ev_base` and `vol_gate_thresh` (the dashboard Risk card
+  displays them, no live gate reads them) and the `s1_config`/`s2_config[asset]` per-asset
+  override layer, whose mirrored keys are always clobbered by the flat `s1_*`/`s2_fav_*`
+  values `_init_config` materializes.
 
 ### Dashboard API (additions)
 
@@ -173,6 +258,26 @@ each row's `ts` through `sessions.py` - the "which market times pay" view. `scri
 prints the same two breakdowns. The payload also carries a `calibration` block (the fitted
 prob_scale / basis offsets from `data/calibration.json`) and a `basis` block (per-asset
 agreement stats from `settlement_basis`).
+
+### Offline analysis scripts (additions)
+
+- `scripts/replay_gates.py <export.csv>` - replays an exported trade CSV through the v3 gate
+  set (pure arithmetic over the logged `entry_signals`; no network) and prints a per-gate block
+  matrix plus the surviving-subset P&L. `tests/test_replay_gates.py` pins the directional result
+  against the vendored 2026-06-30..07-04 export in `tests/fixtures/`.
+- `scripts/plot_report.py --csv <export.csv>|--db <bot.db> [--out DIR]` - renders equity-curve,
+  calibration, entry-price-bucket, and sigma-check PNGs. matplotlib is a script-only dependency
+  (deliberately not in `requirements.txt`).
+- `scripts/backtest_carry.py` / `scripts/tune_fade.py` - the S6 settlement backtests: carry
+  killed, fade proven, then gated to its strongest sub-population (move >= 15bp, streak >= 2).
+- `scripts/xasset_check.py` - cross-asset conditioning of the S6 fade: checked and REJECTED
+  (BTC agreement adds no Wilson-LB lift; no 15-min BTC->alt lead-lag). Kept so the idea isn't
+  re-derived from scratch.
+- `scripts/fetch_candles.py` + `scripts/backtest_signals.py` - 1-min Coinbase candles for the
+  settlement span (fetch must run from an unrestricted network - hosted containers block
+  exchange hosts) and the intra-window signal tests they enable: S1 momentum-vs-model excess,
+  S4 stall-fade, and the favorite-calibration behind S2/S8. pandas/pyarrow/requests are
+  script-only dependencies.
 
 ### Environment Variables (runtime-verified)
 

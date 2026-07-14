@@ -63,12 +63,15 @@ async def fetch_fills_for_ticker(
     session: aiohttp.ClientSession,
     ticker: str,
     since_ts_ms: int,
-) -> list:
+) -> "list | None":
     """
     GET /portfolio/fills?ticker=X filtered to fills at or after since_ts_ms.
 
     Follows cursor pagination until no cursor returned or page is empty.
-    Returns [] on any error. Includes conservatively on unparseable timestamps.
+    Returns None on any fetch error - an empty [] means Kalshi POSITIVELY reported
+    no fills. Collapsing errors into [] made a transient network failure
+    indistinguishable from "never filled" and phantom-voided real fills.
+    Includes conservatively on unparseable timestamps.
     """
     all_fills: list = []
     cursor: "str | None" = None
@@ -85,7 +88,7 @@ async def fetch_fills_for_ticker(
             ) as resp:
                 if resp.status != 200:
                     log.warning("fetch_fills_for_ticker %s: HTTP %s", ticker, resp.status)
-                    break
+                    return None
                 data = await resp.json()
             page = data.get("fills") or []
             all_fills.extend(page)
@@ -94,7 +97,7 @@ async def fetch_fills_for_ticker(
                 break
         except Exception as exc:
             log.warning("fetch_fills_for_ticker %s: %s", ticker, exc)
-            break
+            return None
 
     if not since_ts_ms:
         return all_fills
@@ -169,9 +172,18 @@ async def classify_pending_trade(
     Gross PnL only (no fee deduction) - consistent with how _settle_s1_orphans works
     for orphan reconcile at startup.
     """
-    # Paper mode: no real money at stake, skip Kalshi entirely.
-    if mode == "paper":
-        return {"action": "mark_expired_unfilled", "pnl_dollars": 0.0}
+    # Paper mode: never void. Paper settlement is deterministic (side vs the official
+    # result), and the startup/periodic orphan sweeps settle these rows at their TRUE
+    # outcome. Voiding here erased real paper P&L after any outage longer than the
+    # 30-minute reconcile threshold. Row-level mode wins over the global mode so lab
+    # slots (always paper) are safe even if the bot runs live.
+    _row_mode = ""
+    try:
+        _row_mode = (trade_row["mode"] or "").lower()
+    except (KeyError, IndexError, TypeError):
+        pass
+    if mode == "paper" or _row_mode == "paper":
+        return {"action": "leave_pending", "reason": "paper trade - orphan sweep settles it"}
 
     ticker = trade_row["market_id"] or ""
     side = trade_row["side"] or "yes"
@@ -195,6 +207,10 @@ async def classify_pending_trade(
 
     # Step 2: Look for fills on this ticker since trade entry.
     fills = await fetch_fills_for_ticker(session, ticker, since_ts_ms)
+    if fills is None:
+        # Fetch failed - NOT the same as "no fills". Falling through would reach
+        # mark_phantom and void a genuinely filled trade.
+        return {"action": "leave_pending", "reason": "fills fetch failed, will retry next startup"}
     # Kalshi fills "side" field: "yes" or "no".
     matching = [f for f in fills if f.get("side") == side]
 

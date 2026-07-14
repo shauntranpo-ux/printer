@@ -214,6 +214,48 @@ def main():
                       f"{_fmt(st['net_pnl'],4):>7} {_fmt(st['wlb_pnl'],4):>7}  {note}")
             print()
 
+    # Leaderboard: every strategy's PICKS ranked by net-$/contract (which profits more).
+    if overall_picks:
+        _labels = {
+            "strategy1": "S1 Momentum", "strategy2": "S2 Favorite-Bias",
+            "strategy3": "S3 Structural Arb", "strategy4": "S4 Mean-Reversion",
+            "strategy5": "S5 Maker Capture", "strategy6": "S6 Window-Fade",
+            "strategy7": "S7 Vol-Spike", "strategy8": "S8 Calm Favorite",
+        }
+
+        def _strat_net(strat):
+            subset = [r for r in overall_picks if r["strategy"] == strat and r["entry_price_cents"] is not None]
+            pnls = []
+            for r in subset:
+                entry = r["entry_price_cents"] / 100.0
+                won = _win(r["side"], r["outcome"])
+                pnls.append((1.0 - entry if won else -entry) - _kalshi_fee(entry))
+            if not pnls:
+                return None
+            wins = sum(_win(r["side"], r["outcome"]) for r in subset)
+            return {"n": len(pnls), "mean": sum(pnls) / len(pnls),
+                    "total": sum(pnls), "win_rate": wins / len(subset)}
+
+        board = [(strat, _strat_net(strat)) for strat in _labels]
+        board = [(s, g) for s, g in board if g is not None]
+        if board:
+            board.sort(key=lambda x: -x[1]["mean"])
+            print("=" * 96)
+            print("LEADERBOARD (PICKS) - which strategy profits more, net $/contract:")
+            print("  NOTE: scored from decision_log PICKS (every brain opinion incl. retired")
+            print("  versions, synthetic taker fills). The dashboard Strategy Lab leaderboard")
+            print("  ranks EXECUTED current-version trades with realized P&L - when the two")
+            print("  disagree, the dashboard is the promotion authority; this view is for")
+            print("  signal quality across the whole pick history.")
+            for rank, (strat, g) in enumerate(board, 1):
+                crown = "  <- WINNER" if rank == 1 and g["mean"] > 0 else ""
+                print(f"  {rank}. {_labels[strat]:<20} n={g['n']:>4}  win={g['win_rate']:.3f}  "
+                      f"net ${g['mean']:+.4f}/ct  total ${g['total']:+.2f}{crown}")
+            for strat in _labels:
+                if strat not in (s for s, _ in board):
+                    print(f"     {_labels[strat]:<20} no settled picks yet")
+            print()
+
     # GATE-1 verdict on the gate's picks overall
     if overall_picks:
         n = len(overall_picks)

@@ -14,7 +14,8 @@ import sqlite3
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import aiohttp
 import aiosqlite
@@ -32,6 +33,7 @@ __all__ = [
     "_update_wr_bucket", "_get_empirical_wr",
     # Notify
     "send_telegram", "_maybe_fill_verification_notify", "_notify_ctx", "_phase_for_eth",
+    "display_tz", "fmt_ts", "et_day_bounds_utc",
 ]
 
 
@@ -58,6 +60,32 @@ def atomic_write_json(data: dict, path: str) -> None:
         except OSError:
             pass
         raise
+
+
+_mode_clamp_warned: set = set()
+
+
+def strategy_mode(config: dict, strategy: str) -> str:
+    """
+    Resolve s1_mode/s2_mode with the safety rule: per-strategy modes may only go
+    SAFER than the global mode. Order routing follows these keys while every safety
+    rail (daily limits, preflight, startup reconcile, restore verification) keys off
+    the global mode, so "live" is honored only when the global mode is live.
+    Resolved at READ time rather than by mutating the config dict: the bot's own
+    read-modify-write cycles (midnight_reset, the daily-limit trip) persist that
+    dict back to config.json, and a mutating clamp permanently erased the operator's
+    stored live setting.
+    """
+    mode = config.get("mode", "paper")
+    smode = config.get(f"{strategy}_mode", mode)
+    if smode == "live" and mode != "live":
+        key = f"{strategy}_mode"
+        if key not in _mode_clamp_warned:
+            _mode_clamp_warned.add(key)
+            log.warning("%s=live ignored - global mode is %s (safety rails key off it)",
+                        key, mode)
+        return mode
+    return smode
 
 
 def read_config() -> dict:
@@ -121,6 +149,16 @@ def _init_config() -> None:
         "kalshi_fee_per_contract_cents": 7,
         "preflight_override": False,
         "quiet_hours_enabled": True,
+        # Notifications. Every timestamp in a Telegram message uses display_timezone
+        # (an IANA name) with its real abbreviation (EDT/EST/...), never a fixed offset.
+        "display_timezone": "America/New_York",
+        # Per-trade settle alerts on by default; entry alerts are opt-in (2x volume).
+        "notify_on_settle": True,
+        "notify_on_entry": False,
+        # End-of-day summary: sent once per day at/after this ET hour and it always
+        # covers the PREVIOUS full ET calendar day (0 = just after midnight ET), so
+        # no evening trade is ever missing from its day's report.
+        "daily_summary_hour_et": 0,
         # Edge-measurement instrumentation (decision_log / maker_log / settlement basis).
         # Default on; set false to disable all measurement if it ever pressures rate limits.
         "measurement_enabled": True,
@@ -147,6 +185,147 @@ def _init_config() -> None:
         # maker pricing + maker fee, unfilled trades are voided at $0. Turn on only
         # after the Edge tab's maker-vs-taker delta is positive.
         "maker_execution_enabled": False,
+        # Fair-value gate thresholds (both brains). Previously inline fallbacks only;
+        # surfaced here so they can be tuned from the dashboard without a deploy.
+        "min_ev_anchored": 0.025,
+        "min_market_edge": 0.04,
+        "max_model_edge": 0.08,
+        # Too-good-to-be-true: REJECT (not clamp) any trade whose raw model-vs-market
+        # gap exceeds this. Win rate fell monotonically with the gap in settled data.
+        "max_model_market_gap": 0.15,
+        # Entry band + tail ban. Sub-20c sides are the longshot tail (1W-28L on record;
+        # the Kalshi-wide favorite-longshot study agrees); mids are de-vigged fractions.
+        "fv_min_entry_price_cents": 20.0,
+        "fv_max_entry_price_cents": 85.0,
+        "s2_min_side_price_cents": 20.0,
+        "s1_min_side_price_cents": 25.0,
+        # Staleness gate: trade only when the spot moved toward the side bought within
+        # the window while the tracked contract mid stayed put (a lagging book).
+        "staleness_gate_enabled": True,
+        "staleness_window_secs": 60.0,
+        "staleness_min_spot_sigma": 0.35,
+        "staleness_max_mid_move_cents": 3.0,
+        # Sigma engine: market-implied EWMA anchor blended with live realized vol.
+        "sigma_implied_weight": 0.6,
+        "sigma_live_weight": 0.4,
+        "sigma_implied_halflife_secs": 2700,
+        "sigma_implied_max_age_secs": 900,
+        "sigma_clamp_lo": 0.6,
+        "sigma_clamp_hi": 1.7,
+        # S1 lead-signal gates: BTC must genuinely move; live lead-beta accepted only
+        # within this band around the static file beta (then shrunk halfway toward it).
+        "s1_min_btc_ret": 0.0010,
+        "s1_beta_clamp_lo": 0.5,
+        "s1_beta_clamp_hi": 1.5,
+        # Quarter-Kelly stake sizing: scales stakes DOWN from trade_amount_dollars on
+        # thin edges (never up past the clip). kelly_cap = the quarter-Kelly fraction
+        # that earns the full clip.
+        "kelly_sizing_enabled": True,
+        "kelly_cap": 0.05,
+        "min_stake_dollars": 5.0,
+        # Shadow favorite-bias candidate: logs would-buy-the-favorite decisions to
+        # decision_log (zero capital). Now that S2 trades this thesis live, the shadow
+        # runs at a slightly wider band and stays purely for the untraded-extension read.
+        "shadow_fav_enabled": True,
+        # Strategy duel (paper): both brains evaluate and trade every market; opposing
+        # positions on the same ticker are allowed so per-strategy P&L is a clean A/B.
+        # False restores the old one-way "S1 blocks S2" dedup.
+        "strategy_duel_mode": True,
+        # S1 MOMENTUM gates. A move counts only when it is real (>= min_sigma window
+        # sigmas) and still underway; the continuation fair value projects the spot
+        # forward by drift_lambda * move. Entry band keeps room to run.
+        "s1_momentum_lookback_secs": 75,
+        "s1_momentum_min_sigma": 1.0,
+        "s1_momentum_drift_lambda": 0.5,
+        "s1_confirm_ticks": 2,
+        "s1_time_min": 3.0,
+        "s1_time_max": 10.0,
+        "s1_min_entry_cents": 30,
+        "s1_max_entry_cents": 75,
+        "s1_min_edge": 0.03,
+        # BTC-lead is a logged confirming input; flip on to hard-require agreement.
+        "s1_require_btc_confirm": False,
+        "s1_btc_enabled": False,
+        "s1_eth_enabled": False,
+        # S2 FAVORITE-BIAS gates. Fire late on a proven favorite (|z| >= min_z) whose
+        # de-vigged mid is in the premium band; buy it. No model-edge requirement - the
+        # premium is realized win-rate > price; max_model_shortfall only vetoes traps.
+        "s2_fav_min_z": 0.8,
+        "s2_fav_mid_lo": 0.70,
+        "s2_fav_mid_hi": 0.88,
+        "s2_fav_confirm_ticks": 2,
+        "s2_fav_time_min": 2.5,
+        "s2_fav_time_max": 6.0,
+        "s2_fav_min_entry_cents": 65,
+        "s2_fav_max_entry_cents": 90,
+        "s2_fav_max_model_shortfall": 0.08,
+        # S2's ETH kill switch (the brain hard-skips ETH unless true) - mirror of the
+        # s1_*_enabled pair above; previously read with an inline default only, making
+        # it invisible in config.json.
+        "s2_eth_enabled": False,
+        # S1 flow-control knobs, previously inline-default only (invisible/untunable):
+        # per-asset hourly entry cap, cross-asset burst window, and the consecutive-
+        # loss cooldown that benches an asset after N straight losses.
+        "max_s1_per_asset_per_hour": 2,
+        "s1_cross_asset_window_seconds": 300.0,
+        "s1_consec_loss_cooldown_count": 3,
+        "s1_consec_loss_cooldown_secs": 900,
+        # Test-slot lab strategies (S3-S6): paper-only regardless of global mode, all
+        # tunable from the dashboard. See bot_strategies.STRATEGY_REGISTRY.
+        # S3 structural arb: buy BOTH sides when the combined asks leave a fee-proof profit.
+        "s3_arb_enabled": True,
+        "s3_arb_max_combined_cents": 93,
+        # S4 mean-reversion: fade a >=2-sigma run once the last third shows it stalling.
+        "s4_revert_enabled": True,
+        "s4_min_sigma": 2.0,
+        "s4_lookback_secs": 120,
+        "s4_revert_lambda": 0.5,
+        "s4_time_min": 3.0,
+        "s4_time_max": 10.0,
+        "s4_min_entry_cents": 25,
+        "s4_max_entry_cents": 70,
+        "s4_min_edge": 0.03,
+        # S5 maker spread-capture: passive quote 1c inside the favorite-side ask; settle
+        # via the held-book fill model (unfilled -> $0 no-trade).
+        "s5_maker_enabled": True,
+        "s5_mid_lo": 0.60,
+        "s5_mid_hi": 0.90,
+        "s5_improve_cents": 1,
+        "s5_time_min": 3.0,
+        "s5_time_max": 9.0,
+        # S6 window-fade: first 2 minutes of a window, FADE the previous window's
+        # resolved direction at near-coin-flip prices. Gates tuned on 25k historical
+        # settlement pairs (scripts/tune_fade.py): move >= 15bp AND streak >= 2 fades
+        # 56.4% (Wilson-LB 0.552, +4.6c/ct at 50c) vs 53.4% unconditional.
+        "s6_carry_enabled": True,
+        "s6_window_secs": 120,
+        "s6_min_prev_move": 0.0015,
+        "s6_min_streak": 2,
+        "s6_min_entry_cents": 40,
+        "s6_max_entry_cents": 60,
+        "s6_fade_premium": 0.064,
+        "s6_min_edge": 0.01,
+        # S7/S8: the volatility-regime mirror pair (every other strategy is
+        # regime-blind). S7 trades breakouts only when live vol spikes vs its anchor;
+        # S8 buys favorites only when vol has collapsed. See _vol_regime.
+        "s7_volspike_enabled": True,
+        "s7_spike_ratio": 1.6,
+        "s7_lookback_secs": 60,
+        "s7_time_min": 4.0,
+        "s7_time_max": 10.0,
+        "s7_min_entry_cents": 30,
+        "s7_max_entry_cents": 70,
+        "s7_min_edge": 0.03,
+        "s8_calm_enabled": True,
+        "s8_calm_ratio": 0.6,
+        "s8_mid_lo": 0.55,
+        "s8_mid_hi": 0.85,
+        "s8_min_z": 0.4,
+        "s8_time_min": 4.0,
+        "s8_time_max": 10.0,
+        "s8_min_entry_cents": 50,
+        "s8_max_entry_cents": 88,
+        "s8_min_edge": 0.03,
     }
 
     if os.path.exists(bot_state._CONFIG_FILE):
@@ -369,6 +548,15 @@ def init_db() -> None:
         c.execute("CREATE INDEX IF NOT EXISTS idx_decision_ticker ON decision_log(ticker)")
         c.execute("CREATE INDEX IF NOT EXISTS idx_decision_outcome ON decision_log(outcome)")
 
+        # Sigma observability columns (nullable; ADD COLUMN is metadata-only in SQLite).
+        # spot/strike/sigma_eff/z let the recalibration job refit the vol scale offline
+        # from the survivorship-free decision population.
+        for col in ("spot", "strike", "sigma_eff", "z"):
+            try:
+                c.execute(f"ALTER TABLE decision_log ADD COLUMN {col} REAL")
+            except Exception:
+                pass
+
         # maker_log: per settled trade, the maker-vs-taker counterfactual (measurement only).
         # See bot_loops._record_maker_counterfactual + scripts/maker_report.py.
         c.execute("""
@@ -447,7 +635,7 @@ def test_db_write() -> None:
 async def db_write_trade(trade: dict) -> int | None:
     """Insert a trade record. Returns the new row id."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             cur = await db.execute("""
                 INSERT INTO trades (
@@ -456,8 +644,9 @@ async def db_write_trade(trade: dict) -> int | None:
                     model_prob, implied_prob, btc_price_at_entry, strike,
                     seconds_left_at_entry, fill_confirmed,
                     exit_price_cents, exit_reason, outcome, pnl_dollars, profit_percent,
-                    order_id, asset, raw_p_yes, entry_signals, strategy_variant, brain
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    order_id, asset, raw_p_yes, entry_signals, strategy_variant, brain,
+                    strategy_version
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 trade.get("ts"), trade.get("market_id"), trade.get("market_title"),
                 trade.get("mode"), trade.get("side"), trade.get("contracts"),
@@ -472,6 +661,7 @@ async def db_write_trade(trade: dict) -> int | None:
                 trade.get("order_id"), trade.get("asset", "BTC"),
                 trade.get("raw_p_yes"), trade.get("entry_signals"),
                 trade.get("strategy_variant", "strategy2"), trade.get("brain"),
+                trade.get("strategy_version"),
             ))
             await db.commit()
             return cur.lastrowid
@@ -491,8 +681,13 @@ _VALID_TRADE_COLS = frozenset({
 })
 
 
-async def db_update_trade(trade_id: int, fields: dict) -> None:
-    """Update named columns on an existing trade row."""
+async def db_update_trade(trade_id: int, fields: dict, only_if_pending: bool = False) -> None:
+    """Update named columns on an existing trade row.
+
+    only_if_pending=True adds `AND outcome='pending'` - the orphan sweeps use it so a
+    row the live settle path finished between the sweep's snapshot and this write is
+    never overwritten (the S5 maker void would replace a real win/loss with $0).
+    """
     if trade_id is None:
         log.error("db_update_trade called with trade_id=None - trade will stay pending in DB")
         return
@@ -501,11 +696,12 @@ async def db_update_trade(trade_id: int, fields: dict) -> None:
         log.error("db_update_trade: unknown column(s) %s - skipping update for trade %s", bad_cols, trade_id)
         return
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             set_clause = ", ".join(f"{k} = ?" for k in fields)
+            guard = " AND outcome = 'pending'" if only_if_pending else ""
             await db.execute(
-                f"UPDATE trades SET {set_clause} WHERE id = ?",
+                f"UPDATE trades SET {set_clause} WHERE id = ?{guard}",
                 list(fields.values()) + [trade_id],
             )
             await db.commit()
@@ -521,20 +717,23 @@ async def db_write_decision(decision: dict) -> None:
     survivorship bias. outcome stays 'pending' until db_backfill_decision_outcome runs.
     """
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("""
                 INSERT INTO decision_log (
                     ts, ticker, asset, strategy, mode, side,
                     model_p_yes, market_mid_p_yes, market_edge,
-                    entry_price_cents, secs_left, would_trade
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+                    entry_price_cents, secs_left, would_trade,
+                    spot, strike, sigma_eff, z
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 decision.get("ts"), decision.get("ticker"), decision.get("asset"),
                 decision.get("strategy"), decision.get("mode"), decision.get("side"),
                 decision.get("model_p_yes"), decision.get("market_mid_p_yes"),
                 decision.get("market_edge"), decision.get("entry_price_cents"),
                 decision.get("secs_left"), int(bool(decision.get("would_trade"))),
+                decision.get("spot"), decision.get("strike"),
+                decision.get("sigma_eff"), decision.get("z"),
             ))
             await db.commit()
     except Exception as exc:
@@ -547,7 +746,7 @@ async def db_backfill_decision_outcome(ticker: str, outcome: str) -> None:
     if outcome not in ("yes", "no"):
         return
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute(
                 "UPDATE decision_log SET outcome = ? WHERE ticker = ? AND outcome = 'pending'",
@@ -561,7 +760,7 @@ async def db_backfill_decision_outcome(ticker: str, outcome: str) -> None:
 async def db_write_maker_sample(sample: dict) -> None:
     """Record one maker-vs-taker counterfactual sample (fire-and-forget; never raises)."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("""
                 INSERT INTO maker_log (
@@ -584,7 +783,7 @@ async def db_write_maker_sample(sample: dict) -> None:
 async def db_write_settlement_basis(sample: dict) -> None:
     """Persist one settlement-basis sample (fire-and-forget; never raises)."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("""
                 INSERT INTO settlement_basis (
@@ -604,7 +803,7 @@ async def db_settled_decision_probs(strategy: str, limit: int = 5000) -> list:
     """(model_p_yes, outcome) pairs for a strategy's settled decisions, newest first.
     Input to the prob_scale calibration fit."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             cur = await db.execute(
                 "SELECT model_p_yes, outcome FROM decision_log "
                 "WHERE strategy = ? AND outcome IN ('yes','no') AND model_p_yes IS NOT NULL "
@@ -617,10 +816,28 @@ async def db_settled_decision_probs(strategy: str, limit: int = 5000) -> list:
         return []
 
 
+async def db_settled_decision_zs(strategy: str = "strategy2", limit: int = 20000) -> list:
+    """(asset, z, outcome) for one strategy's settled decision_log rows with a recorded z.
+    Input to the per-asset sigma_scale fit (strategy2 by default: its z comes from the
+    actual spot, not a predicted one, and carries no shadow-strategy selection bias)."""
+    try:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
+            cur = await db.execute(
+                "SELECT asset, z, outcome FROM decision_log "
+                "WHERE strategy = ? AND outcome IN ('yes','no') AND z IS NOT NULL "
+                "ORDER BY id DESC LIMIT ?",
+                (strategy, limit),
+            )
+            return list(await cur.fetchall())
+    except Exception as exc:
+        log.debug("db_settled_decision_zs skipped: %s", exc)
+        return []
+
+
 async def db_settled_picks(limit: int = 10000) -> list:
     """Settled PICKS rows (dicts) from decision_log for the auto-gate computation."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             db.row_factory = aiosqlite.Row
             cur = await db.execute(
                 "SELECT ts, strategy, asset, side, outcome, entry_price_cents "
@@ -639,7 +856,7 @@ async def db_basis_rows(limit: int = 5000) -> list:
     """(asset, signed_dist, kalshi) rows from settlement_basis, newest first.
     Input to the per-asset basis-offset fit."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             cur = await db.execute(
                 "SELECT asset, signed_dist, kalshi FROM settlement_basis "
                 "WHERE kalshi IN ('yes','no') AND signed_dist IS NOT NULL "
@@ -656,7 +873,7 @@ async def db_pending_decision_tickers(older_than_iso: str, limit: int = 30) -> l
     """Distinct tickers in decision_log still 'pending', evaluated before older_than_iso
     (so their window has closed). Used by the periodic settlement backfill."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             cur = await db.execute(
                 "SELECT DISTINCT ticker FROM decision_log "
                 "WHERE outcome = 'pending' AND ts < ? LIMIT ?",
@@ -699,7 +916,7 @@ async def db_brain_scorecard(today: str) -> dict:
         GROUP BY brain, asset
     """
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             for scope, query, params in (
                 ("daily",   _query_daily,   (today,)),
@@ -723,7 +940,7 @@ async def db_brain_scorecard(today: str) -> dict:
 async def db_write_market_log(entry: dict) -> None:
     """Append one row to market_log."""
     try:
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
             await db.execute("""
                 INSERT INTO market_log (
@@ -743,17 +960,24 @@ async def db_write_market_log(entry: dict) -> None:
         log.error(f"DB write_market_log error: {exc}")
 
 
-async def db_get_today_pnl(mode: str) -> float:
-    """Sum pnl_dollars for completed trades in the given mode today (UTC)."""
+async def db_get_today_pnl(mode: str, variants: "tuple | None" = None) -> float:
+    """
+    Sum pnl_dollars for completed trades in the given mode today (ET calendar day).
+    `variants` optionally restricts to specific strategy_variant values - the daily
+    limit check passes the main-line pair so the lab slots' paper P&L can't trip the
+    profit target / loss cap on S1/S2's behalf. None = all strategies (notifications).
+    """
     try:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        async with aiosqlite.connect(bot_state._DB_FILE) as db:
+        start, end = et_day_bounds_utc(datetime.now(_ET).date())
+        q = ("SELECT COALESCE(SUM(pnl_dollars), 0) FROM trades "
+             "WHERE mode = ? AND ts >= ? AND ts < ? AND outcome != 'pending'")
+        params: list = [mode, start, end]
+        if variants:
+            q += f" AND COALESCE(strategy_variant, 'strategy2') IN ({','.join('?' * len(variants))})"
+            params.extend(variants)
+        async with aiosqlite.connect(bot_state._DB_FILE, timeout=30) as db:
             await db.execute("PRAGMA journal_mode=WAL")
-            async with db.execute(
-                "SELECT COALESCE(SUM(pnl_dollars), 0) FROM trades "
-                "WHERE mode = ? AND DATE(ts) = ? AND outcome != 'pending'",
-                (mode, today),
-            ) as cur:
+            async with db.execute(q, params) as cur:
                 row = await cur.fetchone()
         return float(row[0]) if row else 0.0
     except Exception as exc:
@@ -876,6 +1100,45 @@ def _phase_for_eth(asset, elapsed_seconds):
     return None
 
 
+_ET = ZoneInfo("America/New_York")
+
+
+def display_tz(config: dict | None = None) -> ZoneInfo:
+    """Timezone every notification timestamp is rendered in (config: display_timezone)."""
+    try:
+        cfg = config if config is not None else read_config()
+        return ZoneInfo(str(cfg.get("display_timezone", "America/New_York")))
+    except Exception:
+        return ZoneInfo("America/New_York")
+
+
+def fmt_ts(dt: datetime | None = None, config: dict | None = None) -> str:
+    """'Jul 5, 2:14 PM EDT' in the display timezone. Naive input is treated as UTC.
+
+    Built without %-d/%-I - those are glibc extensions that raise on Windows.
+    """
+    d = dt or datetime.now(timezone.utc)
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    d = d.astimezone(display_tz(config))
+    hour12 = d.strftime("%I").lstrip("0") or "12"
+    return f"{d.strftime('%b')} {d.day}, {hour12}:{d.strftime('%M')} {d.strftime('%p')} {d.strftime('%Z')}"
+
+
+def et_day_bounds_utc(day) -> tuple[str, str]:
+    """UTC ISO bounds [start, end) of the given ET calendar day.
+
+    The trading "day" everywhere in this bot is the ET calendar day (sessions,
+    quiet hours, daily reports). Trade rows carry UTC timestamps, so day queries
+    must use these bounds - DATE(ts) buckets by UTC date and misclassifies every
+    trade after 8pm ET.
+    """
+    start = datetime(day.year, day.month, day.day, tzinfo=_ET).astimezone(timezone.utc)
+    nxt = day + timedelta(days=1)
+    end = datetime(nxt.year, nxt.month, nxt.day, tzinfo=_ET).astimezone(timezone.utc)
+    return start.strftime("%Y-%m-%dT%H:%M:%S"), end.strftime("%Y-%m-%dT%H:%M:%S")
+
+
 def _notify_ctx(asset, ticker, duration_min=15.0, phase=None):
     """Format a context prefix for Telegram notifications."""
     parts = [asset, "15m", ticker]
@@ -918,13 +1181,17 @@ async def _maybe_fill_verification_notify(
 
 
 async def send_telegram(text: str) -> None:
-    """Send a Telegram notification with up to 3 retries on failure."""
+    """Send a Telegram notification with retries. 429s honor the response's
+    retry_after (typically 5-30s at a settle burst across 5 assets) - a fixed 2s
+    backoff landed every retry inside the same rate-limit window and dropped the
+    message."""
     if not bot_state.TELEGRAM_BOT_TOKEN or not bot_state.TELEGRAM_CHAT_ID:
         return
     url = f"https://api.telegram.org/bot{bot_state.TELEGRAM_BOT_TOKEN}/sendMessage"
-    for attempt in range(1, 4):
+    delay = 2.0
+    for attempt in range(1, 5):
         try:
-            log.info(f"Telegram: sending (attempt {attempt}/3)...")
+            log.info(f"Telegram: sending (attempt {attempt}/4)...")
             async with aiohttp.ClientSession() as tg:
                 async with tg.post(
                     url,
@@ -936,12 +1203,18 @@ async def send_telegram(text: str) -> None:
                         log.info("Telegram: sent OK")
                         return
                     elif resp.status == 429:
-                        log.warning(f"Telegram: rate-limited (429) -- attempt {attempt}/3, retrying...")
+                        try:
+                            delay = min(35.0, float(
+                                json.loads(body).get("parameters", {}).get("retry_after", 5)) + 1.0)
+                        except Exception:
+                            delay = 5.0
+                        log.warning(f"Telegram: rate-limited (429), retry in {delay:.0f}s "
+                                    f"-- attempt {attempt}/4")
                     else:
                         log.warning(f"Telegram: HTTP {resp.status} -- {body}")
                         return
         except Exception as exc:
-            log.warning(f"Telegram: error on attempt {attempt}/3 -- {exc}")
-        if attempt < 3:
-            await asyncio.sleep(2)
-    log.error("Telegram: failed after 3 attempts -- notification dropped")
+            log.warning(f"Telegram: error on attempt {attempt}/4 -- {exc}")
+        if attempt < 4:
+            await asyncio.sleep(delay)
+    log.error("Telegram: failed after 4 attempts -- notification dropped")

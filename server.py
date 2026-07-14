@@ -21,6 +21,7 @@ import time
 import urllib.request
 import urllib.parse
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 
 try:
     from flask import Flask, jsonify, request
@@ -62,12 +63,35 @@ _FULL_CONFIG_DEFAULT = {
     "quiet_hours_enabled": True,
     "quiet_start_et": 22,
     "quiet_end_et": 9,
+    "display_timezone": "America/New_York",
+    "notify_on_settle": True,
+    "notify_on_entry": False,
+    "daily_summary_hour_et": 0,
     "enabled_assets": ["ETH", "SOL", "XRP"],
+    # Paper duel: both brains (S1 momentum / S2 favorite-bias) trade every market so their
+    # per-strategy P&L is a clean head-to-head. bot_infra._init_config fills the rest.
+    "strategy_duel_mode": True,
 }
+
+# All strategies the API/dashboard enumerate: S1 momentum (main), S2 favorite-bias,
+# S3-S6 paper lab slots. Kept in sync with bot_strategies.STRATEGY_LABELS (tested).
+_STRATEGY_IDS = ("1", "2", "3", "4", "5", "6", "7", "8")
+_ALL_STRATEGIES = tuple(f"strategy{i}" for i in _STRATEGY_IDS)
+def _write_config_atomic(_data: dict) -> None:
+    # Temp + os.replace like every other config writer: a plain truncating write
+    # here races the bot's first read_config on deploy (start.sh launches both
+    # processes together) - a half-written file crashes the bot at startup.
+    _fd, _tmp = tempfile.mkstemp(dir=".", suffix=".json.tmp")
+    with os.fdopen(_fd, "w", encoding="utf-8") as _f:
+        json.dump(_data, _f, indent=2)
+        _f.flush()
+        os.fsync(_f.fileno())
+    os.replace(_tmp, "config.json")
+
+
 if not os.path.exists("config.json"):
     try:
-        with open("config.json", "w", encoding="utf-8") as _f:
-            json.dump(_FULL_CONFIG_DEFAULT, _f, indent=2)
+        _write_config_atomic(_FULL_CONFIG_DEFAULT)
         log.info("Created default config.json")
     except Exception as _cfg_err:
         logging.warning(f"Could not create default config.json: {_cfg_err}")
@@ -80,8 +104,7 @@ try:
             _cfg = json.load(_f)
         if _cfg.get("mode", "paper") == "live":
             _cfg["mode"] = "paper"
-            with open("config.json", "w", encoding="utf-8") as _f:
-                json.dump(_cfg, _f, indent=2)
+            _write_config_atomic(_cfg)
             log.info("Startup safety reset: live -> paper mode")
 except Exception as _rst_err:
     logging.warning(f"Could not apply startup safety reset: {_rst_err}")
@@ -107,6 +130,27 @@ def _safe_json_read(path: str, default):
     except Exception as exc:
         log.warning(f"Could not read {path}: {exc}")
         return default
+
+
+def _display_now_str() -> str:
+    """Current time in the configured display timezone with its real abbreviation.
+
+    Replaces a hard-coded UTC-7 labeled "PST" - wrong label, and wrong offset
+    for half the year.
+    """
+    tz_name = "America/New_York"
+    try:
+        with open("config.json", "r", encoding="utf-8") as fh:
+            tz_name = json.load(fh).get("display_timezone", tz_name) or tz_name
+    except Exception:
+        pass
+    try:
+        tz = ZoneInfo(tz_name)
+    except Exception:
+        tz = ZoneInfo("America/New_York")
+    d = datetime.now(tz)
+    hour12 = d.strftime("%I").lstrip("0") or "12"
+    return f"{d.strftime('%b')} {d.day}, {hour12}:{d.strftime('%M')} {d.strftime('%p')} {d.strftime('%Z')}"
 
 
 def _telegram_notify(text: str) -> None:
@@ -147,7 +191,10 @@ def write_config(data: dict) -> None:
 
 
 def read_state() -> dict:
-    return _safe_json_read("bot_state.json", _STATE_DEFAULT.copy())
+    # Resolve like /healthz and /metrics do - hardcoding the relative path split the
+    # dashboard from the bot when BOT_STATE_FILE points somewhere else (Railway).
+    return _safe_json_read(os.environ.get("BOT_STATE_FILE", "bot_state.json"),
+                           _STATE_DEFAULT.copy())
 
 
 def _load_strategies() -> list[dict]:
@@ -159,9 +206,11 @@ def _read_strategy_state(state_file: str) -> dict | None:
 
 
 def get_db() -> sqlite3.Connection:
-    """Open a WAL-mode SQLite connection with Row factory."""
+    """Open a WAL-mode SQLite connection with Row factory. timeout matches the bot's
+    aiosqlite connections (30s) so neither process drops writes/reads when the other
+    briefly holds the write lock."""
     db_path = os.environ.get("BOT_DB_FILE", "kalshi_bot.db")
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.row_factory = sqlite3.Row
     return conn
@@ -238,7 +287,7 @@ def api_trades():
     mode  = request.args.get("mode")
     asset    = request.args.get("asset", "").upper() or None
     strategy = request.args.get("strategy", "")
-    strategy_variant = {"1": "strategy1", "2": "strategy2"}.get(strategy)
+    strategy_variant = f"strategy{strategy}" if strategy in _STRATEGY_IDS else None
     try:
         conn = get_db()
         clauses, params = [], []
@@ -350,7 +399,7 @@ def api_config():
 
     log.info(f"Config updated: {data}")
 
-    now_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+    now_str = _display_now_str()
     new_enabled = config.get("bot_enabled", False)
     new_mode    = config.get("mode", "paper")
 
@@ -366,7 +415,7 @@ def api_config():
 @app.route("/api/test-telegram", methods=["POST"])
 def api_test_telegram():
     """Send a test Telegram message to verify notification config."""
-    now_str = datetime.now(timezone(timedelta(hours=-7))).strftime("%b %d %I:%M %p PST")
+    now_str = _display_now_str()
     try:
         notify.send_alert("INFO", f"\U0001f514 <b>Telegram test</b>  -  {now_str}\nBot notifications are working.")
         return jsonify({"ok": True, "message": "Test message sent"})
@@ -484,14 +533,48 @@ def api_pnl():
       - win_rate: overall win rate (resolved trades only)
     """
     strategy = request.args.get("strategy", "")
-    strategy_variant = {"1": "strategy1", "2": "strategy2"}.get(strategy)
+    strategy_variant = f"strategy{strategy}" if strategy in _STRATEGY_IDS else None
     try:
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        # "Today" is the ET trading day - the same window the bot's daily P&L,
+        # limits and Telegram summary use. Bucketing by UTC date put every
+        # post-8pm-ET trade in tomorrow's tile.
+        _et_now = datetime.now(ZoneInfo("America/New_York"))
+        today = _et_now.strftime("%Y-%m-%d")
+        _day_start = datetime(_et_now.year, _et_now.month, _et_now.day,
+                              tzinfo=ZoneInfo("America/New_York")
+                              ).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
         conn = get_db()
+        # Today: full rows for the ET day (bounded set). All-time: SQL aggregates over
+        # the WHOLE table - the old newest-2000-rows scan silently dropped the oldest
+        # trades from every "all-time" figure once the table outgrew the limit.
         rows = conn.execute(
-            "SELECT * FROM trades ORDER BY ts DESC LIMIT 2000"
+            "SELECT * FROM trades WHERE ts >= ? ORDER BY ts DESC", (_day_start,)
+        ).fetchall()
+        agg_rows = conn.execute(
+            "SELECT mode, COALESCE(strategy_variant, 'strategy2') AS sv, "
+            "COUNT(*) AS n, COALESCE(SUM(pnl_dollars), 0) AS pnl, "
+            "SUM(CASE WHEN pnl_dollars > 0 THEN 1 ELSE 0 END) AS wins "
+            "FROM trades "
+            "WHERE outcome IS NOT NULL "
+            "AND outcome NOT IN ('pending', 'unfilled', 'expired_unfilled', 'phantom') "
+            "AND pnl_dollars IS NOT NULL "
+            "GROUP BY mode, COALESCE(strategy_variant, 'strategy2')"
         ).fetchall()
         conn.close()
+
+        def _agg(mode=None, sv=None):
+            n = wins = 0
+            pnl = 0.0
+            for r in agg_rows:
+                if mode is not None and r["mode"] != mode:
+                    continue
+                if sv is not None and r["sv"] != sv:
+                    continue
+                n += r["n"]
+                wins += r["wins"] or 0
+                pnl += r["pnl"] or 0.0
+            return {"pnl": round(pnl, 2), "trades": n, "wins": wins,
+                    "win_rate": round(wins / n * 100, 1) if n else 0.0}
 
         all_raw    = [dict(r) for r in rows]
         all_trades = (
@@ -500,14 +583,17 @@ def api_pnl():
         )
 
         def _pnl(trades):
-            resolved = [t for t in trades if t.get("outcome") not in ("pending", None) and t.get("pnl_dollars") is not None]
+            # Voided rows (maker quote never filled, reconcile phantoms) are non-events,
+            # not resolved trades - counting their $0 rows deflates win rates.
+            _void = ("pending", None, "unfilled", "expired_unfilled", "phantom")
+            resolved = [t for t in trades if t.get("outcome") not in _void and t.get("pnl_dollars") is not None]
             total = round(sum(t["pnl_dollars"] for t in resolved), 2)
             wins  = sum(1 for t in resolved if t["pnl_dollars"] > 0)
             count = len(resolved)
             win_rate = round(wins / count * 100, 1) if count else 0.0
             return {"pnl": total, "trades": count, "wins": wins, "win_rate": win_rate}
 
-        today_trades = [t for t in all_trades if (t.get("ts") or "").startswith(today)]
+        today_trades = [t for t in all_trades if (t.get("ts") or "") >= _day_start]
 
         # Per-asset today
         cfg = read_config()
@@ -522,10 +608,10 @@ def api_pnl():
         today_paper = _pnl([t for t in today_trades if t.get("mode") == "paper"])
         today_demo  = _pnl([t for t in today_trades if t.get("mode") == "demo"])
 
-        # All-time
-        alltime_live  = _pnl([t for t in all_trades if t.get("mode") == "live"])
-        alltime_paper = _pnl([t for t in all_trades if t.get("mode") == "paper"])
-        alltime_demo  = _pnl([t for t in all_trades if t.get("mode") == "demo"])
+        # All-time (SQL aggregates - never truncated)
+        alltime_live  = _agg("live", strategy_variant)
+        alltime_paper = _agg("paper", strategy_variant)
+        alltime_demo  = _agg("demo", strategy_variant)
 
         response = {
             "today": {
@@ -545,12 +631,13 @@ def api_pnl():
         # When no strategy filter, include per-strategy breakdown for dashboard
         if not strategy_variant:
             by_strategy = {}
-            for sv in ("strategy1", "strategy2"):
-                sv_trades = [t for t in all_raw if t.get("strategy_variant", "strategy2") == sv]
-                sv_today  = [t for t in sv_trades if (t.get("ts") or "").startswith(today)]
+            for sv in _ALL_STRATEGIES:
+                sv_today = [t for t in all_raw
+                            if t.get("strategy_variant", "strategy2") == sv
+                            and (t.get("ts") or "") >= _day_start]
                 by_strategy[sv] = {
                     "today":   _pnl(sv_today),
-                    "alltime": _pnl(sv_trades),
+                    "alltime": _agg(sv=sv),
                 }
             response["by_strategy"] = by_strategy
 
@@ -562,10 +649,8 @@ def api_pnl():
             return jsonify({
                 "today":   {"live": empty, "paper": empty, "demo": empty, "by_asset": {}, "date": today},
                 "alltime": {"live": empty, "paper": empty, "demo": empty},
-                "by_strategy": {
-                    "strategy1": {"today": empty, "alltime": empty},
-                    "strategy2": {"today": empty, "alltime": empty},
-                },
+                "by_strategy": {sv: {"today": empty, "alltime": empty}
+                                for sv in _ALL_STRATEGIES},
             })
         log.error(f"api_pnl error: {exc}", exc_info=True)
         return jsonify({"error": str(exc)}), 500
@@ -801,7 +886,7 @@ def api_market_sym(sym):
         # Stats
         try:
             all_rows = conn.execute(
-                "SELECT outcome, pnl_dollars, model_prob FROM trades "
+                "SELECT outcome, pnl_dollars, model_prob, implied_prob FROM trades "
                 "WHERE asset=? AND outcome IN ('win','loss') AND pnl_dollars IS NOT NULL",
                 (sym,)
             ).fetchall()
@@ -815,7 +900,10 @@ def api_market_sym(sym):
             losses  = total - wins
             wr      = round(wins / total, 3) if total else 0.0
             today_p = round(sum(r["pnl_dollars"] for r in today_rows), 2)
-            avg_ev  = round(sum((r["model_prob"] or 0) * 100 for r in all_rows) / total, 1) if total else 0.0
+            # Entry edge in prob-pts (model win prob minus price paid) - the old
+            # mean of model_prob*100 was a win PROBABILITY mislabeled as EV.
+            avg_ev  = round(sum(((r["model_prob"] or 0) - (r["implied_prob"] or 0)) * 100
+                                for r in all_rows) / total, 1) if total else 0.0
             best    = round(max((r["pnl_dollars"] for r in all_rows), default=0.0), 2)
             worst   = round(min((r["pnl_dollars"] for r in all_rows), default=0.0), 2)
             stats   = {
@@ -980,7 +1068,6 @@ def api_risk():
     """
     try:
         cfg = read_config()
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
         loss_limit  = cfg.get("daily_loss_limit_dollars", 0.0)
         profit_target = cfg.get("daily_profit_target_dollars", 200.0)
@@ -993,16 +1080,28 @@ def api_risk():
         streak_count = 0
 
         try:
+            # Meter the SAME population the limits actually enforce: configured mode,
+            # S1/S2 only (never the paper-lab slots), over the ET trading day. UTC-day
+            # all-mode all-variant sums put lab paper P&L on the Daily Loss meter.
+            _et_now = datetime.now(ZoneInfo("America/New_York"))
+            _day_start = datetime(_et_now.year, _et_now.month, _et_now.day,
+                                  tzinfo=ZoneInfo("America/New_York")
+                                  ).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            _mode = cfg.get("mode", "paper")
             conn = get_db()
             rows = conn.execute(
                 "SELECT outcome, pnl_dollars FROM trades "
-                "WHERE ts LIKE ? AND outcome IN ('win','loss') AND pnl_dollars IS NOT NULL "
-                "ORDER BY ts DESC LIMIT 200",
-                (today + "%",),
+                "WHERE ts >= ? AND mode = ? "
+                "AND COALESCE(strategy_variant, 'strategy2') IN ('strategy1','strategy2') "
+                "AND outcome IN ('win','loss') AND pnl_dollars IS NOT NULL "
+                "ORDER BY ts DESC LIMIT 500",
+                (_day_start, _mode),
             ).fetchall()
             recent = conn.execute(
                 "SELECT outcome FROM trades WHERE outcome IN ('win','loss') "
-                "ORDER BY ts DESC LIMIT 50"
+                "AND mode = ? "
+                "AND COALESCE(strategy_variant, 'strategy2') IN ('strategy1','strategy2') "
+                "ORDER BY ts DESC LIMIT 50", (_mode,)
             ).fetchall()
             conn.close()
 
@@ -1062,9 +1161,13 @@ def metrics():
             row = conn.execute("SELECT MAX(ts) AS mx FROM trades").fetchone()
             if row:
                 last_trade_ts = row["mx"]
+            # Python-built cutoff with the writers' 'T'-separator: SQLite's
+            # datetime('now') uses a space, and 'T' > ' ' in TEXT comparison made
+            # this "24h" window span up to 48h.
+            _cut24 = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
             row24 = conn.execute(
                 "SELECT COUNT(*) AS cnt, SUM(fill_confirmed) AS fc "
-                "FROM trades WHERE ts > datetime('now', '-24 hours')"
+                "FROM trades WHERE ts > ?", (_cut24,)
             ).fetchone()
             if row24 and row24["cnt"]:
                 trade_count_24h = row24["cnt"]
@@ -1237,6 +1340,8 @@ def api_edge():
         "decisions": {"by_strategy": {}, "by_session": {}, "by_daytype": {},
                       "overall": None, "verdict": "insufficient data"},
         "maker": {"by_strategy": {}, "overall": None, "verdict": "insufficient data"},
+        "shadow": {"s_fav": None, "verdict": "insufficient data"},
+        "sigma": {},
         "calibration": {},
         "basis": {},
         "counts": {"logged": 0, "settled": 0, "pending": 0},
@@ -1280,6 +1385,12 @@ def api_edge():
             "mean_model_p": _safe(mean_model, 3), "mean_market_p": _safe(mean_mkt, 3),
             "brier_model": _safe(brier_m), "brier_market": _safe(brier_k),
             "net_pnl_per_contract": _safe(mean_pnl), "wilson_lb_pnl": _safe(pnl_wlb),
+            # Summed net over all settled picks (units: $ per 1 contract) - the head-to-head
+            # "which profits more" figure. Per-contract so S1/S2 price bands are comparable.
+            "total_pnl": _safe(sum(pnls), 4) if pnls else None,
+            # Mean entry price (fraction) - the leaderboard's clip projections divide the
+            # clip by this to get contracts-per-trade at a hypothetical size.
+            "mean_entry": _safe(mean_entry, 4),
         }
 
     def _round_maker(st):
@@ -1294,10 +1405,28 @@ def api_edge():
         "decisions": {"by_strategy": {}, "by_session": {}, "by_daytype": {},
                       "overall": None, "verdict": "insufficient data"},
         "maker": {"by_strategy": {}, "overall": None, "verdict": "insufficient data"},
+        "shadow": {"s_fav": None, "verdict": "insufficient data"},
+        "sigma": {},
         "calibration": {},
         "basis": {},
         "counts": {"logged": 0, "settled": 0, "pending": 0},
+        "lab_activity": {},
     }
+    # Lab activity counters ("why is a slot quiet?") - dumped by the bot process every
+    # periodic tick; gate-stage skips never reach decision_log so this is the only
+    # place a silent-but-healthy slot is distinguishable from a broken one.
+    try:
+        import bot_state as _bs_mod
+        _act = _safe_json_read(os.path.join(_bs_mod._DATA_DIR, "lab_activity.json"), {})
+        for _slot, _a in (_act or {}).items():
+            _skips = sorted((_a.get("skips") or {}).items(), key=lambda kv: -kv[1])[:3]
+            result["lab_activity"][_slot] = {
+                "evals": int(_a.get("evals", 0)), "trades": int(_a.get("trades", 0)),
+                "top_skips": [[k, v] for k, v in _skips],
+                "since": _a.get("since"),
+            }
+    except Exception as _act_exc:
+        log.debug("lab activity read skipped: %s", _act_exc)
     try:
         conn = get_db()
         try:
@@ -1320,6 +1449,102 @@ def api_edge():
             g = _decision_group(rs)
             if g:
                 result["decisions"]["by_strategy"][strat] = g
+        # Head-to-head: S1 momentum vs S2 favorite-bias. Ranks by net-$/contract (the
+        # scale-free profitability figure) and reports the total and the gap so the
+        # dashboard can name a winner. None until both strategies have settled picks.
+        _bs = result["decisions"]["by_strategy"]
+        _s1, _s2 = _bs.get("strategy1"), _bs.get("strategy2")
+        if (_s1 and _s2 and _s1["net_pnl_per_contract"] is not None
+                and _s2["net_pnl_per_contract"] is not None):
+            _d = _s1["net_pnl_per_contract"] - _s2["net_pnl_per_contract"]
+            result["decisions"]["head_to_head"] = {
+                "winner": "strategy1" if _d > 0 else ("strategy2" if _d < 0 else "tie"),
+                "delta_net_per_contract": _safe(_d),
+                "s1": {"n": _s1["n"], "net": _s1["net_pnl_per_contract"],
+                       "total": _s1.get("total_pnl"), "win_rate": _s1["win_rate"]},
+                "s2": {"n": _s2["n"], "net": _s2["net_pnl_per_contract"],
+                       "total": _s2.get("total_pnl"), "win_rate": _s2["win_rate"]},
+            }
+        else:
+            result["decisions"]["head_to_head"] = None
+        # Leaderboard: EXECUTED paper trades from the CURRENT strategy versions - the
+        # ground truth for "which strategy profits more" (fills, voided maker quotes,
+        # arb pairs, and maker pricing are all in the trades rows; decision_log would
+        # score S5 as a 100%-filled taker and S3 as a directional coin flip, and would
+        # mix in weeks of retired-brain history). Projections = what this edge would
+        # earn weekly at bigger clips IF it survives the 200-trade Wilson-LB proof;
+        # nothing in code ever sizes a strategy up.
+        import bot_state as _bstate
+        _cur_versions = tuple({_bstate._S1_VERSION, _bstate._S2_VERSION,
+                               *_bstate._SLOT_VERSIONS.values()})
+        _lb_rows = []
+        try:
+            _tconn = get_db()
+            _ph = ",".join("?" * len(_cur_versions))
+            trows = _tconn.execute(
+                f"SELECT ts, strategy_variant, outcome, pnl_dollars, contracts, "
+                f"entry_price_cents FROM trades WHERE mode='paper' "
+                f"AND strategy_version IN ({_ph}) AND outcome NOT IN ('pending')",
+                _cur_versions).fetchall()
+            _tconn.close()
+        except sqlite3.OperationalError:
+            trows = []
+        _void = ("unfilled", "expired_unfilled", "phantom")
+        _by_strat: dict = {}
+        for r in trows:
+            _by_strat.setdefault(r["strategy_variant"] or "strategy2", []).append(r)
+        for strat, rs in _by_strat.items():
+            settled = [r for r in rs if r["outcome"] not in _void
+                       and r["pnl_dollars"] is not None and (r["contracts"] or 0) > 0]
+            n = len(settled)
+            if n == 0:
+                continue
+            wins = sum(1 for r in settled if r["outcome"] == "win")
+            win_rate = wins / n
+            tot_pnl = sum(r["pnl_dollars"] for r in settled)
+            tot_contracts = sum(r["contracts"] for r in settled)
+            net = tot_pnl / tot_contracts if tot_contracts else None
+            entries = [r["entry_price_cents"] / 100.0 for r in settled
+                       if r["entry_price_cents"]]
+            mean_entry = sum(entries) / len(entries) if entries else None
+            wlb_rate = wilson_lower(wins, n)
+            wlb = (wlb_rate * (1 - mean_entry) - (1 - wlb_rate) * mean_entry
+                   - _kalshi_fee(mean_entry)) if mean_entry is not None else None
+            # Rate over the SPAN of days from first to last trade (distinct-day counts
+            # floor sparse strategies at 1/day and inflate their projections).
+            _ts = sorted((r["ts"] or "")[:10] for r in rs if r["ts"])
+            if _ts and _ts[0] and _ts[-1]:
+                try:
+                    _span = (datetime.strptime(_ts[-1], "%Y-%m-%d")
+                             - datetime.strptime(_ts[0], "%Y-%m-%d")).days + 1
+                except ValueError:
+                    _span = 1
+            else:
+                _span = 1
+            trades_per_day = n / max(1, _span)
+            if n < 200:
+                verdict = f"collecting ({n}/200)"
+            elif wlb is not None and wlb > 0:
+                verdict = "proven: Wilson LB > 0"
+            elif net is not None and net > 0:
+                verdict = "positive but unproven (LB <= 0)"
+            else:
+                verdict = "no edge"
+            projections = {}
+            if net is not None and net > 0 and mean_entry:
+                projections = {
+                    str(clip): _safe(net * (clip / mean_entry) * trades_per_day * 7, 2)
+                    for clip in (25, 100, 250)
+                }
+            _lb_rows.append({
+                "strategy": strat, "n": n, "win_rate": _safe(win_rate, 3),
+                "net_per_contract": _safe(net), "total_pnl": _safe(tot_pnl, 2),
+                "wilson_lb_pnl": _safe(wlb), "picks_per_day": _safe(trades_per_day, 1),
+                "verdict": verdict, "projected_weekly_at_clip": projections,
+            })
+        _lb_rows.sort(key=lambda r: (r["net_per_contract"] is None,
+                                     -(r["net_per_contract"] or 0.0)))
+        result["decisions"]["leaderboard"] = _lb_rows
         overall = _decision_group(picks)
         result["decisions"]["overall"] = overall
         if overall:
@@ -1352,12 +1577,58 @@ def api_edge():
         result["decisions"]["by_session"] = _bucketed(sessions.session_for_iso)
         result["decisions"]["by_daytype"] = _bucketed(sessions.day_type_for_iso)
 
+        # Shadow strategy scoreboard: s_fav rows are logged with would_trade=0 (zero
+        # capital), so the picks-based stats above never see them. This block is the
+        # promotion criterion for the buy-the-favorite play.
+        try:
+            srows = conn.execute(
+                "SELECT ts, strategy, side, model_p_yes, market_mid_p_yes, "
+                "entry_price_cents, outcome FROM decision_log "
+                "WHERE strategy='s_fav' AND outcome IN ('yes','no') "
+                "AND side IS NOT NULL AND entry_price_cents IS NOT NULL").fetchall()
+        except sqlite3.OperationalError:
+            srows = []
+        sg = _decision_group(srows)
+        if sg:
+            # The bias premium: realized win rate minus the market's own price of the side.
+            if sg["win_rate"] is not None and sg["mean_market_p"] is not None:
+                sg["premium"] = _safe(sg["win_rate"] - sg["mean_market_p"], 3)
+            result["shadow"]["s_fav"] = sg
+            n, lb = sg["n"], sg["wilson_lb_pnl"]
+            if n < 200:
+                result["shadow"]["verdict"] = f"collecting ({n}/200 settled)"
+            elif lb is not None and lb > 0:
+                result["shadow"]["verdict"] = "promotion candidate: Wilson LB > 0 at n>=200"
+            else:
+                result["shadow"]["verdict"] = "no premium: Wilson LB <= 0"
+
         # Fitted model calibration (written by the bot's recalibration job).
         try:
             from scripts.calibration import load_calibration
             result["calibration"] = load_calibration()
         except Exception:
             pass
+
+        # Sigma engine state per asset: fitted scale + market-implied EWMA vs the
+        # static cold-start base. Server and bot are separate processes, so the
+        # persisted calibration.json is the channel for the live values.
+        try:
+            from bot_strategy import _ASSET_VOL_15M as _static_vol
+        except Exception:
+            _static_vol = {}
+        cal = result["calibration"] or {}
+        _scales = cal.get("sigma_scale") or {}
+        _imp = cal.get("implied_sigma") or {}
+        for asset in sorted(set(_scales) | set(_imp) | set(_static_vol)):
+            entry = {"static": _safe(_static_vol.get(asset), 5)}
+            if asset in _scales:
+                entry["sigma_scale"] = _safe(_scales.get(asset), 3)
+            ie = _imp.get(asset)
+            if isinstance(ie, dict) and ie.get("sigma"):
+                entry["implied"] = _safe(ie.get("sigma"), 5)
+                entry["implied_n"] = ie.get("n")
+                entry["implied_ts"] = ie.get("ts")
+            result["sigma"][asset] = entry
 
         # Settlement basis: per-asset agreement between our spot-implied side and
         # Kalshi's official result, from the settlement_basis table.

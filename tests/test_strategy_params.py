@@ -104,13 +104,13 @@ def test_s2_skips_low_z_no_dislocation():
                    return_value={"mode": "paper", "quiet_hours_enabled": False}):
             result = strategy_brain_s2(
                 btc_price=150.001, strike=150.0, yes_ask=50, no_ask=51,
-                elapsed_seconds=300, secs_left=600, ticker="KXSOL-LOWZ", asset="SOL",
+                elapsed_seconds=660, secs_left=240, ticker="KXSOL-LOWZ", asset="SOL",
             )
     finally:
         if saved is not None:
             asset_manager._prices["SOL"] = saved
     assert result["action"] == "skip", f"Expected skip, got: {result['reasoning']}"
-    assert "s2_fv_lowz" in result["reasoning"], f"Expected low-z skip: {result['reasoning']}"
+    assert "s2_lowz" in result["reasoning"], f"Expected low-z skip: {result['reasoning']}"
 
 
 

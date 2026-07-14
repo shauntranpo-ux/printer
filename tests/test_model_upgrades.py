@@ -25,6 +25,8 @@ def _neutral_calibration():
     bot_state._brain_cal_s1["prob_scale"] = 1.0
     bot_state._brain_cal_s2["prob_scale"] = 1.0
     bot_state._basis_offsets.clear()
+    bot_state._sigma_scale.clear()
+    bot_state._implied_sigma.clear()
     yield
     asset_manager._prices["BTC"].clear()
     asset_manager._prices["BTC"].extend(saved_btc)
@@ -34,6 +36,9 @@ def _neutral_calibration():
     bot_state._live_betas.clear()
     bot_state._auto_blocked_sessions.clear()
     bot_state._auto_blocked_assets.clear()
+    bot_state._sigma_scale.clear()
+    bot_state._implied_sigma.clear()
+    bot_state._contract_mid_history.clear()
 
 
 # websocket tick handler
@@ -240,11 +245,13 @@ def test_fit_rolling_beta_recovers_and_gates():
 
 
 def test_asset_beta_prefers_live_fit():
-    static = bs._asset_beta("SOL")
-    bot_state._live_betas["SOL"] = 0.77
-    assert bs._asset_beta("SOL") == 0.77
+    static = bs._load_betas()["SOL"]
+    bot_state._live_betas["SOL"] = 0.5    # inside [0.5x, 1.5x] of static: shrunk halfway
+    assert bs._asset_beta("SOL") == pytest.approx(0.5 * static + 0.5 * 0.5)
     bot_state._live_betas["SOL"] = 99.0   # out of range: ignored
-    assert bs._asset_beta("SOL") == static
+    assert bs._asset_beta("SOL") == pytest.approx(static)
+    bot_state._live_betas["SOL"] = 1.4    # contemporaneous-scale value: rejected too
+    assert bs._asset_beta("SOL") == pytest.approx(static)
 
 
 def test_compute_auto_blocks_targets_losing_buckets():
@@ -267,20 +274,24 @@ def test_auto_gate_blocks_brain_after_ev_pass():
     now = time.time()
     saved = asset_manager._prices.get("SOL")
     try:
+        # Late window + favorite mid ~0.77: S2 passes every gate and reaches the auto-gate.
         asset_manager._prices["SOL"] = deque(
-            [(now - (40 - i) * 2, 150.5 + 0.2 * (i / 39.0)) for i in range(40)], maxlen=2000)
+            [(now - (40 - i) * 2, 150.30 + 0.14 * (i / 39.0)) for i in range(40)], maxlen=2000)
         bot_state._auto_blocked_assets.add(("strategy2", "SOL"))
         with patch("bot_strategy.read_config",
-                   return_value={"mode": "paper", "quiet_hours_enabled": False}):
-            r = bs.strategy_brain_s2(150.7, 150.0, 40.0, 58.0, 300.0, 600.0, "KXSOL-AG", asset="SOL")
+                   return_value={"mode": "paper", "quiet_hours_enabled": False,
+                                 "calibration_enabled": False}), \
+             patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
+            r = bs.strategy_brain_s2(150.44, 150.0, 78.0, 24.0, 660.0, 240.0, "KXSOL-AG", asset="SOL")
         assert r["action"] == "skip"
         assert r["reasoning"] == "s2_auto_gate:SOL"
         assert "model_raw_p_yes" in r["signals"]   # still visible to the harness
         # kill switch restores trading
         with patch("bot_strategy.read_config",
                    return_value={"mode": "paper", "quiet_hours_enabled": False,
-                                 "auto_gate_enabled": False}):
-            r2 = bs.strategy_brain_s2(150.7, 150.0, 40.0, 58.0, 300.0, 600.0, "KXSOL-AG2", asset="SOL")
+                                 "calibration_enabled": False, "auto_gate_enabled": False}), \
+             patch("bot_strategy._time_of_day_vol_multiplier", return_value=1.0):
+            r2 = bs.strategy_brain_s2(150.44, 150.0, 78.0, 24.0, 660.0, 240.0, "KXSOL-AG2", asset="SOL")
         assert r2["action"] == "trade"
     finally:
         if saved is not None:

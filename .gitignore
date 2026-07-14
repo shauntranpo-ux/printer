@@ -75,3 +75,4 @@ backtesting/output/*.csv
 backtesting/output/trade_logs/
 backtesting/output/validation/
 check_trades.py
+lab_activity.json

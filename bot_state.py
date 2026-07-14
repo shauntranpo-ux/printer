@@ -23,8 +23,10 @@ __all__ = [
     "_asset_eval", "_contract_price_history",
     "_CAL_DEFAULTS", "_brain_cal_s1", "_brain_cal_s2", "_basis_offsets",
     "_live_betas", "_auto_blocked_sessions", "_auto_blocked_assets",
+    "_implied_sigma", "_sigma_scale", "_contract_mid_history",
     "_last_good_config", "_consecutive_losses", "_s1_consecutive_losses", "_s2_consecutive_losses", "_consecutive_price_skips",
     "_s1_consec_losses_by_asset", "_s1_cooldown_until",
+    "_slot_state", "_prev_window_outcome",
     "_S1_VERSION", "_S2_VERSION", "_S1_ASSET_VOL_RATIO",
 ]
 
@@ -108,6 +110,19 @@ _basis_offsets: dict = {}
 # preferred over data/betas.json when present. asset -> beta.
 _live_betas: dict = {}
 
+# Market-implied 15-min sigma EWMA per asset, folded in from orderbook fetches the loop
+# already makes. asset -> {"sigma": float, "ts": epoch, "n": obs count}. Persisted to
+# data/calibration.json each recalibration cycle so redeploys don't cold-start vol.
+_implied_sigma: dict = {}
+
+# Per-asset sigma multiplier fitted from settled decision_log z/outcome pairs by the
+# recalibration job. Applied on top of _sigma_eff's blend; 1.0/absent = no-op.
+_sigma_scale: dict = {}
+
+# De-vigged YES-mid history per ticker (cents) for the staleness gate.
+# ticker -> deque[(ts, mid_cents)]. Separate from _contract_price_history (legacy shape).
+_contract_mid_history: dict = {}
+
 # Auto-gate blocks (GATE-1 per bucket): recomputed by the recalibration job from
 # settled decision_log picks. Sessions by ET label; assets as (strategy, asset) pairs.
 _auto_blocked_sessions: set = set()
@@ -121,8 +136,40 @@ _s1_cooldown_until: dict = {}          # asset -> epoch timestamp when cooldown 
 _s2_consecutive_losses: int   = 0
 _consecutive_price_skips: int  = 0
 
-_S1_VERSION = "ca-lead-cross-asset-2026-07-02"
-_S2_VERSION = "spot-fair-value-2026-07-02"
+# Test-slot strategies (S3+): per-slot execution state, mirroring the _s1_* pattern but
+# keyed by slot id so N strategies coexist. slot -> {"pending": {ticker: pos},
+# "trade_times": {asset: [ts]}, "cooldown_until": {asset: ts}, "consec_losses": {asset: n},
+# "rolling": deque}. Created lazily by bot_risk._slot(slot).
+_slot_state: dict = {}
+
+# Previous 15-min window outcome per asset, written when handle_locked_phase learns the
+# official result AND estimated at every rollover (so S6 gets data even for windows S2
+# never traded). Consumed by the S6 window-fade brain.
+# asset -> {"result", "strike", "spot_at_close", "ts", "ticker", "estimated"}
+_prev_window_outcome: dict = {}
+
+# Latest (ticker, strike) seen per asset - the rollover estimate needs the strike of the
+# window that just CLOSED, which is gone from the market feed by the time we detect the
+# roll. Updated every loop iteration from the live market object.
+_last_window_strike: dict = {}
+
+# Lab-slot activity counters since process start: slot -> {"evals", "trades",
+# "skips": {reason_key: n}, "since": epoch}. Dumped to <data>/lab_activity.json every
+# periodic tick so the dashboard (separate process) can answer "why is a slot quiet?" -
+# gate-stage skips never reach decision_log, so without this a silent strategy is
+# indistinguishable from a broken one.
+_slot_activity: dict = {}
+
+_S1_VERSION = "momentum-continuation-2026-07-10"
+_S2_VERSION = "favorite-bias-2026-07-10"
+_SLOT_VERSIONS: dict = {
+    "strategy3": "structural-arb-2026-07-10",
+    "strategy4": "mean-reversion-2026-07-10",
+    "strategy5": "maker-spread-capture-2026-07-10",
+    "strategy6": "window-fade-tuned-2026-07-11",
+    "strategy7": "vol-spike-breakout-2026-07-11",
+    "strategy8": "calm-market-favorite-2026-07-11",
+}
 
 kalshi_clock_skew_ms: int = 0       # corrected by _maybe_adjust_clock_skew at startup
 demo_fallback_alert: bool = False    # set when demo creds missing; Telegram fired async

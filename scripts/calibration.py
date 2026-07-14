@@ -2,7 +2,9 @@
 scripts/calibration.py - model self-calibration fitters.
 
 fit_prob_scale: probability-space calibration weight from settled decision_log rows.
+fit_sigma_scale: per-asset vol multiplier from settled decision_log z/outcome pairs.
 fit_basis_offset: per-asset settlement level offset from settlement_basis rows.
+fit_lead_beta: BTC-LEAD beta (alt return regressed on the PRIOR BTC grid return).
 load_calibration / save_calibration: data/calibration.json persistence.
 
 All fitters are data-gated (return the neutral value below the sample minimum) and
@@ -10,13 +12,18 @@ clamped, so a thin or pathological dataset can never push the model far from its
 uncalibrated behavior.
 """
 import json
+import math
 import os
 import tempfile
+from statistics import NormalDist
 
 # Fit gates and clamps.
 MIN_PROB_SAMPLES = 200
 PROB_SCALE_LO = 0.5
 PROB_SCALE_HI = 1.2
+MIN_SIGMA_SAMPLES = 150
+SIGMA_SCALE_LO = 0.5
+SIGMA_SCALE_HI = 2.0
 MIN_BASIS_SAMPLES = 150
 BASIS_OFFSET_CAP = 0.0010   # 10bp cap on the fitted level offset
 MIN_BETA_PAIRS = 30
@@ -59,6 +66,41 @@ def fit_prob_scale(rows) -> float:
         return 1.0
     w = sum(d * (y - 0.5) for d, y in pts) / denom
     return round(min(PROB_SCALE_HI, max(PROB_SCALE_LO, w)), 3)
+
+
+def fit_sigma_scale(rows) -> float:
+    """
+    Fit the sigma multiplier s minimizing the Brier score of Phi(z/s) against outcomes.
+    Scaling sigma by s divides every z by s, so the fit needs only the logged z values -
+    no Bachelier inputs have to be reconstructed.
+
+    rows: iterable of (z, outcome) for ONE asset, outcome 'yes'/'no'. Grid search over
+    [SIGMA_SCALE_LO, SIGMA_SCALE_HI] step 0.05. Returns 1.0 below MIN_SIGMA_SAMPLES.
+    s > 1 means the model's sigma was too small (overconfident tails); s < 1 means
+    sigma was inflated, the failure mode that generated the fake cheap-tail trades.
+    """
+    nd = NormalDist()
+    pts = []
+    for z, outcome in rows:
+        if z is None or outcome not in ("yes", "no"):
+            continue
+        try:
+            z = float(z)
+        except (TypeError, ValueError):
+            continue
+        if z != z or abs(z) > 50.0:
+            continue
+        pts.append((z, 1.0 if outcome == "yes" else 0.0))
+    if len(pts) < MIN_SIGMA_SAMPLES:
+        return 1.0
+    best_s, best_brier = 1.0, float("inf")
+    s = SIGMA_SCALE_LO
+    while s <= SIGMA_SCALE_HI + 1e-9:
+        brier = sum((nd.cdf(z / s) - y) ** 2 for z, y in pts) / len(pts)
+        if brier < best_brier:
+            best_brier, best_s = brier, s
+        s += 0.05
+    return round(min(SIGMA_SCALE_HI, max(SIGMA_SCALE_LO, best_s)), 3)
 
 
 def fit_basis_offset(rows) -> float:
@@ -142,6 +184,46 @@ def fit_rolling_beta(btc_pts, alt_pts, step: float = 30.0, window: float = 1800.
     n = 0
     for i in range(1, min(len(b_grid), len(a_grid))):
         b0, b1 = b_grid[i - 1], b_grid[i]
+        a0, a1 = a_grid[i - 1], a_grid[i]
+        if None in (b0, b1, a0, a1):
+            continue
+        x = math.log(b1 / b0)
+        y = math.log(a1 / a0)
+        sxx += x * x
+        sxy += x * y
+        n += 1
+    if n < MIN_BETA_PAIRS or sxx <= 1e-12:
+        return None, n
+    beta = sxy / sxx
+    return round(min(BETA_HI, max(BETA_LO, beta)), 3), n
+
+
+def fit_lead_beta(btc_pts, alt_pts, step: float = 30.0, window: float = 1800.0,
+                  now: float | None = None):
+    """
+    BTC-LEAD beta: through-origin regression of the alt's grid return at i on BTC's
+    return at i-1. This is the quantity S1 actually uses (predict the alt's NEXT move
+    from BTC's LAST move). fit_rolling_beta measures the CONTEMPORANEOUS slope
+    (~corr * sigma_alt/sigma_btc, 1.1-1.5 for the alts) - feeding that into a lead
+    formula inflated every S1 prediction, which is why it no longer writes _live_betas.
+
+    Same gridding and gates as fit_rolling_beta. Returns (beta, n_pairs).
+    """
+    btc_pts = list(btc_pts)
+    alt_pts = list(alt_pts)
+    if not btc_pts or not alt_pts:
+        return None, 0
+    t_end = min(btc_pts[-1][0], alt_pts[-1][0])
+    t_start = t_end - window
+    if now is not None:
+        t_end = min(t_end, now)
+    b_grid = _grid_prices(btc_pts, t_start, t_end, step)
+    a_grid = _grid_prices(alt_pts, t_start, t_end, step)
+    sxx = sxy = 0.0
+    n = 0
+    m = min(len(b_grid), len(a_grid))
+    for i in range(2, m):
+        b0, b1 = b_grid[i - 2], b_grid[i - 1]   # BTC return one grid step EARLIER
         a0, a1 = a_grid[i - 1], a_grid[i]
         if None in (b0, b1, a0, a1):
             continue

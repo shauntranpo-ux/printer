@@ -16,6 +16,7 @@ import sys
 import time
 from collections import deque
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import aiohttp
 
@@ -23,7 +24,7 @@ import bot_state
 from bot_infra import (
     atomic_write_json, read_config, write_config, get_asset_config,
     db_get_today_pnl, db_write_market_log, db_write_trade, db_update_trade,
-    send_telegram, _phase_for_eth,
+    send_telegram, _phase_for_eth, fmt_ts,
 )
 from bot_market import (
     kalshi_headers, seconds_remaining, seconds_elapsed,
@@ -132,23 +133,27 @@ async def check_daily_limits(config: dict) -> tuple[bool, str]:
 
 def midnight_reset() -> None:
     """
-    Reset daily-limit state at UTC midnight.
+    Reset daily-limit state when the ET calendar day rolls over.
     Restores the pre-limit mode if limits had previously triggered.
+
+    Must roll on the same ET day db_get_today_pnl buckets by. Resetting at UTC
+    midnight (8pm ET) would clear limit_triggered while the ET-day P&L is still
+    past the limit, re-triggering it: duplicate alert + live/paper mode flap.
     """
 
-    today = datetime.now(timezone.utc).date()
+    today = datetime.now(ZoneInfo("America/New_York")).date()
     if bot_state.daily_reset_date is None:
         bot_state.daily_reset_date = today
         return
 
     if today > bot_state.daily_reset_date:
         bot_state.daily_reset_date = today
-        log.info("Midnight UTC: resetting daily limits.")
+        log.info("ET midnight: resetting daily limits.")
         if bot_state.limit_triggered and bot_state.pre_limit_mode:
             cfg = read_config()
             cfg["mode"] = bot_state.pre_limit_mode
             write_config(cfg)
-            log.info(f"Restored mode to '{bot_state.pre_limit_mode}' after midnight reset.")
+            log.info(f"Restored mode to '{bot_state.pre_limit_mode}' after ET midnight reset.")
         bot_state.limit_triggered = False
         bot_state.limit_reason = ""
         bot_state.pre_limit_mode = None
@@ -255,8 +260,10 @@ async def write_state_file(
             "signals":      _ev.get("signals", {}),
             "s1_dir":   _ev.get("s1_dir"),
             "s1_gates": _ev.get("s1_gates"),
+            "s1_skip":  _ev.get("s1_skip"),
             "s2_dir":   _ev.get("s2_dir"),
             "s2_gates": _ev.get("s2_gates"),
+            "s2_skip":  _ev.get("s2_skip"),
             "position":     _st.get("position"),
             "session_type": _a_session_type,
             "strategy_name": _a_strategy_name,
@@ -300,8 +307,10 @@ async def write_state_file(
         "signals":      _btc_ev.get("signals", {}),
         "s1_dir":   _btc_ev.get("s1_dir"),
         "s1_gates": _btc_ev.get("s1_gates"),
+        "s1_skip":  _btc_ev.get("s1_skip"),
         "s2_dir":   _btc_ev.get("s2_dir"),
         "s2_gates": _btc_ev.get("s2_gates"),
+        "s2_skip":  _btc_ev.get("s2_skip"),
         "position":     bot_state.current_position,
         "session_type": _btc_session_type,
         "strategy_name": _btc_strategy_name,
@@ -394,9 +403,14 @@ async def _execute_s1_trade(
             return
     entry_price_cents = yes_ask if side == "yes" else no_ask
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
-    trade_amount = float(config.get("trade_amount_dollars", 25))
+    # Quarter-Kelly on the shrunk win prob, scaled down from the clip (never above it).
+    from bot_strategy import _kelly_stake
+    trade_amount = _kelly_stake(brain_s1.get("win_prob", 0.5), entry_price_cents, config)
     contracts, dollars_used = calculate_contracts(trade_amount, int(entry_price_cents), avail_liquidity)
-    if contracts == 0 or dollars_used < trade_amount * 0.90:
+    # Apply the 90% fill check only when liquidity capped the size (integer rounding on
+    # a small stake at a high entry price can undershoot 90% with a deep book).
+    _wanted = int(trade_amount * 100 / int(entry_price_cents)) if entry_price_cents else 0
+    if contracts == 0 or (avail_liquidity < _wanted and dollars_used < trade_amount * 0.90):
         return
 
     # Reserve slot BEFORE awaiting place_order - prevents a concurrent loop iteration from
@@ -465,6 +479,16 @@ async def _execute_s1_trade(
 
     _dir = "UP" if side == "yes" else "DOWN"
     log.info(f"[S1] {ticker}: ORDER FILLED -- {side.upper()} {contracts}x @ {fill_price}c")
+    if config.get("notify_on_entry", False):
+        try:
+            import bot_stats as _bs
+            from datetime import timedelta as _td
+            _ends = datetime.now(timezone.utc) + _td(seconds=float(secs_left or 0))
+            await send_telegram(_bs.format_entry_message(
+                asset, "s1", side, fill_price, contracts,
+                contracts * fill_price / 100.0, fmt_ts(_ends, config=config), mode))
+        except Exception as _notify_exc:
+            log.warning("S1 entry notification failed (non-fatal): %s", _notify_exc)
     # Record fill time for per-asset fire rate guard
     if asset not in bot_state._s1_asset_trade_times:
         bot_state._s1_asset_trade_times[asset] = []
@@ -481,6 +505,16 @@ async def _settle_s1_trade(
     """Settle a pending S1 real trade. market_result is 'yes', 'no', or None (price fallback)."""
     s1_pos = bot_state._s1_pending_trades.pop(ticker, None)
     if s1_pos is None:
+        return
+    if market_result not in ("yes", "no") and (
+            btc_price is None or btc_price <= 0 or not s1_pos.get("strike")
+            or not _feed_fresh(asset)):
+        # No official result AND no usable spot/strike reference (missing, zero, or
+        # from a frozen feed): a blind fallback books the wrong side. Re-queue; the
+        # orphan sweep retries with data.
+        bot_state._s1_pending_trades[ticker] = s1_pos
+        log.warning("[S1] %s: no result and no trustworthy spot (%r, fresh=%s) - settle deferred",
+                    ticker, btc_price, _feed_fresh(asset))
         return
 
     if market_result == "yes":
@@ -509,6 +543,18 @@ async def _settle_s1_trade(
         "profit_percent":   round(profit_pct, 2),
     })
     log.info(f"[S1] {ticker}: settled -- {outcome}, P&L=${pnl:.2f}")
+
+    if config.get("notify_on_settle", True):
+        try:
+            import bot_stats as _bs
+            _s1_mode = s1_pos.get("mode", config.get("mode", "paper"))
+            _today_pnl = await db_get_today_pnl(_s1_mode)
+            await send_telegram(_bs.format_settle_message(
+                outcome, pnl, asset, "s1", s1_pos["side"], s1_pos["entry_price_cents"],
+                exit_price, s1_pos["contracts"], fmt_ts(config=config), _today_pnl,
+                _s1_mode))
+        except Exception as _notify_exc:
+            log.warning("S1 settle notification failed (non-fatal): %s", _notify_exc)
 
     # Live WR calibration: update empirical win rate bucket for this trade.
     try:
@@ -584,10 +630,24 @@ async def _settle_s1_orphans(
     if not rows:
         return
 
-    btc_price = bot_state.btc_prices[-1][1] if bot_state.btc_prices else 0.0
+    import asset_manager
 
     for row in rows:
         trade_id, ticker, side, contracts, entry_price_cents, mode, asset, db_strike, signals_json = row
+        _mem = bot_state._s1_pending_trades.get(ticker)
+        if _mem is not None and time.time() - float(_mem.get("entry_ts") or 0.0) < 25 * 60:
+            # The live path is actively managing this ticker (fresh entry; settles
+            # land within ~16 min of entry). Overwriting it here would plant a ghost
+            # position that settles twice. Entries OLDER than that are stale -
+            # typically a deferred settle re-queue (no result + no usable spot) or a
+            # sweep-created entry (entry_ts 0.0) - and this sweep is their ONLY
+            # retry path: skipping every in-memory ticker deadlocked them forever.
+            continue
+        # THIS asset's spot for the price fallback - the old BTC-price fallback settled
+        # every non-BTC orphan 'yes' (60000 vs a 150 strike).
+        _dq = asset_manager._prices.get(asset)
+        btc_price = _dq[-1][1] if _dq else (
+            bot_state.btc_prices[-1][1] if asset == "BTC" and bot_state.btc_prices else 0.0)
         try:
             strike = float(db_strike or 0)
             if strike == 0.0:
@@ -667,6 +727,416 @@ async def _try_settle_orphaned_s1(
             log.warning(f"[S1 orphan] market result fetch error (attempt {_attempt}): {_exc}")
         await asyncio.sleep(5)
     await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
+
+
+# Test-slot strategy engine (S3+): generic executor/settler for the paper lab.
+# Parameterized versions of the S1 pair above; every slot trade is HARD-FORCED paper
+# regardless of the global mode - lab slots never touch live capital.
+
+def _feed_fresh(asset: str, max_age_secs: float = 180.0) -> bool:
+    """True when the asset's price deque has a print newer than max_age_secs.
+    Price-fallback settlement must NOT trust a frozen feed: during a full Coinbase
+    outage the deque's last print can be minutes old, and settling spot-vs-strike
+    against it books the wrong side for any late strike cross."""
+    try:
+        import asset_manager
+        dq = asset_manager._prices.get(asset)
+        if not dq:
+            return False
+        return (time.time() - float(dq[-1][0])) <= max_age_secs
+    except Exception:
+        return False
+
+
+def _slot(slot: str) -> dict:
+    """Per-slot execution state (lazily created), mirroring the _s1_* globals."""
+    st = bot_state._slot_state.get(slot)
+    if st is None:
+        st = {"pending": {}, "trade_times": {}, "cooldown_until": {}, "consec_losses": {}}
+        bot_state._slot_state[slot] = st
+    return st
+
+
+def _slot_maker_fee_frac(price_cents: float) -> float:
+    """Kalshi maker fee per contract in dollars: 0.0175 * p * (1-p) (~25% of taker)."""
+    p = max(0.0, min(1.0, price_cents / 100.0))
+    return 0.0175 * p * (1.0 - p)
+
+
+async def _execute_slot_trade(
+    session: "aiohttp.ClientSession",
+    slot: str,
+    brain: dict,
+    ticker: str,
+    spot_price: float,
+    strike: float,
+    yes_ask: float,
+    no_ask: float,
+    secs_left: float,
+    asset: str,
+    config: dict,
+    ob: dict,
+    market: "dict | None" = None,
+) -> None:
+    """
+    Place a paper order for a test-slot strategy. Handles three shapes:
+    normal single-side, arb both-sides (`arb_both_sides`), and passive maker quote
+    (`maker_quote_cents` - no order placed; the fill is decided at settlement from the
+    held-book path). mode is ALWAYS paper for slots.
+    """
+    if brain.get("action") != "trade":
+        return
+    from bot_strategies import STRATEGY_REGISTRY
+    meta = STRATEGY_REGISTRY.get(slot)
+    if meta is None:
+        return
+    st = _slot(slot)
+    if ticker in st["pending"]:
+        return
+    _asset_pending = sum(1 for p in st["pending"].values() if p.get("asset") == asset)
+    if _asset_pending >= int(meta.get("max_pending_per_asset", 1)):
+        return
+    mode = "paper"   # lab slots never trade live capital
+    tag = meta["tag"]
+    version = meta["version"]
+    win_prob = brain.get("win_prob", 0.5)
+
+    def _trade_row(side, contracts, fill_price, dollars, order_id=None):
+        return {
+            "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "market_id": ticker, "market_title": ticker, "mode": mode,
+            "side": side, "contracts": contracts, "entry_price_cents": fill_price,
+            "trade_amount_dollars": round(dollars, 2),
+            "confidence_score": brain.get("confidence", 50),
+            "model_prob": win_prob, "implied_prob": fill_price / 100.0,
+            "btc_price_at_entry": spot_price, "strike": strike,
+            "seconds_left_at_entry": int(secs_left), "fill_confirmed": 1,
+            "outcome": "pending", "order_id": order_id, "asset": asset,
+            "raw_p_yes": brain.get("raw_p_yes"),
+            "entry_signals": json.dumps(brain.get("signals", {})),
+            "strategy_variant": slot, "strategy_version": version, "brain": tag,
+        }
+
+    # Shape 1: structural arb - "buy" BOTH sides as one economic trade. The pair costs
+    # combined/100 per contract; size so the PAIR outlay respects the clip.
+    if brain.get("arb_both_sides"):
+        combined = float(yes_ask) + float(no_ask)
+        if combined <= 0:
+            return
+        from bot_strategy import _kelly_stake  # clip resolution (kelly no-op at p=1)
+        clip = min(25.0, float(config.get("trade_amount_dollars", 25.0) or 25.0))
+        pair_contracts = int(clip * 100.0 / combined)
+        pair_contracts = min(pair_contracts,
+                             int(ob.get("yes_liquidity", 0)), int(ob.get("no_liquidity", 0)))
+        if pair_contracts <= 0:
+            return
+        dollars = pair_contracts * combined / 100.0
+        st["pending"][ticker] = {
+            "slot": slot, "asset": asset, "mode": mode, "entry_ts": time.time(),
+            "market_close_time": (market or {}).get("close_time", ""),
+            "strike": strike, "arb": True,
+            "legs": [
+                {"trade_id": None, "side": "yes", "entry_price_cents": int(yes_ask),
+                 "contracts": pair_contracts},
+                {"trade_id": None, "side": "no", "entry_price_cents": int(no_ask),
+                 "contracts": pair_contracts},
+            ],
+        }
+        for leg in st["pending"][ticker]["legs"]:
+            row = _trade_row(leg["side"], leg["contracts"], leg["entry_price_cents"],
+                             dollars / 2.0)
+            leg["trade_id"] = await db_write_trade(row)
+        log.info("[%s] %s: ARB pair %dx (yes %dc + no %dc = %.0fc)",
+                 tag.upper(), ticker, pair_contracts, int(yes_ask), int(no_ask), combined)
+        st["trade_times"].setdefault(asset, []).append(time.time())
+        return
+
+    side = brain.get("side", "yes")
+    entry_price = yes_ask if side == "yes" else no_ask
+
+    # Shape 2: passive maker quote - record the quote; the fill is decided at settlement
+    # by scanning the held-book path. No order is placed now.
+    if brain.get("maker_quote_cents") is not None:
+        from bot_strategy import _kelly_stake
+        quote = float(brain["maker_quote_cents"])
+        trade_amount = _kelly_stake(win_prob, quote, config)
+        contracts = int(trade_amount * 100.0 / max(1.0, quote))
+        if contracts <= 0:
+            return
+        row = _trade_row(side, contracts, int(quote), contracts * quote / 100.0)
+        trade_id = await db_write_trade(row)
+        st["pending"][ticker] = {
+            "slot": slot, "asset": asset, "mode": mode, "entry_ts": time.time(),
+            "market_close_time": (market or {}).get("close_time", ""),
+            "strike": strike, "maker_quote_cents": quote, "side": side,
+            "contracts": contracts, "entry_price_cents": int(quote),
+            "trade_id": trade_id,
+        }
+        log.info("[%s] %s: MAKER quote %s %dx @ %dc (ask %dc)",
+                 tag.upper(), ticker, side.upper(), contracts, int(quote), int(entry_price))
+        st["trade_times"].setdefault(asset, []).append(time.time())
+        return
+
+    # Shape 3: normal single-side paper taker order.
+    from bot_strategy import _kelly_stake
+    trade_amount = _kelly_stake(win_prob, entry_price, config)
+    avail = ob.get("yes_liquidity", 0) if side == "yes" else ob.get("no_liquidity", 0)
+    contracts, dollars_used = calculate_contracts(trade_amount, int(entry_price), avail)
+    if contracts <= 0:
+        return
+    st["pending"][ticker] = {
+        "slot": slot, "asset": asset, "mode": mode, "entry_ts": time.time(),
+        "market_close_time": (market or {}).get("close_time", ""),
+        "strike": strike, "side": side, "contracts": contracts,
+        "entry_price_cents": int(entry_price), "trade_id": None,
+    }
+    result = await place_order(session, ticker, side, contracts, int(entry_price),
+                               mode, market, asset=asset, secs_left=secs_left)
+    if not result["fill_confirmed"]:
+        st["pending"].pop(ticker, None)
+        return
+    _fp = result.get("fill_price_cents")
+    fill_price = _fp if _fp is not None else int(entry_price)
+    _fc = result.get("filled_contracts")
+    contracts = _fc if _fc is not None else contracts
+    st["pending"][ticker].update({"entry_price_cents": fill_price, "contracts": contracts})
+    row = _trade_row(side, contracts, fill_price, dollars_used, result.get("order_id"))
+    st["pending"][ticker]["trade_id"] = await db_write_trade(row)
+    log.info("[%s] %s: FILLED %s %dx @ %dc", tag.upper(), ticker, side.upper(), contracts, fill_price)
+    st["trade_times"].setdefault(asset, []).append(time.time())
+
+
+def _slot_leg_pnl(side: str, entry_cents: float, contracts: int, won: bool,
+                  fee_frac_fn=None, config: dict | None = None) -> tuple:
+    """(exit_price, pnl_dollars) for one settled leg with taker (default) or maker fee."""
+    exit_price = 100 if won else 0
+    entry_p = entry_cents / 100.0
+    if fee_frac_fn is not None:
+        fee = math.ceil(fee_frac_fn(entry_cents) * contracts * 100) / 100
+    else:
+        fee_rate = (config or {}).get("kalshi_fee_per_contract_cents", 7) / 100.0
+        fee = math.ceil(fee_rate * contracts * entry_p * (1.0 - entry_p) * 100) / 100
+    pnl = (exit_price - entry_cents) * contracts / 100 - fee
+    return exit_price, pnl
+
+
+async def _settle_slot_trades(
+    ticker: str,
+    market_result: "str | None",
+    spot_price: float,
+    config: dict,
+) -> None:
+    """
+    Settle every slot's pending position on `ticker` (called wherever S1 settles: at
+    S2's expiry detection, on rollover, and from the orphan sweep). market_result is
+    'yes'/'no' from Kalshi, or None to fall back to spot-vs-strike.
+    """
+    for slot, st in list(bot_state._slot_state.items()):
+        pos = st["pending"].pop(ticker, None)
+        if pos is None:
+            continue
+        asset = pos.get("asset", "")
+        strike = float(pos.get("strike") or 0.0)
+        if market_result in ("yes", "no"):
+            result = market_result
+        elif spot_price is None or spot_price <= 0 or strike <= 0 or not _feed_fresh(asset):
+            # No official result AND no trustworthy spot/strike (missing, zero, or
+            # from a frozen feed - the aged sweep passes the deque's last print
+            # however old): a blind fallback settles the wrong side. Re-queue; a
+            # later sweep retries with data.
+            st["pending"][ticker] = pos
+            log.warning("[%s] %s: no result and no trustworthy spot (%r) - settle deferred",
+                        slot, ticker, spot_price)
+            continue
+        else:
+            result = "yes" if spot_price > strike else "no"
+
+        def _won(side):
+            return side == result
+
+        try:
+            if pos.get("arb"):
+                total = 0.0
+                for leg in pos.get("legs", []):
+                    won = _won(leg["side"])
+                    exit_price, pnl = _slot_leg_pnl(
+                        leg["side"], leg["entry_price_cents"], leg["contracts"],
+                        won, config=config)
+                    total += pnl
+                    await db_update_trade(leg["trade_id"], {
+                        "exit_price_cents": exit_price, "exit_reason": "expiry",
+                        "outcome": "win" if won else "loss",
+                        "pnl_dollars": round(pnl, 2),
+                        "profit_percent": round((exit_price - leg["entry_price_cents"])
+                                                / max(1, leg["entry_price_cents"]) * 100, 2),
+                    })
+                log.info("[S3] %s: arb pair settled, net P&L=$%.2f", ticker, total)
+                continue
+
+            if pos.get("maker_quote_cents") is not None:
+                quote = float(pos["maker_quote_cents"])
+                filled = False
+                track = bot_state._maker_track.get(ticker)
+                entry_ts = float(pos.get("entry_ts", 0.0))
+                if track:
+                    for _ts, _ya, _na in track:
+                        if _ts < entry_ts:
+                            continue
+                        ask = _ya if pos["side"] == "yes" else _na
+                        if ask is not None and float(ask) <= quote:
+                            filled = True
+                            break
+                if not filled:
+                    await db_update_trade(pos["trade_id"], {
+                        "exit_price_cents": None, "exit_reason": "maker_unfilled",
+                        "outcome": "unfilled", "pnl_dollars": 0.0, "profit_percent": 0.0,
+                    })
+                    log.info("[S5] %s: maker quote %dc never filled - voided", ticker, int(quote))
+                    continue
+                won = _won(pos["side"])
+                exit_price, pnl = _slot_leg_pnl(
+                    pos["side"], quote, pos["contracts"], won,
+                    fee_frac_fn=_slot_maker_fee_frac)
+                await db_update_trade(pos["trade_id"], {
+                    "exit_price_cents": exit_price, "exit_reason": "expiry",
+                    "outcome": "win" if won else "loss",
+                    "pnl_dollars": round(pnl, 2),
+                    "profit_percent": round((exit_price - quote) / max(1.0, quote) * 100, 2),
+                })
+                log.info("[S5] %s: maker settled %s, P&L=$%.2f", ticker,
+                         "win" if won else "loss", pnl)
+                continue
+
+            won = _won(pos["side"])
+            exit_price, pnl = _slot_leg_pnl(
+                pos["side"], pos["entry_price_cents"], pos["contracts"], won, config=config)
+            await db_update_trade(pos["trade_id"], {
+                "exit_price_cents": exit_price, "exit_reason": "expiry",
+                "outcome": "win" if won else "loss",
+                "pnl_dollars": round(pnl, 2),
+                "profit_percent": round((exit_price - pos["entry_price_cents"])
+                                        / max(1, pos["entry_price_cents"]) * 100, 2),
+            })
+            log.info("[%s] %s: settled %s, P&L=$%.2f", slot, ticker,
+                     "win" if won else "loss", pnl)
+            if not won:
+                streak = st["consec_losses"].get(asset, 0) + 1
+                st["consec_losses"][asset] = streak
+            else:
+                st["consec_losses"][asset] = 0
+        except Exception as exc:
+            log.error("[%s] %s: slot settlement failed: %s", slot, ticker, exc, exc_info=True)
+
+
+async def _settle_slot_rollover(
+    session: "aiohttp.ClientSession",
+    ticker: str,
+    spot_price: float,
+    config: dict,
+) -> None:
+    """Settle slot positions on a ticker whose window rolled over without S2 locking
+    (mirror of _try_settle_orphaned_s1): fetch the official result, then settle."""
+    if not any(ticker in st.get("pending", {}) for st in bot_state._slot_state.values()):
+        return
+    market_result = None
+    for _attempt in range(6):
+        try:
+            _path = f"/markets/{ticker}"
+            async with session.get(
+                bot_state.KALSHI_BASE_URL + _path,
+                headers=kalshi_headers("GET", _path),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
+            ) as _resp:
+                _mdata = await _resp.json()
+            market_result = (_mdata.get("market") or _mdata).get("result")
+            if market_result in ("yes", "no"):
+                break
+        except Exception as _exc:
+            log.warning("[slot rollover] result fetch error (attempt %d): %s", _attempt, _exc)
+        await asyncio.sleep(5)
+    await _settle_slot_trades(ticker, market_result, spot_price, config)
+
+
+async def _settle_slot_orphans(
+    session: "aiohttp.ClientSession",
+    config: dict,
+) -> None:
+    """
+    Startup/periodic sweep: settle slot trades whose market resolved while the bot was
+    down (the _settle_s1_orphans pattern generalized over strategy_variant IN registry).
+    Rows still open are NOT re-added to pending (slot positions carry quote/leg context
+    that does not survive a restart) - they settle here on the next sweep instead.
+    """
+    from bot_strategies import STRATEGY_REGISTRY
+    slots = tuple(STRATEGY_REGISTRY.keys())
+    try:
+        import sqlite3
+        conn = sqlite3.connect(bot_state._DB_FILE)
+        placeholders = ",".join("?" * len(slots))
+        rows = conn.execute(
+            f"SELECT id, market_id, side, contracts, entry_price_cents, asset, "
+            f"COALESCE(strike, 0), strategy_variant, COALESCE(brain, '') "
+            f"FROM trades WHERE strategy_variant IN ({placeholders}) AND outcome='pending'",
+            slots,
+        ).fetchall()
+        conn.close()
+    except Exception as exc:
+        log.warning("slot orphan query failed: %s", exc)
+        return
+    if not rows:
+        return
+    import asset_manager
+    for trade_id, ticker, side, contracts, entry_cents, asset, strike, slot, brain_tag in rows:
+        # The live path (LOCKED settle / rollover task) still tracks this ticker - let it
+        # settle with full context (maker fill evidence, official result retries).
+        if any(ticker in st.get("pending", {}) for st in bot_state._slot_state.values()):
+            continue
+        market_result = None
+        market_status = None
+        try:
+            _path = f"/markets/{ticker}"
+            async with session.get(
+                bot_state.KALSHI_BASE_URL + _path,
+                headers=kalshi_headers("GET", _path),
+                timeout=aiohttp.ClientTimeout(total=bot_state.API_TIMEOUT),
+            ) as _resp:
+                _mdata = await _resp.json()
+            _mkt = _mdata.get("market") or _mdata
+            market_result = _mkt.get("result")
+            market_status = _mkt.get("status", "")
+        except Exception as exc:
+            log.warning("slot orphan: Kalshi fetch failed for %s: %s", ticker, exc)
+        if market_result not in ("yes", "no") and market_status in ("", None, "active", "open"):
+            continue   # market still open - leave the row pending
+        if market_result in ("yes", "no"):
+            won = side == market_result
+        else:
+            # THIS asset's spot, not BTC's - a wrong-asset fallback settles every
+            # non-BTC row 'yes' (spot 60000 vs strike 150). And only a FRESH print:
+            # a frozen feed's last price books the wrong side on late crosses.
+            _dq = asset_manager._prices.get(asset)
+            spot = _dq[-1][1] if _dq else 0.0
+            if spot <= 0 or not strike or not _feed_fresh(asset):
+                continue   # no trustworthy reference - retry next sweep
+            won = (side == "yes") == (spot > float(strike or 0.0))
+        # Maker quotes cannot verify a fill after restart (held-book path lost): void.
+        # only_if_pending: a live settle that finished after our snapshot must never
+        # be overwritten (this void would replace a real win/loss with $0).
+        if brain_tag == "s5":
+            await db_update_trade(trade_id, {
+                "exit_price_cents": None, "exit_reason": "maker_unfilled_restart",
+                "outcome": "unfilled", "pnl_dollars": 0.0, "profit_percent": 0.0,
+            }, only_if_pending=True)
+            continue
+        exit_price, pnl = _slot_leg_pnl(side, entry_cents, contracts, won, config=config)
+        await db_update_trade(trade_id, {
+            "exit_price_cents": exit_price, "exit_reason": "expiry",
+            "outcome": "win" if won else "loss",
+            "pnl_dollars": round(pnl, 2),
+            "profit_percent": round((exit_price - entry_cents) / max(1, entry_cents) * 100, 2),
+        }, only_if_pending=True)
+        log.info("[%s] orphan %s settled %s P&L=$%.2f", slot, ticker,
+                 "win" if won else "loss", pnl)
 
 
 # Preflight checks (absorbed from bot_preflight)
@@ -793,8 +1263,16 @@ async def run_preflight_checks(config: dict) -> None:
             "Set to 7 (Kalshi charges 7c/contract)."
         )
 
-    dll = config.get("daily_loss_limit_dollars", 999999)
-    if dll > 500:
+    # Default 0 matches the bot_infra default (0 = cap disabled); the old inline
+    # 999999 default silently disagreed with it, and _init_config clamps the key
+    # to <=150 so the ">500" branch could never fire from a real config.
+    dll = config.get("daily_loss_limit_dollars", 0)
+    if dll == 0:
+        issues.append(
+            "DAILY LOSS LIMIT DISABLED (0) -- live trading would run with no "
+            "daily loss cap. Deliberate? Set preflight_override to proceed."
+        )
+    elif dll > 500:
         issues.append(
             f"DAILY LOSS LIMIT TOO HIGH -- currently ${dll}. "
             "Set to a realistic value (e.g. $50)."

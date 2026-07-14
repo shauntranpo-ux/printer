@@ -125,12 +125,9 @@ def test_live_sigma_no_tod_double_count(monkeypatch):
     assert abs(sig - 0.002 * math.sqrt(15)) < 1e-3
 
 
-# S1 harness visibility
-def test_s1_dicts_carry_model_raw_p_yes():
-    import inspect
-    src = inspect.getsource(s.strategy_brain_s1)
-    # both S1 return dicts that reach the model stage (trade, ev-gate skip) expose model_raw_p_yes
-    assert src.count("model_raw_p_yes") >= 2, "S1 must emit model_raw_p_yes for the edge harness"
+# S1 harness visibility: previously a source grep here, which a literal None value
+# passed (silently blanking the edge harness). The behavioral replacement asserting
+# a genuine probability lives in tests/test_behavioral_guards.py.
 
 
 # settlement basis

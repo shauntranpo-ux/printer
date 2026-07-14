@@ -199,7 +199,11 @@ async def _alert_auth_failure(status: int, path: str, response_body: str) -> Non
     if now - _last_auth_alert_ts < _AUTH_ALERT_COOLDOWN:
         return
     _last_auth_alert_ts = now
-    body_preview = (response_body or "")[:200]
+    # Escape the raw API body: an unescaped '<' or '&' makes Telegram reject the
+    # whole message with 400 can't-parse-entities, silently dropping THE alert that
+    # says auth is broken.
+    import html as _html
+    body_preview = _html.escape((response_body or "")[:200])
     await send_telegram(
         f"<b>KALSHI AUTH FAILURE</b>\nHTTP {status} on {path}\n"
         f"Body: <code>{body_preview}</code>\n"
@@ -658,12 +662,21 @@ async def fetch_orderbook(
     if best_yes_ask == 100 and best_no_ask == 100:
         log.debug(f"Both sides at ceiling for {ticker} -- market not ready yet")
         return None
-    if best_yes_ask + best_no_ask < 100:
+    if best_yes_ask + best_no_ask < 70:
+        # Sub-70 combined asks are one-sided/broken data, not a real book.
         log.warning(
-            f"Orderbook sum below 100 for {ticker}: "
+            f"Orderbook sum implausibly low for {ticker}: "
             f"yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) = {best_yes_ask+best_no_ask}c -- skipping"
         )
         return None
+    if best_yes_ask + best_no_ask < 100:
+        # A genuinely dislocated book: combined asks under $1.00 means buying BOTH sides
+        # locks in a profit. This is exactly what the S3 structural-arb slot trades, so
+        # it must pass through (the old blanket <100 rejection made S3 unreachable).
+        log.info(
+            f"Dislocated book for {ticker}: yes_ask({best_yes_ask}c) + no_ask({best_no_ask}c) "
+            f"= {best_yes_ask+best_no_ask}c -- passing through (arb-qualifying)"
+        )
     if best_yes_ask + best_no_ask > 150:
         log.warning(
             f"Orderbook sum very wide for {ticker}: "
@@ -862,6 +875,19 @@ async def place_order(
             fp = fresh_ob["best_yes_ask"] if side == "yes" else fresh_ob["best_no_ask"]
             if fp is not None and fp != entry_price_cents:
                 log.info(f"Price updated {entry_price_cents}c -> {fp}c for {side.upper()} on {ticker}")
+                if fp > entry_price_cents > 0:
+                    # Re-size for the worse price: the caller sized contracts for the
+                    # ORIGINAL ask; keeping the count at a higher price silently
+                    # spends more than the strategy budgeted (the per-trade clip).
+                    _budget_c = contracts * entry_price_cents
+                    _resized = int(_budget_c / fp)
+                    if _resized <= 0:
+                        log.warning(f"Reprice {entry_price_cents}c -> {fp}c leaves no "
+                                    f"affordable contracts on {ticker} - refusing order")
+                        return {"fill_confirmed": False, "fill_price_cents": None, "order_id": None}
+                    if _resized != contracts:
+                        log.info(f"Re-sized {contracts} -> {_resized} contracts for the higher ask")
+                        contracts = _resized
                 entry_price_cents = fp
     except Exception as _fe:
         log.warning(f"Fresh price fetch failed: {_fe}")
@@ -879,6 +905,10 @@ async def place_order(
         return {
             "fill_confirmed": True,
             "fill_price_cents": paper_fill,
+            # Without this the caller keeps ITS pre-reprice count, so the re-size
+            # above never reached paper accounting and the clip could still be
+            # exceeded on paper rows.
+            "filled_contracts": contracts,
             "order_id": f"paper_{int(time.time() * 1000)}",
         }
 

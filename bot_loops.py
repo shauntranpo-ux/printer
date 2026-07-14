@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import math
+import os
 import time
 from collections import deque
 from datetime import datetime, timezone, timedelta
@@ -16,7 +17,7 @@ import bot_state
 import bot_stats
 import asset_manager
 from asset_manager import get_price as _am_get_price, price_age_seconds as _am_price_age
-from bot_infra import read_config, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers, db_write_maker_sample, db_write_settlement_basis, db_settled_decision_probs, db_basis_rows, db_settled_picks
+from bot_infra import read_config, write_config, strategy_mode, get_asset_config, db_write_trade, db_update_trade, send_telegram, db_brain_scorecard, db_get_today_pnl, fmt_ts, display_tz, et_day_bounds_utc, db_write_decision, db_backfill_decision_outcome, db_pending_decision_tickers, db_write_maker_sample, db_write_settlement_basis, db_settled_decision_probs, db_settled_decision_zs, db_basis_rows, db_settled_picks
 from bot_market import (
     fetch_current_market, fetch_market_for_asset, fetch_orderbook,
     seconds_remaining, seconds_elapsed, parse_strike, get_btc_price,
@@ -26,38 +27,195 @@ from bot_market import (
 )
 from bot_strategy import (
     strategy_brain_s1, strategy_brain_s2,
-    track_contract_price,
-    _is_quiet_hours, _market_implied_p_yes,
+    track_contract_price, track_contract_mid, update_implied_sigma,
+    _is_quiet_hours, _market_implied_p_yes, _kelly_stake, shadow_fav_candidate,
 )
 from bot_risk import (
     check_daily_limits, midnight_reset, write_state_file, _log_entry,
     _execute_s1_trade, _settle_s1_trade, _try_settle_orphaned_s1,
     _settle_s1_orphans,
+    _execute_slot_trade, _settle_slot_trades, _settle_slot_orphans,
+    _settle_slot_rollover,
 )
+from bot_strategies import STRATEGY_REGISTRY, enabled_slots
 from reconcile import fetch_open_positions
 
 log = logging.getLogger("bot")
 
-_last_stats_date: str = ""
-_last_scorecard_date: str = ""
-
-_LV_TZ = ZoneInfo("America/Los_Angeles")
-# Daily reports anchor to Eastern Time - the same timezone the markets, settlement
-# and quiet-hours logic use - so the report "day" matches the trading day and the
-# scorecard fires at one consistent market-aligned instant (17:00 ET == 14:00 PT).
+# The daily summary covers the previous full ET calendar day - the same timezone
+# the markets, sessions and quiet-hours logic use - so no evening trade is ever
+# missing from its day's report. Sent-state persists in config so restarts don't
+# resend it.
+_last_summary_sent_for: str = ""
 _ET_TZ = ZoneInfo("America/New_York")
-_DAILY_REPORT_HOUR_ET = 17
 
 _ASSETS = ["BTC", "ETH", "SOL", "XRP", "DOGE"]
 
 # Edge-measurement: dedup so we log at most one decision_log row per (ticker, strategy)
 # per window (each 15-min window has a unique ticker). Bounded to avoid unbounded growth.
+# _logged_trade_decisions grants one EXTRA row when the brain later says trade: the
+# full-signal skip gates (tgtbt/tail/fade/stale) almost always log a skip first, and
+# without the second slot no would_trade=1 row would ever reach the edge harness.
 _logged_decisions: set = set()
+_logged_trade_decisions: set = set()
 
 # Throttle the maker held-book fetch: {ticker: last_fetch_ts}. ~25s sampling of the ask path
 # is plenty for the counterfactual - avoids an extra orderbook fetch on every ~10s hold cycle.
 _maker_track_last_fetch: dict = {}
 _MAKER_TRACK_MIN_INTERVAL = 25.0
+
+
+def _bump_slot_activity(slot: str, brain: dict) -> None:
+    """
+    Count every lab-slot brain evaluation: trades and skip reasons (keyed on the
+    reasoning up to the first ':' so parameterized reasons bucket together). This is
+    the "why is a slot quiet?" telemetry - gate-stage skips never reach decision_log,
+    so without it a silent strategy is indistinguishable from a broken one. Never raises.
+    """
+    try:
+        act = bot_state._slot_activity.get(slot)
+        if act is None:
+            act = {"evals": 0, "trades": 0, "skips": {}, "since": time.time()}
+            bot_state._slot_activity[slot] = act
+        act["evals"] += 1
+        if brain.get("action") == "trade":
+            act["trades"] += 1
+            return
+        key = str(brain.get("reasoning") or "unknown").split(":", 1)[0][:48]
+        skips = act["skips"]
+        if key in skips or len(skips) < 24:
+            skips[key] = skips.get(key, 0) + 1
+    except Exception:
+        pass
+
+
+def _dump_slot_activity() -> None:
+    """Persist the counters for the dashboard (separate process). Atomic; never raises."""
+    try:
+        from bot_infra import atomic_write_json
+        path = os.path.join(bot_state._DATA_DIR, "lab_activity.json")
+        atomic_write_json(dict(bot_state._slot_activity), path)
+    except Exception as exc:
+        log.debug("lab activity dump skipped: %s", exc)
+
+
+_SAME_WINDOW_SECS = 300.0    # two writes this close = the same 15-min window
+_STREAK_CHAIN_SECS = 1500.0  # consecutive-window entries land ~900s apart; more = a gap
+
+
+def _window_streak(asset: str, ticker: str, result: str) -> int:
+    """
+    Same-direction run length ending at this window, maintained across the
+    _prev_window_outcome writes. New window + same result as the previous entry ->
+    streak+1; direction change -> 1. Window identity is ticker match OR write
+    freshness (< _SAME_WINDOW_SECS): S2 can settle a ladder-picked sibling ticker of
+    the very window the loop tracks under its primary ticker, and keying by ticker
+    alone double-counted that window. A same-window overwrite keeps the streak when
+    the result agrees and conservatively resets to 1 when it disagrees. An entry
+    older than _STREAK_CHAIN_SECS means a window went unobserved (downtime, quiet
+    hours) - the chain is broken and the run restarts at 1, matching the backtest
+    population (consecutive windows only) the s6_min_streak gate was tuned on.
+    """
+    try:
+        prev = bot_state._prev_window_outcome.get(asset)
+        if not prev:
+            return 1
+        age = time.time() - float(prev.get("ts", 0.0))
+        if prev.get("ticker") == ticker or age < _SAME_WINDOW_SECS:
+            return int(prev.get("streak", 1)) if prev.get("result") == result else 1
+        if age > _STREAK_CHAIN_SECS:
+            return 1
+        return int(prev.get("streak", 1)) + 1 if prev.get("result") == result else 1
+    except Exception:
+        return 1
+
+
+def _record_prev_window_estimate(asset: str, prev_ticker: str, spot: float) -> None:
+    """
+    S6 memory for windows S2 never traded: at rollover, estimate the closed window's
+    direction from the current spot vs the remembered strike (_last_window_strike).
+    Defers to the official settlement entry when handle_locked_phase already recorded
+    this ticker. Never raises.
+    """
+    try:
+        lws = bot_state._last_window_strike.get(asset)
+        if not lws or lws[0] != prev_ticker or not lws[1] or spot is None or spot <= 0:
+            return
+        existing = bot_state._prev_window_outcome.get(asset)
+        if existing and (existing.get("ticker") == prev_ticker
+                         or time.time() - float(existing.get("ts", 0.0)) < _SAME_WINDOW_SECS):
+            # An entry for this same window already landed - possibly the official
+            # settlement of a ladder-picked SIBLING ticker (same window, different
+            # strike). Ticker equality alone let the estimate clobber that official
+            # result and double-count the window's streak.
+            return
+        _res = "yes" if float(spot) > float(lws[1]) else "no"
+        bot_state._prev_window_outcome[asset] = {
+            "result": _res, "strike": float(lws[1]), "spot_at_close": float(spot),
+            "ts": time.time(), "ticker": prev_ticker, "estimated": True,
+            "streak": _window_streak(asset, prev_ticker, _res),
+        }
+    except Exception:
+        pass
+
+
+_AGED_PENDING_SECS = 18 * 60      # a full window + grace: nothing legit is older
+_MAKER_TRACK_MAX_AGE = 1800.0     # held-book paths for tickers that never settled
+
+
+async def _periodic_slot_maintenance(session, config: dict, now: float) -> None:
+    """
+    The 300s tick's lab housekeeping, extracted from main_loop so it is testable
+    (it previously lived inline, and a source-grep 'test' let an inverted age
+    comparison ship green). Settles aged in-memory slot pendings via the official-
+    result path (ladder-picked tickers never become a loop's prev_ticker, so no
+    rollover settle ever fires for them), prunes stale held-book paths, runs the
+    unconditional tracking-state prune (its other caller is gated behind optional
+    calibration flags while the writers run regardless), and publishes the lab
+    activity counters for the dashboard process.
+    """
+    for _sst in list(bot_state._slot_state.values()):
+        for _tk, _pd in list(_sst.get("pending", {}).items()):
+            if now - float(_pd.get("entry_ts", now)) > _AGED_PENDING_SECS:
+                _dq = asset_manager._prices.get(_pd.get("asset", ""))
+                _sp = _dq[-1][1] if _dq else 0.0
+                await _settle_slot_rollover(session, _tk, _sp, config)
+    for _tk, _trk in list(bot_state._maker_track.items()):
+        if _trk and now - _trk[-1][0] > _MAKER_TRACK_MAX_AGE:
+            bot_state._maker_track.pop(_tk, None)
+    _prune_tracking_state()
+    _dump_slot_activity()
+
+
+def _discard_window_attempts(attempted: set, prev_ticker: str) -> None:
+    """
+    Drop duplicate-order guards for a CLOSED window, ladder-picked sibling strikes
+    included - they share the ticker prefix up to the strike suffix (KXETHD-25JUL1314-
+    T3702 vs -T3710). Guards for other windows (different window code) are kept; the
+    sets otherwise grow one entry per ladder pick forever, and wholesale clearing
+    would delete the guard for a window that is still open.
+    """
+    try:
+        prefix = prev_ticker.rsplit("-", 1)[0] + "-"
+        for t in [t for t in attempted if t.startswith(prefix)]:
+            attempted.discard(t)
+        attempted.discard(prev_ticker)
+    except Exception:
+        attempted.discard(prev_ticker)
+
+
+def _remember_window_strike(asset: str, market: "dict | None") -> None:
+    """Keep _last_window_strike fresh: pair the strike with its OWN market object so a
+    LOCKED-phase rollover (where locals mix old ticker / new strike) cannot mispair."""
+    try:
+        if not market:
+            return
+        _t = market.get("ticker")
+        _s = parse_strike(market)
+        if _t and _s:
+            bot_state._last_window_strike[asset] = (_t, float(_s))
+    except Exception:
+        pass
 
 
 async def _log_decision(brain: dict, ticker: str, asset: str, secs_left: float,
@@ -73,12 +231,22 @@ async def _log_decision(brain: dict, ticker: str, asset: str, secs_left: float,
         sig = brain.get("signals") or {}
         if "model_raw_p_yes" not in sig:
             return  # gate-stage skip (time/dist/etc.) - no model opinion to score
+        is_trade = brain.get("action") == "trade"
         key = (ticker, strategy)
         if key in _logged_decisions:
-            return
-        if len(_logged_decisions) > 5000:
-            _logged_decisions.clear()
-        _logged_decisions.add(key)
+            if not is_trade or key in _logged_trade_decisions:
+                return
+            if len(_logged_trade_decisions) > 5000:
+                _logged_trade_decisions.clear()
+            _logged_trade_decisions.add(key)
+        else:
+            if len(_logged_decisions) > 5000:
+                _logged_decisions.clear()
+            _logged_decisions.add(key)
+            if is_trade:
+                if len(_logged_trade_decisions) > 5000:
+                    _logged_trade_decisions.clear()
+                _logged_trade_decisions.add(key)
 
         side = brain.get("side")
         mkt_p_side = sig.get("mkt_p")
@@ -93,7 +261,12 @@ async def _log_decision(brain: dict, ticker: str, asset: str, secs_left: float,
             "market_edge": sig.get("market_edge"),
             "entry_price_cents": entry_price,
             "secs_left": secs_left,
-            "would_trade": brain.get("action") == "trade",
+            "would_trade": is_trade,
+            "spot": sig.get("spot"), "strike": sig.get("strike"),
+            "sigma_eff": sig.get("sigma_eff"),
+            # Prefer the de-scaled z: the sigma_scale refit needs a target that does
+            # not move when the applied scale changes.
+            "z": sig.get("z_raw", sig.get("z")),
         })
     except Exception as exc:
         log.debug("_log_decision skipped (%s/%s): %s", ticker, strategy, exc)
@@ -160,6 +333,41 @@ def _record_settlement_basis(ticker: str, asset: str, strike: float, our_spot: f
         log.debug("_record_settlement_basis skipped for %s: %s", ticker, exc)
 
 
+def _prune_tracking_state(max_age_secs: float = 1800.0) -> None:
+    """
+    Drop per-ticker tracking state for windows long settled. Every 15-min window mints
+    a fresh ticker, so these dicts grow forever on a weeks-long process without a
+    sweep. Runs on the recalibration cadence; never raises.
+    """
+    try:
+        now = time.time()
+        for d in (bot_state._contract_mid_history, bot_state._contract_price_history,
+                  bot_state._maker_track):
+            stale = [t for t, dq in list(d.items())
+                     if not dq or (now - dq[-1][0]) > max_age_secs]
+            for t in stale:
+                d.pop(t, None)
+        stale = [t for t, ts in list(_maker_track_last_fetch.items())
+                 if now - ts > max_age_secs]
+        for t in stale:
+            _maker_track_last_fetch.pop(t, None)
+        # _ticker_obi gains an entry per evaluated ticker and has no live reader:
+        # cap-and-clear is safe for it. The attempted-ticker sets are NOT cleared
+        # here - they are the duplicate-order guard for windows that may still be
+        # open, and wholesale clearing could re-enable an order on a window already
+        # attempted; they are pruned per CLOSED window at each rollover instead
+        # (_discard_window_attempts, ladder siblings included via ticker prefix).
+        if len(bot_state._ticker_obi) > 300:
+            bot_state._ticker_obi.clear()
+        # Lab-slot fill timestamps: keep the trailing hour (mirrors the S1 list's
+        # recent-only rewrite; these lists otherwise grow one entry per fill forever).
+        for _sst in bot_state._slot_state.values():
+            for _a, _times in list(_sst.get("trade_times", {}).items()):
+                _sst["trade_times"][_a] = [t for t in _times if now - t < 3600.0]
+    except Exception as exc:
+        log.debug("_prune_tracking_state skipped: %s", exc)
+
+
 async def _recalibrate_model(config: dict) -> None:
     """
     Periodic self-calibration: fit prob_scale per strategy from settled decision_log
@@ -167,11 +375,28 @@ async def _recalibrate_model(config: dict) -> None:
     state slots, and persist to data/calibration.json. Fail-open: any error leaves
     the current calibration untouched.
     """
+    _prune_tracking_state()
     try:
-        from scripts.calibration import (fit_prob_scale, fit_basis_offset, fit_rolling_beta,
-                                         compute_auto_blocks, save_calibration)
-        cal = {"prob_scale": {}, "basis_offset": {}, "live_beta": {}, "auto_blocked": {},
+        from scripts.calibration import (fit_prob_scale, fit_sigma_scale, fit_basis_offset,
+                                         fit_lead_beta, compute_auto_blocks, save_calibration)
+        cal = {"prob_scale": {}, "sigma_scale": {}, "basis_offset": {}, "live_beta": {},
+               "implied_sigma": {}, "auto_blocked": {},
                "updated_at": datetime.now(timezone.utc).isoformat()}
+
+        # Sigma scale FIRST (vol space is where the 2026-07 failure lived), then
+        # prob_scale mops up whatever shape error remains. Fit only strategy2 rows:
+        # S1's z is computed from the beta-shifted predicted spot (lead-signal error
+        # would leak into the vol scale) and s_fav rows are selection-biased favorites.
+        # The logged z is de-scaled, so replacing the scale here is stationary.
+        z_rows = await db_settled_decision_zs(strategy="strategy2")
+        z_by_asset: dict = {}
+        for asset, z, outcome in z_rows:
+            z_by_asset.setdefault(asset, []).append((z, outcome))
+        for asset, rows in z_by_asset.items():
+            s = fit_sigma_scale(rows)
+            bot_state._sigma_scale[asset] = s
+            cal["sigma_scale"][asset] = s
+
         for strategy, slot in (("strategy1", bot_state._brain_cal_s1),
                                ("strategy2", bot_state._brain_cal_s2)):
             rows = await db_settled_decision_probs(strategy)
@@ -188,13 +413,24 @@ async def _recalibrate_model(config: dict) -> None:
             bot_state._basis_offsets[asset] = offset
             cal["basis_offset"][asset] = offset
 
-        # Rolling BTC-lead betas from the live price deques (S1's lead signal).
+        # BTC-LEAD betas (alt return on the PRIOR BTC grid return - the quantity S1
+        # uses). The contemporaneous fit_rolling_beta slope must not write _live_betas:
+        # it runs 3-4x the lead value and inflated every S1 prediction.
         btc_pts = list(asset_manager._prices.get("BTC") or [])
         for asset in ("ETH", "SOL", "XRP", "DOGE"):
-            beta, n = fit_rolling_beta(btc_pts, list(asset_manager._prices.get(asset) or []))
+            beta, n = fit_lead_beta(btc_pts, list(asset_manager._prices.get(asset) or []))
             if beta is not None:
                 bot_state._live_betas[asset] = beta
                 cal["live_beta"][asset] = beta
+
+        # Persist the implied-sigma EWMA so a redeploy does not cold-start vol back
+        # onto the static table.
+        for asset, entry in bot_state._implied_sigma.items():
+            if isinstance(entry, dict) and entry.get("sigma"):
+                cal["implied_sigma"][asset] = {
+                    "sigma": float(entry["sigma"]), "ts": float(entry.get("ts", 0.0)),
+                    "n": int(entry.get("n", 0)),
+                }
 
         # Auto-gate: recompute blocked buckets fresh each cycle (GATE-1 per bucket).
         from scripts.edge_report import _pnl_stats
@@ -207,8 +443,9 @@ async def _recalibrate_model(config: dict) -> None:
                                "strategy_assets": blocks["strategy_assets"]}
 
         save_calibration(cal)
-        log.info("Recalibration: prob_scale=%s basis_offset=%s live_beta=%s auto_blocked=%s",
-                 cal["prob_scale"], cal["basis_offset"], cal["live_beta"], cal["auto_blocked"])
+        log.info("Recalibration: sigma_scale=%s prob_scale=%s basis_offset=%s live_beta=%s auto_blocked=%s",
+                 cal["sigma_scale"], cal["prob_scale"], cal["basis_offset"], cal["live_beta"],
+                 cal["auto_blocked"])
     except Exception as exc:
         log.debug("_recalibrate_model skipped: %s", exc)
 
@@ -226,9 +463,29 @@ def _load_saved_calibration() -> None:
         for asset, off in (cal.get("basis_offset") or {}).items():
             if isinstance(off, (int, float)) and abs(off) <= 0.0010:
                 bot_state._basis_offsets[asset] = float(off)
+        for asset, s in (cal.get("sigma_scale") or {}).items():
+            if isinstance(s, (int, float)) and 0.5 <= s <= 2.0:
+                bot_state._sigma_scale[asset] = float(s)
+        # Accept a persisted live beta only within the same relative-to-static band
+        # _asset_beta enforces (kills a stale absolute-range value from old deploys).
+        from bot_strategy import _load_betas as _static_betas
+        statics = _static_betas()
         for asset, beta in (cal.get("live_beta") or {}).items():
-            if isinstance(beta, (int, float)) and 0.05 <= beta <= 1.5:
+            st = float(statics.get(asset, 0.4) or 0.4)
+            if isinstance(beta, (int, float)) and 0.5 * st <= beta <= 1.5 * st:
                 bot_state._live_betas[asset] = float(beta)
+        # Implied-sigma EWMA survives a restart only while reasonably fresh (2h).
+        now_ts = time.time()
+        for asset, entry in (cal.get("implied_sigma") or {}).items():
+            try:
+                sig = float(entry.get("sigma", 0.0))
+                ts = float(entry.get("ts", 0.0))
+                if sig > 0 and (now_ts - ts) <= 7200.0:
+                    bot_state._implied_sigma[asset] = {
+                        "sigma": sig, "ts": ts, "n": int(entry.get("n", 0)),
+                    }
+            except (TypeError, ValueError, AttributeError):
+                continue
         blocked = cal.get("auto_blocked") or {}
         bot_state._auto_blocked_sessions = {s for s in (blocked.get("sessions") or [])
                                             if isinstance(s, str)}
@@ -290,9 +547,6 @@ async def _record_maker_counterfactual(pos: dict, asset: str, outcome: str, conf
         _maker_track_last_fetch.pop(ticker, None)
     return sample
 
-_prev_quiet_nb: bool = False
-_prev_quiet_main: bool = False
-
 _last_orphan_settle_ts: float = 0.0
 
 
@@ -344,39 +598,46 @@ def _format_scorecard_message(data: dict) -> str:
     return "\n".join(lines)
 
 
-async def _send_brain_scorecard() -> None:
-    """Query DB and send daily brain scorecard via Telegram. Non-fatal on error."""
-    global _last_scorecard_date
+async def _maybe_send_daily_summary() -> None:
+    """Send ONE end-of-day summary covering the previous full ET calendar day.
+
+    Fires at/after daily_summary_hour_et (default 0 = just after ET midnight).
+    Replaces the old pair of 5pm-ET messages (scorecard + stats), which covered
+    only part of the day and could be consumed early by a quiet-hours trigger.
+    The sent marker persists in config so a restart never resends the summary.
+    """
+    global _last_summary_sent_for
     try:
+        config = read_config()
         now_et = datetime.now(_ET_TZ)
-        if now_et.hour != _DAILY_REPORT_HOUR_ET:
+        _hour = int(config.get("daily_summary_hour_et", 0))
+        # 20-minute grace past the send hour so 15-min windows that straddled ET
+        # midnight have settled and land in their own day's numbers.
+        if (now_et.hour, now_et.minute) < (_hour, 20):
             return
-        today = now_et.strftime("%Y-%m-%d")
-        if today == _last_scorecard_date:
+        day = (now_et - timedelta(days=1)).date()
+        key = day.isoformat()
+        already = str(config.get("_last_daily_summary_for", ""))
+        if key == _last_summary_sent_for or (already and key <= already):
+            _last_summary_sent_for = key
             return
-        data = await db_brain_scorecard(today)
-        has_trades = any(data["daily"].get(b) for b in ("s1", "s2"))
-        if not has_trades:
-            return
-        _last_scorecard_date = today
-        msg = _format_scorecard_message(data)
-        await send_telegram(msg)
+        stats = bot_stats.query_stats(
+            bot_state._DB_FILE, today_date=key, day_bounds=et_day_bounds_utc(day),
+            mode=config.get("mode", "paper"))
+        stats["consecutive_losses"] = bot_state._s2_consecutive_losses
+        stats["mode"] = config.get("mode", "paper").upper()
+        stats["as_of"] = fmt_ts(config=config)
+        stats["display_tz"] = display_tz(config)
+        await send_telegram(bot_stats.format_telegram(stats))
+        _last_summary_sent_for = key
+        try:
+            cfg = read_config()
+            cfg["_last_daily_summary_for"] = key
+            write_config(cfg)
+        except Exception as _persist_exc:
+            log.warning("Daily summary marker persist failed: %s", _persist_exc)
     except Exception as exc:
-        log.warning("Brain scorecard send failed (non-fatal): %s", exc)
-
-
-async def _check_daily_stats(today: str) -> None:
-    global _last_stats_date
-    if today == _last_stats_date:
-        return
-    _last_stats_date = today
-    try:
-        _stats = bot_stats.query_stats(bot_state._DB_FILE, today_date=today)
-        _stats["consecutive_losses"] = bot_state._s2_consecutive_losses
-        _stats["mode"] = read_config().get("mode", "paper").upper()
-        await send_telegram(bot_stats.format_telegram(_stats))
-    except Exception as _e:
-        log.warning("Daily stats send failed (non-fatal): %s", _e)
+        log.warning("Daily summary send failed (non-fatal): %s", exc)
 
 
 async def handle_ready_phase(
@@ -401,8 +662,8 @@ async def handle_ready_phase(
     """
 
     _use_state = state is not None
-    mode = config.get("s2_mode", config.get("mode", "paper"))
-    mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
+    mode = strategy_mode(config, "s2")
+    mode_s1 = strategy_mode(config, "s1")
 
     # Hard expiry gate - truly nothing to do in the last 90 seconds
     if secs_left < 90:
@@ -451,6 +712,10 @@ async def handle_ready_phase(
                         if c_ob is None:
                             continue
                         bot_state._ticker_obi[c_ticker] = c_ob["obi"]
+                        track_contract_mid(c_ticker, c_ob["best_yes_ask"], c_ob["best_no_ask"])
+                        update_implied_sigma(asset, btc_price, c_strike,
+                                             c_ob["best_yes_ask"], c_ob["best_no_ask"],
+                                             c_secs_left, config)
                         c_brain = strategy_brain_s2(
                             btc_price, c_strike,
                             c_ob["best_yes_ask"], c_ob["best_no_ask"],
@@ -528,14 +793,21 @@ async def handle_ready_phase(
     yes_ask = ob["best_yes_ask"]
     no_ask  = ob["best_no_ask"]   # fetched directly from no_ask_dollars, not derived
 
-    # Track YES price for velocity signal
+    # Track YES price for velocity signal + de-vigged mid for the staleness gate, and
+    # fold the quote into the implied-sigma anchor (no extra API calls - the book is
+    # already in hand).
     track_contract_price(ticker, yes_ask)
+    track_contract_mid(ticker, yes_ask, no_ask)
+    # btc_price holds THIS asset's spot (the non-BTC loop passes the asset price).
+    update_implied_sigma(asset, btc_price, strike, yes_ask, no_ask, secs_left, config)
 
     # Daily drawdown kill switch - only active when a positive limit is configured.
     # Default 0 = no daily loss cap (the bot keeps trading; bleed control is the EV gate).
+    # Scoped to the main-line strategies: the lab slots' paper P&L must not halt S1/S2.
     _daily_limit = float(config.get("daily_loss_limit_dollars", 0))
     if _daily_limit > 0:
-        _today_pnl = await db_get_today_pnl(mode=config.get("mode", "paper"))
+        _today_pnl = await db_get_today_pnl(mode=config.get("mode", "paper"),
+                                            variants=("strategy1", "strategy2"))
         if _today_pnl <= -_daily_limit:
             log.warning(
                 "DAILY LOSS LIMIT HIT: %.2f <= -%.2f - skipping all trades for today",
@@ -553,19 +825,71 @@ async def handle_ready_phase(
     await _log_decision(brain, ticker, asset, secs_left, yes_ask, no_ask, config, "strategy2")
     await _log_decision(brain_s1, ticker, asset, secs_left, yes_ask, no_ask, config, "strategy1")
 
+    # Shadow favorite-bias candidate (zero capital): one decision_log row per ticker so
+    # the settlement backfill scores the buy-the-favorite idea alongside the live brains.
+    if config.get("measurement_enabled", True) and config.get("shadow_fav_enabled", True):
+        try:
+            _fav_key = (ticker, "s_fav")
+            if _fav_key not in _logged_decisions:
+                _fav = shadow_fav_candidate(asset, btc_price, strike, yes_ask, no_ask,
+                                            secs_left, config)
+                if _fav is not None:
+                    if len(_logged_decisions) > 5000:
+                        _logged_decisions.clear()
+                    _logged_decisions.add(_fav_key)
+                    _fav["ticker"] = ticker
+                    _fav["ts"] = datetime.now(timezone.utc).isoformat()
+                    _fav["mode"] = config.get("mode", "paper")
+                    await db_write_decision(_fav)
+        except Exception as _fexc:
+            log.debug("shadow_fav skipped for %s: %s", ticker, _fexc)
+
     await _execute_s1_trade(
         session, brain_s1, ticker, btc_price, strike, yes_ask, no_ask,
         elapsed, secs_left, asset, config, mode_s1, ob, market,
     )
+
+    # Book tick for the S5 maker fill model: settlement scans this path to decide
+    # whether a passive quote posted during READY would have filled. LOCKED appends
+    # its own ticks; this covers tickers S2 never locks.
+    try:
+        bot_state._maker_track.setdefault(ticker, deque(maxlen=120)).append(
+            (time.time(), float(yes_ask), float(no_ask)))
+    except Exception:
+        pass
+
+    # Test-slot lab dispatch (S3+): every enabled registry brain evaluates this market,
+    # logs its decision (skips included - the harness scores near-misses), and trades
+    # through the generic paper executor. Slots never block each other or S1/S2.
+    for _slot_id in enabled_slots(config):
+        try:
+            _slot_brain = STRATEGY_REGISTRY[_slot_id]["brain"](
+                btc_price, strike, yes_ask, no_ask, elapsed, secs_left, ticker, asset=asset)
+            _bump_slot_activity(_slot_id, _slot_brain)
+            await _log_decision(_slot_brain, ticker, asset, secs_left, yes_ask, no_ask,
+                                config, _slot_id)
+            await _execute_slot_trade(
+                session, _slot_id, _slot_brain, ticker, btc_price, strike,
+                yes_ask, no_ask, secs_left, asset, config, ob, market)
+        except Exception as _slot_exc:
+            log.debug("[%s] slot eval failed for %s: %s", _slot_id, ticker, _slot_exc)
+
     side     = brain["side"]
     score    = brain["confidence"]
     do_trade = brain["action"] == "trade"
     skip_reason_ai = brain["reasoning"]
 
-    # S1+S2 same-ticker dedup: if S1 just reserved this ticker, skip S2 to avoid double entry.
-    if do_trade and ticker in bot_state._s1_pending_trades:
-        skip_reason_ai = "s2_dedup:s1_active"
-        do_trade = False
+    # S1+S2 same-ticker dedup. In duel mode (default) both brains may hold opposing
+    # positions on the same market - it is paper, so there is no capital conflict, and
+    # suppressing S2 whenever S1 is active would poison the head-to-head comparison.
+    # The bypass applies ONLY when both strategies are on paper: with real capital,
+    # doubled/opposing live positions are never acceptable, duel or not.
+    _duel_paper = (config.get("strategy_duel_mode", True)
+                   and mode == "paper" and mode_s1 == "paper")
+    if not _duel_paper:
+        if do_trade and ticker in bot_state._s1_pending_trades:
+            skip_reason_ai = "s2_dedup:s1_active"
+            do_trade = False
 
     # allowed_sides gate - disable NO side when model is uncalibrated
     _side_aliases = {"up": "yes", "down": "no"}
@@ -613,12 +937,15 @@ async def handle_ready_phase(
     _s1_dir = _brain_dir(brain_s1)
     _s2_dir = _brain_dir(brain)
     # Gate funnels in the order the current brains check them (substring match below).
-    _S1_GATE_ORD = ["s1_ca_disabled", "s1_quiet_hours", "s1_session_gate", "s1_cooldown",
-                    "s1_cap", "s1_rate_limit", "s1_window_guard", "s1_time_gate", "s1_ca_",
-                    "s1_price_filter", "s1_ev_gate", "s1_auto_gate"]
+    _S1_GATE_ORD = ["s1_disabled", "s1_quiet_hours", "s1_session_gate", "s1_cooldown",
+                    "s1_cap", "s1_rate_limit", "s1_window_guard", "s1_time_gate",
+                    "s1_bad_price", "s1_no_data", "s1_thin_window", "s1_mom_flat",
+                    "s1_no_confirm", "s1_btc_disagree", "s1_price_filter", "s1_ev_gate",
+                    "s1_auto_gate"]
     _S2_GATE_ORD = ["s2_fv_disabled", "s2_quiet_hours", "s2_session_gate", "s2_time_gate",
-                    "s2_fv_bad_price", "s2_fv_degenerate", "s2_fv_lowz", "s2_fv_flicker",
-                    "s2_fv_wide_spread", "s2_price_filter", "s2_ev_gate", "s2_auto_gate"]
+                    "s2_fv_bad_price", "s2_degenerate", "s2_lowz", "s2_flicker",
+                    "s2_wide_spread", "s2_no_market_data", "s2_not_favorite",
+                    "s2_too_certain", "s2_price_filter", "s2_model_reject", "s2_auto_gate"]
     def _cnt_gates(gates, reason, traded):
         if traded: return len(gates)
         for i, g in enumerate(gates):
@@ -703,14 +1030,19 @@ async def handle_ready_phase(
 
     # Cooldown disabled - trade every session regardless of prior outcome
 
-    # Position sizing - flat fixed amount
-    # Reversal trades use 50% of configured amount (contrarian = smaller size)
-    trade_amount = config.get("trade_amount_dollars", 25)
+    # Position sizing: quarter-Kelly on the shrunk win prob, scaled DOWN from the
+    # configured clip (never up). Thin edges risk less; the clip stays the ceiling.
+    trade_amount = _kelly_stake(brain.get("win_prob", 0.5), entry_price_cents, config)
     avail_liquidity = ob["yes_liquidity"] if side == "yes" else ob["no_liquidity"]
     contracts, dollars_used = calculate_contracts(
         trade_amount, int(entry_price_cents), avail_liquidity,
     )
-    if contracts == 0 or dollars_used < float(trade_amount) * 0.90:
+    # The 90% fill check guards against thin books, not integer rounding: a small Kelly
+    # stake at a 70c+ entry can only round to ~85% of target even with deep liquidity,
+    # so apply the check only when liquidity actually capped the size.
+    _wanted = int(float(trade_amount) * 100 / int(entry_price_cents)) if entry_price_cents else 0
+    _liq_capped = avail_liquidity < _wanted
+    if contracts == 0 or (_liq_capped and dollars_used < float(trade_amount) * 0.90):
         if contracts > 0:
             reason = (
                 f"insufficient_liquidity: only {avail_liquidity} contracts available "
@@ -812,6 +1144,15 @@ async def handle_ready_phase(
     trade_id = await db_write_trade(trade_data)
     if trade_id is None:
         log.critical("[S2] %s: DB write failed - position tracked in-memory only; reconcile manually", ticker)
+
+    if config.get("notify_on_entry", False):
+        try:
+            _ends = datetime.now(timezone.utc) + timedelta(seconds=float(secs_left or 0))
+            await send_telegram(bot_stats.format_entry_message(
+                asset, "s2", side, fill_price, contracts,
+                contracts * fill_price / 100.0, fmt_ts(_ends, config=config), mode))
+        except Exception as _notify_exc:
+            log.warning("Entry notification failed (non-fatal): %s", _notify_exc)
 
     _entry_ts = time.time()
     _abs_pct_at_entry = abs(btc_price - strike) / strike if strike else 0.0
@@ -956,6 +1297,25 @@ async def handle_locked_phase(
         # Edge-measurement: stamp the absolute YES/NO settlement onto this ticker's
         # decision_log rows (the periodic backfill covers skipped/untraded tickers).
         _settle_side = market_result if _settled_official else ("yes" if btc_price > pos["strike"] else "no")
+        # Previous-window memory for the S6 window-carry brain: which way this window
+        # resolved, how decisively, and when. Overwritten every settlement; the rollover
+        # estimate below defers to this official entry for the same ticker.
+        bot_state._prev_window_outcome[asset] = {
+            "result": _settle_side, "strike": float(pos.get("strike") or 0.0),
+            "spot_at_close": float(btc_price or 0.0), "ts": time.time(),
+            "ticker": ticker, "estimated": not _settled_official,
+            "streak": _window_streak(asset, ticker, _settle_side),
+        }
+        # Settle lab-slot positions BEFORE the measurement block: the maker
+        # counterfactual below pops _maker_track[ticker], which is the S5 fill
+        # evidence the slot settler needs. Settling after it voided every S5 quote
+        # on an S2-traded ticker as "unfilled". Guarded so a slot failure can never
+        # block S2's own settlement below (which would leave the asset LOCKED).
+        try:
+            await _settle_slot_trades(ticker, market_result, btc_price, config)
+        except Exception as _slot_exc:
+            log.error("slot settlement failed for %s (S2 settle continues): %s",
+                      ticker, _slot_exc, exc_info=True)
         _maker_exec = (config.get("maker_execution_enabled", False)
                        and pos.get("mode", config.get("mode", "paper")) == "paper")
         _maker_cf = None
@@ -974,9 +1334,11 @@ async def handle_locked_phase(
         # Paper maker execution: re-price the settled trade as the resting maker order
         # the counterfactual tracked. Filled -> maker entry price + maker fee; not
         # filled -> the trade never happened (voided at $0, excluded from streaks).
+        _entry_c_eff = pos["entry_price_cents"]
         if _maker_exec and _maker_cf is not None:
             if _maker_cf.get("filled"):
                 _mp = float(_maker_cf["maker_price_cents"])
+                _entry_c_eff = _mp
                 _mp_frac = _mp / 100.0
                 fee = math.ceil(0.0175 * pos["contracts"] * _mp_frac * (1.0 - _mp_frac) * 100) / 100
                 pnl = (exit_price - _mp) * pos["contracts"] / 100 - fee
@@ -1019,6 +1381,17 @@ async def handle_locked_phase(
             if bot_state._s2_consecutive_losses == max_cl:
                 await send_telegram(f"S2: {bot_state._s2_consecutive_losses} consecutive losses (threshold {max_cl})")
 
+        if outcome in ("win", "loss") and config.get("notify_on_settle", True):
+            try:
+                _pos_mode = pos.get("mode", config.get("mode", "paper"))
+                _today_pnl = await db_get_today_pnl(_pos_mode)
+                await send_telegram(bot_stats.format_settle_message(
+                    outcome, pnl, asset, "s2", pos["side"], _entry_c_eff,
+                    exit_price, pos["contracts"], fmt_ts(config=config), _today_pnl,
+                    _pos_mode))
+            except Exception as _notify_exc:
+                log.warning("Settle notification failed (non-fatal): %s", _notify_exc)
+
         await _settle_s1_trade(ticker, market_result, btc_price, config, asset)
         return
 
@@ -1043,6 +1416,9 @@ async def handle_locked_phase(
                     if _ya is not None and _na is not None:
                         bot_state._maker_track.setdefault(ticker, deque(maxlen=120)).append(
                             (_now_mt, float(_ya), float(_na)))
+                        track_contract_mid(ticker, _ya, _na)
+                        update_implied_sigma(asset, btc_price, pos.get("strike"),
+                                             _ya, _na, secs_left, config)
             except Exception as _mexc:
                 log.debug("maker-track fetch failed for %s: %s", ticker, _mexc)
 
@@ -1065,8 +1441,12 @@ async def _pick_best_strike(session, config: dict, asset: str, price: float,
     """
     Evaluate up to ladder_max_strikes candidate markets (sibling strikes in the
     current window plus the next window) with the S2 brain and return the one with
-    the highest anchored EV among trade signals. Falls back to default_market when
-    no candidate fires or on any error. Bounded: caller throttles to every 30s.
+    the SMALLEST raw model-vs-market gap among trade signals. Win rate falls
+    monotonically with the gap in the settled data, so maximizing EV inside the
+    allowed band would re-create exactly the anti-predictive ordering that used to
+    walk the ladder out to the cheapest strike. Ties break to the tighter spread.
+    Falls back to default_market when no candidate fires or on any error. Bounded:
+    caller throttles to every 30s.
     """
     try:
         max_n = int(config.get("ladder_max_strikes", 3))
@@ -1075,7 +1455,7 @@ async def _pick_best_strike(session, config: dict, asset: str, price: float,
         candidates = await fetch_market_for_asset(session, asset, return_all=True)
         if not candidates or len(candidates) < 2:
             return default_market
-        best, best_ev = None, None
+        best, best_key = None, None
         for cand in candidates[:max_n]:
             c_ticker = cand.get("ticker")
             c_strike = parse_strike(cand)
@@ -1086,18 +1466,35 @@ async def _pick_best_strike(session, config: dict, asset: str, price: float,
             c_ob = await fetch_orderbook(session, c_ticker, cand)
             if not c_ob:
                 continue
+            # Free observations from a book already in hand: mid history for the
+            # staleness gate and a quote for the implied-sigma anchor.
+            track_contract_mid(c_ticker, c_ob["best_yes_ask"], c_ob["best_no_ask"])
+            update_implied_sigma(asset, price, c_strike, c_ob["best_yes_ask"],
+                                 c_ob["best_no_ask"], c_secs, config)
             c_brain = strategy_brain_s2(
                 price, c_strike, c_ob["best_yes_ask"], c_ob["best_no_ask"],
                 c_elapsed, c_secs, c_ticker, asset=asset,
             )
             if c_brain.get("action") != "trade":
                 continue
-            c_ev = c_brain.get("signals", {}).get("ev")
-            if c_ev is not None and (best_ev is None or c_ev > best_ev):
-                best, best_ev = cand, c_ev
+            c_sig = c_brain.get("signals", {})
+            # Smallest model-vs-market disagreement wins. The favorite-bias brain no
+            # longer emits 'gap'; derive it from win_prob vs the market's own price
+            # (the old key is kept as a fallback for any brain that still sends it).
+            c_gap = c_sig.get("gap")
+            if c_gap is None:
+                _wp, _mp = c_sig.get("win_prob"), c_sig.get("mkt_p")
+                if _wp is not None and _mp is not None:
+                    c_gap = abs(float(_wp) - float(_mp))
+            if c_gap is None:
+                continue
+            c_key = (float(c_gap), float(c_sig.get("spread_cents", 0.0) or 0.0))
+            if best_key is None or c_key < best_key:
+                best, best_key = cand, c_key
         if best is not None and best.get("ticker") != default_market.get("ticker"):
-            log.info("[%s] ladder pick: %s (ev=%.3f) over %s",
-                     asset, best.get("ticker"), best_ev, default_market.get("ticker"))
+            log.info("[%s] ladder pick: %s (gap=%.3f spread=%.0fc) over %s",
+                     asset, best.get("ticker"), best_key[0], best_key[1],
+                     default_market.get("ticker"))
             return best
     except Exception as exc:
         log.debug("[%s] ladder pick skipped: %s", asset, exc)
@@ -1188,14 +1585,33 @@ async def _process_asset(
             ticker = prev_ticker
             market = _prev_market or market
             st["market"] = market
+            # Re-derive timing and strike from the RESTORED old market: they were
+            # computed from the new window above, and the S1/slot eval block below
+            # would otherwise run the old ticker's book against the new window's
+            # strike with ~900s "left" - opening trades on an expired market. With
+            # the old window's numbers, secs_left <= 0 gates that block off.
+            secs_left = seconds_remaining(market)
+            elapsed = seconds_elapsed(market)
+            try:
+                _old_strike = parse_strike(market)
+            except Exception:
+                _old_strike = None
+            if _old_strike:
+                strike = _old_strike
         else:
             log.info(f"[{asset}] New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
             if prev_ticker in bot_state._s1_pending_trades:
                 asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, price, config, asset))
+            asyncio.create_task(_settle_slot_rollover(session, prev_ticker, price, config))
+            _record_prev_window_estimate(asset, prev_ticker, price)
             st["phase"] = "WATCH"
             st["position"] = None
-            st["order_attempted"].discard(prev_ticker)
+            _discard_window_attempts(st["order_attempted"], prev_ticker)
             st["prev_ticker"] = ticker
+
+    # Remember this window's (ticker, strike) for the S6 rollover estimate. Paired from
+    # the market object itself so LOCKED-rollover local mixing cannot mispair them.
+    _remember_window_strike(asset, market)
 
     # WATCH
     if st["phase"] == "WATCH":
@@ -1219,17 +1635,40 @@ async def _process_asset(
             try:
                 ob_s1 = await fetch_orderbook(session, ticker, market)
                 if ob_s1:
-                    mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
-                    brain_s1 = strategy_brain_s1(
-                        price, strike,
-                        ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
-                        elapsed, secs_left, ticker, asset=asset,
-                    )
-                    await _execute_s1_trade(
-                        session, brain_s1, ticker, price, strike,
-                        ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
-                        elapsed, secs_left, asset, config, mode_s1, ob_s1, market,
-                    )
+                    mode_s1 = strategy_mode(config, "s1")
+                    _mode_s2 = strategy_mode(config, "s2")
+                    # Same-ticker dual-hold is duel-mode, BOTH-paper only - the READY
+                    # path enforces this on S2; without the mirror check here S1
+                    # could open a live position on the ticker S2 already holds live.
+                    _duel_paper = (config.get("strategy_duel_mode", True)
+                                   and _mode_s2 == "paper" and mode_s1 == "paper")
+                    if _duel_paper:
+                        brain_s1 = strategy_brain_s1(
+                            price, strike,
+                            ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                            elapsed, secs_left, ticker, asset=asset,
+                        )
+                        await _execute_s1_trade(
+                            session, brain_s1, ticker, price, strike,
+                            ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                            elapsed, secs_left, asset, config, mode_s1, ob_s1, market,
+                        )
+                    # Lab slots also keep evaluating while S2 holds (paper - no conflict).
+                    for _slot_id in enabled_slots(config):
+                        try:
+                            _sb = STRATEGY_REGISTRY[_slot_id]["brain"](
+                                price, strike, ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                elapsed, secs_left, ticker, asset=asset)
+                            _bump_slot_activity(_slot_id, _sb)
+                            await _log_decision(_sb, ticker, asset, secs_left,
+                                                ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                                config, _slot_id)
+                            await _execute_slot_trade(
+                                session, _slot_id, _sb, ticker, price, strike,
+                                ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                secs_left, asset, config, ob_s1, market)
+                        except Exception as _sexc:
+                            log.debug("[%s] slot LOCKED eval failed: %s", _slot_id, _sexc)
             except Exception as exc:
                 log.debug("[%s] S1 LOCKED-phase entry attempt failed: %s", asset, exc)
         return
@@ -1277,14 +1716,9 @@ async def _non_btc_asset_loop(session: aiohttp.ClientSession) -> None:
     Independent 10-second loop processing all non-BTC enabled assets.
     Runs as a background asyncio task alongside main_loop (which handles BTC).
     """
-    global _prev_quiet_nb
     while True:
         try:
             config = read_config()
-            _now_q_nb = _is_quiet_hours(config)
-            if _now_q_nb and not _prev_quiet_nb:
-                asyncio.create_task(_check_daily_stats(datetime.now(_ET_TZ).strftime("%Y-%m-%d")))
-            _prev_quiet_nb = _now_q_nb
             if not config.get("bot_enabled", False):
                 # Populate PAUSED state so dashboard shows prices instead of OFFLINE.
                 # Don't clobber LOCKED - those positions must still settle.
@@ -1384,7 +1818,14 @@ async def _verify_and_restore_positions(
     if saved_pos and saved_phase == "LOCKED" and saved_pos.get("trade_id"):
         ticker = saved_pos.get("ticker", "")
         claimed = saved_pos.get("contracts", 0)
-        if ticker in open_pos:
+        if saved_pos.get("mode", mode) == "paper":
+            # A paper position never appears in the Kalshi portfolio - verifying it
+            # there (global mode live) would void a perfectly good paper trade.
+            bot_state.current_position = saved_pos
+            bot_state.current_phase = "LOCKED"
+            log.info("Recovered LOCKED paper position without portfolio check: trade_id=%s",
+                     saved_pos.get("trade_id"))
+        elif ticker in open_pos:
             kalshi_count = open_pos[ticker]["count"]
             if kalshi_count == claimed:
                 bot_state.current_position = saved_pos
@@ -1425,7 +1866,17 @@ async def _verify_and_restore_positions(
         _pos = _apos["position"]
         _ticker = _pos.get("ticker", "")
         _claimed = _pos.get("contracts", 0)
-        if _ticker in open_pos:
+        if _pos.get("mode", mode) == "paper":
+            # Paper positions are invisible to the Kalshi portfolio - restore as-is.
+            if _a not in bot_state._asset_states:
+                bot_state._asset_states[_a] = {}
+            bot_state._asset_states[_a]["phase"] = "LOCKED"
+            bot_state._asset_states[_a]["position"] = _pos
+            bot_state._asset_states[_a].setdefault("order_attempted", set())
+            bot_state._asset_states[_a].setdefault("eval", {})
+            log.info("Recovered LOCKED %s paper position without portfolio check: trade_id=%s",
+                     _a, _pos.get("trade_id"))
+        elif _ticker in open_pos:
             _kcount = open_pos[_ticker]["count"]
             if _a not in bot_state._asset_states:
                 bot_state._asset_states[_a] = {}
@@ -1471,7 +1922,11 @@ async def main_loop() -> None:
 
     global _last_orphan_settle_ts
     prev_ticker: str | None = None
-    _mode = read_config().get("mode", "paper")
+    prev_market_obj: dict | None = None   # last cycle's market - the LOCKED-rollover
+    _mode = read_config().get("mode", "paper")  # restore needs it; _market_cache holds the NEW window by then
+
+    # Restore the last persisted model calibration (prob_scale / basis offsets).
+    _load_saved_calibration()
 
     # Restore the last persisted model calibration (prob_scale / basis offsets).
     _load_saved_calibration()
@@ -1511,16 +1966,16 @@ async def main_loop() -> None:
         # Verify saved positions against Kalshi before trusting the state file.
         await _verify_and_restore_positions(session, _saved_pos, _saved_phase, _non_btc_positions, _mode)
 
-        # Settle any S1 positions that resolved while the bot was offline.
+        # Settle any S1/slot positions that resolved while the bot was offline.
         _startup_config = read_config()
         await _settle_s1_orphans(session, _startup_config)
+        await _settle_slot_orphans(session, _startup_config)
         _last_orphan_settle_ts = time.time()  # periodic timer starts after startup run
 
         # Non-BTC assets run in a separate background task so they aren't
         # gated by the BTC state machine's continue/sleep cycle.
         asyncio.create_task(_non_btc_asset_loop(session))
 
-        global _prev_quiet_main
         while True:
             try:
                 midnight_reset()
@@ -1532,6 +1987,8 @@ async def main_loop() -> None:
                     if _tick_ts - _last_orphan_settle_ts >= 300:
                         try:
                             await _settle_s1_orphans(session, read_config())
+                            await _settle_slot_orphans(session, read_config())
+                            await _periodic_slot_maintenance(session, read_config(), _tick_ts)
                         except Exception as _oe:
                             log.error("Periodic orphan settlement error: %s", _oe, exc_info=True)
                         _last_orphan_settle_ts = time.time()
@@ -1553,10 +2010,7 @@ async def main_loop() -> None:
                         await _recalibrate_model(_recal_cfg)
                     _last_recalibration_ts = time.time()
 
-                await _send_brain_scorecard()
-                _now_et = datetime.now(_ET_TZ)
-                if _now_et.hour == _DAILY_REPORT_HOUR_ET:
-                    await _check_daily_stats(_now_et.strftime("%Y-%m-%d"))
+                await _maybe_send_daily_summary()
 
                 # Fresh config read
                 try:
@@ -1565,11 +2019,6 @@ async def main_loop() -> None:
                     log.error(f"Config read error: {exc}")
                     await asyncio.sleep(10)
                     continue
-
-                _now_q_main = _is_quiet_hours(config)
-                if _now_q_main and not _prev_quiet_main:
-                    asyncio.create_task(_check_daily_stats(datetime.now(_ET_TZ).strftime("%Y-%m-%d")))
-                _prev_quiet_main = _now_q_main
 
                 if not config.get("bot_enabled", False) and bot_state.current_phase != "LOCKED":
                     await write_state_file(config, bot_state.current_market, "PAUSED", 0,
@@ -1648,16 +2097,26 @@ async def main_loop() -> None:
                         # Never reset a live position when the market rolls over.
                         # The position is on the OLD ticker - keep monitoring it.
                         log.info(f"Market rolled to {ticker} but position still open on {prev_ticker} - staying LOCKED.")
-                        # Keep using the old market object for SL monitoring this cycle
+                        # Restore the old market OBJECT too: _market_cache already holds
+                        # the NEW window (the fetch that detected the roll overwrote it),
+                        # so relying on it left ticker=old while secs_left/strike came
+                        # from the new window - the S1/slot eval block then traded the
+                        # expired book against the wrong strike. With the true old
+                        # market restored, secs_left <= 0 gates that block off.
                         ticker = prev_ticker
-                        market = bot_state._market_cache if bot_state._market_cache and bot_state._market_cache.get("ticker") == prev_ticker else market
+                        if prev_market_obj and prev_market_obj.get("ticker") == prev_ticker:
+                            market = prev_market_obj
+                        elif bot_state._market_cache and bot_state._market_cache.get("ticker") == prev_ticker:
+                            market = bot_state._market_cache
                     else:
                         log.info(f"New market: {ticker} (was {prev_ticker}). Resetting to WATCH.")
                         if prev_ticker in bot_state._s1_pending_trades:
                             asyncio.create_task(_try_settle_orphaned_s1(session, prev_ticker, btc_price, config, "BTC"))
+                        asyncio.create_task(_settle_slot_rollover(session, prev_ticker, btc_price, config))
+                        _record_prev_window_estimate("BTC", prev_ticker, btc_price)
                         bot_state.current_phase = "WATCH"
                         bot_state.current_position = None
-                        bot_state._s2_attempted_tickers.discard(prev_ticker)
+                        _discard_window_attempts(bot_state._s2_attempted_tickers, prev_ticker)
                         prev_ticker = ticker
 
                 secs_left = seconds_remaining(market)
@@ -1684,6 +2143,10 @@ async def main_loop() -> None:
                         log.warning(f"{ticker}: cannot parse strike. Skipping cycle.")
                         await asyncio.sleep(10)
                         continue
+
+                # Remember this window's (ticker, strike) for the S6 rollover estimate.
+                _remember_window_strike("BTC", market)
+                prev_market_obj = market   # next cycle's LOCKED-rollover restore source
 
                 # WATCH
                 if bot_state.current_phase == "WATCH":
@@ -1714,17 +2177,42 @@ async def main_loop() -> None:
                         try:
                             ob_s1 = await fetch_orderbook(session, ticker, market)
                             if ob_s1:
-                                mode_s1 = config.get("s1_mode", config.get("mode", "paper"))
-                                brain_s1 = strategy_brain_s1(
-                                    btc_price, strike,
-                                    ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
-                                    elapsed, secs_left, ticker, asset="BTC",
-                                )
-                                await _execute_s1_trade(
-                                    session, brain_s1, ticker, btc_price, strike,
-                                    ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
-                                    elapsed, secs_left, "BTC", config, mode_s1, ob_s1, market,
-                                )
+                                mode_s1 = strategy_mode(config, "s1")
+                                _mode_s2 = strategy_mode(config, "s2")
+                                # Dual-hold on the ticker S2 holds: duel-mode,
+                                # BOTH-paper only (mirror of the READY-path guard).
+                                _duel_paper = (config.get("strategy_duel_mode", True)
+                                               and _mode_s2 == "paper" and mode_s1 == "paper")
+                                if _duel_paper:
+                                    brain_s1 = strategy_brain_s1(
+                                        btc_price, strike,
+                                        ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                        elapsed, secs_left, ticker, asset="BTC",
+                                    )
+                                    await _execute_s1_trade(
+                                        session, brain_s1, ticker, btc_price, strike,
+                                        ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                        elapsed, secs_left, "BTC", config, mode_s1, ob_s1, market,
+                                    )
+                                # Lab slots keep evaluating while S2 holds (paper).
+                                for _slot_id in enabled_slots(config):
+                                    try:
+                                        _sb = STRATEGY_REGISTRY[_slot_id]["brain"](
+                                            btc_price, strike,
+                                            ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                            elapsed, secs_left, ticker, asset="BTC")
+                                        _bump_slot_activity(_slot_id, _sb)
+                                        await _log_decision(
+                                            _sb, ticker, "BTC", secs_left,
+                                            ob_s1["best_yes_ask"], ob_s1["best_no_ask"],
+                                            config, _slot_id)
+                                        await _execute_slot_trade(
+                                            session, _slot_id, _sb, ticker, btc_price,
+                                            strike, ob_s1["best_yes_ask"],
+                                            ob_s1["best_no_ask"], secs_left, "BTC",
+                                            config, ob_s1, market)
+                                    except Exception as _sexc:
+                                        log.debug("[%s] slot LOCKED eval failed: %s", _slot_id, _sexc)
                         except Exception as exc:
                             log.debug("S1 LOCKED-phase entry attempt failed: %s", exc)
                     await write_state_file(config, market, bot_state.current_phase, secs_left, btc_price,
